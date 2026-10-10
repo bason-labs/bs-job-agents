@@ -18,7 +18,7 @@ import {
 import { seedBots, T0 } from "../../db/test-helpers.js";
 import { EnginePaths, type EngineConfig } from "../config.js";
 import { Engine } from "../engine.js";
-import type { OrphanKiller } from "../ports.js";
+import type { OrphanKiller, RolePromptSource } from "../ports.js";
 import type { ActionStepOutput, HumanStepOutput } from "../state.js";
 import { FakeClock } from "./fake-clock.js";
 import { FakeRunner } from "./fake-runner.js";
@@ -49,6 +49,8 @@ export interface TestEngineOptions {
   files?: MemoryFileStore;
   /** UC-18: records the process groups recovery asks to stop. */
   processes?: OrphanKiller;
+  /** ROLE.md per bot: start-up records prompt_versions (and refuses a stale version). */
+  prompts?: RolePromptSource;
 }
 
 export interface TestEngine {
@@ -133,6 +135,7 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
     clock,
     config: opts.config,
     ...(opts.processes ? { processes: opts.processes } : {}),
+    ...(opts.prompts ? { prompts: opts.prompts } : {}),
   });
   const delivered: AppEvent[] = [];
   engine.subscribe((event) => delivered.push(event));

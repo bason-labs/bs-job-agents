@@ -44,6 +44,22 @@ export function upsertBot(db: Conn, input: UpsertBotInput): Bot {
   return db.insert(bots).values(values).onConflictDoUpdate({ target: bots.name, set }).returning().get();
 }
 
+/**
+ * Start-up sync from bot.json (§5.1), keeping what Ba changed on the Bots screen: a missing bot
+ * is inserted as bot.json says; an existing row takes bot.json's name, model and prompt version
+ * but keeps its engine, trust level and enabled flag.
+ */
+export function syncBotFromDefinition(db: Conn, input: UpsertBotInput): Bot {
+  if (!getBot(db, input.name)) return upsertBot(db, input);
+  const row = db
+    .update(bots)
+    .set({ displayName: input.displayName, model: input.model ?? null, promptVersion: input.promptVersion ?? 1 })
+    .where(eq(bots.name, input.name))
+    .returning()
+    .get();
+  return row!;
+}
+
 export function getBot(db: Conn, name: string): Bot | undefined {
   return db.select().from(bots).where(eq(bots.name, name)).get();
 }

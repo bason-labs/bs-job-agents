@@ -12,17 +12,21 @@ import {
 } from "@bs-job-agents/shared";
 import {
   createRun,
+  getPromptVersion,
   getRun,
   listActiveRuns,
   listEvents,
+  recordPromptVersion,
   recoverInterruptedTasks,
   resolveSearchProfile,
+  syncBotFromDefinition,
   type Conn,
   type Db,
   type EventRow,
   type Run,
   type Task,
 } from "../db/index.js";
+import { rolePromptHash } from "../runner/bots.js";
 import { answerQuestion, resumePausedTask, type AnswerInput } from "./apply.js";
 import { BridgeWatcher } from "./bridges.js";
 import { resolveEngineConfig, type EngineConfig, type EnginePaths } from "./config.js";
@@ -146,6 +150,7 @@ export class Engine implements EngineCore {
   async start(): Promise<StartReport> {
     // Recovery marks every running task interrupted: never while this engine runs tasks itself.
     if (this.running) throw new EngineError("conflict", "the engine is already started");
+    this.syncBots();
     const r = recoverInterruptedTasks(this.db, { now: this.now(), maxAttempts: this.config.maxAttempts });
     const interrupted = [...r.requeued, ...r.exhausted, ...r.needsCheck];
     const orphanPids = this.killOrphans(interrupted);
@@ -166,6 +171,41 @@ export class Engine implements EngineCore {
       orphanPids,
       orphanSessions,
     };
+  }
+
+  /**
+   * The bots table from bot.json (rows that reference a bot need it: the Lead room, memory_changes,
+   * prompt_versions), keeping Ba's Bots-screen changes; and §9 prompt_versions: each bot's ROLE.md
+   * for its promptVersion. A ROLE.md that changed without a version bump refuses the start (PM
+   * brief), so a prompt's history (sub-project C) never holds stale text.
+   */
+  private syncBots(): void {
+    const now = this.now();
+    this.db.transaction((tx) => {
+      for (const def of this.deps.bots.list()) {
+        syncBotFromDefinition(tx, {
+          name: def.name,
+          displayName: def.displayName,
+          engine: def.engine,
+          trustLevel: def.trustLevel,
+          model: def.model,
+          promptVersion: def.promptVersion,
+          enabled: def.enabled,
+        });
+        if (!this.deps.prompts) continue;
+        const text = this.deps.prompts.roleMd(def.name);
+        const hash = rolePromptHash(text);
+        const stored = getPromptVersion(tx, def.name, def.promptVersion);
+        if (stored && stored.roleMdHash !== hash) {
+          throw new EngineError(
+            "conflict",
+            `bots/${def.name}/ROLE.md changed but promptVersion is still ${def.promptVersion}: bump promptVersion in bots/${def.name}/bot.json`,
+            { reason: "prompt_version_stale", bot: def.name },
+          );
+        }
+        if (!stored) recordPromptVersion(tx, { botName: def.name, version: def.promptVersion, roleMdHash: hash, roleMdText: text }, { now });
+      }
+    });
   }
 
   /** Stop claiming and stop the timers. Running tasks are left to finish (or to recovery). */

@@ -13,8 +13,19 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FigmaBridge } from "../bridges/index.js";
 import { FakeFigmaApi, FakeFigmaMcp, FakeNode, FIGMA_A4, makePdf } from "../bridges/testing.js";
 import { sha256File } from "../bridges/pdf/hash.js";
-import { createSearchProfile, getApplicationByJob, getCvVersion, getRun, getSubmissionRecord, listMemoryChanges, listTasks, openTestDb, type Db } from "../db/index.js";
-import { seedBots } from "../db/test-helpers.js";
+import {
+  createSearchProfile,
+  getApplicationByJob,
+  getCvVersion,
+  getPromptVersion,
+  getRun,
+  getSubmissionRecord,
+  listBots,
+  listMemoryChanges,
+  listTasks,
+  openTestDb,
+  type Db,
+} from "../db/index.js";
 import { argValue, fakeSpawn, type FakeScript, type SpawnCall } from "../runner/__fixtures__/fake-cli.js";
 import { createRunners, defaultBotsDir, loadBotDefinition } from "../runner/index.js";
 import type { RunnerTask } from "../runner/types.js";
@@ -112,8 +123,8 @@ beforeAll(async () => {
   });
   calls = spawn.calls;
 
+  // A fresh database as in production: no seedBots(); the engine's start-up fills the bots table.
   db = openTestDb();
-  seedBots(db);
   createSearchProfile(db, { roles: ["Frontend Engineer"], locations: ["Ho Chi Minh City"], sources: ["itviec"] });
   const runners = createRunners(
     {
@@ -202,6 +213,13 @@ describe("the production engine on the real adapters (createProductionEngine)", 
     // The runners removed their work dirs.
     expect(readdirSync(root).filter((n) => n.startsWith("bsja-"))).toEqual([]);
     expect(getBotOutputJsonSchema("CvOutput")).toBeDefined();
+  });
+
+  it("start-up filled the bots table from bot.json and stored each ROLE.md for its prompt version", () => {
+    expect(listBots(db).map((b) => b.name)).toEqual(["apply", "cv", "lead", "qa", "research"]);
+    for (const name of ["apply", "cv", "lead", "qa", "research"]) {
+      expect(getPromptVersion(db, name, 1)?.roleMdText, name).toBe(readFileSync(join(botsDir, name, "ROLE.md"), "utf8"));
+    }
   });
 
   it("no safety event and no needs_* wait on the way", () => {
