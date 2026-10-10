@@ -108,7 +108,7 @@ These six rules come from the owner ("6 nguyên tắc cốt lõi"). Each is enfo
 | **Task queue** | Persists tasks, picks runnable ones respecting concurrency and pauses | DB, limiter |
 | **Concurrency limiter** | Max sessions per engine (default Claude 2, Codex 2) and **browser lock** (1 task driving Ba's Chrome at a time) | none |
 | **Browser bridge check** | Before a browser task starts, checks that Chrome is running and the engine's extension is connected; otherwise the task waits as `needs_browser` | Chrome extensions |
-| **Usage-limit watcher** | Detects limit errors, pauses an engine until reset, auto-resumes | Runner output |
+| **Usage-limit watcher** | Reads Claude's `rate_limit_event` (utilization, reset time) and Codex limit errors, pauses an engine until reset, auto-resumes; feeds the sidebar usage meter | Runner output |
 | **Runner** | Builds the CLI command from `bot.json`, spawns it, streams the transcript, parses and validates the final JSON | CLIs, Zod schemas |
 | **Trust guard** | Allows or denies outward-facing actions by trust level and approval tokens | DB |
 | **Scheduler** | Fires saved schedules as workflow triggers | Engine |
@@ -142,13 +142,17 @@ bs-job-agents/
 - **How:**
   - Claude bots run with `claude -p --chrome` (Claude in Chrome extension).
   - Codex bots use the ChatGPT for Chrome extension.
-  - Exact headless behaviour is verified in Spike S2. If one engine cannot drive Chrome non-interactively, browser tasks for that bot switch to the other engine (a per-bot setting, not automatic).
+  - Both verified headless in Spike S2 (`docs/superpowers/spikes/2026-10-10-spike-findings.md`).
+  - Codex reaches Chrome through the `chrome@openai-bundled` plugin (`cua_repl` MCP). It must load Ba's user config, with every other plugin disabled (`-c 'plugins."<id>".enabled=false'`) and `--enable skip_host_skill_discovery --disable skill_search`, so Ba's personal skills do not leak in.
 - **Isolation:**
-  - Each browser task works in its own tab group named after the bot.
+  - Each browser task works in its own tab group named after the bot (both extensions create one per session). After each task the runner closes any leftover empty tab in that group.
   - Only one browser task runs at a time (browser lock, §10.3).
   - Ba can keep using other tabs, but should not close the bot's tab group.
 - **Boundaries:**
-  - Per-bot `allowedSites` (§5.1), matched by the extension's site permissions.
+  - Per-bot `allowedSites` (§5.1).
+    - **Claude bots:** enforced in code by a `PreToolUse` hook (passed with `--settings`) on `mcp__claude-in-chrome__navigate`, which blocks any host outside the list. The hook also checks `javascript_tool` code for navigation. Apply runs without `javascript_tool`.
+    - **Codex bots:** no hook mechanism, so the list is enforced only by the prompt and the role. Therefore bots that write in the browser (Apply) run on Claude; read-only Research may run on Codex, and the bot settings screen shows this as a residual risk.
+  - **File upload:** Claude can upload only files the session may read. Apply gets `--add-dir <approved PDF folder>` plus `Read(<that folder>/**)`, so it can upload the approved PDF and nothing else.
   - Research is read-only.
   - Apply works only on approved domains (§10.2).
 - **Availability:** Chrome must be open with the extension connected, and the Mac awake. Otherwise browser tasks wait as `needs_browser` and start automatically when Chrome reconnects.
@@ -261,13 +265,17 @@ bs-job-agents/
 
 ### 5.5 Runner: how a task runs
 1. Build the prompt: `ROLE.md` + `memory.md` + task input (JSON) + output schema description + self-check list + the untrusted-content rule (§10.2).
-2. Spawn the process:
-   - Claude: `claude -p <prompt> --output-format stream-json` with the bot's allowed tools and MCP config, cwd `bots/<name>/`.
-   - Codex: `codex exec --json` with the bot's sandbox/MCP config, cwd `bots/<name>/`.
-   - Exact flags are verified in Spike S1 (§13).
+2. Spawn the process (flags verified in Spikes S1/S4; stdin is always closed):
+   - **Claude:** `claude -p <prompt> --output-format stream-json --verbose --setting-sources "" --disable-slash-commands --tools <built-ins> --allowedTools <patterns> --mcp-config bots/<name>/mcp.json --strict-mcp-config --settings <hooks json> --json-schema <schema> --no-session-persistence --permission-prompts none --model <model>`, plus `--chrome` / `--add-dir` for browser bots. cwd `bots/<name>/`.
+     - `--setting-sources ""` isolates bots from Ba's personal plugins, hooks and CLAUDE.md.
+     - `--bare` (API key only) and `--safe-mode` (drops MCP) are not usable.
+     - A tool outside `--allowedTools` is auto-denied and reported in `result.permission_denials`. The runner cross-checks the matching `tool_result`, because errored calls are listed there too.
+   - **Codex:** `codex exec --json --ephemeral --skip-git-repo-check --sandbox <read-only|workspace-write> --output-schema bots/<name>/schema.json -o <taskdir>/last.json -c mcp_servers.<srv>.…` with `default_tools_approval_mode="approve"` for the bot's own MCP servers. cwd `bots/<name>/`.
+     - Non-browser bots add `--ignore-user-config`; browser bots use the §4.4 setup.
+   - **Schemas:** one Zod → strict JSON Schema converter (every object `additionalProperties: false`, all properties `required`, optional = nullable) feeds both engines. Codex rejects non-strict schemas.
 3. Stream the transcript to `data/transcripts/<taskId>.jsonl` and emit `task.progress` events.
-4. Parse the final message as JSON and validate it with the Zod schema.
-   - **Invalid:** one repair prompt in the same session ("re-emit valid JSON for schema X").
+4. Read the structured output and validate it with the Zod schema: Claude's `result.structured_output`, Codex's `-o` file.
+   - **Missing or invalid:** one repair prompt in the same session ("re-emit valid JSON for schema X").
    - **Still invalid:** the attempt fails.
 5. If any self-check item failed, the attempt fails and its notes are kept.
 6. Attempt policy: up to **2 attempts** per task (initial + 1 retry). Then the task fails and Lead reports it.
@@ -543,8 +551,10 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 
 ### UC-16: Subscription usage limit reached
 - **Main flow:**
-  1. The runner detects the limit message (patterns verified in Spike S1).
-  2. That engine's queue pauses, and the reset time is parsed (if not parseable, retry every 30 min).
+  1. The runner detects the limit (Spike S1):
+     - **Claude:** every run emits `rate_limit_event` with `status`, `resetsAt` and window `utilization`. The engine pauses **before** the wall when utilization is ≥ 0.95, or when `status` is not `allowed` or the result reports a limit error.
+     - **Codex:** an `error` / `turn.failed` event containing `usage_limit_reached` (with `resets_at`).
+  2. That engine's queue pauses until the reset time (if not parseable, retry every 30 min).
   3. Tasks on that engine move to `waiting_limit`.
   4. The UI shows "Claude paused until 14:05".
   5. At reset the queue **resumes automatically**, and the interrupted task restarts from its beginning (its earlier steps are kept).
@@ -743,7 +753,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | Layer | Tool | Covers |
 |---|---|---|
 | Unit | Vitest | Workflow engine (order, map/join, partial failure, gate loop pass/fail/escalate at 3, human gate, per-job branches); trust guard (no token, expired, reused, wrong job, wrong domain); dedupe; top-N filter; scheduler (overlap skip, catch-up rule); concurrency limiter + browser lock; usage-limit pause/resume; memory append one at a time + 200-line archive |
-| Output formats | Vitest + Zod | Every bot schema accepts valid and rejects invalid fixtures; repair-prompt path |
+| Output formats | Vitest + Zod | Every bot schema accepts valid and rejects invalid fixtures; every generated JSON Schema is strict (`additionalProperties: false`, all properties required); repair-prompt path |
 | Integration | Vitest + real SQLite + **FakeRunner** | Full `job-scan` from trigger to review to submit to record; submission record completeness (all fields, consent, both screenshots, JD snapshot, files copied); SHA-256 mismatch aborts the submit; record immutable after write; export ZIP contains CSV + one folder per application; crash mid-run → restart → continue; interrupted apply → `needs_check`; usage-limit mid-run → auto-continue |
 | Source adapters | Vitest + saved HTML fixtures (TopCV, ITviec, LinkedIn, sample career page) | Field extraction; layout-change detection |
 | UI end-to-end | Playwright + FakeRunner | Own components: Select keyboard (↑/↓/Enter/Esc) and click-outside, Slider drag + arrow keys, Checkbox/Switch with Space, NumberInput formatting, menus not clipped inside tables; Chat → run card; Flow nodes update over SSE; approve → Apply unlocks; request changes → new round; skip with reason; light/dark screenshot checks |
@@ -752,7 +762,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | Bot quality evals (on demand; uses the subscription) | Script | Golden set of 10 real JDs + master CV: QA score consistency (±5 across 3 runs), a CV seeded with invented facts must hard-fail, CV output one page; results stored per prompt version |
 | Dry-run acceptance | Real pipeline, Apply in `dryRun` | Fills the form and screenshots, never clicks submit; required before the first live submission |
 
-**FakeRunner:** implements the runner interface and replays scripted outputs keyed by bot, kind and scenario, including errors (timeout, invalid JSON, usage-limit message, needs_login).
+**FakeRunner:** implements the runner interface and replays scripted outputs keyed by bot, kind and scenario, including errors (timeout, invalid JSON, usage-limit message, needs_login). Its event fixtures are the real `stream-json` and `exec --json` lines captured in the spikes (`rate_limit_event`, `permission_denials`, `turn.failed`).
 
 ---
 
