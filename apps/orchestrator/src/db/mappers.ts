@@ -131,6 +131,7 @@ export function toQaReview(row: Row.QaReview): SharedQaReviewRecord {
 export function toApprovalToken(row: Row.Approval): SharedApprovalToken {
   return {
     token: row.token,
+    applicationId: toIdOrNull(row.applicationId),
     jobId: toId(row.jobId),
     cvVersionId: toId(row.cvVersionId),
     allowedDomains: row.allowedDomains,
@@ -149,6 +150,7 @@ export function toApplication(row: Row.Application): SharedApplication {
     status: row.status,
     origin: row.origin,
     statusHistory: row.statusHistory.map((e) => ({ status: e.status, at: e.at, note: e.note ?? null })),
+    dryRun: row.dryRun,
   };
 }
 

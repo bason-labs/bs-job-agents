@@ -72,6 +72,7 @@ export const applicationFixture: Application = {
     { status: "approved", at: "2026-10-10T15:36:00+07:00", note: null },
     { status: "submitted", at: "2026-10-10T15:40:00+07:00", note: null },
   ],
+  dryRun: false,
 };
 
 export const importedApplicationFixture: Application = {
@@ -82,6 +83,7 @@ export const importedApplicationFixture: Application = {
   status: "submitted",
   origin: "imported",
   statusHistory: [{ status: "submitted", at: "2026-10-10T15:40:00+07:00", note: "imported" }],
+  dryRun: false,
 };
 
 export const submissionRecordFixture: SubmissionRecord = {
@@ -191,6 +193,7 @@ export const uploadFixture: Upload = {
 
 export const approvalTokenFixture: ApprovalToken = {
   token: "tok_7f3a",
+  applicationId: "app_1",
   jobId: "job_1",
   cvVersionId: "cvv_2",
   allowedDomains: ["itviec.com"],

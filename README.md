@@ -9,7 +9,7 @@ A local, single-user crew of bots (Lead, Research, CV, QA, Apply) that finds job
 
 ```
 apps/web/            Next.js UI (App Router, Tailwind v4, bs-kara theme)        → http://localhost:3000
-apps/orchestrator/   Fastify API + SSE, engine, runner, MCP server, SQLite      → http://127.0.0.1:4318
+apps/orchestrator/   Fastify API + SSE, engine, runner, MCP server, SQLite      → http://127.0.0.1:4100
 packages/shared/     Zod schemas and types shared by web and orchestrator
 bots/<bot>/          bot definitions (bot.json, ROLE.md, memory.md, skills/)
 workflows/           workflow YAML (job-scan, apply-to-link, ...)
@@ -18,7 +18,7 @@ data.example/        example user data (copy to data/, which is gitignored)
 
 ## Prerequisites
 
-- **Node 22** (`nvm use` reads `.nvmrc`) and **pnpm 10.11.0** (`corepack enable` picks it up from `package.json`).
+- **Node 22.13 or newer** (`nvm use` reads `.nvmrc`, which resolves to the latest 22.x) and **pnpm 10.11.0** (`corepack enable` picks it up from `package.json`). `.npmrc` sets `engine-strict=true`, so `pnpm install` refuses an older Node. drizzle-kit (`db:generate`) loads the shared package through `require(esm)`, which needs Node ≥ 22.12; ESLint's dependencies need ≥ 22.13.
 - **Claude Code CLI**, logged in with your claude.ai account: `~/.local/bin/claude` (2.1.x). Check with `claude --version`.
 - **Codex CLI**, bundled with the ChatGPT desktop app and logged in through ChatGPT. It is not on `PATH`; the orchestrator calls it at:
   ```
@@ -39,12 +39,12 @@ data.example/        example user data (copy to data/, which is gitignored)
 
 ```bash
 pnpm install
-pnpm dev                 # web (3000) + orchestrator (4318) together
+pnpm dev                 # web (3000) + orchestrator (4100) together
 pnpm dev:web             # web only
 pnpm dev:orchestrator    # orchestrator only (tsx watch)
 ```
 
-The orchestrator port defaults to `4318`; override with `ORCH_PORT=5000 pnpm dev:orchestrator`. Health check: `curl http://127.0.0.1:4318/health` → `{"ok":true}`.
+The orchestrator port defaults to `4100` (not `4318`, the OpenTelemetry collector port); override with `ORCH_PORT=5000 pnpm dev:orchestrator`. Health check: `curl http://127.0.0.1:4100/health` → `{"ok":true}`.
 
 ## Check
 

@@ -23,6 +23,7 @@ import {
   SubmissionRecordSchema,
   appendStatus,
   canChangeApplicationStatus,
+  canTransitionApplicationStatus,
 } from "./application.js";
 import { ApprovalTokenSchema } from "./approval.js";
 import { MessageSchema, RoomSchema, parseMentions } from "./chat.js";
@@ -189,9 +190,60 @@ describe("Application + submission record (UC-13, §9.1)", () => {
     expect(canChangeApplicationStatus("interviewing", "rejected")).toBe(true);
     expect(canChangeApplicationStatus("needs_check", "submitted")).toBe(true);
     expect(canChangeApplicationStatus("needs_check", "failed")).toBe(true);
-    expect(canChangeApplicationStatus("offer", "submitted")).toBe(false);
     expect(canChangeApplicationStatus("approved", "offer")).toBe(false);
     expect(canChangeApplicationStatus("submitted", "submitted")).toBe(false);
+  });
+
+  it("Ba moves freely between post-submit statuses, so a mis-click can be corrected (PM M3)", () => {
+    expect(canChangeApplicationStatus("rejected", "interviewing")).toBe(true);
+    expect(canChangeApplicationStatus("offer", "submitted")).toBe(true);
+    expect(canChangeApplicationStatus("withdrawn", "no_response")).toBe(true);
+    // …but never back into the apply flow, and nothing reopens a failed or pending application.
+    expect(canChangeApplicationStatus("rejected", "needs_check")).toBe(false);
+    expect(canChangeApplicationStatus("submitted", "failed")).toBe(false);
+    expect(canChangeApplicationStatus("interviewing", "approved")).toBe(false);
+    expect(canChangeApplicationStatus("failed", "submitted")).toBe(false);
+    expect(canChangeApplicationStatus("approved", "submitted")).toBe(false);
+    expect(canChangeApplicationStatus("paused", "failed")).toBe(false);
+  });
+
+  it("submitted comes only from the submission record or Ba settling a needs_check (PM M3)", () => {
+    for (const from of ["approved", "paused"] as const) {
+      expect(canTransitionApplicationStatus(from, "submitted", "system")).toBe(false);
+      expect(canTransitionApplicationStatus(from, "submitted", "manual")).toBe(false);
+      expect(canTransitionApplicationStatus(from, "submitted", "record")).toBe(true);
+      expect(canTransitionApplicationStatus(from, "needs_check", "record")).toBe(true);
+    }
+    expect(canTransitionApplicationStatus("needs_check", "submitted", "system")).toBe(false);
+    expect(canTransitionApplicationStatus("needs_check", "submitted", "record")).toBe(false);
+    expect(canTransitionApplicationStatus("needs_check", "submitted", "manual")).toBe(true);
+  });
+
+  it("the orchestrator moves an application only within the apply flow (UC-11, UC-17, UC-18)", () => {
+    expect(canTransitionApplicationStatus("approved", "paused", "system")).toBe(true);
+    expect(canTransitionApplicationStatus("paused", "approved", "system")).toBe(true);
+    expect(canTransitionApplicationStatus("approved", "needs_check", "system")).toBe(true);
+    expect(canTransitionApplicationStatus("paused", "failed", "system")).toBe(true);
+    expect(canTransitionApplicationStatus("needs_check", "failed", "system")).toBe(false);
+    expect(canTransitionApplicationStatus("submitted", "interviewing", "system")).toBe(false);
+    expect(canTransitionApplicationStatus("approved", "paused", "manual")).toBe(false);
+    expect(canTransitionApplicationStatus("failed", "approved", "record")).toBe(false);
+  });
+
+  it("a dry run never reaches submitted or any later status (PM M3)", () => {
+    expect(canTransitionApplicationStatus("approved", "needs_check", "record", { dryRun: true })).toBe(true);
+    expect(canTransitionApplicationStatus("approved", "submitted", "record", { dryRun: true })).toBe(false);
+    expect(canChangeApplicationStatus("needs_check", "submitted", { dryRun: true })).toBe(false);
+    expect(canChangeApplicationStatus("needs_check", "failed", { dryRun: true })).toBe(true);
+    // The fixture is submitted, so as a dry run it is invalid.
+    expect(ApplicationSchema.safeParse({ ...applicationFixture, dryRun: true }).success).toBe(false);
+    expect(ApplicationSchema.safeParse({ ...applicationFixture, status: "needs_check", dryRun: true }).success).toBe(true);
+  });
+
+  it("an application without a dryRun field is a real one (older payloads still parse)", () => {
+    const { dryRun: _dryRun, ...older } = applicationFixture;
+    expect(ApplicationSchema.parse(older).dryRun).toBe(false);
+    expect(applicationFixture.dryRun).toBe(false);
   });
 
   it("appendStatus appends to history without mutating", () => {
@@ -342,6 +394,13 @@ describe("other domain records", () => {
   it("approval token (UC-08)", () => {
     expect(ApprovalTokenSchema.safeParse(approvalTokenFixture).success).toBe(true);
     expect(ApprovalTokenSchema.safeParse({ ...approvalTokenFixture, allowedDomains: [] }).success).toBe(false);
+  });
+
+  it("an approval token names the one application it authorises (PM M2); older tokens have none", () => {
+    expect(ApprovalTokenSchema.parse(approvalTokenFixture).applicationId).toBe("app_1");
+    const { applicationId: _applicationId, ...older } = approvalTokenFixture;
+    expect(ApprovalTokenSchema.parse(older).applicationId).toBeNull();
+    expect(ApprovalTokenSchema.safeParse({ ...approvalTokenFixture, applicationId: "" }).success).toBe(false);
   });
 
   it("engine state", () => {

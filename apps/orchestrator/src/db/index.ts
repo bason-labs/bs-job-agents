@@ -1,12 +1,22 @@
 // SQLite + Drizzle data layer (spec §9, §9.1). Owned by W1b in Phase 1.
 //
-//   const db = openDb("data/app.db");            // WAL, FKs, busy_timeout, migrations
+//   const db = openDb("data/app.db");            // WAL, FKs, busy_timeout, migrations; throws
+//                                                 // SchemaGuardError if a §9.1 trigger is missing
 //   recoverInterruptedTasks(db);                  // UC-18, once at start-up
 //   const task = claimNextTask(db, { allowBrowser: !browserLock.held });
+//
+// The approve → apply → record path (§9.1, §10.2 rule 1; PM M1–M3):
+//   approveApplication(tx, { jobId, cvVersionId, allowedDomains, dryRun? }) // UC-08: app + bound token
+//   consumeApproval(db, token, { applicationId, jobId, cvVersionId, domain })        // first spawn
+//   checkApprovalForResume(db, token, { applicationId, jobId, cvVersionId, domain }) // resume
+//   recordSubmission(db, { applicationId, submission: { approvalToken, uploadedSha256, … }, … })
+//   markSubmissionRefused(db, { error, taskId })  // on SubmissionRefusedError: needs_check + safety.denied
+//   transitionApplication(db, id, to, { by: "system" | "manual" })               // shared status machine
 //
 // Every repository function takes the Drizzle handle or a transaction
 // (`db.transaction(tx => …)`), so several calls can be composed atomically.
 export * from "./client.js";
+export * from "./schema-guard.js";
 export * as schema from "./schema.js";
 export type { JsonObject, SubmittedField, StatusHistoryEntry } from "./schema.js";
 export * from "./enums.js";

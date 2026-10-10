@@ -21,9 +21,11 @@ describe("orchestrator server", () => {
 });
 
 describe("resolvePort", () => {
-  it("defaults to 4318", () => {
-    expect(DEFAULT_PORT).toBe(4318);
-    expect(resolvePort({})).toBe(4318);
+  // PM phase 1, S12: 4100 (the spec value); 4318 is the OpenTelemetry OTLP/HTTP port.
+  it("defaults to 4100 when ORCH_PORT is unset or empty", () => {
+    expect(DEFAULT_PORT).toBe(4100);
+    expect(resolvePort({})).toBe(4100);
+    expect(resolvePort({ ORCH_PORT: "" })).toBe(4100);
   });
 
   it("reads ORCH_PORT", () => {

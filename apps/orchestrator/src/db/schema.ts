@@ -353,8 +353,12 @@ export const approvals = sqliteTable(
     usedAt: text("used_at"),
     // Extra (not in §9): approval time, shown in the submission record (UC-13).
     createdAt: createdAt(),
+    // Extra (not in §9, PM M2): the one application this token authorises, set when it is
+    // created (UC-08). NULL only for tokens issued before 0004 that no record cites; those
+    // cannot start or resume Apply. Added with ADD COLUMN: never rebuild this table.
+    applicationId: integer("application_id").references((): AnySQLiteColumn => applications.id),
   },
-  (t) => [index("approvals_job_idx").on(t.jobId)],
+  (t) => [index("approvals_job_idx").on(t.jobId), index("approvals_application_idx").on(t.applicationId)],
 );
 
 export const applications = sqliteTable(
@@ -374,12 +378,16 @@ export const applications = sqliteTable(
     // Extra (not in §9): explicit "apply again" (§10.2 rule 5) lifts the one-per-job rule.
     reapply: boolCol("reapply").notNull().default(false),
     createdAt: createdAt(),
+    // Extra (not in §9, PM M3): a dry-run acceptance run (§12) fills the form and never clicks
+    // submit. It never counts toward the one-per-job rule and never reaches `submitted`
+    // (repository + triggers in 0003). Added with ADD COLUMN: never rebuild this table.
+    dryRun: boolCol("dry_run").notNull().default(false),
   },
   (t) => [
     oneOf("applications_status_check", "status", APPLICATION_STATUSES),
     oneOf("applications_origin_check", "origin", APPLICATION_ORIGINS),
-    // §10.2 rule 5: one application per job unless explicitly re-applied.
-    uniqueIndex("applications_job_uq").on(t.jobId).where(sql`"reapply" = 0`),
+    // §10.2 rule 5: one application per job unless explicitly re-applied; dry runs never count.
+    uniqueIndex("applications_job_uq").on(t.jobId).where(sql`"reapply" = 0 AND "dry_run" = 0`),
     index("applications_status_idx").on(t.status),
   ],
 );

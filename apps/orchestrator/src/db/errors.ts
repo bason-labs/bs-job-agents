@@ -1,3 +1,5 @@
+import type { SubmissionRefusalReason } from "@bs-job-agents/shared";
+
 export class NotFoundError extends Error {
   constructor(
     readonly entity: string,
@@ -24,5 +26,77 @@ export class ImmutableRecordError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ImmutableRecordError";
+  }
+}
+
+/** Why the data layer refuses to issue or extend an approval token (UC-08, UC-11 e). */
+export type ApprovalRefusal =
+  /** PM M1: the CV version does not exist. */
+  | "cv_not_found"
+  /** PM M1: the CV version belongs to another job. */
+  | "cv_job_mismatch"
+  /** PM M1: the CV version has no exported PDF (pdf_path and a valid pdf_sha256). */
+  | "pdf_missing"
+  /** PM M1: no allowed domain. */
+  | "no_domain"
+  /** PM M1: a domain is not a host name such as topcv.vn. */
+  | "invalid_domain"
+  /** PM M2: the application is for another job or CV version, or the token is bound to none. */
+  | "application_mismatch"
+  /** PM M2: the application already has a submission record. */
+  | "application_recorded"
+  /** PM M2: the application left the apply flow (it is not approved or paused). */
+  | "application_closed"
+  /** PM M2: the application still has an unexpired token; Ba approves again only after expiry. */
+  | "token_live";
+
+/** createApproval / createApplication / addApprovalDomain refused; nothing was written. */
+export class ApprovalRefusedError extends Error {
+  constructor(
+    readonly reason: ApprovalRefusal,
+    detail: string,
+  ) {
+    super(`approval refused (${reason}): ${detail}`);
+    this.name = "ApprovalRefusedError";
+  }
+}
+
+/**
+ * recordSubmission refused to write the §9.1 record, and wrote nothing: the record would
+ * contradict the application or its approval. The caller (engine) keeps the raw Apply result
+ * on the task, marks the application `needs_check` and appends `safety.denied`.
+ */
+export class SubmissionRefusedError extends Error {
+  constructor(
+    readonly reason: SubmissionRefusalReason,
+    readonly applicationId: number,
+    detail: string,
+  ) {
+    super(`submission record for application ${applicationId} refused (${reason}): ${detail}`);
+    this.name = "SubmissionRefusedError";
+  }
+}
+
+/** A trigger or index openDb() requires after migrating (schema-guard.ts). */
+export interface GuardedSchemaObject {
+  type: "trigger" | "index";
+  name: string;
+  /** The table it belongs to. */
+  table: string;
+}
+
+/**
+ * openDb() found a guarded trigger or index missing after migrating (PM M4): most likely a
+ * migration rebuilt a table, which drops its triggers. The orchestrator must not start,
+ * because the §9.1 record and the approval rules would no longer be enforced.
+ */
+export class SchemaGuardError extends Error {
+  constructor(readonly missing: readonly GuardedSchemaObject[]) {
+    super(
+      `database schema is missing ${missing.length} guarded object(s): ${missing
+        .map((o) => `${o.type} ${o.name} on ${o.table}`)
+        .join(", ")}. A migration probably rebuilt a table and dropped them; refusing to start (spec §9.1).`,
+    );
+    this.name = "SchemaGuardError";
   }
 }

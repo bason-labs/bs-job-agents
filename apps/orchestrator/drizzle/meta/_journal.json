@@ -22,6 +22,27 @@
       "when": 1791649755656,
       "tag": "0002_shared_alignment",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791653972752,
+      "tag": "0003_dry_run_status_machine",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791654391080,
+      "tag": "0004_approval_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791654954777,
+      "tag": "0005_record_matches_approval",
+      "breakpoints": true
     }
   ]
 }

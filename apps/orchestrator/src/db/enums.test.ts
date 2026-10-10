@@ -10,6 +10,7 @@ import {
   EnginePauseReasonSchema,
   EngineSchema,
   JOB_STATUSES,
+  POST_SUBMIT_APPLICATION_STATUSES,
   RoomKindSchema,
   RUN_STATUSES,
   RunTriggerSchema,
@@ -109,6 +110,21 @@ describe("DB enum literals come from @bs-job-agents/shared", () => {
     expect(UNDO_WINDOW_MS).toBe(LIMITS.scheduleUndoMs);
     expect(QA_PASS_TOTAL).toBe(LIMITS.qaPassScore);
     expect(SEARCH_PROFILE_DEFAULTS).toBe(SHARED_SEARCH_PROFILE_DEFAULTS);
+  });
+
+  it("the dry-run triggers list exactly the shared post-submit statuses (PM M3)", () => {
+    const db = openTestDb();
+    const triggers = db.$client
+      .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'applications_dry_run_%' ORDER BY name")
+      .all() as { name: string; sql: string }[];
+    db.$client.close();
+    expect(triggers.map((t) => t.name)).toEqual(["applications_dry_run_insert_guard", "applications_dry_run_update_guard"]);
+    for (const { name, sql } of triggers) {
+      const list = /`status` IN \(([^)]*)\)/.exec(sql)?.[1];
+      expect(list, name).toBeDefined();
+      const statuses = list!.split(",").map((v) => v.trim().slice(1, -1));
+      expect([...statuses].sort(), name).toEqual([...POST_SUBMIT_APPLICATION_STATUSES].sort());
+    }
   });
 
   it("terminal and active subsets only use shared literals", () => {
