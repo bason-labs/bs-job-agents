@@ -7,6 +7,7 @@ import { applicationRoutes } from "./routes/applications.js";
 import { botRoutes } from "./routes/bots.js";
 import { criteriaRoutes } from "./routes/criteria.js";
 import { engineRoutes } from "./routes/engines.js";
+import { eventRoutes } from "./routes/events.js";
 import { exportRoutes } from "./routes/exports.js";
 import { fileRoutes } from "./routes/files.js";
 import { healthRoutes } from "./routes/health.js";
@@ -22,8 +23,9 @@ export interface RouteOptions {
   heartbeatMs?: number;
 }
 
-export function registerRoutes(app: FastifyInstance, ctx: ApiContext, _opts: RouteOptions = {}): void {
+export function registerRoutes(app: FastifyInstance, ctx: ApiContext, opts: RouteOptions = {}): void {
   healthRoutes(app, ctx);
+  eventRoutes(app, ctx, opts);
   fileRoutes(app, ctx);
   runRoutes(app, ctx);
   reviewRoutes(app, ctx);
