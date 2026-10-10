@@ -3,10 +3,12 @@
 // room messages and the Lead MCP server come in W3a part 2.
 import type { FastifyInstance } from "fastify";
 import type { ApiContext } from "./context.js";
+import { criteriaRoutes } from "./routes/criteria.js";
 import { fileRoutes } from "./routes/files.js";
 import { healthRoutes } from "./routes/health.js";
 import { reviewRoutes } from "./routes/review.js";
 import { runRoutes } from "./routes/runs.js";
+import { scheduleRoutes } from "./routes/schedules.js";
 
 export interface RouteOptions {
   /** SSE heartbeat interval in ms (default 15 s). */
@@ -18,6 +20,8 @@ export function registerRoutes(app: FastifyInstance, ctx: ApiContext, _opts: Rou
   fileRoutes(app, ctx);
   runRoutes(app, ctx);
   reviewRoutes(app, ctx);
+  criteriaRoutes(app, ctx);
+  scheduleRoutes(app, ctx);
 }
 
 export type { ApiConfig, ApiContext, EventHub, OrchestratorState, Recovered } from "./context.js";
