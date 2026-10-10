@@ -203,10 +203,12 @@ describe("the production engine on the real adapters (createProductionEngine)", 
     const tasks = listTasks(db);
     for (const t of tasks) expect(existsSync(join(dataDir, "transcripts", `${t.id}-${t.attempt}.jsonl`)), `${t.botName}.${t.kind}`).toBe(true);
     const cvTask = tasks.find((t) => t.kind === "tailor")!;
-    expect(JSON.parse(readFileSync(join(dataDir, "tasks", String(cvTask.id), "figma-guard.json"), "utf8"))).toMatchObject({
+    // The bot's read folder holds its copy of master-cv.yaml and nothing else (no guard config).
+    expect(readdirSync(join(dataDir, "tasks", String(cvTask.id)))).toEqual(["master-cv.yaml"]);
+    expect(readFileSync(join(dataDir, "tasks", String(cvTask.id), "master-cv.yaml"), "utf8")).toContain("version: 3");
+    expect(JSON.parse(readFileSync(join(dataDir, "guards", String(cvTask.id), "figma-guard.json"), "utf8"))).toMatchObject({
       policy: { draftsPageName: "Drafts", protectedPageIds: ["0:1", "1:2"] },
     });
-    expect(readFileSync(join(dataDir, "tasks", String(cvTask.id), "master-cv.yaml"), "utf8")).toContain("version: 3");
     // Rule 2: the scan's memory note went to the bot copy's memory.md and memory_changes.
     expect(readFileSync(join(botsDir, "research", "memory.md"), "utf8")).toMatch(/TopCV salary often hidden/);
     expect(listMemoryChanges(db, "research")).toHaveLength(1);

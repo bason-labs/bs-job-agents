@@ -396,7 +396,11 @@ export class TaskQueue {
           input = { ...(input as Record<string, unknown>), templates: templatesFromFingerprint(figmaBefore) };
           core.db.transaction((tx) => updateTaskInput(tx, task.id, input));
         }
-        if (claude) hooks.push(await core.deps.guards.figmaGuard({ fingerprint: figmaBefore, dir: taskDir, logFile: guardLog!, draftsPageId: drafts.id }));
+        if (claude) {
+          // The guard's policy goes outside the bot's read folder (that holds master-cv.yaml only).
+          const guardDir = core.paths.abs(core.paths.guardDir(task.id));
+          hooks.push(await core.deps.guards.figmaGuard({ fingerprint: figmaBefore, dir: guardDir, logFile: guardLog!, draftsPageId: drafts.id }));
+        }
       } catch (err) {
         if (isFigmaUnavailable(err)) this.waitBridge(task, "needs_figma", { detail: `Figma went away: ${errorMessage(err)}` });
         else this.failBeforeSpawn(task, `Figma: ${errorMessage(err)}`);

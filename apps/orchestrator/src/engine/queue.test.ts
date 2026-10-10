@@ -268,8 +268,9 @@ describe("the CV task's Figma flow (§6.2, coordinator B)", () => {
     const call = t.runner.callsFor("cv.tailor")[0]!;
     expect(call.input).toMatchObject({ templates: [expect.objectContaining({ id: "459:1767", width: 595, height: 842 })] });
     expect(t.figma.calls.slice(0, 3)).toEqual(["status", "ensureDraftsPage", "fingerprint"]);
+    // The guard's policy goes to data/guards/<task>, outside the bot's read folder.
     expect(t.guards.figmaCalls).toEqual([
-      { dir: `/data/tasks/${call.taskId}`, logFile: `/data/transcripts/${call.taskId}-1.guard.jsonl`, draftsPageId: "900:1", fingerprintHash: expect.any(String) },
+      { dir: `/data/guards/${call.taskId}`, logFile: `/data/transcripts/${call.taskId}-1.guard.jsonl`, draftsPageId: "900:1", fingerprintHash: expect.any(String) },
     ]);
     expect(call.hookSettings).toMatchObject({ hooks: { PreToolUse: [expect.objectContaining({ matcher: "mcp__figma__.*" })] } });
     expect(call.readDirs).toEqual([`/data/tasks/${call.taskId}`]);

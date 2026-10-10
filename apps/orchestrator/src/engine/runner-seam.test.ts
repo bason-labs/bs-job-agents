@@ -324,8 +324,11 @@ describe("flags per task (§4.4, §5.5, spike S1/S2/S4)", () => {
     expect(JSON.parse(files[argValue(args, "--mcp-config")!]!)).toMatchObject({ mcpServers: { figma: { type: "stdio" } } });
     const hooks = settingsOf(args).hooks!.PreToolUse;
     expect(hooks.map((h) => h.matcher)).toEqual(["mcp__figma__.*"]);
-    expect(hooks[0]!.hooks[0]!.command).toContain(`'--config' '${join(taskDir, "figma-guard.json")}'`);
-    expect(existsSync(join(taskDir, "figma-guard.json"))).toBe(true);
+    // The guard's config sits outside the bot's read folder (which holds master-cv.yaml only).
+    const guardConfig = join(dataDir, "guards", String(r.task.taskId), "figma-guard.json");
+    expect(hooks[0]!.hooks[0]!.command).toContain(`'--config' '${guardConfig}'`);
+    expect(existsSync(guardConfig)).toBe(true);
+    expect(existsSync(join(taskDir, "figma-guard.json"))).toBe(false);
     // The templates from the "before" fingerprint reach the bot (coordinator B).
     expect(r.task.input).toMatchObject({ templates: [expect.objectContaining({ id: "459:1767" })] });
   });
