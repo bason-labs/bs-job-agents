@@ -150,8 +150,36 @@ function concat(left: StaticValue, right: StaticValue | null): StaticValue {
   return "exact" in right ? { exact: left.exact + right.exact } : { prefix: left.exact + right.prefix };
 }
 
+export interface StaticValueOptions {
+  /** True for expressions that are the current page's own URL or origin (location.href, location.origin…). */
+  isSameOriginBase?: (node: AnyNode) => boolean;
+}
+
+const SCHEME_PREFIX = /^[a-z][a-z0-9+.-]*:/i;
+
+/** `new URL(input, base)`: an absolute input ignores the base; a relative one against this page stays relative. */
+function urlWithBase(
+  input: AnyNode,
+  base: AnyNode,
+  constants: ReadonlyMap<string, string>,
+  opts: StaticValueOptions,
+): StaticValue | null {
+  const v = staticValue(input, constants, opts);
+  if (!v) return null;
+  const text = "exact" in v ? v.exact : v.prefix;
+  if (SCHEME_PREFIX.test(text.trim())) return v;
+  if (opts.isSameOriginBase?.(base)) return v;
+  const b = staticValue(base, constants, opts);
+  if (!b || !("exact" in b) || !("exact" in v)) return null;
+  try {
+    return { exact: new URL(v.exact, b.exact).href };
+  } catch {
+    return null;
+  }
+}
+
 /** Resolves an expression to a string where the code makes that possible. */
-export function staticValue(expr: AnyNode, constants: ReadonlyMap<string, string>): StaticValue | null {
+export function staticValue(expr: AnyNode, constants: ReadonlyMap<string, string>, opts: StaticValueOptions = {}): StaticValue | null {
   switch (expr.type) {
     case "Literal":
       if (typeof expr.value === "string") return { exact: expr.value };
@@ -160,7 +188,7 @@ export function staticValue(expr: AnyNode, constants: ReadonlyMap<string, string
     case "TemplateLiteral": {
       let acc: StaticValue = { exact: expr.quasis[0]?.value.cooked ?? "" };
       for (let i = 0; i < expr.expressions.length; i++) {
-        const part = staticValue(expr.expressions[i] as Expression, constants);
+        const part = staticValue(expr.expressions[i] as Expression, constants, opts);
         acc = concat(acc, part);
         if ("prefix" in acc) return acc;
         acc = concat(acc, { exact: expr.quasis[i + 1]?.value.cooked ?? "" });
@@ -169,8 +197,8 @@ export function staticValue(expr: AnyNode, constants: ReadonlyMap<string, string
     }
     case "BinaryExpression": {
       if (expr.operator !== "+") return null;
-      const left = staticValue(expr.left, constants);
-      return left ? concat(left, staticValue(expr.right, constants)) : null;
+      const left = staticValue(expr.left, constants, opts);
+      return left ? concat(left, staticValue(expr.right, constants, opts)) : null;
     }
     case "Identifier": {
       const c = constants.get(expr.name);
@@ -179,7 +207,7 @@ export function staticValue(expr: AnyNode, constants: ReadonlyMap<string, string
     case "MemberExpression": {
       // new URL("…").href / .toString
       const name = staticPropName(expr);
-      if (name === "href" && expr.object.type === "NewExpression") return staticValue(expr.object, constants);
+      if (name === "href" && expr.object.type === "NewExpression") return staticValue(expr.object, constants, opts);
       return null;
     }
     case "NewExpression":
@@ -187,9 +215,12 @@ export function staticValue(expr: AnyNode, constants: ReadonlyMap<string, string
       const callee = expr.callee;
       const first = expr.arguments[0];
       if (callee.type === "Identifier" && first && first.type !== "SpreadElement") {
-        if (callee.name === "String" && expr.type === "CallExpression") return staticValue(first, constants);
-        if (callee.name === "URL" && expr.type === "NewExpression" && expr.arguments.length === 1) {
-          return staticValue(first, constants);
+        if (callee.name === "String" && expr.type === "CallExpression") return staticValue(first, constants, opts);
+        if (callee.name === "URL" && expr.type === "NewExpression") {
+          const base = expr.arguments[1];
+          if (expr.arguments.length === 1) return staticValue(first, constants, opts);
+          if (expr.arguments.length === 2 && base && base.type !== "SpreadElement") return urlWithBase(first, base, constants, opts);
+          return null;
         }
       }
       if (
@@ -198,12 +229,12 @@ export function staticValue(expr: AnyNode, constants: ReadonlyMap<string, string
         staticPropName(callee) === "toString" &&
         callee.object.type === "NewExpression"
       ) {
-        return staticValue(callee.object, constants);
+        return staticValue(callee.object, constants, opts);
       }
       return null;
     }
     case "ParenthesizedExpression":
-      return staticValue(expr.expression, constants);
+      return staticValue(expr.expression, constants, opts);
     default:
       return null;
   }

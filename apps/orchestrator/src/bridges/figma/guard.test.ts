@@ -64,6 +64,22 @@ describe("checkFigmaCode: CV work on Drafts is allowed", () => {
     ["layer names that are ordinary words", `const f = await figma.getNodeByIdAsync("601:1"); return f.findOne(n => n.name === "Experience");`],
     ["summarise a template", `const tpl = await figma.getNodeByIdAsync("459:1767"); return JSON.stringify({ name: tpl.name, w: tpl.width });`],
     ["read template flags", `const tpl = await figma.getNodeByIdAsync("459:1767"); return [tpl.removed, tpl.locked, tpl.groupId, figma.mixed];`],
+    [
+      "edit its own node by a runtime id after reading a template",
+      `const frame = await figma.getNodeByIdAsync("601:1");
+       const tplName = (await figma.getNodeByIdAsync("459:1767")).name;
+       const child = await figma.getNodeByIdAsync(frame.children[0].id);
+       await figma.loadFontAsync(child.fontName);
+       child.characters = tplName;`,
+    ],
+    [
+      "clone a template, then edit the copy's children by id",
+      `const drafts = figma.root.children.find(p => p.name === "Drafts");
+       const copy = (await figma.getNodeByIdAsync("459:1767")).clone();
+       drafts.appendChild(copy);
+       const title = await figma.getNodeByIdAsync(copy.children[0].id);
+       title.name = "Title";`,
+    ],
     ["check Drafts exists", `return figma.root.children.some(p => p.name === "Drafts");`],
     [
       "build a draft from scratch on Drafts",
@@ -148,8 +164,20 @@ describe("checkFigmaCode: writes to protected nodes", () => {
     ],
     ["template id through a constant", `const id = "459:1767"; (await figma.getNodeByIdAsync(id)).remove();`, "figma_protected_write"],
     [
-      "dynamic ids next to a template id",
-      `const tpl = await figma.getNodeByIdAsync("459:1767"); for (const i of ["601:1"]) { const n = await figma.getNodeByIdAsync(i); n.remove(); }`,
+      "template ids in a list",
+      `for (const i of ["601:1", "459:1767"]) { const n = await figma.getNodeByIdAsync(i); n.remove(); }`,
+      "figma_protected_write",
+    ],
+    ["a template id through a string method", `const a = "459:1767"; const b = a.trim(); (await figma.getNodeByIdAsync(b)).remove();`, "figma_protected_write"],
+    ["a template id in an object", `const o = { id: "459:1767" }; (await figma.getNodeByIdAsync(o.id)).remove();`, "figma_protected_write"],
+    [
+      "the id of whatever is selected on an unknown page",
+      `const id = figma.currentPage.selection[0].id; (await figma.getNodeByIdAsync(id)).remove();`,
+      "figma_protected_write",
+    ],
+    [
+      "a main component by its id",
+      `const inst = await figma.getNodeByIdAsync("601:5"); const mc = await figma.getNodeByIdAsync(inst.mainComponent.id); mc.remove();`,
       "figma_protected_write",
     ],
     [
@@ -193,6 +221,11 @@ describe("checkFigmaCode: new nodes must land on Drafts", () => {
     [
       "switch to Drafts only after creating",
       `const drafts = figma.root.children.find(p => p.name === "Drafts"); const r = figma.createRectangle(); await figma.setCurrentPageAsync(drafts); r.resize(1, 1);`,
+      "figma_create_outside_drafts",
+    ],
+    [
+      "a variable reused for a second node",
+      `const drafts = figma.root.children.find(p => p.name === "Drafts"); let x = figma.createRectangle(); drafts.appendChild(x); x = figma.createRectangle(); x.resize(1, 1);`,
       "figma_create_outside_drafts",
     ],
     [

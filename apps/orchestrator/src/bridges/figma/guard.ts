@@ -31,9 +31,13 @@
 //   scope); figma and node methods taken as values (`const f = figma.createPage`, `.bind`)
 // - protected values kept in containers (`Array.from`, `Promise.resolve`, `new Map`, `box[0] = …`,
 //   `push`/`set`) or returned by the code's own functions
+// - node ids with a protected origin: template/page id literals (also through variables, arrays,
+//   objects and string methods) and ids read from protected nodes (`.id`, `selection[0].id`,
+//   `mainComponent.id`); ids of the bot's own nodes stay editable
 // - figma_execute without the CV file's key (another open file would run the code), and every
 //   Figma tool other than figma_get_status, figma_execute and figma_capture_screenshot
-// Not caught (the fingerprint is the backstop): node ids built at run time (e.g. `parts.join(":")`),
+// Not caught (the fingerprint is the backstop): node ids built at run time from strings that are
+// not protected ids (e.g. `["459", "1767"].join(":")`),
 // `.parent` chains upwards from nodes the guard cannot place, template ids missing from the
 // fingerprint the policy was built from, values that reach a parameter of the code's own
 // functions through calls the guard cannot see (callbacks handed to other APIs, getters), Ba
@@ -80,7 +84,8 @@ export function figmaGuardPolicyFromFingerprint(fp: ProtectedPagesFingerprint, o
   };
 }
 
-type Kind = "figma" | "root" | "pages" | "page" | "drafts" | "draftNode" | "protected" | "fresh" | "variables" | "ui" | null;
+/** `protectedId`: a string that may be the id of a protected node or page (from a literal or a `.id`). */
+type Kind = "figma" | "root" | "pages" | "page" | "drafts" | "draftNode" | "protected" | "fresh" | "variables" | "ui" | "protectedId" | null;
 
 const RANK: Record<Exclude<Kind, null>, number> = {
   protected: 9,
@@ -93,6 +98,7 @@ const RANK: Record<Exclude<Kind, null>, number> = {
   figma: 2,
   variables: 2,
   ui: 2,
+  protectedId: 1,
 };
 const join = (a: Kind, b: Kind): Kind => (a === null ? b : b === null ? a : RANK[a] >= RANK[b] ? a : b);
 const GUARDED = new Set<Kind>(["protected", "page", "root", "pages"]);
@@ -244,7 +250,8 @@ class FigmaAnalyzer {
   private wrapper: AnyNode | null = null;
   private readonly appendedNames = new Set<string>();
   private readonly appendedNodes = new Set<AnyNode>();
-  private hasProtectedLiteral = false;
+  /** How often each name is bound or assigned (a reused name cannot vouch for a later node). */
+  private readonly assignments = new Map<string, number>();
   /** End of the top-level `await figma.setCurrentPageAsync(drafts)`; later code runs on Drafts. */
   private switchPoint: number | null = null;
   private readonly violations: Violation[] = [];
@@ -324,10 +331,10 @@ class FigmaAnalyzer {
     if (top?.type === "ExpressionStatement" && top.expression.type === "CallExpression") this.wrapper = top.expression.callee;
     this.computeRefScopes();
     visit(this.program, (node) => {
-      if ((node.type === "Literal" && typeof node.value === "string") || node.type === "TemplateElement") {
-        const v = (node.type === "Literal" ? String(node.value) : (node.value.cooked ?? "")).trim();
-        if (this.nodeIds.has(v) || this.pageIds.has(v)) this.hasProtectedLiteral = true;
-      }
+      const count = (name: string) => this.assignments.set(name, (this.assignments.get(name) ?? 0) + 1);
+      if (node.type === "VariableDeclarator") patternNames(node.id).forEach(count);
+      else if (node.type === "AssignmentExpression" && node.left.type === "Identifier") count(node.left.name);
+      else if (node.type === "UpdateExpression" && node.argument.type === "Identifier") count(node.argument.name);
       if (node.type === "FunctionDeclaration" && node.id) {
         this.userFunctions.add(node.id.name);
         this.functionNodes.set(node.id.name, node);
@@ -440,11 +447,12 @@ class FigmaAnalyzer {
           if (node.left.type !== "MemberExpression") this.bind(node.left, this.kindOf(node.right), node.start);
           else if (
             node.left.object.type === "Identifier" &&
-            [null, "protected"].includes(this.kindOf(node.left.object)) &&
-            isGuarded(this.kindOf(node.right))
+            [null, "protected", "protectedId"].includes(this.kindOf(node.left.object)) &&
+            (isGuarded(this.kindOf(node.right)) || this.kindOf(node.right) === "protectedId")
           ) {
-            // `box[0] = template` makes the container hold a protected node.
-            this.env.set(node.left.object.name, join(this.env.get(node.left.object.name) ?? null, "protected"));
+            // `box[0] = template` (or a template id) makes the container hold it.
+            const held: Kind = isGuarded(this.kindOf(node.right)) ? "protected" : "protectedId";
+            this.env.set(node.left.object.name, join(this.env.get(node.left.object.name) ?? null, held));
           }
           return;
         case "ForOfStatement": {
@@ -465,7 +473,8 @@ class FigmaAnalyzer {
           else if (ITERATION_METHODS.has(prop) || FIND_METHODS.has(prop)) this.bindCallbackParam(args[0], 0, elementOf(recv));
           if (CONTAINER_METHODS.has(prop) && callee.object.type === "Identifier") {
             const k = args.reduce<Kind>((acc, a) => join(acc, this.kindOf(a.type === "SpreadElement" ? a.argument : a)), null);
-            if (isGuarded(k)) this.env.set(callee.object.name, join(this.env.get(callee.object.name) ?? null, "protected"));
+            const held: Kind = isGuarded(k) ? "protected" : k === "protectedId" ? "protectedId" : null;
+            if (held) this.env.set(callee.object.name, join(this.env.get(callee.object.name) ?? null, held));
           }
           return;
         }
@@ -477,6 +486,11 @@ class FigmaAnalyzer {
 
   // ---- kinds ----------------------------------------------------------------------------------
 
+  private isProtectedId(value: string): boolean {
+    const v = value.trim();
+    return this.nodeIds.has(v) || this.pageIds.has(v);
+  }
+
   private isFigma(node: AnyNode): boolean {
     return this.kindOf(node) === "figma";
   }
@@ -486,6 +500,8 @@ class FigmaAnalyzer {
   }
 
   private memberKind(obj: Kind, prop: string, at: number): Kind {
+    if (prop === "id" && isGuarded(obj)) return "protectedId";
+    if (obj === "protectedId") return "protectedId";
     switch (obj) {
       case "figma":
         if (prop === "root") return "root";
@@ -517,7 +533,8 @@ class FigmaAnalyzer {
   }
 
   private idKind(arg: Expression | SpreadElement | undefined): Kind {
-    if (!arg || arg.type === "SpreadElement") return this.hasProtectedLiteral ? "protected" : null;
+    if (!arg) return null;
+    if (arg.type === "SpreadElement") return this.kindOf(arg.argument) === "protectedId" ? "protected" : null;
     const v = staticValue(arg, this.constants);
     if (v && "exact" in v) {
       const id = v.exact.trim();
@@ -525,7 +542,9 @@ class FigmaAnalyzer {
       if (this.pageIds.has(id)) return "page";
       return this.nodeIds.has(id) ? "protected" : null;
     }
-    return this.hasProtectedLiteral ? "protected" : null;
+    // A runtime id is protected when it comes from a protected node or a protected id literal.
+    const k = this.kindOf(arg);
+    return k === "protectedId" || isGuarded(k) ? "protected" : null;
   }
 
   /** A page lookup callback: provably Drafts, or a problem to report. */
@@ -594,6 +613,7 @@ class FigmaAnalyzer {
   private callKind(call: CallExpression): Kind {
     const callee = call.callee;
     if (callee.type === "Identifier") {
+      if (callee.name === "String" && !this.declared.has("String")) return this.joinArgs(call.arguments) === "protectedId" ? "protectedId" : null;
       const fn = this.functionNodes.get(callee.name);
       return fn ? this.callbackReturnKind(fn) : null;
     }
@@ -605,6 +625,7 @@ class FigmaAnalyzer {
       return this.joinArgs(args); // Array.from, Object.values, Promise.resolve… keep what they hold
     }
     const obj = this.kindOf(callee.object);
+    if (obj === "protectedId") return "protectedId"; // trim(), slice(), split()… of a protected id
     if (obj === "figma") {
       if (prop === "getNodeByIdAsync" || prop === "getNodeById") return this.idKind(args[0]);
       if (prop === "createPage") return "page";
@@ -648,6 +669,17 @@ class FigmaAnalyzer {
         return this.callKind(node);
       case "NewExpression":
         return node.callee.type === "Identifier" && CONTAINER_CONSTRUCTORS.has(node.callee.name) ? this.joinArgs(node.arguments) : null;
+      case "Literal":
+        return typeof node.value === "string" && this.isProtectedId(node.value) ? "protectedId" : null;
+      case "TemplateLiteral": {
+        const v = staticValue(node, this.constants);
+        if (v && "exact" in v) return this.isProtectedId(v.exact) ? "protectedId" : null;
+        return node.expressions.some((e) => this.kindOf(e) === "protectedId") ? "protectedId" : null;
+      }
+      case "BinaryExpression":
+        return node.operator === "+" && (this.kindOf(node.left) === "protectedId" || this.kindOf(node.right) === "protectedId")
+          ? "protectedId"
+          : null;
       case "ChainExpression":
         return this.kindOf(node.expression);
       case "AwaitExpression":
@@ -667,7 +699,7 @@ class FigmaAnalyzer {
       case "ObjectExpression": {
         let k: Kind = null;
         for (const p of node.properties) k = join(k, this.kindOf(p.type === "SpreadElement" ? p.argument : p.value));
-        return isGuarded(k) ? "protected" : null;
+        return isGuarded(k) ? "protected" : k === "protectedId" ? "protectedId" : null;
       }
       default:
         return null;
@@ -920,7 +952,7 @@ class FigmaAnalyzer {
       if (this.switchPoint !== null && node.start > this.switchPoint) return;
       if (this.appendedNodes.has(node)) return;
       const name = declaredAs.get(node);
-      if (name && this.appendedNames.has(name)) return;
+      if (name && this.appendedNames.has(name) && (this.assignments.get(name) ?? 0) === 1) return;
       this.report("figma_create_outside_drafts", node, "creates a node on whatever page is current", ADVICE.create);
     });
   }

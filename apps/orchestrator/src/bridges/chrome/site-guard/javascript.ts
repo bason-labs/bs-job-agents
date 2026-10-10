@@ -44,6 +44,8 @@ type Kind =
   | "ctor:url"
   | "ctor:ws"
   | "ctor:xhr"
+  | "xhr"
+  | "fn:xhrOpen"
   | "ns:reflect"
   | "ns:object"
   | "cookie"
@@ -104,7 +106,7 @@ const ANY_OBJECT_PROPS = new Map<string, Kind>([
 
 const OBJECT_KINDS = new Set<Kind>(["window", "location", "document", "history", "navigator", "navigation"]);
 const DYNAMIC_CODE_NAMES = new Set(["eval", "Function", "execScript"]);
-const RESOURCE_PROPS = new Set(["href", "src", "action", "formAction", "srcset", "poster", "ping"]);
+const RESOURCE_PROPS = new Set(["href", "src", "action", "formAction", "srcset", "poster", "ping", "data", "background", "codeBase", "codebase", "manifest"]);
 const MARKUP_PROPS = new Set(["innerHTML", "outerHTML", "srcdoc"]);
 const URL_ATTRS = new Set([
   "src",
@@ -121,7 +123,6 @@ const URL_ATTRS = new Set([
   "manifest",
 ]);
 const BLOCKED_ELEMENTS = new Set(["script", "iframe", "frame", "frameset", "object", "embed", "base", "meta", "portal", "link"]);
-const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 
 function memberKind(obj: Kind | null, prop: string): Kind | null {
   switch (obj) {
@@ -140,6 +141,10 @@ function memberKind(obj: Kind | null, prop: string): Kind | null {
     case "navigation":
       if (prop === "navigate") return "fn:navigate";
       return ["back", "forward", "traverseTo", "reload"].includes(prop) ? "fn:historyNav" : null;
+    case "ctor:xhr":
+      return prop === "prototype" ? "xhr" : null;
+    case "xhr":
+      return prop === "open" ? "fn:xhrOpen" : null;
     default:
       return ANY_OBJECT_PROPS.get(prop) ?? null;
   }
@@ -218,6 +223,8 @@ class Analyzer {
         return this.kindOf(node.left) ?? this.kindOf(node.right);
       case "AssignmentExpression":
         return this.kindOf(node.right);
+      case "NewExpression":
+        return this.kindOf(node.callee) === "ctor:xhr" ? "xhr" : null;
       case "CallExpression": {
         const callee = node.callee;
         if (callee.type === "MemberExpression" && staticPropName(callee) === "bind") return this.kindOf(callee.object);
@@ -281,7 +288,16 @@ class Analyzer {
 
   private value(node: Expression | SpreadElement | null | undefined): StaticValue | null {
     if (!node || node.type === "SpreadElement") return null;
-    return staticValue(node, this.constants);
+    return staticValue(node, this.constants, { isSameOriginBase: (n) => this.isSameOrigin(n) });
+  }
+
+  /** The page's own URL or origin: location, location.href/origin, document.baseURI/URL. */
+  private isSameOrigin(node: AnyNode): boolean {
+    if (this.kindOf(node) === "location") return true;
+    if (node.type !== "MemberExpression") return false;
+    const prop = staticPropName(node);
+    const obj = this.kindOf(node.object);
+    return (obj === "location" && (prop === "href" || prop === "origin")) || (obj === "document" && (prop === "baseURI" || prop === "URL" || prop === "documentURI"));
   }
 
   private url(node: Expression | SpreadElement | null | undefined, what: string, hint = ""): void {
@@ -396,19 +412,20 @@ class Analyzer {
       else if (prop === "protocol") this.block("js_location_protocol", "changing location.protocol is not allowed.");
       return; // pathname, search, hash, port stay on the same host
     }
+    // CSS first: `el.style.background` is a style, not the old `background` URL attribute.
+    const styleTarget =
+      prop === "cssText" ||
+      (left.object.type === "MemberExpression" && staticPropName(left.object) === "style");
+    if (styleTarget) {
+      this.css(this.value(node.right), `assigning style.${prop}`);
+      return;
+    }
     if (RESOURCE_PROPS.has(prop)) {
       if (compound) this.url(null, `appending to .${prop}`);
       else this.url(node.right, `assigning .${prop}`, "If this is not an element URL, use another property name.");
       return;
     }
-    if (MARKUP_PROPS.has(prop)) {
-      this.markup(node.right, `assigning .${prop}`);
-      return;
-    }
-    const styleTarget =
-      prop === "cssText" ||
-      (left.object.type === "MemberExpression" && staticPropName(left.object) === "style");
-    if (styleTarget) this.css(this.value(node.right), `assigning style.${prop}`);
+    if (MARKUP_PROPS.has(prop)) this.markup(node.right, `assigning .${prop}`);
   }
 
   private checkCall(node: Extract<AnyNode, { type: "CallExpression" }>): void {
@@ -469,6 +486,9 @@ class Analyzer {
       case "fn:docOpen":
         if (args.length >= 3) this.url(first, "document.open()");
         break;
+      case "fn:xhrOpen":
+        this.url(viaApply ? null : args[1], "XMLHttpRequest.open()");
+        break;
       case "fn:postMessage":
         this.block("js_post_message", "postMessage sends data to other windows.");
         break;
@@ -479,9 +499,9 @@ class Analyzer {
     if (callee.type !== "MemberExpression") return;
     const p = staticPropName(callee);
     const objKind = this.kindOf(callee.object);
-    if (p === "open" && objKind !== "window" && objKind !== "document" && args.length >= 2) {
-      const method = this.value(args[0]);
-      if (method && "exact" in method && HTTP_METHODS.has(method.exact.toUpperCase())) this.url(args[1], "XMLHttpRequest.open()");
+    if (p === "open" && kind !== "fn:xhrOpen" && objKind !== "window" && objKind !== "document" && args.length >= 2) {
+      // XMLHttpRequest-style open(method, url): the method may be computed, the URL is what matters.
+      this.url(args[1], "open()");
     } else if (p === "setAttribute") {
       this.attribute(args[0], args[1]);
     } else if (p === "setAttributeNS") {
