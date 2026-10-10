@@ -29,6 +29,11 @@ export class EventBus {
     return appendEvent(conn, { type, payload, runId: refs.runId ?? null, taskId: refs.taskId ?? null }, { now: this.now() });
   }
 
+  /** A stored row as the shared event it was appended as; null for audit-only rows. */
+  toAppEvent(row: EventRow): AppEvent | null {
+    return mappers.toAppEvent(row);
+  }
+
   subscribe(listener: EventListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

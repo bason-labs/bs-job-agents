@@ -74,9 +74,9 @@ export class EnginePaths {
     return `transcripts/${taskId}-${attempt}.jsonl`;
   }
 
-  /** §6.2: the orchestrator exports a Drafts frame to data/pdf/<frameName>.pdf. */
-  pdf(frameName: string): string {
-    return `pdf/${frameName}.pdf`;
+  /** The guard hooks' JSONL decision log for one attempt (site guard, Figma guard). */
+  guardLog(taskId: number, attempt: number): string {
+    return `transcripts/${taskId}-${attempt}.guard.jsonl`;
   }
 
   /**

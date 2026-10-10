@@ -67,6 +67,11 @@ export function getCvVersion(db: Conn, id: number): CvVersion | undefined {
   return db.select().from(cvVersions).where(eq(cvVersions.id, id)).get();
 }
 
+/** The CV version whose exported PDF is at this path (data/-relative), if any. */
+export function findCvVersionByPdfPath(db: Conn, pdfPath: string): CvVersion | undefined {
+  return db.select().from(cvVersions).where(eq(cvVersions.pdfPath, pdfPath)).get();
+}
+
 export function listCvVersions(db: Conn, jobId: number): CvVersion[] {
   return db.select().from(cvVersions).where(eq(cvVersions.jobId, jobId)).orderBy(asc(cvVersions.id)).all();
 }

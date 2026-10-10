@@ -49,6 +49,8 @@ export const SAFETY_DENIAL_REASONS = [
   "dry_run_mismatch",
   // PM §7 W2a: a dry-run Apply reported `submitted`; it may really have submitted (needs_check).
   "dry_run_submitted",
+  // §6.2: the Figma guard hook blocked a call that reached outside the Drafts page.
+  "protected_page_blocked",
 ] as const;
 export const SafetyDenialReasonSchema = z.enum(SAFETY_DENIAL_REASONS);
 export type SafetyDenialReason = z.infer<typeof SafetyDenialReasonSchema>;
