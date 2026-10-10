@@ -1,18 +1,12 @@
+import { normalizeAnswerKey } from "@bs-job-agents/shared";
 import { asc, eq } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { savedAnswers } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
 import type { SavedAnswer } from "../types.js";
 
-/** UC-12: key = normalised label (case, spacing, trailing `*` / `:` / `?` ignored; diacritics kept). */
-export function normalizeAnswerKey(label: string): string {
-  return label
-    .normalize("NFC")
-    .toLowerCase()
-    .replace(/[\s*:：?]+$/u, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+/** UC-12: key = normalised label (the shared implementation, so the API and the DB agree). */
+export { normalizeAnswerKey };
 
 /** "Remember this answer". */
 export function saveAnswer(db: Conn, input: { label: string; answer: string }, opts?: ClockOpts): SavedAnswer {

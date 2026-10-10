@@ -23,6 +23,7 @@ import {
   listRooms,
   removeRoomMember,
 } from "./rooms.js";
+import { normalizeAnswerKey as sharedNormalizeAnswerKey } from "@bs-job-agents/shared";
 import { deleteSavedAnswer, getSavedAnswer, listSavedAnswers, normalizeAnswerKey, saveAnswer } from "./saved-answers.js";
 
 let db: Db;
@@ -114,6 +115,10 @@ describe("saved answers (UC-12)", () => {
   it("normalises labels into keys", () => {
     expect(normalizeAnswerKey("  Notice   Period *")).toBe("notice period");
     expect(normalizeAnswerKey("Thời gian báo trước:")).toBe("thời gian báo trước");
+  });
+
+  it("uses the one shared key function, so API lookups and stored keys agree", () => {
+    expect(normalizeAnswerKey).toBe(sharedNormalizeAnswerKey);
   });
 
   it("upserts by normalised label", () => {

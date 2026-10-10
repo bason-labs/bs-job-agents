@@ -2,15 +2,17 @@
 import { z } from "zod";
 import { IsoDateTimeSchema } from "../common/primitives.js";
 
-/** key = normalised label: lowercase, trimmed, single spaces, no trailing ':' or '*'. */
+/**
+ * key = normalised label: NFC, lowercase, single spaces, trimmed, without trailing
+ * `*`, `:`, `：` (full-width) or `?`; diacritics kept. The one implementation used by
+ * the API and the `saved_answers` repository, so lookups and stored keys agree.
+ */
 export function normalizeAnswerKey(label: string): string {
   return label
     .normalize("NFC")
     .toLowerCase()
-    .replace(/[:*]+\s*$/u, "")
+    .replace(/[\s*:：?]+$/u, "")
     .replace(/\s+/g, " ")
-    .trim()
-    .replace(/[:*]+$/u, "")
     .trim();
 }
 

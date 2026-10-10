@@ -339,6 +339,10 @@ describe("other domain records", () => {
   it("saved answer keys are normalised labels (UC-12)", () => {
     expect(normalizeAnswerKey("  Notice   Period: ")).toBe("notice period");
     expect(normalizeAnswerKey("Thời gian bắt đầu*")).toBe("thời gian bắt đầu");
+    // QA: the DB used to strip these too, so the same label gave two different keys.
+    expect(normalizeAnswerKey("Notice period?")).toBe("notice period");
+    expect(normalizeAnswerKey("Mức lương mong muốn：")).toBe("mức lương mong muốn");
+    expect(normalizeAnswerKey("Notice period *:")).toBe("notice period");
   });
 });
 
