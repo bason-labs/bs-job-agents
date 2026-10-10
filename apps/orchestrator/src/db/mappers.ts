@@ -18,7 +18,9 @@
 // tailored / frame name / versions, task prompt version) map to an invalid placeholder
 // when NULL, so parsing with the shared schema fails loudly instead of guessing.
 import {
+  AppEventSchema,
   parsePauseReason,
+  type AppEvent,
   type Application as SharedApplication,
   type ApprovalToken as SharedApprovalToken,
   type BotRecord as SharedBotRecord,
@@ -388,4 +390,10 @@ export function toMemoryChange(row: Row.MemoryChange): SharedMemoryChange {
 
 export function toEventRecord(row: Row.EventRow): SharedEventRecord {
   return { id: toId(row.id), type: row.type, payload: row.payload, createdAt: row.createdAt };
+}
+
+/** Replay a row as the SSE event it was stored from (appendAppEvent); null for audit-only rows. */
+export function toAppEvent(row: Row.EventRow): AppEvent | null {
+  const parsed = AppEventSchema.safeParse({ ...row.payload, id: toId(row.id), at: row.createdAt, type: row.type });
+  return parsed.success ? parsed.data : null;
 }

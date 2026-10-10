@@ -1,7 +1,9 @@
+import { AppEventSchema } from "@bs-job-agents/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { openTestDb, type Db } from "../client.js";
+import { toAppEvent } from "../mappers.js";
 import { at, seedBots, seedRun, seedTask, T0 } from "../test-helpers.js";
-import { appendEvent, listEvents } from "./events.js";
+import { appendAppEvent, appendEvent, listEvents, type AppEventInput } from "./events.js";
 import {
   attachUploads,
   createUpload,
@@ -45,6 +47,48 @@ describe("events (audit log + SSE replay, §10.2 rule 8)", () => {
     expect(listEvents(db, { types: ["engine.paused"] })).toHaveLength(1);
     expect(listEvents(db, { taskId: task.id })[0]?.payload).toEqual({ line: 1 });
     expect(listEvents(db, { limit: 1 })).toHaveLength(1);
+  });
+
+  it("stores a shared AppEvent that replays as the same SSE event (Last-Event-ID)", () => {
+    const ctx = seedRun(db);
+    const task = seedTask(db, ctx);
+    const row = appendAppEvent(
+      db,
+      {
+        type: "task.finished",
+        taskId: String(task.id),
+        runId: String(ctx.run.id),
+        stepId: String(ctx.step.id),
+        botName: "research",
+        status: "done",
+        attempt: 1,
+        error: null,
+      },
+      { now: at(4) },
+    );
+    expect(row).toMatchObject({ type: "task.finished", runId: ctx.run.id, taskId: task.id, createdAt: at(4).toISOString() });
+    const replayed = toAppEvent(listEvents(db, { afterId: row.id - 1 })[0]!);
+    expect(replayed).toEqual({
+      id: String(row.id),
+      at: at(4).toISOString(),
+      type: "task.finished",
+      taskId: String(task.id),
+      runId: String(ctx.run.id),
+      stepId: String(ctx.step.id),
+      botName: "research",
+      status: "done",
+      attempt: 1,
+      error: null,
+    });
+    expect(AppEventSchema.safeParse(replayed).success).toBe(true);
+  });
+
+  it("refuses an AppEvent the shared schema rejects, and audit-only rows do not replay", () => {
+    expect(() =>
+      appendAppEvent(db, { type: "engine.paused", engine: "gemini", until: null, reason: "usage_limit" } as unknown as AppEventInput),
+    ).toThrow();
+    const audit = appendEvent(db, { type: "approval.created", payload: { jobId: 1 } });
+    expect(toAppEvent(audit)).toBeNull();
   });
 });
 

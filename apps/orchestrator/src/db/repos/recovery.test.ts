@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { openDb, openTestDb, type Db } from "../client.js";
+import { toAppEvent } from "../mappers.js";
 import { at, seedBots, seedRun, seedTask } from "../test-helpers.js";
 import { listEvents } from "./events.js";
 import { recoverInterruptedTasks } from "./recovery.js";
@@ -31,7 +32,18 @@ describe("recoverInterruptedTasks (UC-18)", () => {
     expect(getTask(db, running.id)).toMatchObject({ status: "queued", attempt: 2, startedAt: null });
     expect(getTask(db, done.id)?.status).toBe("done");
     expect(getTask(db, queued.id)?.status).toBe("queued");
-    expect(listEvents(db, { types: ["task.interrupted"] }).map((e) => e.taskId)).toEqual([running.id]);
+    // The audit row is the shared SSE event, so the UI learns about it on replay.
+    const events = listEvents(db, { types: ["task.finished"] });
+    expect(events.map((e) => e.taskId)).toEqual([running.id]);
+    expect(toAppEvent(events[0]!)).toMatchObject({
+      type: "task.finished",
+      taskId: String(running.id),
+      runId: String(ctx.run.id),
+      status: "interrupted",
+      attempt: 1,
+      error: "interrupted by restart",
+      at: at(10).toISOString(),
+    });
   });
 
   it("never re-queues an interrupted apply.submit: it stays interrupted for needs_check", () => {

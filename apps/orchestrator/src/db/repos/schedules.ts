@@ -1,3 +1,4 @@
+import { LIMITS } from "@bs-job-agents/shared";
 import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { ACTIVE_RUN_STATUSES } from "../enums.js";
@@ -7,7 +8,7 @@ import { nowIso, type ClockOpts } from "../time.js";
 import type { Schedule } from "../types.js";
 
 /** UC-21: the Undo toast lasts 6 s; soft-deleted schedules are purged after it. */
-export const UNDO_WINDOW_MS = 6000;
+export const UNDO_WINDOW_MS = LIMITS.scheduleUndoMs;
 
 export interface CreateScheduleInput {
   name: string;

@@ -1,4 +1,4 @@
-import type { CompanyProfile } from "@bs-job-agents/shared";
+import { LIMITS, type CompanyProfile } from "@bs-job-agents/shared";
 import { eq } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { companyKey } from "../dedupe.js";
@@ -68,5 +68,5 @@ export function getFreshCompanyProfile(
   if (!company?.profile || !company.researchedAt) return undefined;
   const now = (opts.now ?? new Date()).getTime();
   const ageMs = now - new Date(company.researchedAt).getTime();
-  return ageMs < (opts.maxAgeDays ?? 30) * 86_400_000 ? company : undefined;
+  return ageMs < (opts.maxAgeDays ?? LIMITS.companyProfileCacheDays) * 86_400_000 ? company : undefined;
 }

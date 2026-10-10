@@ -20,9 +20,14 @@ import {
   TrustLevelSchema,
   WorkModeSchema,
 } from "@bs-job-agents/shared";
+import { LIMITS, SEARCH_PROFILE_DEFAULTS as SHARED_SEARCH_PROFILE_DEFAULTS } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
 import { openTestDb } from "./client.js";
 import * as dbEnums from "./enums.js";
+import { APPROVAL_TTL_MS } from "./repos/approvals.js";
+import { QA_PASS_TOTAL } from "./repos/cv.js";
+import { UNDO_WINDOW_MS } from "./repos/schedules.js";
+import { SEARCH_PROFILE_DEFAULTS } from "./repos/search-profiles.js";
 
 /** `<table>.<column>` → the shared literals its CHECK constraint must allow. */
 const EXPECTED: Record<string, readonly (string | number)[]> = {
@@ -97,6 +102,13 @@ describe("DB enum literals come from @bs-job-agents/shared", () => {
     expect(dbEnums.ENGINE_PAUSE_REASONS).toEqual(EnginePauseReasonSchema.options);
     for (const level of dbEnums.TRUST_LEVELS) expect(TrustLevelSchema.safeParse(level).success).toBe(true);
     expect(dbEnums.TRUST_LEVELS).toEqual([0, 1, 2]);
+  });
+
+  it("the repositories' limits are the shared LIMITS", () => {
+    expect(APPROVAL_TTL_MS).toBe(LIMITS.approvalTokenTtlMs);
+    expect(UNDO_WINDOW_MS).toBe(LIMITS.scheduleUndoMs);
+    expect(QA_PASS_TOTAL).toBe(LIMITS.qaPassScore);
+    expect(SEARCH_PROFILE_DEFAULTS).toBe(SHARED_SEARCH_PROFILE_DEFAULTS);
   });
 
   it("terminal and active subsets only use shared literals", () => {

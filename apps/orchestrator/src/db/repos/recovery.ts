@@ -1,9 +1,10 @@
+import { LIMITS } from "@bs-job-agents/shared";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { tasks } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
 import type { Task } from "../types.js";
-import { appendEvent } from "./events.js";
+import { appendAppEvent } from "./events.js";
 
 export interface RecoveryOptions extends ClockOpts {
   /** Attempt cap per task (§5.5 step 6: initial + 1 retry). */
@@ -30,11 +31,11 @@ export const DEFAULT_NON_RETRYABLE = [{ botName: "apply", kind: "submit" }] as c
  * UC-18, run once on orchestrator start before the engine claims anything:
  * tasks left `running` are marked `interrupted`, then re-queued as a new attempt
  * (or failed when out of attempts). An interrupted apply.submit is never
- * re-queued. Writes a `task.interrupted` event per task. Runs continue from
+ * re-queued. Writes a shared `task.finished` (interrupted) event per task. Runs continue from
  * their last finished step because step outputs were persisted.
  */
 export function recoverInterruptedTasks(db: Conn, opts: RecoveryOptions = {}): RecoveryResult {
-  const maxAttempts = opts.maxAttempts ?? 2;
+  const maxAttempts = opts.maxAttempts ?? LIMITS.maxAttempts;
   const nonRetryable = opts.nonRetryable ?? DEFAULT_NON_RETRYABLE;
   const now = nowIso(opts);
   return db.transaction(
@@ -49,9 +50,19 @@ export function recoverInterruptedTasks(db: Conn, opts: RecoveryOptions = {}): R
         .sort((a, b) => a.id - b.id);
 
       for (const task of interrupted) {
-        appendEvent(
+        // The shared SSE event, so the UI sees the interrupted attempt on replay.
+        appendAppEvent(
           tx,
-          { type: "task.interrupted", payload: { taskId: task.id, attempt: task.attempt }, runId: task.runId, taskId: task.id },
+          {
+            type: "task.finished",
+            taskId: String(task.id),
+            runId: task.runId === null ? null : String(task.runId),
+            stepId: task.stepId === null ? null : String(task.stepId),
+            botName: task.botName,
+            status: "interrupted",
+            attempt: task.attempt,
+            error: "interrupted by restart",
+          },
           opts,
         );
         if (nonRetryable.some((n) => n.botName === task.botName && n.kind === task.kind)) {
