@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FileDropzone } from "./FileDropzone";
+import { FileDropzone, type FileDropzoneHandle } from "./FileDropzone";
 
 function makeFile(name: string, size: number, type = "") {
   const f = new File(["x"], name, { type });
@@ -58,6 +58,28 @@ describe("FileDropzone", () => {
     expect(zone).toHaveAttribute("data-drag-over", "true");
     fireEvent.dragLeave(zone, { dataTransfer: { types: ["Files"] } });
     expect(zone).toHaveAttribute("data-drag-over", "false");
+  });
+
+  it("wrap mode: the children are the drop target and the ref opens the picker (chat composer)", async () => {
+    const onFiles = vi.fn();
+    const ref = { current: null as FileDropzoneHandle | null };
+    render(
+      <FileDropzone ref={ref} onFiles={onFiles} multiple dropHint="Drop to attach">
+        <textarea aria-label="Message" />
+      </FileDropzone>,
+    );
+    const zone = screen.getByTestId("file-dropzone");
+    expect(zone).toContainElement(screen.getByLabelText("Message"));
+    expect(screen.queryByRole("button", { name: /choose files/i })).toBeNull();
+    fireEvent.dragEnter(zone, { dataTransfer: { types: ["Files"] } });
+    expect(screen.getByText("Drop to attach")).toBeInTheDocument();
+    const pdf = makeFile("jd.pdf", 10);
+    fireEvent.drop(zone, { dataTransfer: { files: [pdf, makeFile("x.exe", 1)], types: ["Files"] } });
+    expect(onFiles).toHaveBeenCalledWith([pdf]);
+    expect(screen.getByRole("alert")).toHaveTextContent("x.exe");
+    const click = vi.spyOn(screen.getByTestId("file-dropzone-input"), "click");
+    ref.current!.open();
+    expect(click).toHaveBeenCalled();
   });
 
   it("keeps only the first file when multiple is off", () => {

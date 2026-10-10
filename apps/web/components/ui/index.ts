@@ -16,7 +16,7 @@ export {
 } from "./DropdownMenu";
 export { EmptyState } from "./EmptyState";
 export { Field } from "./Field";
-export { FileDropzone } from "./FileDropzone";
+export { FileDropzone, type FileDropzoneHandle } from "./FileDropzone";
 export { FileButton, FileViewer, FileViewerProvider, useFileViewer, type ViewerFile, type ViewerKind } from "./FileViewer";
 export { IconButton } from "./IconButton";
 export { Input, Textarea, inputClass } from "./Input";
