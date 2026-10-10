@@ -38,12 +38,14 @@ describe("checkPageJavascript: code that only reads or stays on the allowed site
     "const x = new XMLHttpRequest(); x.open('GET', '/api/x'); x.send()",
     "window.open('/viec-lam/1')",
     // Object.prototype names are not window properties.
-    "const c = obj.constructor; c.name",
-    "toString(); valueOf; hasOwnProperty('x'); window.constructor; document.__proto__",
-    "obj.constructor.call(null); window.toString.apply(null); constructor`x`",
+    "const c = obj.valueOf; c.name",
+    "toString(); valueOf; hasOwnProperty('x'); window.isPrototypeOf; document.__proto__",
+    "obj.valueOf.call(null); window.toString.apply(null); hasOwnProperty`x`",
     // Scraped records built in plain objects may use href/location/src as field names.
     "const job = {}; job.location = card.textContent; job.href = a.href; job.src = img.src; job",
     "const rows = []; rows.href = x; rows",
+    "document.querySelector('.jd').constructor.name",
+    "el.innerHTML = '<b>Senior engineer</b> with <i>one</i> offer'",
     "new WebSocket('wss://www.topcv.vn/socket')",
   ];
   it.each(allowed)("allows: %s", (code) => {
@@ -161,6 +163,10 @@ describe("checkPageJavascript: code the guard cannot follow, cookies and markup"
     ["window.opener.postMessage(data, '*')", "js_post_message"],
     ["parent.postMessage(document.title, '*')", "js_post_message"],
     ["location.href = ", "js_parse"],
+    ["[].constructor.constructor(\"location.href='https://evil.example'\")()", "js_dynamic_code"],
+    ["const F = (() => {}).constructor; F('return 1')()", "js_dynamic_code"],
+    ["el.innerHTML = '<img src=\"/x.png\" onerror=\"location.href=1\">'", "js_event_handler"],
+    ["document.body.insertAdjacentHTML('beforeend', '<svg onload=alert(1)>')", "js_event_handler"],
   ];
   it.each(blocked)("blocks: %s", (code, rule) => {
     const decision = checkPageJavascript(code, ALLOW);

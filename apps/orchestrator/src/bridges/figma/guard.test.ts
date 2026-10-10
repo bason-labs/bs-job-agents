@@ -62,6 +62,7 @@ describe("checkFigmaCode: CV work on Drafts is allowed", () => {
     ["notify and zoom", `const f = await figma.getNodeByIdAsync("601:1"); figma.viewport.scrollAndZoomIntoView([f]); figma.notify("done");`],
     ["layer names that are ordinary words", `const f = await figma.getNodeByIdAsync("601:1"); return f.findOne(n => n.name === "Experience");`],
     ["summarise a template", `const tpl = await figma.getNodeByIdAsync("459:1767"); return JSON.stringify({ name: tpl.name, w: tpl.width });`],
+    ["read template flags", `const tpl = await figma.getNodeByIdAsync("459:1767"); return [tpl.removed, tpl.locked, tpl.groupId, figma.mixed];`],
     ["check Drafts exists", `return figma.root.children.some(p => p.name === "Drafts");`],
     [
       "build a draft from scratch on Drafts",
@@ -183,7 +184,7 @@ describe("checkFigmaCode: new nodes must land on Drafts", () => {
     ],
     [
       "switch to Drafts only on one branch",
-      `const drafts = figma.root.children.find(p => p.name === "Drafts"); if (x) { await figma.setCurrentPageAsync(drafts); } figma.createEllipse();`,
+      `const x = Math.random() > 0.5; const drafts = figma.root.children.find(p => p.name === "Drafts"); if (x) { await figma.setCurrentPageAsync(drafts); } figma.createEllipse();`,
       "figma_create_outside_drafts",
     ],
   ];
@@ -226,6 +227,54 @@ describe("checkFigmaCode: the bridge itself and code the guard cannot follow", (
     const d = checkFigmaCode(`const tpl = await figma.getNodeByIdAsync("459:1767");\ntpl.remove();`, policy);
     expect(d.allow).toBe(false);
     if (!d.allow) expect(d.reason).toContain("`tpl.remove()`");
+  });
+});
+
+describe("checkFigmaCode: escapes through globals, constructors, aliases and containers", () => {
+  const blocked: Array<[string, string, string]> = [
+    ["the bridge plugin's own helpers", `await loadFontsForNode(await figma.getNodeByIdAsync("601:1"))`, "figma_unknown_global"],
+    ["the plugin message in scope", `return msg.code`, "figma_unknown_global"],
+    ["figma through globalThis", `globalThis.figma.root.children[0].remove()`, "figma_unknown_global"],
+    ["the global object through this", `this.figma.closePlugin()`, "figma_unknown_global"],
+    ["a function constructor reached from an array", `[].constructor.constructor("return figma")()`, "figma_dynamic_code"],
+    [
+      "the async function constructor",
+      `const AF = Object.getPrototypeOf(async function () {}).constructor; await new AF("figma.closePlugin()")();`,
+      "figma_dynamic_code",
+    ],
+    ["a figma method taken as a value", `const make = figma.createPage; make();`, "figma_method_alias"],
+    ["a bound figma method", `const get = figma.getNodeByIdAsync.bind(figma); (await get("459:1767")).remove();`, "figma_method_alias"],
+    ["a figma method in a tagged template", "figma.createPage``", "figma_method_alias"],
+    ["a bound template method", `const tpl = await figma.getNodeByIdAsync("459:1767"); const rm = tpl.remove.bind(tpl); rm();`, "figma_method_alias"],
+    ["pages through Array.from", `Array.from(figma.root.children)[0].name = "x"`, "figma_page_index"],
+    ["a template through Promise.resolve", `Promise.resolve(await figma.getNodeByIdAsync("459:1767")).then(t => t.remove())`, "figma_protected_write"],
+    ["a template in a Map", `const m = new Map([["t", await figma.getNodeByIdAsync("459:1767")]]); m.get("t").remove();`, "figma_protected_write"],
+    ["a template stored by index", `const keep = []; keep[0] = await figma.getNodeByIdAsync("459:1767"); keep[0].remove();`, "figma_protected_write"],
+    ["a template returned by a helper", `const tpl = await figma.getNodeByIdAsync("459:1767"); const get = () => tpl; get().remove();`, "figma_protected_write"],
+    [
+      "a template returned by a recursive helper",
+      `const tpl = await figma.getNodeByIdAsync("459:1767"); function pick(n) { return n > 0 ? pick(n - 1) : tpl; } pick(3).remove();`,
+      "figma_protected_write",
+    ],
+  ];
+  it.each(blocked)("%s", (_name, code, rule) => {
+    const d = checkFigmaCode(code, policy);
+    expect(d.allow).toBe(false);
+    if (!d.allow) expect(d.rule).toBe(rule);
+  });
+
+  it("still allows standard builtins, local helpers and constructor names", () => {
+    const code = `
+      const frame = await figma.getNodeByIdAsync("601:1");
+      const fmt = (s) => String(s).trim();
+      function upper(s) { return s.toUpperCase(); }
+      const texts = Array.from(frame.findAll(n => n.type === "TEXT"));
+      const seen = new Set(texts.map(t => t.id));
+      await Promise.all(texts.map(t => figma.loadFontAsync(t.fontName)));
+      for (const t of texts) t.characters = upper(fmt(t.characters));
+      console.log(JSON.stringify({ n: seen.size, kind: frame.constructor.name, max: Math.max(1, 2) }));
+      return { count: texts.length, at: new Date().toISOString() };`;
+    expect(checkFigmaCode(code, policy)).toEqual({ allow: true });
   });
 });
 

@@ -23,13 +23,20 @@
 //   created after a top-level `await figma.setCurrentPageAsync(drafts)`; writes to `figma.currentPage`
 //   before that switch
 // - the bridge itself and escapes: `figma.ui`, `closePlugin`, `showUI`, `figma.on`, `triggerUndo`,
-//   `openExternal`, new styles/variables, eval/Function/string timers, network (fetch, WebSocket, …),
-//   `with`, dynamic keys on figma/root, unparsable code
+//   `openExternal`, new styles/variables, eval/Function/string timers, `.constructor` (the Function
+//   constructor without its name), network (fetch, WebSocket, …), `with`, dynamic keys on figma/root,
+//   unparsable code
+// - free names other than `figma` and standard JavaScript (the code is eval'd inside the bridge's
+//   message handler, so the bridge's own helpers, `msg`, `globalThis` and top-level `this` are in
+//   scope); figma and node methods taken as values (`const f = figma.createPage`, `.bind`)
+// - protected values kept in containers (`Array.from`, `Promise.resolve`, `new Map`, `box[0] = …`,
+//   `push`/`set`) or returned by the code's own functions
 // - figma_execute without the CV file's key (another open file would run the code), and every
 //   Figma tool other than figma_get_status, figma_execute and figma_capture_screenshot
 // Not caught (the fingerprint is the backstop): node ids built at run time (e.g. `parts.join(":")`),
 // `.parent` chains upwards from nodes the guard cannot place, template ids missing from the
-// fingerprint the policy was built from, values passed through closures or function returns, Ba
+// fingerprint the policy was built from, values that reach a parameter of the code's own
+// functions through calls the guard cannot see (callbacks handed to other APIs, getters), Ba
 // switching pages in the UI while the code awaits, and changes in other Figma files.
 import type { AnyNode, CallExpression, Expression, MemberExpression, Pattern, Program, SpreadElement } from "acorn";
 import { isRecord, type GuardDecision, type PreToolUseCall } from "../hooks/protocol.js";
@@ -131,7 +138,7 @@ const EXTRA_READ_METHODS = new Set(
   (
     "clone exportAsync loadAsync toString valueOf hasOwnProperty propertyIsEnumerable isPrototypeOf toJSON map forEach " +
     "filter some every reduce reduceRight slice concat includes indexOf lastIndexOf entries keys values flatMap flat join " +
-    "then catch finally at"
+    "then catch finally at bind call apply"
   ).split(" "),
 );
 const isReadMethod = (m: string) => m.startsWith("get") || m.startsWith("find") || EXTRA_READ_METHODS.has(m);
@@ -153,6 +160,33 @@ const SAFE_NAMESPACES = new Set(["console", "JSON", "Math", "Array", "Promise", 
 const NETWORK = new Set(["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "importScripts", "Worker", "SharedWorker", "Request"]);
 const DYNAMIC_CODE = new Set(["eval", "Function"]);
 const REFERENCE_RULES = new Set(["figma_page_name", "figma_page_id", "figma_page_index", "figma_page_lookup", "figma_cross_page_search"]);
+/** Free names plugin code may use: the figma API and standard JavaScript. Anything else (the bridge's own
+ * helpers, `msg`, globalThis…) is in scope only because the bridge evals the code inside its handler. */
+const ALLOWED_GLOBALS = new Set(
+  (
+    "figma console JSON Math Array Object Promise Number String Boolean Date RegExp Map Set WeakMap WeakSet Symbol BigInt " +
+    "Error TypeError RangeError SyntaxError ReferenceError URIError AggregateError parseInt parseFloat isNaN isFinite " +
+    "encodeURIComponent decodeURIComponent encodeURI decodeURI setTimeout clearTimeout setInterval clearInterval " +
+    "queueMicrotask structuredClone undefined NaN Infinity ArrayBuffer DataView Uint8Array Uint8ClampedArray Uint16Array " +
+    "Uint32Array Int8Array Int16Array Int32Array Float32Array Float64Array BigInt64Array BigUint64Array TextEncoder " +
+    "TextDecoder Intl arguments"
+  ).split(" "),
+);
+/** Properties of `figma` that are values, not methods (methods must be called directly). */
+const FIGMA_PROPERTIES = new Set(
+  (
+    "root currentPage ui viewport variables fileKey editorType mode apiVersion command pluginId " +
+    "skipInvisibleInstanceChildren mixed util constants clientStorage payments textreview codegen timer parameters " +
+    "devResources annotations teamLibrary vscode"
+  ).split(" "),
+);
+/** Method names that change a node, page or the document. */
+const MUTATING_METHOD =
+  /^(remove|appendChild|insertChild|resize|resizeWithoutConstraints|rescale|swapComponent|detachInstance|insertCharacters|deleteCharacters|combineAsVariants|flatten|group|lock|unlock|(set|clear|create|add|replace|reset|commit|trigger)[A-Z]\w*)$/;
+/** Getters that return plain data, not nodes. */
+const PRIMITIVE_GETTER = /^(getPluginData|getSharedPluginData|getPluginDataKeys|getSharedPluginDataKeys|getRelaunchData|getCSSAsync|getStyledTextSegments|getRange[A-Z]\w*)$/;
+const CONTAINER_NAMESPACES = new Set(["Array", "Object", "Promise"]);
+const CONTAINER_CONSTRUCTORS = new Set(["Map", "Set", "WeakMap", "WeakSet", "Array", "Promise"]);
 
 /** The Desktop Bridge runs code as `(async function() {\n<code>\n})()`. */
 const WRAPPER_OFFSET = "(async function() {\n".length;
@@ -202,6 +236,12 @@ class FigmaAnalyzer {
   private readonly pageIds: Set<string>;
   private readonly nodeIds: Set<string>;
   private readonly userFunctions = new Set<string>();
+  /** Functions the code declares, by name, to follow what they return. */
+  private readonly functionNodes = new Map<string, AnyNode>();
+  private readonly evaluating = new Set<AnyNode>();
+  /** Every name the code binds anywhere (scope-insensitive). */
+  private readonly declared = new Set<string>();
+  private wrapper: AnyNode | null = null;
   private readonly appendedNames = new Set<string>();
   private readonly appendedNodes = new Set<AnyNode>();
   private hasProtectedLiteral = false;
@@ -222,7 +262,7 @@ class FigmaAnalyzer {
 
   run(): GuardDecision {
     this.prepare();
-    visit(this.program, (node, parent, key, ancestors) => this.check(node, parent, key, ancestors[ancestors.length - 2] ?? null));
+    visit(this.program, (node, parent, key, ancestors) => this.check(node, parent, key, ancestors));
     this.checkCreations();
     if (this.violations.length === 0) return { allow: true };
     const sorted = [...this.violations].sort(
@@ -253,15 +293,50 @@ class FigmaAnalyzer {
     });
   }
 
+  private collectDeclared(node: AnyNode): void {
+    const add = (names: string[]) => names.forEach((n) => this.declared.add(n));
+    switch (node.type) {
+      case "VariableDeclarator":
+        add(patternNames(node.id));
+        return;
+      case "FunctionDeclaration":
+      case "FunctionExpression":
+        if (node.id) this.declared.add(node.id.name);
+        node.params.forEach((p) => add(patternNames(p)));
+        return;
+      case "ArrowFunctionExpression":
+        node.params.forEach((p) => add(patternNames(p)));
+        return;
+      case "ClassDeclaration":
+      case "ClassExpression":
+        if (node.id) this.declared.add(node.id.name);
+        return;
+      case "CatchClause":
+        add(patternNames(node.param ?? null));
+        return;
+      default:
+        return;
+    }
+  }
+
   private prepare(): void {
+    const top = this.program.body[0];
+    if (top?.type === "ExpressionStatement" && top.expression.type === "CallExpression") this.wrapper = top.expression.callee;
     this.computeRefScopes();
     visit(this.program, (node) => {
       if ((node.type === "Literal" && typeof node.value === "string") || node.type === "TemplateElement") {
         const v = (node.type === "Literal" ? String(node.value) : (node.value.cooked ?? "")).trim();
         if (this.nodeIds.has(v) || this.pageIds.has(v)) this.hasProtectedLiteral = true;
       }
-      if (node.type === "FunctionDeclaration" && node.id) this.userFunctions.add(node.id.name);
-      if (node.type === "VariableDeclarator" && node.id.type === "Identifier" && isFn(node.init)) this.userFunctions.add(node.id.name);
+      if (node.type === "FunctionDeclaration" && node.id) {
+        this.userFunctions.add(node.id.name);
+        this.functionNodes.set(node.id.name, node);
+      }
+      if (node.type === "VariableDeclarator" && node.id.type === "Identifier" && isFn(node.init)) {
+        this.userFunctions.add(node.id.name);
+        this.functionNodes.set(node.id.name, node.init);
+      }
+      this.collectDeclared(node);
     });
     for (let round = 0; round < 10; round++) {
       const before = `${[...this.env].join("|")}#${this.switchPoint}`;
@@ -363,6 +438,14 @@ class FigmaAnalyzer {
           return;
         case "AssignmentExpression":
           if (node.left.type !== "MemberExpression") this.bind(node.left, this.kindOf(node.right), node.start);
+          else if (
+            node.left.object.type === "Identifier" &&
+            [null, "protected"].includes(this.kindOf(node.left.object)) &&
+            isGuarded(this.kindOf(node.right))
+          ) {
+            // `box[0] = template` makes the container hold a protected node.
+            this.env.set(node.left.object.name, join(this.env.get(node.left.object.name) ?? null, "protected"));
+          }
           return;
         case "ForOfStatement": {
           const k = elementOf(this.kindOf(node.right));
@@ -490,22 +573,38 @@ class FigmaAnalyzer {
   }
 
   private callbackReturnKind(cb: AnyNode | undefined): Kind {
-    if (!isFn(cb)) return null;
-    if (cb.body.type !== "BlockStatement") return this.kindOf(cb.body);
-    let k: Kind = null;
-    visit(cb.body, (node) => {
-      if (node.type === "ReturnStatement" && node.argument) k = join(k, this.kindOf(node.argument));
-    });
-    return k;
+    if (!cb || !(isFn(cb) || cb.type === "FunctionDeclaration") || this.evaluating.has(cb)) return null;
+    this.evaluating.add(cb); // recursion guard
+    try {
+      if (cb.body.type !== "BlockStatement") return this.kindOf(cb.body);
+      let k: Kind = null;
+      visit(cb.body, (node) => {
+        if (node.type === "ReturnStatement" && node.argument) k = join(k, this.kindOf(node.argument));
+      });
+      return k;
+    } finally {
+      this.evaluating.delete(cb);
+    }
+  }
+
+  private joinArgs(args: Array<Expression | SpreadElement>): Kind {
+    return args.reduce<Kind>((k, a) => join(k, this.kindOf(a.type === "SpreadElement" ? a.argument : a)), null);
   }
 
   private callKind(call: CallExpression): Kind {
     const callee = call.callee;
+    if (callee.type === "Identifier") {
+      const fn = this.functionNodes.get(callee.name);
+      return fn ? this.callbackReturnKind(fn) : null;
+    }
     if (callee.type !== "MemberExpression") return null;
     const prop = staticPropName(callee);
     if (prop === null) return null;
-    const obj = this.kindOf(callee.object);
     const args = call.arguments;
+    if (callee.object.type === "Identifier" && CONTAINER_NAMESPACES.has(callee.object.name) && !this.declared.has(callee.object.name)) {
+      return this.joinArgs(args); // Array.from, Object.values, Promise.resolve… keep what they hold
+    }
+    const obj = this.kindOf(callee.object);
     if (obj === "figma") {
       if (prop === "getNodeByIdAsync" || prop === "getNodeById") return this.idKind(args[0]);
       if (prop === "createPage") return "page";
@@ -526,7 +625,7 @@ class FigmaAnalyzer {
     if (FIND_METHODS.has(prop)) return elementOf(obj);
     if (prop === "map" || prop === "flatMap") return join(this.callbackReturnKind(args[0]), obj === "protected" ? "protected" : null);
     if (SAME_KIND_METHODS.has(prop)) return obj;
-    if (obj === "protected") return prop.startsWith("get") && prop !== "getMainComponentAsync" ? null : "protected";
+    if (obj === "protected") return PRIMITIVE_GETTER.test(prop) ? null : "protected";
     return null;
   }
 
@@ -547,6 +646,8 @@ class FigmaAnalyzer {
       }
       case "CallExpression":
         return this.callKind(node);
+      case "NewExpression":
+        return node.callee.type === "Identifier" && CONTAINER_CONSTRUCTORS.has(node.callee.name) ? this.joinArgs(node.arguments) : null;
       case "ChainExpression":
         return this.kindOf(node.expression);
       case "AwaitExpression":
@@ -719,7 +820,8 @@ class FigmaAnalyzer {
     }
   }
 
-  private check(node: AnyNode, parent: AnyNode | null, key: string | null, grandparent: AnyNode | null): void {
+  private check(node: AnyNode, parent: AnyNode | null, key: string | null, ancestors: readonly AnyNode[]): void {
+    const grandparent = ancestors[ancestors.length - 2] ?? null;
     switch (node.type) {
       case "Literal":
         if (typeof node.value === "string") this.checkLiteral(node.value, node);
@@ -730,10 +832,19 @@ class FigmaAnalyzer {
       case "WithStatement":
         return this.report("figma_with", node, "uses `with`, which hides what it changes");
       case "Identifier":
-        if (!isReference(parent, key, grandparent) || this.env.has(node.name)) return;
+        if (!isReference(parent, key, grandparent) || this.declared.has(node.name)) return;
         if (DYNAMIC_CODE.has(node.name)) this.report("figma_dynamic_code", node, "runs code the guard cannot check");
         else if (NETWORK.has(node.name)) this.report("figma_network", node, "uses the network from plugin code");
+        else if (!ALLOWED_GLOBALS.has(node.name)) {
+          this.report("figma_unknown_global", node, "is not part of the Figma plugin API or standard JavaScript", "Use only `figma` and standard objects.");
+        }
         return;
+      case "ThisExpression": {
+        // Outside a regular function, `this` is the plugin's global object.
+        const owner = [...ancestors].reverse().find((a) => a.type === "FunctionExpression" || a.type === "FunctionDeclaration");
+        if (!owner || owner === this.wrapper) this.report("figma_unknown_global", node, "is the plugin's global object here", "Use `figma` directly.");
+        return;
+      }
       case "ImportExpression":
         return this.report("figma_network", node, "loads code from the network");
       case "MemberExpression": {
@@ -748,6 +859,16 @@ class FigmaAnalyzer {
           this.report("figma_page_index", node, "picks a page by position", ADVICE.page);
         } else if (obj === "figma" && prop === "ui") {
           this.report("figma_bridge_control", node, "talks to the Desktop Bridge plugin's UI");
+        } else if (prop === "constructor" && !(parent?.type === "MemberExpression" && key === "object" && staticPropName(parent) === "name")) {
+          // `x.constructor.constructor("…")` is the Function constructor without naming it.
+          this.report("figma_dynamic_code", node, "can reach the Function constructor", "Read `.constructor.name` only.");
+        } else if (!(parent?.type === "CallExpression" && key === "callee")) {
+          // Methods must be called directly, so every call is checked with its receiver.
+          const isMethod =
+            (obj === "figma" && !FIGMA_PROPERTIES.has(prop)) ||
+            (obj === "variables" && !prop.startsWith("get")) ||
+            ((isGuarded(obj) || obj === "drafts") && MUTATING_METHOD.test(prop));
+          if (isMethod) this.report("figma_method_alias", node, "takes a method as a value", "Call it directly instead.");
         }
         return;
       }

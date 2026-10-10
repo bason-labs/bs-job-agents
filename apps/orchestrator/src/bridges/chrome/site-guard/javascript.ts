@@ -7,10 +7,11 @@
 // navigation.navigate, history.pushState/replaceState URLs, fetch/XMLHttpRequest/sendBeacon/
 // WebSocket/EventSource/Worker/Request/import(), src/href/action/srcset/poster/ping writes and
 // setAttribute, markup sinks (innerHTML, outerHTML, insertAdjacentHTML, document.write) with URLs,
-// meta refresh or dynamic content, CSS url(), cookies, eval/Function/string timers, dynamic
-// property access on window/location/document, `with`, Reflect/Object writes to those objects,
-// form submit, postMessage, script/iframe creation. Simple aliases (`const l = location`,
-// destructuring, `.bind`, `.call`) are followed.
+// meta refresh, inline `on…=` handlers or dynamic content, CSS url(), cookies, eval/Function/
+// string timers and `.constructor` (the Function constructor without its name), dynamic property
+// access on window/location/document, `with`, Reflect/Object writes to those objects, form submit,
+// postMessage, script/iframe creation. Simple aliases (`const l = location`, destructuring,
+// `.bind`, `.call`) are followed.
 // Not caught (residual risk): clicks on links (`a.click()`, the computer tool), values hidden in
 // data structures or returned from functions, string timers built from variables, and anything
 // obfuscated beyond what static analysis can follow. Apply runs without javascript_tool.
@@ -318,6 +319,10 @@ class Analyzer {
       this.block("js_create_element", `${what} adds a <${tag.toLowerCase()}> element.`);
       return;
     }
+    if (/<[^>]*[\s/"']on[a-z]+\s*=/i.test(html)) {
+      this.block("js_event_handler", `${what} adds an inline event handler, which runs script.`);
+      return;
+    }
     const attr = /\b(?:src|href|action|formaction|poster|ping|data|background|srcset)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
     for (const m of html.matchAll(attr)) {
       this.urlFromText(m[1] ?? m[2] ?? m[3] ?? "", false, what);
@@ -546,6 +551,10 @@ class Analyzer {
         const k = memberKind(objKind, prop);
         if (k === "cookie" || k === "cookieStore") this.block("js_cookies", "bots never read cookies (spec §10.2 rule 6).");
         else if (k === "fn:eval" && objKind !== null) this.block("js_dynamic_code", `${prop} runs code the guard cannot check.`);
+        else if (prop === "constructor" && !(parent?.type === "MemberExpression" && key === "object" && staticPropName(parent) === "name")) {
+          // `x.constructor.constructor("…")` is the Function constructor without naming it.
+          this.block("js_dynamic_code", "`.constructor` can reach the Function constructor; read `.constructor.name` only.");
+        }
         return;
       }
       case "AssignmentExpression":
