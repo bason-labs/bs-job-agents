@@ -43,13 +43,15 @@ Owner instruction (2026-10-10): no separate implementation plan. Build in phases
 | **2 Engine and runner** | W2a Engine (starts after F1 merges) | `apps/orchestrator/src/engine/**`; after F1 also `apps/orchestrator/src/db/**`, `apps/orchestrator/drizzle/**`, `packages/shared/src/{domain,workflow,events,api,fixtures}/**` (additive only) | §3, §5.3, §7, §10; pm-phase-1.md §7 W2a, S1–S4 |
 | | W2b Runner | `apps/orchestrator/src/runner/**`, `bots/**` (bot.json, ROLE.md, memory.md), `packages/shared/src/{bots,json-schema}/**` (additive only) | §5, §5.5, §10.2, spike S1/S2/S4; pm-phase-1.md §7 W2b, S5–S7 |
 | | W2c Bridges | `apps/orchestrator/src/bridges/**` (Figma bridge, Chrome site-guard hook, PDF text + SHA-256 tools); asks for shared/db changes through its handoff | §4.4, §6.2, spike S2/S3b; pm-phase-1.md §7 W2c |
-| **3 API and UI** | W3a API | `apps/orchestrator/src/api/**`, `src/mcp/**`, `workflows/**` | §4.2, §7, §8, §11 (SSE events); pm S10 |
+| **2→3 Fixes** | F2 Fixer (PM2 M1–M5 + S1–S6; before Phase 3) | `apps/orchestrator/src/{engine,runner,bridges,db}/**`, `apps/orchestrator/drizzle/**`, `packages/shared/src/**` (additive only, plus M2's stricter host rule), `bots/**` (memory files, `prompt-versions.json`), `.gitignore` | pm-phase-2.md §2, §3 S1–S6 |
+| **3 API and UI** | F3 Fixer (PM2 S7–S16; parallel with Phase 3, merges before W4b's dry run) | `apps/orchestrator/src/{runner,bridges}/**`; in `src/engine/**` the apply, queue, trust-guard and bots modules plus new modules for its items; `src/db/**` + `drizzle/**` (additive); `packages/shared/src/{bots,events,domain}/**` (additive) | pm-phase-2.md §3 S7–S16 |
+| | W3a API | `apps/orchestrator/src/api/**`, `src/mcp/**`, `workflows/**`, `apps/orchestrator/src/{server.ts,index.ts,config.ts}`, `packages/shared/src/api/**` (additive). `src/engine/**`: no edits; ask F3 through the coordinator | §4.2, §7, §8, §11 (SSE events); pm S10; pm-phase-2.md S17–S23 |
 | | W3b UI: chat, flows, review | `apps/web/app/(shell)/{chat,flows,review}/**`, `apps/web/components/{chat,flows,review}/**`, and `apps/web/lib/api/**` (the data seam: API client, SSE subscription, mappers) | §11, UC-01/07/08/09/10/16/22/25; pm S8 |
 | | W3c UI: apps, criteria, schedules, bots, CV, rooms, viewer | the other `apps/web/app/(shell)/**` routes, `apps/web/components/{applications,criteria,schedules,bots,cv,rooms}/**`; uses W3b's `lib/api` (asks for additions via handoff or adds new files only) | §11, UC-12/13/13b/15/19/20/21/21b/24; pm S9 |
 | | (shared) | `apps/web/components/ui/**` and `components/shell/**` changes: W3b owns; W3c adds new components in its own folders | pm S13 |
 | **4 Integration** | W4a Source adapters | `bots/research/skills/**`, `apps/orchestrator/src/adapters/**` | UC-03/04, §12 source adapters |
-| | W4b End-to-end | `apps/web/e2e/**`, wiring fixes | §12 integration + UI e2e, dry-run acceptance |
-| | W4c Bot prompts + master CV | `bots/*/ROLE.md`, `data.example/master-cv.yaml` | §5.2, §6.1, §6.3 |
+| | W4b End-to-end | `apps/web/e2e/**`, wiring fixes, `docs/runbook.md` (setup and the live checks before the dry run) | §12 integration + UI e2e, dry-run acceptance; pm-phase-2.md S27 |
+| | W4c Bot prompts + master CV | `bots/*/ROLE.md`, `bots/*/bot.json` (`promptVersion` only), `bots/prompt-versions.json`, `data.example/master-cv.yaml` | §5.2, §6.1, §6.3; pm-phase-2.md S28 |
 
 **QA/QC agent (after each phase):**
 - runs the full check suite
