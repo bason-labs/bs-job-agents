@@ -184,9 +184,23 @@ export function failTask(
  * captcha(site), usage_limit, needs_answer, domain_confirm(site); UC-11/12/16/17).
  * Stored in the column form `code(site)` (formatPauseReason); invalid reasons throw.
  */
-export function pauseTask(db: Conn, id: number, reason: PauseReason): Task {
+export function pauseTask(db: Conn, id: number, reason: PauseReason, opts: { output?: unknown } = {}): Task {
   const valid = PauseReasonSchema.parse(reason);
-  return transition(db, id, ["running", "queued"], "paused", { pauseReason: formatPauseReason(valid) });
+  return transition(db, id, ["running", "queued"], "paused", {
+    pauseReason: formatPauseReason(valid),
+    // The bot's own report when it paused itself (e.g. Apply's pending questions, UC-12).
+    ...(opts.output !== undefined ? { output: opts.output } : {}),
+  });
+}
+
+/**
+ * Replace a task's stored input, e.g. with what a spawn was actually given (UC-22). It must be
+ * the prompt input: guard-only fields such as the approval token are never stored (PM S5).
+ */
+export function updateTaskInput(db: Conn, id: number, input: unknown): Task {
+  const row = db.update(tasks).set({ input }).where(eq(tasks.id, id)).returning().get();
+  if (!row) throw new NotFoundError("task", id);
+  return row;
 }
 
 /**

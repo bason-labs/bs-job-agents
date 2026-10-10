@@ -111,7 +111,8 @@ describe("upsertJobCandidate (UC-03 / UC-04)", () => {
 
 describe("dedupeCandidates (§7.2 step 3)", () => {
   it("returns only new jobs and reports duplicates, including within the batch", () => {
-    upsertJobCandidate(db, NOVAPAY);
+    // A job already scored by an earlier run (PM S3: only jobs left `new` are offered again).
+    setJobStatus(db, upsertJobCandidate(db, NOVAPAY).job.id, "below_threshold");
     const r = dedupeCandidates(db, [NOVAPAY, SAO_VIET, { ...SAO_VIET, url: SAO_VIET.url + "&utm_campaign=z" }]);
     expect(r.fresh.map((j) => j.title)).toEqual([SAO_VIET.title]);
     expect(r.duplicates).toHaveLength(2);

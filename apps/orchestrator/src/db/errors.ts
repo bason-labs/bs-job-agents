@@ -21,6 +21,25 @@ export class InvalidTransitionError extends Error {
   }
 }
 
+/**
+ * A bot row may not hold this trust level in Phase 1 (UC-19, PM S1): Apply stays at L1, so every
+ * submit needs Ba's approval. Nothing was written.
+ */
+export class TrustLevelRefusedError extends Error {
+  constructor(
+    readonly botName: string,
+    readonly trustLevel: number,
+    readonly maxTrustLevel: number,
+  ) {
+    super(
+      botName === "apply"
+        ? `Apply stays at L1 in Phase 1: every submit needs Ba's approval (UC-19); refused L${trustLevel}`
+        : `${botName} may be at most L${maxTrustLevel} in Phase 1; refused L${trustLevel}`,
+    );
+    this.name = "TrustLevelRefusedError";
+  }
+}
+
 /** Raised for any attempt to change the frozen submission record (spec §9.1). */
 export class ImmutableRecordError extends Error {
   constructor(message: string) {

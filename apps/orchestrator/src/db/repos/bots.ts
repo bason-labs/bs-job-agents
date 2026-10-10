@@ -1,7 +1,8 @@
+import { isTrustLevelAllowed, maxTrustLevel } from "@bs-job-agents/shared";
 import { and, asc, desc, eq } from "drizzle-orm";
 import type { Conn } from "../client.js";
-import type { Engine, TrustLevel } from "../enums.js";
-import { NotFoundError } from "../errors.js";
+import { TRUST_LEVELS, type Engine, type TrustLevel } from "../enums.js";
+import { NotFoundError, TrustLevelRefusedError } from "../errors.js";
 import { bots, memoryChanges, promptVersions, workflows } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
 import type { Bot, MemoryChange, PromptVersion, Workflow } from "../types.js";
@@ -18,8 +19,18 @@ export interface UpsertBotInput {
   enabled?: boolean;
 }
 
-/** Sync a bot from its `bot.json` (§5.1). */
+/**
+ * PM S1: Apply stays at L1 in Phase 1 (UC-19); throws TrustLevelRefusedError. A level outside
+ * 0–2 is left to the trust_level CHECK constraint.
+ */
+function assertTrustLevel(name: string, level: number): void {
+  if (!(TRUST_LEVELS as readonly number[]).includes(level)) return;
+  if (!isTrustLevelAllowed(name, level as TrustLevel)) throw new TrustLevelRefusedError(name, level, maxTrustLevel(name));
+}
+
+/** Sync a bot from its `bot.json` (§5.1). Refuses a trust level above the Phase 1 cap (PM S1). */
 export function upsertBot(db: Conn, input: UpsertBotInput): Bot {
+  assertTrustLevel(input.name, input.trustLevel);
   const values = {
     name: input.name,
     displayName: input.displayName,
@@ -41,11 +52,13 @@ export function listBots(db: Conn): Bot[] {
   return db.select().from(bots).orderBy(asc(bots.name)).all();
 }
 
+/** Bots screen changes (engine switch, trust level, enabled). Refuses Apply at L2 (PM S1, UC-19). */
 export function updateBot(
   db: Conn,
   name: string,
   patch: Partial<Pick<Bot, "engine" | "model" | "trustLevel" | "promptVersion" | "enabled" | "displayName">>,
 ): Bot {
+  if (patch.trustLevel !== undefined) assertTrustLevel(name, patch.trustLevel);
   const row = db.update(bots).set(patch).where(eq(bots.name, name)).returning().get();
   if (!row) throw new NotFoundError("bot", name);
   return row;

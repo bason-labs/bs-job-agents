@@ -22,6 +22,8 @@ export interface CreateRunInput {
   params: JsonObject;
   /** The Search Profile version the run starts with; it keeps it after later edits (UC-21b). */
   searchProfileVersion?: number | null;
+  /** The id of that version's row (`search_profiles.id`), so the run can read it later. */
+  searchProfileId?: number | null;
   scheduleId?: number | null;
   status?: RunStatus;
 }
@@ -35,6 +37,7 @@ export function createRun(db: Conn, input: CreateRunInput, opts?: ClockOpts): Ru
       trigger: input.trigger,
       params: input.params,
       searchProfileVersion: input.searchProfileVersion ?? null,
+      searchProfileId: input.searchProfileId ?? null,
       scheduleId: input.scheduleId ?? null,
       status: input.status ?? "running",
       createdAt: nowIso(opts),
