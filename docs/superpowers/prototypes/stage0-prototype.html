@@ -133,10 +133,21 @@ function app() {
         qaNote: 'QA did not pass after 3 rounds: JD wants Python, master data has none. Decide: approve anyway, request changes, or skip.' },
     ],
     applications: [
-      { company: 'DEKON', role: 'Senior Developer (NodeJS, ReactJS, AI)', source: 'TopCV', cv: 'DEKON_Figma_EN_v1', at: '2026-10-10 15:40', status: 'submitted' },
-      { company: 'SMARTBIT', role: 'Frontend Developer', source: 'TopCV', cv: 'SMARTBIT_Figma_EN_v2', at: '2026-10-10 15:44', status: 'submitted' },
-      { company: 'YAVIET', role: 'Frontend Developer (ReactJS, NextJS, TS)', source: 'TopCV', cv: 'YAVIET_Figma_EN_v1', at: '2026-10-10 15:38', status: 'submitted' },
+      { id: 1, company: 'DEKON', role: 'Senior Developer (NodeJS, ReactJS, AI)', source: 'TopCV', url: 'https://www.topcv.vn/viec-lam/senior-developer-nodejs-reactjs-ai/2316742.html', cv: 'DEKON_Figma_EN_v1', at: '2026-10-10 15:40', status: 'submitted', origin: 'imported',
+        history: [{ status: 'submitted', at: '2026-10-10 15:40' }],
+        sub: { fields: [{ label: 'CV', value: 'BA_HUYNH_DEKON_Figma_EN.pdf', source: 'generated' }, { label: 'Contact details', value: 'Ba Huynh · huynhthienba4@gmail.com · +84 37 247 4489', source: 'master_cv' }, { label: 'Preferred location', value: 'Ho Chi Minh City', source: 'search_profile' }],
+               intro: null, consent: { ticked: true, text: 'Employer personal-data-use agreement (TopCV)' }, file: { name: 'BA_HUYNH_DEKON_Figma_EN.pdf', sha: null }, preShot: false, confirmShot: true, confirmText: 'Ứng tuyển việc làm thành công!', jd: null, approval: { at: '2026-10-10 15:36', note: 'approved in chat (earlier Codex session)' } } },
+      { id: 2, company: 'SMARTBIT', role: 'Frontend Developer', source: 'TopCV', url: 'https://www.topcv.vn/viec-lam/frontend-developer/2298533.html', cv: 'SMARTBIT_Figma_EN_v2', at: '2026-10-10 15:44', status: 'submitted', origin: 'imported',
+        history: [{ status: 'submitted', at: '2026-10-10 15:44' }],
+        sub: { fields: [{ label: 'CV', value: 'BA_HUYNH_SMARTBIT_Figma_EN.pdf', source: 'generated' }, { label: 'Contact details', value: 'Ba Huynh · huynhthienba4@gmail.com · +84 37 247 4489', source: 'master_cv' }, { label: 'Preferred location', value: 'Ho Chi Minh City', source: 'search_profile' }],
+               intro: null, consent: { ticked: true, text: 'Employer personal-data-use agreement (TopCV)' }, file: { name: 'BA_HUYNH_SMARTBIT_Figma_EN.pdf', sha: null }, preShot: false, confirmShot: true, confirmText: 'Ứng tuyển việc làm thành công!', jd: null, approval: { at: '2026-10-10 15:36', note: 'approved in chat (earlier Codex session)' } } },
+      { id: 3, company: 'YAVIET', role: 'Frontend Developer (ReactJS, NextJS, TS)', source: 'TopCV', url: 'https://www.topcv.vn/viec-lam/frontend-developer-reactjs-nextjs-typescript/2325969.html', cv: 'YAVIET_Figma_EN_v1', at: '2026-10-10 15:38', status: 'submitted', origin: 'imported',
+        history: [{ status: 'submitted', at: '2026-10-10 15:38' }],
+        sub: { fields: [{ label: 'CV', value: 'BA_HUYNH_YAVIET_Figma_EN.pdf', source: 'generated' }, { label: 'Contact details', value: 'Ba Huynh · huynhthienba4@gmail.com · +84 37 247 4489', source: 'master_cv' }, { label: 'Preferred location', value: 'Ho Chi Minh City', source: 'search_profile' }],
+               intro: null, consent: { ticked: true, text: 'Employer personal-data-use agreement (TopCV)' }, file: { name: 'BA_HUYNH_YAVIET_Figma_EN.pdf', sha: null }, preShot: false, confirmShot: true, confirmText: 'Ứng tuyển việc làm thành công!', jd: null, approval: { at: '2026-10-10 15:36', note: 'approved in chat (earlier Codex session)' } } },
     ],
+    record: null,          // application shown in the Submission record panel
+    lastExport: null,
     criteria: {
       version: 3, updated: '2026-10-10',
       roles: ['Frontend Engineer', 'Software Engineer (React/Node)'], locations: ['Ho Chi Minh City', 'Remote (VN)'],
@@ -347,14 +358,37 @@ function app() {
       if (!this.answer.trim()) return;
       const job = msg.job; msg.answered = this.answer; msg.remembered = this.rememberAnswer;
       this.chat.push({ from: 'ba', text: this.answer }); this.answer = '';
-      job.needsAnswer = false; this.step('apply').status = 'running';
+      job.needsAnswer = false; job.salaryAnswer = msg.answered; this.step('apply').status = 'running';
       this.lead(this.rememberAnswer ? 'Thanks — saved as a remembered answer for future forms. Continuing.' : 'Thanks — continuing (not saved).');
       await wait(1800); this.finishApply(job);
     },
-    finishApply(job) {
+    async sha256(text) { const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)); return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join(''); },
+    nowStr() { const d = new Date(); return d.toISOString().slice(0, 10) + ' ' + d.toTimeString().slice(0, 5); },
+    async finishApply(job) {
       job.status = 'applied'; const ap = this.step('apply'); ap.status = 'done'; ap.detail = `${job.company}: submitted ✓`; this.bot('apply').status = 'idle';
       this.step('record').status = 'done';
-      this.applications.unshift({ company: job.company, role: job.title, source: job.source, cv: `${job.company.replace(/\s/g,'')}_${job.cvLang || job.lang}_v${job.round}`, at: 'just now', status: 'submitted', fresh: true });
+      const lang = job.cvLang || job.lang, fileName = this.cvFileName(job), at = this.nowStr();
+      const domain = ({ TopCV: 'topcv.vn', ITviec: 'itviec.com', LinkedIn: 'linkedin.com' })[job.source];
+      const vi = lang === 'VI';
+      const fields = [
+        { label: vi ? 'Họ và tên' : 'Full name', value: 'Ba Huynh', source: 'master_cv' },
+        { label: 'Email', value: 'huynhthienba4@gmail.com', source: 'master_cv' },
+        { label: vi ? 'Số điện thoại' : 'Phone', value: '+84 37 247 4489', source: 'master_cv' },
+        { label: vi ? 'Địa điểm mong muốn' : 'Preferred location', value: 'Ho Chi Minh City', source: 'search_profile' },
+        { label: 'CV', value: fileName, source: 'generated' },
+      ];
+      if (job.salaryAnswer) fields.push({ label: vi ? 'Mức lương mong muốn (VND)' : 'Expected salary (VND)', value: job.salaryAnswer, source: 'ba_answer' });
+      const intro = vi ? `Tôi có hơn 4 năm kinh nghiệm ReactJS/Next.js, từng phụ trách ứng dụng nội bộ cho ~300 nhân viên. Rất mong được đóng góp cho ${job.company}.`
+                       : `I have 4+ years building React/Next.js products and owned internal apps used by ~300 employees. I'd love to bring that ownership to ${job.company}.`;
+      const sha = await this.sha256(this.makePdf('Prototype placeholder for ' + fileName));
+      const jdText = `${job.title} — ${job.company}\n${job.source} · ${job.loc} · ${job.salary}\n\n` + (vi
+        ? 'Mô tả công việc\n- Phát triển giao diện web bằng ReactJS/Next.js\n- Phối hợp với backend tích hợp REST API\n\nYêu cầu\n- 3+ năm kinh nghiệm ReactJS\n- Thành thạo TypeScript, HTML/CSS\n- Ưu tiên biết Redux Toolkit\n\nQuyền lợi\n- Lương tháng 13, phụ cấp ăn trưa'
+        : 'Responsibilities\n- Build product features with React/Next.js and TypeScript\n- Work with backend on REST/GraphQL APIs\n\nRequirements\n- 4+ years frontend\n- Strong TypeScript\n- GraphQL is a plus\n\nBenefits\n- 13th month, hybrid 3/2, MacBook');
+      this.applications.unshift({ id: Date.now(), company: job.company, role: job.title, source: job.source, url: `https://${domain}/jobs/${job.id}`, cv: fileName.replace('.pdf', ''), at, status: 'submitted', origin: 'app', fresh: true,
+        history: [{ status: 'submitted', at }],
+        sub: { fields, intro, consent: { ticked: true, text: vi ? 'Tôi đồng ý cho nhà tuyển dụng sử dụng thông tin cá nhân của tôi cho mục đích tuyển dụng.' : 'I agree that the employer may process my personal data for recruitment.' },
+               file: { name: fileName, sha }, preShot: true, confirmShot: true, confirmText: vi ? 'Ứng tuyển việc làm thành công!' : 'Your application has been submitted.',
+               jd: { capturedAt: at, text: jdText }, approval: { at, note: `token for ${fileName} on ${domain} (single use)` } } });
       this.lead(`✅ <b>${job.company}</b> submitted. Confirmation captured and saved to Applications.`);
       this.toast(job.company + ' submitted');
     },
@@ -375,6 +409,8 @@ function app() {
       const v = this.viewer; let blob;
       if (v.url) { const a = document.createElement('a'); a.href = v.url; a.download = v.name; document.body.appendChild(a); a.click(); a.remove(); this.toast('Downloaded ' + v.name); return; }
       if (v.kind === 'pdf') blob = new Blob([this.makePdf('Prototype placeholder for ' + v.name)], { type: 'application/pdf' });
+      else if (v.kind === 'text') blob = new Blob([v.text], { type: 'text/plain;charset=utf-8' });
+      else if (v.variant === 'form') blob = new Blob([this.makePng(['Filled form before submit', v.company, ...(v.fields || []).map(f => f.label + ': ' + f.value)])], { type: 'image/png' });
       else {
         const c = document.createElement('canvas'); c.width = 900; c.height = 500; const g = c.getContext('2d');
         g.fillStyle = '#ffffff'; g.fillRect(0, 0, 900, 500); g.fillStyle = '#0f172a'; g.font = 'bold 28px sans-serif';
@@ -397,6 +433,36 @@ function app() {
       out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('');
       out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
       return out;
+    },
+
+    // ---------- applications: record panel, status history, export ----------
+    statusChanged(a, value) { a.history.push({ status: value, at: this.nowStr() }); },
+    sourceLabel(src) { return { master_cv: 'master CV', saved_answer: 'saved answer', ba_answer: 'your answer', search_profile: 'search criteria', generated: 'generated' }[src] || src; },
+    makePng(lines) {
+      const c = document.createElement('canvas'); c.width = 900; c.height = 120 + lines.length * 34; const g = c.getContext('2d');
+      g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height); g.fillStyle = '#0f172a';
+      lines.forEach((l, i) => { g.font = (i === 0 ? 'bold 26px' : '18px') + ' sans-serif'; g.fillText(l, 50, 70 + i * 34); });
+      const bin = atob(c.toDataURL('image/png').split(',')[1]); const arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i); return arr;
+    },
+    async exportAll() {
+      if (!window.JSZip) { this.toast('Export library not loaded (offline?)', 'err'); return; }
+      const zip = new JSZip(); const esc = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+      const rows = [['company', 'role', 'source', 'url', 'cv_file', 'cv_sha256', 'submitted_at', 'status', 'origin'].join(',')];
+      for (const a of this.applications) {
+        rows.push([a.company, a.role, a.source, a.url, a.sub.file.name, a.sub.file.sha || 'not captured', a.at, a.status, a.origin].map(esc).join(','));
+        const dir = zip.folder(`${a.at.slice(0, 10)}_${a.company.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd').replace(/\s/g, '')}`);
+        dir.file('submission.json', JSON.stringify({ company: a.company, role: a.role, url: a.url, submittedAt: a.at, status: a.status, statusHistory: a.history, origin: a.origin, ...a.sub }, null, 2));
+        dir.file(a.sub.file.name, this.makePdf('Prototype placeholder for ' + a.sub.file.name));
+        if (a.sub.jd) dir.file('jd_snapshot.txt', a.sub.jd.text);
+        if (a.sub.preShot) dir.file('pre_submit.png', this.makePng(['Filled form before submit', a.company, ...a.sub.fields.map(f => f.label + ': ' + f.value)]));
+        if (a.sub.confirmShot) dir.file('confirmation.png', this.makePng([a.sub.confirmText, a.company + ' - prototype screenshot']));
+      }
+      zip.file('applications.csv', '﻿' + rows.join('\n'));
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const name = `job-agents-export_${this.nowStr().slice(0, 10)}.zip`;
+      const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = name; document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      this.lastExport = this.nowStr(); this.toast(`Exported ${this.applications.length} applications → ${name}`);
     },
 
     // ---------- schedules ----------
@@ -465,6 +531,7 @@ function app() {
   };
 }
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 </head>
 <body class="text-sm">
@@ -775,23 +842,27 @@ function app() {
 
     <!-- ========== APPLICATIONS ========== -->
     <div x-show="view==='apps'" class="flex-1 overflow-y-auto p-5">
-     <div class="mx-auto max-w-6xl">
+     <div class="mx-auto max-w-6xl space-y-3">
+      <div class="flex items-center justify-between">
+        <p class="text-xs text-muted"><span x-text="applications.length"></span> applications · stored on this Mac in <span class="font-mono">data/</span> · click a row to see exactly what was sent<span x-show="lastExport" x-text="' · last export ' + lastExport"></span></p>
+        <button @click="exportAll()" class="rounded-full bg-gradient-brand text-white px-4 py-2 shadow-glow text-xs">⬇ Export all (ZIP)</button>
+      </div>
       <div class="rounded-3xl border border-border bg-surface/60">
-        <table class="w-full text-left text-xs">
+        <table class="w-full text-left text-xs [&_th]:px-3 [&_td]:px-3">
           <thead class="bg-surface-2/60 text-muted uppercase tracking-wider text-[10px]"><tr><th class="px-4 py-3">Company</th><th>Role</th><th>Source</th><th>CV version</th><th>Submitted</th><th>Status</th><th>Proof</th></tr></thead>
           <tbody class="divide-y divide-border/60">
             <template x-for="a in applications">
-              <tr :class="a.fresh ? 'bg-accent/5' : ''">
-                <td class="px-4 py-3 font-medium" x-text="a.company"></td><td x-text="a.role"></td><td x-text="a.source"></td>
-                <td><button @click="openFile(a.cv + '.pdf', 'pdf', { lang: /_VI_/.test(a.cv) ? 'VI' : 'EN', company: a.company })" class="text-accent underline" x-text="a.cv + '.pdf'"></button></td><td class="text-muted" x-text="a.at"></td>
-                <td class="py-2"><div x-data="uiSelect([['submitted','Submitted'],['interviewing','Interviewing'],['offer','Offer'],['rejected','Rejected'],['withdrawn','Withdrawn'],['no_response','No response'],['needs_check','Needs check']])" x-modelable="value" x-model="a.status" class="relative w-36" @click.outside="open=false" @keydown.escape.stop="open=false"><button type="button" @click="toggle()" @keydown.arrow-down.prevent="move(1)" @keydown.arrow-up.prevent="move(-1)" @keydown.enter.prevent="open ? choose(active) : toggle()" :class="open ? 'border-accent shadow-glow' : 'border-border hover:border-accent'" class="w-full flex items-center justify-between gap-2 rounded-xl border bg-surface px-2.5 py-1 text-xs text-fg text-left transition"><span class="truncate" x-text="label(value)"></span><svg class="size-4 text-muted transition-transform" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button><div x-show="open" x-transition.origin.top class="absolute z-50 mt-1 min-w-full w-max max-h-60 overflow-auto rounded-xl border border-border bg-surface p-1 shadow-2xl"><template x-for="(o, i) in opts" :key="o.value"><button type="button" data-opt @click="choose(i)" @mouseenter="active=i" :class="i===active ? 'bg-surface-2' : ''" class="w-full flex items-center justify-between gap-4 rounded-lg px-3 py-1.5 text-left text-sm"><span x-text="o.label"></span><span x-show="o.value===value" class="text-accent">✓</span></button></template></div></div></td>
-                <td><button @click="openFile(a.company.replace(/\s/g,'') + '_confirmation.png', 'image', { company: a.company })" class="text-accent underline">screenshot</button></td>
+              <tr @click="record = a" title="Open submission record" :class="[a.fresh ? 'bg-accent/5' : '', record === a ? 'bg-surface-2' : '']" class="hover:bg-surface-2/60 transition">
+                <td class="px-4 py-3 font-medium"><span x-text="a.company"></span> <span x-show="a.origin==='imported'" class="ml-1 rounded-full border border-border px-1.5 text-[9px] text-muted">imported</span></td><td x-text="a.role"></td><td x-text="a.source"></td>
+                <td><button @click.stop="openFile(a.cv + '.pdf', 'pdf', { lang: /_VI_/.test(a.cv) ? 'VI' : 'EN', company: a.company })" class="text-accent underline" x-text="a.cv + '.pdf'"></button></td><td class="text-muted" x-text="a.at"></td>
+                <td class="py-2" @click.stop><div @change="statusChanged(a, $event.detail)" x-data="uiSelect([['submitted','Submitted'],['interviewing','Interviewing'],['offer','Offer'],['rejected','Rejected'],['withdrawn','Withdrawn'],['no_response','No response'],['needs_check','Needs check']])" x-modelable="value" x-model="a.status" class="relative w-36" @click.outside="open=false" @keydown.escape.stop="open=false"><button type="button" @click="toggle()" @keydown.arrow-down.prevent="move(1)" @keydown.arrow-up.prevent="move(-1)" @keydown.enter.prevent="open ? choose(active) : toggle()" :class="open ? 'border-accent shadow-glow' : 'border-border hover:border-accent'" class="w-full flex items-center justify-between gap-2 rounded-xl border bg-surface px-2.5 py-1 text-xs text-fg text-left transition"><span class="truncate" x-text="label(value)"></span><svg class="size-4 text-muted transition-transform" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button><div x-show="open" x-transition.origin.top class="absolute z-50 mt-1 min-w-full w-max max-h-60 overflow-auto rounded-xl border border-border bg-surface p-1 shadow-2xl"><template x-for="(o, i) in opts" :key="o.value"><button type="button" data-opt @click="choose(i)" @mouseenter="active=i" :class="i===active ? 'bg-surface-2' : ''" class="w-full flex items-center justify-between gap-4 rounded-lg px-3 py-1.5 text-left text-sm"><span x-text="o.label"></span><span x-show="o.value===value" class="text-accent">✓</span></button></template></div></div></td>
+                <td><button @click.stop="openFile(a.company.replace(/\s/g,'') + '_confirmation.png', 'image', { company: a.company })" class="text-accent underline">screenshot</button></td>
               </tr>
             </template>
           </tbody>
         </table>
       </div>
-      <p class="text-muted text-xs mt-3">DEKON, SMARTBIT, YAVIET are your real 2026-10-10 TopCV applications — the dedupe step excludes them from new scans.</p>
+      <p class="text-muted text-xs">DEKON, SMARTBIT, YAVIET are your real 2026-10-10 TopCV applications, shown as <b>imported</b> with partial records (made before this app). The dedupe step excludes them from new scans. Approve a review card to see a full record.</p>
      </div>
     </div>
 
@@ -938,6 +1009,77 @@ function app() {
       </template>
     </aside>
 
+
+    <!-- ========== SUBMISSION RECORD PANEL (UC-13) ========== -->
+    <div x-show="record" x-transition.opacity class="absolute inset-0 bg-black/30 z-20" @click="record=null"></div>
+    <aside x-show="record" x-transition class="absolute top-0 right-0 bottom-0 w-[480px] z-30 border-l border-border bg-surface overflow-y-auto">
+      <template x-if="record">
+        <div class="p-5 space-y-5">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-[10px] uppercase tracking-wider text-muted">Submission record <span x-show="record.origin==='imported'" class="text-warn">· imported, partial</span></p>
+              <p class="font-display text-lg font-semibold" x-text="record.company"></p>
+              <p class="text-xs text-muted" x-text="record.role + ' · ' + record.source + ' · submitted ' + record.at"></p>
+              <a :href="record.url" target="_blank" rel="noopener" class="text-xs text-accent underline break-all" x-text="record.url"></a>
+            </div>
+            <button @click="record=null" class="text-muted text-lg" title="Close">×</button>
+          </div>
+
+          <section class="space-y-2">
+            <p class="text-xs font-medium">CV file sent</p>
+            <div class="rounded-xl border border-border bg-surface-2/40 p-3 flex items-center justify-between gap-3">
+              <button @click="openFile(record.sub.file.name, 'pdf', { company: record.company, lang: /_VI_/.test(record.sub.file.name) ? 'VI' : 'EN' })" class="text-accent underline text-xs text-left break-all" x-text="'📄 ' + record.sub.file.name"></button>
+            </div>
+            <p class="text-[11px] text-muted font-mono break-all" x-text="'SHA-256: ' + (record.sub.file.sha || 'not captured')"></p>
+          </section>
+
+          <section class="space-y-2">
+            <p class="text-xs font-medium">Form fields</p>
+            <div class="rounded-xl border border-border divide-y divide-border/60">
+              <template x-for="f in record.sub.fields">
+                <div class="flex items-start justify-between gap-3 px-3 py-2 text-xs">
+                  <span class="text-muted shrink-0" x-text="f.label"></span>
+                  <span class="text-right"><span class="block" x-text="f.value"></span><span class="text-[10px] text-accent" x-text="sourceLabel(f.source)"></span></span>
+                </div>
+              </template>
+            </div>
+          </section>
+
+          <section class="space-y-2">
+            <p class="text-xs font-medium">Intro / cover text</p>
+            <p class="rounded-xl border border-border bg-surface-2/40 p-3 text-xs leading-relaxed" :class="record.sub.intro ? '' : 'text-muted italic'" x-text="record.sub.intro || 'not captured'"></p>
+          </section>
+
+          <section class="space-y-2">
+            <p class="text-xs font-medium">Consent</p>
+            <p class="text-xs flex gap-2"><span class="text-ok">✓</span><span x-text="record.sub.consent.text"></span></p>
+          </section>
+
+          <section class="space-y-2">
+            <p class="text-xs font-medium">Proof</p>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <button :disabled="!record.sub.preShot" @click="openFile(record.company.replace(/\s/g,'') + '_pre_submit.png', 'image', { variant: 'form', company: record.company, fields: record.sub.fields, consentText: record.sub.consent.text })" class="rounded-xl border border-border p-3 text-left hover:border-accent disabled:opacity-50 disabled:hover:border-border">🖼 Before submit<span class="block text-muted" x-text="record.sub.preShot ? 'filled form' : 'not captured'"></span></button>
+              <button :disabled="!record.sub.confirmShot" @click="openFile(record.company.replace(/\s/g,'') + '_confirmation.png', 'image', { company: record.company })" class="rounded-xl border border-border p-3 text-left hover:border-accent disabled:opacity-50">✅ Confirmation<span class="block text-muted" x-text="record.sub.confirmText || 'not captured'"></span></button>
+              <button :disabled="!record.sub.jd" @click="openFile(record.company.replace(/\s/g,'') + '_JD_snapshot.txt', 'text', { text: record.sub.jd.text, capturedAt: record.sub.jd.capturedAt })" class="col-span-2 rounded-xl border border-border p-3 text-left hover:border-accent disabled:opacity-50">📌 JD snapshot<span class="block text-muted" x-text="record.sub.jd ? 'frozen ' + record.sub.jd.capturedAt + ' — survives the post being edited or deleted' : 'not captured (applied before this app)'"></span></button>
+            </div>
+          </section>
+
+          <section class="space-y-2">
+            <p class="text-xs font-medium">Approval</p>
+            <p class="text-xs text-muted" x-text="record.sub.approval.at + ' · ' + record.sub.approval.note"></p>
+          </section>
+
+          <section class="space-y-2">
+            <p class="text-xs font-medium">Status history</p>
+            <ol class="space-y-1 text-xs">
+              <template x-for="h in record.history"><li class="flex justify-between rounded-lg bg-surface-2/50 px-3 py-1.5"><span x-text="h.status.replace('_',' ')"></span><span class="text-muted" x-text="h.at"></span></li></template>
+            </ol>
+          </section>
+          <p class="text-[11px] text-muted">This record is frozen when the application is submitted — later CV edits or a deleted job post don't change it. Only the status can change.</p>
+        </div>
+      </template>
+    </aside>
+
     <!-- ========== MODALS ========== -->
     <div x-show="modal" class="absolute inset-0 bg-black/40 z-40 grid place-items-center" @click.self="modal=null">
       <div class="w-[460px] rounded-3xl border border-border bg-surface p-5 space-y-4 shadow-2xl">
@@ -1019,7 +1161,7 @@ function app() {
       <template x-if="viewer">
         <div class="flex flex-col h-full">
           <div class="flex items-center justify-between gap-3 px-4 py-3 bg-surface/95 border-b border-border">
-            <div class="flex items-center gap-2 min-w-0"><span x-text="viewer.kind==='pdf' ? '📄' : '🖼'"></span><b class="truncate" x-text="viewer.name"></b><span class="text-xs text-muted shrink-0" x-text="viewer.kind==='pdf' ? '· page 1 of 1 · A4' : '· confirmation screenshot'"></span></div>
+            <div class="flex items-center gap-2 min-w-0"><span x-text="viewer.kind==='pdf' ? '📄' : (viewer.kind==='text' ? '📌' : '🖼')"></span><b class="truncate" x-text="viewer.name"></b><span class="text-xs text-muted shrink-0" x-text="viewer.kind==='pdf' ? '· page 1 of 1 · A4' : (viewer.kind==='text' ? '· JD snapshot' : (viewer.variant==='form' ? '· pre-submit screenshot' : '· confirmation screenshot'))"></span></div>
             <div class="flex items-center gap-2 shrink-0">
               <div class="flex items-center rounded-xl border border-border text-muted"><button @click="viewer.zoom=Math.max(50,viewer.zoom-25)" class="px-2.5 py-1.5">−</button><span class="text-xs w-12 text-center" x-text="viewer.zoom+'%'"></span><button @click="viewer.zoom=Math.min(200,viewer.zoom+25)" class="px-2.5 py-1.5">+</button></div>
               <button x-show="viewer.kind==='pdf'" @click="toast('Opens the Figma frame in a new tab (prototype)')" class="rounded-xl border border-border px-3 py-1.5">Open in Figma ↗</button>
@@ -1057,8 +1199,22 @@ function app() {
                 <p class="text-center text-slate-400 mt-10" x-text="'Prototype preview of ' + viewer.name"></p>
               </div>
             </div>
+            <!-- JD snapshot (text) -->
+            <div x-show="viewer.kind==='text'" class="bg-white text-slate-800 shadow-2xl origin-top p-10" :style="`width:680px;transform:scale(${viewer.zoom/100});`">
+              <p class="text-[10px] uppercase tracking-wider text-slate-400 mb-3" x-text="'Frozen JD snapshot · captured ' + (viewer.capturedAt || '')"></p>
+              <pre class="whitespace-pre-wrap font-sans text-sm leading-relaxed" x-text="viewer.text"></pre>
+            </div>
+            <!-- Pre-submit form screenshot -->
+            <div x-show="viewer.variant==='form'" class="bg-white text-slate-800 shadow-2xl rounded-lg overflow-hidden origin-top" :style="`width:760px;transform:scale(${viewer.zoom/100});`">
+              <div class="bg-emerald-600 text-white px-5 py-2 text-xs">Filled form — just before submit</div>
+              <div class="p-8 space-y-3">
+                <template x-for="f in (viewer.fields || [])"><div><p class="text-xs text-slate-500" x-text="f.label"></p><div class="rounded-md border border-slate-300 px-3 py-2 text-sm" x-text="f.value"></div></div></template>
+                <div class="flex items-center gap-2 text-sm"><span class="size-4 rounded bg-emerald-600 text-white grid place-items-center text-[10px]">✓</span><span x-text="viewer.consentText"></span></div>
+                <div class="rounded-md bg-emerald-600 text-white text-center py-2 text-sm font-semibold">Nộp hồ sơ / Submit</div>
+              </div>
+            </div>
             <!-- Screenshot -->
-            <div x-show="!viewer.url && viewer.kind==='image'" class="bg-white text-slate-800 shadow-2xl rounded-lg overflow-hidden origin-top" :style="`width:760px;transform:scale(${viewer.zoom/100});`">
+            <div x-show="!viewer.url && viewer.kind==='image' && viewer.variant!=='form'" class="bg-white text-slate-800 shadow-2xl rounded-lg overflow-hidden origin-top" :style="`width:760px;transform:scale(${viewer.zoom/100});`">
               <div class="bg-emerald-600 text-white px-5 py-2 text-xs">topcv.vn — browser tab "Apply"</div>
               <div class="p-10 text-center space-y-3"><div class="text-5xl">✅</div><p class="text-xl font-bold">Ứng tuyển việc làm thành công!</p><p class="text-slate-500" x-text="viewer.company + ' — application received'"></p><p class="text-xs text-slate-400">Captured by Apply after submit · prototype image</p></div>
             </div>

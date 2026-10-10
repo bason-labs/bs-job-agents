@@ -223,8 +223,22 @@ bs-job-agents/
 - **Tools:** Ba's Chrome through the extension with full interaction (uses Ba's existing logins), restricted to the approved job's domain(s); file upload of the approved PDF only.
 - **Does:** opens the form, fills fields, uploads the PDF, ticks the employer consent box (covered by Ba's approval, §8 UC-08), submits, captures a confirmation screenshot and confirmation text.
 - **Pauses:** on any required field with no saved answer (salary expectation, notice period, visa…), on a CAPTCHA, or on login.
-- **Self-check before submit:** the correct PDF filename is attached and visible; all required fields are filled; the company and job title on the page match the approved job.
-- **Output:** `ApplyResult { status: "submitted" | "needs_check" | "paused", confirmationText?, screenshotPaths[], pendingQuestions[] }`.
+- **Self-check before submit:**
+  - the correct PDF filename is attached and visible, and its SHA-256 matches the approved CV version
+  - all required fields are filled
+  - the company and job title on the page match the approved job
+  - a pre-submit screenshot of the filled form has been captured
+- **Output:**
+  ```
+  ApplyResult {
+    status: "submitted" | "needs_check" | "paused",
+    fieldsFilled[{ label, name, value, source: "master_cv" | "saved_answer" | "ba_answer" | "search_profile" | "generated" }],
+    introText?, consent?: { ticked, text },
+    uploadedFile?: { filename, sha256 },
+    preSubmitScreenshot?, confirmationScreenshot?, confirmationText?,
+    finalUrl?, pendingQuestions[]
+  }
+  ```
 
 ### 5.3 Trust levels
 
@@ -315,7 +329,7 @@ params: searchProfileId (defaults to the active Search Profile, §7.5), optional
          (VI JD → gate runs for both VI and EN drafts)
 8  human review               approve | request_changes(comment) → back to 7 | skip(reason)
 9  action apply.submit        requires approval token from step 8
-10 record application
+10 record submission           (§9.1: application + submission record + JD snapshot, one transaction)
 ```
 
 ### 7.3 `apply-to-link` (Ba pastes a job URL in chat)
@@ -460,8 +474,11 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
   2. Apply navigates within the approved domain.
   3. It fills the form and uploads the PDF.
   4. It self-checks.
-  5. It ticks consent and submits.
-  6. It captures confirmation text and a screenshot.
+  5. It captures a **JD snapshot**: the posting's text, plus a full-page screenshot of the job page as it is right now (§9.1).
+  6. It captures a **pre-submit screenshot** of the filled form.
+  7. It ticks consent and submits.
+  8. It captures confirmation text and a screenshot.
+  9. The orchestrator writes the **submission record** (every field value, intro text, consent, uploaded file with SHA-256, screenshots, JD snapshot) in one transaction. If writing fails, the application is marked `needs_check` and the raw ApplyResult is kept in the task output.
 - **Alternate flows:**
   - (a) A required field has no saved answer → status `paused`; Lead asks Ba (UC-12).
   - (b) CAPTCHA or login → paused (UC-17).
@@ -478,7 +495,26 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 
 ### UC-13: Track application status
 - **Main flow:** the Applications screen lists every application (company, role, link, CV version + PDF, submitted at, confirmation screenshot, status). Ba updates the status manually: `submitted → interviewing → offer | rejected | withdrawn | no_response`.
-- **End state:** status history stored with timestamps.
+- **Submission record:** clicking a row opens a side panel showing exactly what was sent:
+  - every form field and its value, with where it came from (master CV, saved answer, Ba's answer, search criteria, generated)
+  - intro/cover text, and consent (ticked + its wording)
+  - the uploaded CV file with its SHA-256
+  - the pre-submit and confirmation screenshots
+  - the **frozen JD snapshot**
+  - the approval (time, CV version, allowed site) and status history
+
+  Files open in the viewer (§11).
+- **Imported applications** (made before this app, e.g. the DEKON / SMARTBIT / YAVIET TopCV applications from 2026-10-10) are added as `imported` with whatever is known; missing parts show "not captured".
+- **End state:** status history stored with timestamps; records are never deleted automatically.
+
+### UC-13b: Export and backup
+- **Export:** "⬇ Export all" on the Applications screen downloads a ZIP:
+  - `applications.csv` (one row per application)
+  - one folder per application: `submission.json`, the uploaded CV PDF, the JD snapshot (text + screenshot), the pre-submit and confirmation screenshots
+- **Backup:** all data lives in `data/` on Ba's Mac, which Time Machine covers when enabled.
+  - Settings show the data folder path and the last export date.
+  - An optional **weekly auto-export** to a folder Ba picks is off by default. Choosing a cloud-synced folder (e.g. iCloud Drive) is Ba's decision and is labelled as leaving the Mac.
+- **End state:** a self-contained archive Ba can keep or share.
 
 ### UC-14: Ba pastes a job link
 - **Trigger:** "Apply to this: <url>".
@@ -590,7 +626,10 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | `cv_versions` | id, job_id, language, round, tailored_json, figma_frame_url, pdf_path, master_version, prompt_version, created_at |
 | `qa_reviews` | id, cv_version_id, total, scores_json, hard_fails_json, fixes_json, injection_suspected, passed, created_at |
 | `approvals` | token PK, job_id, cv_version_id, allowed_domains_json, expires_at, used_at |
-| `applications` | id, job_id, cv_version_id, submitted_at, status, confirmation_text, screenshot_paths_json, status_history_json |
+| `applications` | id, job_id, cv_version_id, submitted_at, status, origin (`app` / `imported`), status_history_json |
+| `submissions` | application_id PK/FK, final_url, fields_json (label, name, value, source), intro_text, consent_ticked, consent_text, uploaded_filename, uploaded_sha256, uploaded_path, pre_submit_screenshot_path, confirmation_screenshot_path, confirmation_text, approval_token, submitted_at |
+| `job_snapshots` | application_id PK/FK, captured_at, url, title, company, salary_text, jd_text, page_screenshot_path |
+| `exports` | id, created_at, path, application_count |
 | `saved_answers` | key PK, label, answer, updated_at |
 | `uploads` | id, filename, mime, size, path, sha256, uploaded_at, message_id |
 | `search_profiles` | id, name, version, active, roles_json, locations_json, work_modes_json, min_salary, currency, seniority_json, sources_json, include_keywords_json, exclude_keywords_json, exclude_companies_json, company_types_json, languages_json, max_jobs, fit_threshold, updated_at |
@@ -600,6 +639,14 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | `events` | id, type, payload_json, created_at (audit log + SSE replay) |
 
 ---
+
+### 9.1 Submission record (what was sent, frozen)
+- **One record per application,** written in a single transaction right after submit: `applications` + `submissions` + `job_snapshots`.
+- **Immutable:** records are never edited after writing, only the application's status changes, and each change is appended to `status_history_json`.
+- **Files are copied** into `data/applications/<applicationId>/`: the uploaded PDF, screenshots and JD snapshot. Later CV edits or a deleted job post can't change what the record shows.
+- **SHA-256:**
+  - Computed for the uploaded PDF before upload, and checked against the approved `cv_versions` file. A mismatch aborts the submit.
+  - Stored with the record, so it always proves which file the employer received.
 
 ## 10. Errors and safety
 
@@ -644,7 +691,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | **Sidebar** | Chat, Flows, Review (badge), Applications, Search criteria, Schedules; Team list with live status dots and trust badge (click a bot → direct chat; ⚙ on hover → bot settings); Rooms; subscription usage / pause status per engine | engine paused banner |
 | **Flow canvas** | React Flow: nodes per step with live output preview, animated edges for running, red dashed QA loop edge, stacked nodes for `map` (×N, running/queued counts), locked Apply node; Pause / Re-run step; zoom, minimap; node click → drawer (UC-22) | running, paused, failed node (red), waiting_limit (clock) |
 | **Review queue** | Cards: job header + fit score, why it fits / gaps, company profile, QA breakdown + truth check, CV preview (VI/EN toggle when both), editable intro text; Approve & submit / Request changes / Skip with reason | QA not passed (escalated), needs your input, injection flagged |
-| **Applications** | Table: company, role, link, CV version (PDF), submitted at, status (editable), screenshot | needs_check highlighted |
+| **Applications** | Table: company, role, link, CV version (PDF), submitted at, status (editable), screenshot; **⬇ Export all (ZIP)**; click a row → **Submission record** side panel (UC-13) | needs_check highlighted; imported / partial record badge |
 | **Search criteria** | Form for the active Search Profile (§7.5): roles, locations, work mode, salary floor + currency, seniority, sources (toggles), include/exclude keywords, excluded companies, preferred company types, CV languages, max jobs per scan, fit threshold; version history | unsaved changes, validation errors |
 | **Schedules** | Centered list. **+ New schedule** and clicking a row open a **modal editor**: name, repeat (Weekdays / Daily / Weekly + day / Custom cron), time (Asia/Ho_Chi_Minh), Search Profile, enabled, a "Runs: …" summary, Save / Cancel / Delete (edit only). Row actions: Run now, 🗑 delete (confirm dialog + Undo toast), enable toggle; empty state when none | validation (name required, cron must have 5 fields) |
 | **Bots** | Per bot: role, engine switch, trust level, track record, promotion suggestion, prompt version, memory view | |
@@ -687,7 +734,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 |---|---|---|
 | Unit | Vitest | Workflow engine (order, map/join, partial failure, gate loop pass/fail/escalate at 3, human gate, per-job branches); trust guard (no token, expired, reused, wrong job, wrong domain); dedupe; top-N filter; scheduler (overlap skip, catch-up rule); concurrency limiter + browser lock; usage-limit pause/resume; memory append one at a time + 200-line archive |
 | Output formats | Vitest + Zod | Every bot schema accepts valid and rejects invalid fixtures; repair-prompt path |
-| Integration | Vitest + real SQLite + **FakeRunner** | Full `job-scan` from trigger to review to submit to record; crash mid-run → restart → continue; interrupted apply → `needs_check`; usage-limit mid-run → auto-continue |
+| Integration | Vitest + real SQLite + **FakeRunner** | Full `job-scan` from trigger to review to submit to record; submission record completeness (all fields, consent, both screenshots, JD snapshot, files copied); SHA-256 mismatch aborts the submit; record immutable after write; export ZIP contains CSV + one folder per application; crash mid-run → restart → continue; interrupted apply → `needs_check`; usage-limit mid-run → auto-continue |
 | Source adapters | Vitest + saved HTML fixtures (TopCV, ITviec, LinkedIn, sample career page) | Field extraction; layout-change detection |
 | UI end-to-end | Playwright + FakeRunner | Own components: Select keyboard (↑/↓/Enter/Esc) and click-outside, Slider drag + arrow keys, Checkbox/Switch with Space, NumberInput formatting, menus not clipped inside tables; Chat → run card; Flow nodes update over SSE; approve → Apply unlocks; request changes → new round; skip with reason; light/dark screenshot checks |
 | Safety | Vitest + fixtures | JD with hidden instructions is not obeyed and gets flagged; Apply off-domain is blocked; double submission is impossible |
@@ -727,6 +774,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | 2026-10-10 | Promotion: system suggests, Ba approves |
 | 2026-10-10 | UI: chat-first (Grok Bot style), bs-kara theme, Tailwind v4, React Flow canvas (ElevenLabs Flows style) |
 | 2026-10-10 | Direct consult-mode chat with any bot; work requests auto-handed to Lead |
+| 2026-10-10 | Full submission record (fields, consent, uploaded file + SHA-256, pre/post screenshots, frozen JD snapshot), record side panel, ZIP export, optional weekly auto-export |
 | 2026-10-10 | Own UI components only (no native selects/sliders/checkboxes/time/number inputs); Radix primitives for behaviour, bs-kara styling |
 | 2026-10-10 | File upload in chat (picker + drag-and-drop) → `apply-to-file`; schedules edited in a modal; constrained pages centered; files open in a viewer first |
 
