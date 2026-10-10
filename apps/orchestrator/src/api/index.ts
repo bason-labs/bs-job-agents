@@ -11,6 +11,7 @@ import { healthRoutes } from "./routes/health.js";
 import { reviewRoutes } from "./routes/review.js";
 import { runRoutes } from "./routes/runs.js";
 import { scheduleRoutes } from "./routes/schedules.js";
+import { uploadRoutes } from "./routes/uploads.js";
 
 export interface RouteOptions {
   /** SSE heartbeat interval in ms (default 15 s). */
@@ -26,6 +27,7 @@ export function registerRoutes(app: FastifyInstance, ctx: ApiContext, _opts: Rou
   scheduleRoutes(app, ctx);
   applicationRoutes(app, ctx);
   exportRoutes(app, ctx);
+  uploadRoutes(app, ctx);
 }
 
 export type { ApiConfig, ApiContext, EventHub, OrchestratorState, Recovered } from "./context.js";
