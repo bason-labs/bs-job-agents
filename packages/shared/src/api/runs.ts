@@ -1,0 +1,32 @@
+// Runs, steps and tasks (UC-22 inspect, UC-23 pause/cancel/re-run, UC-17 resume).
+import { z } from "zod";
+import { IdSchema } from "../common/primitives.js";
+import { RunSchema, StepSchema, TaskSchema } from "../domain/run.js";
+import { StartWorkflowInputSchema } from "../workflow/params.js";
+
+export const StartRunRequestSchema = StartWorkflowInputSchema;
+export const StartRunResponseSchema = z.object({ runId: IdSchema });
+
+export const RunControlRequestSchema = z.object({ action: z.enum(["pause", "resume", "cancel"]) });
+export type RunControlRequest = z.infer<typeof RunControlRequestSchema>;
+
+export const RunDetailSchema = z.object({
+  run: RunSchema,
+  steps: z.array(StepSchema),
+  tasks: z.array(TaskSchema),
+});
+export type RunDetail = z.infer<typeof RunDetailSchema>;
+
+export const RunsResponseSchema = z.object({ runs: z.array(RunSchema) });
+
+/** UC-22 step drawer. */
+export const StepDetailSchema = z.object({
+  step: StepSchema,
+  tasks: z.array(TaskSchema),
+  selfCheck: z.array(z.object({ item: z.string(), passed: z.boolean(), note: z.string().nullable() })),
+  durationMs: z.number().int().nonnegative().nullable(),
+});
+export type StepDetail = z.infer<typeof StepDetailSchema>;
+
+/** UC-17: Ba clicked "Done" after fixing login / CAPTCHA / Figma. Optional domain for UC-11 e. */
+export const TaskResumeRequestSchema = z.object({ confirmDomain: z.string().nullable().default(null) });
