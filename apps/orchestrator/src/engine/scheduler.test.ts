@@ -112,6 +112,19 @@ describe("scheduler (§7.4, UC-02, UC-21)", () => {
     expect(s.id).toBeGreaterThan(0);
   });
 
+  it("an engine paused for a usage limit: the scheduled run is created and waits in the queue (UC-02 b)", async () => {
+    const t = await createTestEngine();
+    t.db.transaction((tx) => t.engine.pauseEngineForLimit(tx, "codex", at(2 * HOUR)));
+    createSchedule(t.db, { name: "Daily", cron: "0 9 * * *", workflowName: "job-scan", nextRunAt: at(0) });
+    const run = getRun(t.db, t.engine.scheduler.tick().fired[0]!.runId)!;
+    await t.idle();
+    expect(t.tasks("research.scan")[0]?.status).toBe("waiting_limit");
+    expect(getRun(t.db, run.id)?.status).toBe("waiting");
+    t.clock.advance(2 * HOUR);
+    await t.idle();
+    expect(t.review(run.id, 1)).toBeDefined();
+  });
+
   it("Run now starts at once, or reports the overlap", async () => {
     const t = await createTestEngine();
     t.runner.script({ bot: "research", kind: "scan", delayMs: 1000 });
