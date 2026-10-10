@@ -4,7 +4,7 @@
 - **Status:** Draft, awaiting owner review
 - **Owner:** Ba Huynh
 - **Project folder:** `bason-labs/bs-job-agents`
-- **UI prototype (approved direction):** `docs/superpowers/prototypes/2026-10-10-ui-v3.html`
+- **UI prototype (approved UX):** `docs/superpowers/prototypes/stage0-prototype.html` (Stage 0, approved after this spec was first written; it is the reference for every screen, copy and interaction). Earlier direction: `docs/superpowers/prototypes/2026-10-10-ui-v3.html`.
 
 ---
 
@@ -384,11 +384,11 @@ One active, versioned profile is shared by scheduled scans and chat requests. A 
 | exclude keywords | PHP, WordPress | none |
 | excluded companies | (list) | none |
 | preferred company types | product, AI | none (no filter) |
-| CV languages | EN; VI+EN for Vietnamese JDs | as §6.3 |
+| CV languages (shown read-only; fixed by §6.3) | EN; VI+EN for Vietnamese JDs | as §6.3 |
 | max jobs per scan | 5 | 5 |
 | fit threshold | 60 | 60 |
-| **Application form defaults:** expected salary rule | Leave blank when optional / Negotiable (Thỏa thuận) / Fixed amount / Ask me each time | Leave blank when optional |
-| expected salary amount (only for Fixed amount) | 30,000,000 VND | none |
+| **Application form defaults:** expected salary rule | Leave blank when optional / Write “Negotiable / Thỏa thuận” / Use a fixed amount / Ask me each time | Leave blank when optional |
+| expected salary amount (only for Use a fixed amount) | 30,000,000 VND | none |
 
 ---
 
@@ -519,8 +519,8 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 - **Optional fields:** only asked when Ba's form defaults say "ask me" (e.g. salary rule = Ask me each time). The question card then shows **Skip — leave blank**, and for salary also **Negotiable / Thỏa thuận**. Skipped fields are recorded as `skipped`.
 - **Expected salary, by rule (§7.5):**
   - **Leave blank when optional** (default): optional → blank. Required → write "Negotiable / Thỏa thuận" if the field accepts text, otherwise ask Ba.
-  - **Negotiable:** write "Negotiable" (EN forms) / "Thỏa thuận" (VI forms).
-  - **Fixed amount:** use the saved amount.
+  - **Write “Negotiable / Thỏa thuận”:** write "Negotiable" (EN forms) / "Thỏa thuận" (VI forms).
+  - **Use a fixed amount:** use the saved amount.
   - **Ask me each time:** ask, with Skip and Negotiable available.
 - **Saving:** Ba can tick "remember this answer", which stores it in `saved_answers` (key = normalised label) for future forms.
 - **End state:** apply continues; the submission record shows each field's value or "left blank — optional".
@@ -544,7 +544,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
   - `applications.csv` (one row per application)
   - one folder per application: `submission.json`, the uploaded CV PDF, the JD snapshot (text + screenshot), the pre-submit and confirmation screenshots
 - **Backup:** all data lives in `data/` on Ba's Mac, which Time Machine covers when enabled.
-  - Settings show the data folder path and the last export date.
+  - The Applications screen shows the data folder path and the last export date.
   - An optional **weekly auto-export** to a folder Ba picks is off by default. Choosing a cloud-synced folder (e.g. iCloud Drive) is Ba's decision and is labelled as leaving the Mac.
 - **End state:** a self-contained archive Ba can keep or share.
 
@@ -718,16 +718,16 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 
 ## 11. UI
 
-**Approved direction:** `docs/superpowers/prototypes/2026-10-10-ui-v3.html` (chat-first, bs-kara theme, light/dark).
+**Approved UX:** `docs/superpowers/prototypes/stage0-prototype.html` (Stage 0: every screen, copy and interaction; chat-first, bs-kara theme, light/dark). It supersedes the earlier direction in `docs/superpowers/prototypes/2026-10-10-ui-v3.html`.
 
 | Screen | Content | Key states |
 |---|---|---|
 | **Chat** | Bot tabs at the top (Lead default; Research, CV, QA, Apply open consult-mode threads, UC-25). Centered conversation; Lead replies with delegation trace (Lead → @Bot: task · status); run progress cards; job cards with fit/QA; suggestion chips; composer with 📎 Attach file + drag-and-drop (UC-24), attachment chips, `@` mentions (rooms), engine chip | empty (first-run guide), streaming, drag-over, file rejected, error message, consult-mode banner, handoff to Lead |
-| **Sidebar** | Chat, Flows, Review (badge), Applications, Search criteria, Schedules; Team list with live status dots and trust badge (click a bot → direct chat; ⚙ on hover → bot settings); Rooms; subscription usage / pause status per engine | engine paused banner |
+| **Sidebar** | Chat, Flows, Review (badge), Applications, Search criteria, Schedules; Team list with live status dots and an L1 trust badge on Apply (click a bot → direct chat; ⚙ on hover → bot settings); Rooms; Master CV link; subscription usage / pause status per engine (Claude, ChatGPT) and Chrome extension status | engine paused banner, Chrome not connected |
 | **Flow canvas** | React Flow: nodes per step with live output preview, animated edges for running, red dashed QA loop edge, stacked nodes for `map` (×N, running/queued counts), locked Apply node; Pause / Re-run step; zoom, minimap; node click → drawer (UC-22) | running, paused, failed node (red), waiting_limit (clock) |
 | **Review queue** | Cards: job header + fit score, why it fits / gaps, company profile, QA breakdown + truth check, CV preview (VI/EN toggle when both), editable intro text; Approve & submit / Request changes / Skip with reason | QA not passed (escalated), needs your input, injection flagged |
-| **Applications** | Table: company, role, link, CV version (PDF), submitted at, status (editable), screenshot; **⬇ Export all (ZIP)**; click a row → **Submission record** side panel (UC-13) | needs_check highlighted; imported / partial record badge |
-| **Search criteria** | Form for the active Search Profile (§7.5): roles, locations, work mode, salary floor + currency, seniority, sources (toggles), include/exclude keywords, excluded companies, preferred company types, CV languages, max jobs per scan, fit threshold; version history | unsaved changes, validation errors |
+| **Applications** | Table: company, role, source, CV version (PDF), submitted at, status (editable), proof (screenshot); the job link is in the record panel; the header shows the data folder and the last export date; **⬇ Export all (ZIP)**; click a row → **Submission record** side panel (UC-13) | needs_check highlighted; imported / partial record badge |
+| **Search criteria** | Form for the active Search Profile (§7.5): roles, locations, work mode, salary floor + currency, seniority, sources (toggles), include/exclude keywords, excluded companies, preferred company types, max jobs per scan, fit threshold, application form defaults (expected salary rule + amount); CV languages shown as a read-only note (§6.3); version history | unsaved changes, validation errors |
 | **Schedules** | Centered list. **+ New schedule** and clicking a row open a **modal editor**: name, repeat (Weekdays / Daily / Weekly + day / Custom cron), time (Asia/Ho_Chi_Minh), Search Profile, enabled, a "Runs: …" summary, Save / Cancel / Delete (edit only). Row actions: Run now, 🗑 delete (confirm dialog + Undo toast), enable toggle; empty state when none | validation (name required, cron must have 5 fields) |
 | **Bots** | Per bot: role, engine switch, trust level, track record, promotion suggestion, prompt version, memory view | |
 | **Master CV** | Facts editor (EN/VI text, tags, org, dates), version history | |
