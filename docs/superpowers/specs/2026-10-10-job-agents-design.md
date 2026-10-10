@@ -35,6 +35,9 @@ The goal is a **local multi-bot app** that runs this loop with Ba as the approve
 - Runs on Ba's Mac (macOS, Apple silicon), as a single user.
 - Personal data stays local, except what model calls and job sites need.
 - Subscription usage limits are real, so the design caps parallelism and job volume.
+- **Browser = Ba's real Chrome, driven through the installed extensions**, so existing logins (TopCV, LinkedIn, ITviec, Figma, employer ATS sites) are reused and Ba never logs in again for the bots (§4.4). Both are already installed:
+  - **Claude in Chrome**: native host `com.anthropic.claude_code_browser_extension`; enabled with `claude --chrome`.
+  - **ChatGPT for Chrome (Codex)**: native host `com.openai.codexextension`.
 
 ---
 
@@ -83,7 +86,8 @@ These six rules come from the owner ("6 nguyên tắc cốt lõi"). Each is enfo
          cwd = bots/<name>/                    files (data/cv, data/pdf,
          allowed tools from bot.json            data/screenshots, data/transcripts)
                       │
-         MCP: Figma · Playwright (browser) · orchestrator
+         MCP: Figma · orchestrator
+         Browser: Ba's real Chrome via Claude in Chrome / ChatGPT for Chrome extensions
 ```
 
 ### 4.1 Tech stack
@@ -102,7 +106,8 @@ These six rules come from the owner ("6 nguyên tắc cốt lõi"). Each is enfo
 | **API + SSE** | REST for commands and queries, SSE stream of `Event`s | Engine, DB |
 | **Workflow engine** | Advances runs step by step; fan-out/fan-in; QA gate loop; human gates | Task queue, DB |
 | **Task queue** | Persists tasks, picks runnable ones respecting concurrency and pauses | DB, limiter |
-| **Concurrency limiter** | Max sessions per engine (default Claude 2, Codex 2) and **browser lock** (1 browser-using task at a time) | none |
+| **Concurrency limiter** | Max sessions per engine (default Claude 2, Codex 2) and **browser lock** (1 task driving Ba's Chrome at a time) | none |
+| **Browser bridge check** | Before a browser task starts, checks that Chrome is running and the engine's extension is connected; otherwise the task waits as `needs_browser` | Chrome extensions |
 | **Usage-limit watcher** | Detects limit errors, pauses an engine until reset, auto-resumes | Runner output |
 | **Runner** | Builds the CLI command from `bot.json`, spawns it, streams the transcript, parses and validates the final JSON | CLIs, Zod schemas |
 | **Trust guard** | Allows or denies outward-facing actions by trust level and approval tokens | DB |
@@ -132,6 +137,22 @@ bs-job-agents/
 
 ---
 
+### 4.4 Browser: Ba's real Chrome
+- **Why:** reusing Ba's Chrome means every existing login (TopCV, LinkedIn, ITviec, Figma, employer ATS sites) just works, with no separate bot browser to log into.
+- **How:**
+  - Claude bots run with `claude -p --chrome` (Claude in Chrome extension).
+  - Codex bots use the ChatGPT for Chrome extension.
+  - Exact headless behaviour is verified in Spike S2. If one engine cannot drive Chrome non-interactively, browser tasks for that bot switch to the other engine (a per-bot setting, not automatic).
+- **Isolation:**
+  - Each browser task works in its own tab group named after the bot.
+  - Only one browser task runs at a time (browser lock, §10.3).
+  - Ba can keep using other tabs, but should not close the bot's tab group.
+- **Boundaries:**
+  - Per-bot `allowedSites` (§5.1), matched by the extension's site permissions.
+  - Research is read-only.
+  - Apply works only on approved domains (§10.2).
+- **Availability:** Chrome must be open with the extension connected, and the Mac awake. Otherwise browser tasks wait as `needs_browser` and start automatically when Chrome reconnects.
+
 ## 5. Bots
 
 ### 5.1 Bot definition (`bot.json`)
@@ -143,8 +164,9 @@ bs-job-agents/
   "engine": "codex",                  // "claude" | "codex" (switchable in UI)
   "model": null,                      // null = CLI default for the subscription
   "trustLevel": 2,                    // 0 | 1 | 2
-  "allowedTools": ["web_search", "mcp:playwright:read", "skill:source-*"],
-  "mcpServers": ["playwright"],
+  "allowedTools": ["web_search", "chrome:read", "skill:source-*"],
+  "browser": { "mode": "read", "allowedSites": ["topcv.vn", "itviec.com", "linkedin.com"] },
+  "mcpServers": [],
   "timeoutSec": 600,
   "outputSchema": "ResearchOutput",   // name of zod schema in packages/shared
   "selfCheck": [
@@ -168,7 +190,7 @@ bs-job-agents/
 
 #### Research (Codex, L2)
 - **Input:** search criteria and sources, *or* a single job URL, *or* a company to profile.
-- **Tools:** web search, Playwright MCP in read-only mode (navigate, read, screenshot; no form fill/click-submit), source adapter skills.
+- **Tools:** web search, Ba's Chrome through the extension in **read mode** (navigate, read, screenshot; no form fill or submit) limited to job-site allowlist, source adapter skills.
 - **Three task kinds:**
   1. `scan`: one source → list of `JobCandidate`.
   2. `fit`: candidate + master CV → `FitScore { score 0–100, reasons[], gaps[] }`.
@@ -198,7 +220,7 @@ bs-job-agents/
 
 #### Apply (Claude, L1)
 - **Input:** approved application (job URL, PDF path, cover/intro text, saved answers) **plus an approval token**.
-- **Tools:** Playwright MCP with full interaction, restricted to the approved job's domain(s); file upload.
+- **Tools:** Ba's Chrome through the extension with full interaction (uses Ba's existing logins), restricted to the approved job's domain(s); file upload of the approved PDF only.
 - **Does:** opens the form, fills fields, uploads the PDF, ticks the employer consent box (covered by Ba's approval, §8 UC-08), submits, captures a confirmation screenshot and confirmation text.
 - **Pauses:** on any required field with no saved answer (salary expectation, notice period, visa…), on a CAPTCHA, or on login.
 - **Self-check before submit:** the correct PDF filename is attached and visible; all required fields are filled; the company and job title on the page match the approved job.
@@ -459,7 +481,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 - **End state:** work continues after the reset without Ba.
 
 ### UC-17: Login expired, CAPTCHA, or Figma auth
-- **Main flow:** the task pauses with reason `needs_login(site)` / `captcha(site)` / `figma_auth`. Lead asks Ba to fix it in the shared browser profile (opened for Ba) or to re-authenticate Figma. Ba clicks "Done", and the task resumes.
+- **Main flow:** the task pauses with reason `needs_login(site)` / `captcha(site)` / `figma_auth`. Lead asks Ba to fix it in Ba's own Chrome (the bot's tab is brought to front) or to re-authenticate Figma. Because bots reuse Ba's Chrome, this should only happen when a site session has actually expired. Ba clicks "Done", and the task resumes.
 - **End state:** task resumed; no credentials stored by the app.
 
 ### UC-18: Crash or restart recovery
@@ -532,12 +554,14 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 3. **Truthfulness:** master data is read-only for bots. Every CV bullet must cite `factIds`, and QA hard-fails unsupported claims.
 4. **Untrusted content:** every prompt that includes fetched web content wraps it in a delimited `UNTRUSTED_CONTENT` block, with the instruction that it is data and never instructions. QA reports `injectionSuspected`, and Apply is disabled for flagged jobs until Ba confirms.
 5. **One application per job:** a unique constraint on `applications.job_id` (overridable only by an explicit "apply again").
-6. **No credentials stored:** logins live in the shared browser profile Ba controls.
-7. **Audit log:** every task, tool-relevant event, approval and safety denial is written to `events`.
+6. **No credentials stored:** logins live in Ba's own Chrome. Bots never read cookies, passwords or other tabs.
+7. **Site allowlist for the real browser:** because bots drive the Chrome where Ba is logged into everything (email, banking…), each bot has an explicit `allowedSites` list (Research: job sites; Apply: the token's domains; CV: figma.com). The extension's site permissions are set to match, and any navigation outside the list stops the task and logs a safety event.
+8. **Audit log:** every task, tool-relevant event, approval and safety denial is written to `events`.
 
 ### 10.3 Concurrency
 - Per-engine session caps: default Claude 2, Codex 2 (configurable).
-- **Browser lock:** tasks using the shared logged-in browser profile run one at a time, because a browser profile cannot safely be shared by two sessions. Search-only Research tasks don't need the lock.
+- **Browser lock:** tasks driving Ba's Chrome run one at a time, so two bots never fight over the same browser, and each works in its own tab group labelled with the bot name. Search-only Research tasks don't need the lock.
+- **Chrome not open** (e.g. a scheduled scan while Chrome is closed): browser tasks wait as `needs_browser`, Ba gets a notification, and they start as soon as the extension reconnects. Non-browser steps keep running.
 - Group room replies obey the same caps.
 
 ---
@@ -584,7 +608,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | Stage | Output | Gate |
 |---|---|---|
 | **0. Clickable prototype** | Throwaway HTML/React prototype of every screen in §11 and the main flows UC-01, 07, 08, 09, 10, 11, 12, 16, 22, with fake data | Ba approves the UX |
-| **S. Technical spikes** (throwaway) | Findings doc answering: **S1** exact `claude -p` / `codex exec` flags for tool restriction, MCP config per bot, JSON output, and the usage-limit error format; **S2** Playwright MCP with a persistent logged-in profile in headless CLI sessions; **S3** Figma MCP from a headless session: duplicate frame, edit text, export PDF; **S4** Codex structured output (`--output-schema` or equivalent) | Findings reviewed; spec updated if any assumption breaks |
+| **S. Technical spikes** (throwaway) | Findings doc answering: **S1** exact `claude -p` / `codex exec` flags for tool restriction, MCP config per bot, JSON output, and the usage-limit error format; **S2** driving Ba's real Chrome from a non-interactive session: `claude -p --chrome` with Claude in Chrome, and `codex exec` with ChatGPT for Chrome (or via the Codex app-server if `exec` cannot reach the extension); also per-site permission prompts, tab-group isolation, and file upload of a local PDF; **S3** Figma MCP from a headless session: duplicate frame, edit text, export PDF; **S4** Codex structured output with `codex exec --output-schema <file>` (flag confirmed to exist on 2026-10-10; verify behaviour) | Findings reviewed; spec updated if any assumption breaks |
 | **Plan** | Implementation plan (writing-plans skill), split into small tasks, test-first | Ba approves the plan and picks the execution method |
 | **1…n. Build slices** | Engine + FakeRunner first, then the real runner, then bots one at a time, then UI screens | Per plan |
 
@@ -603,6 +627,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | 2026-10-10 | Scheduled scans + chat-triggered; max 5 jobs per scan; fit ≥ 60; QA ≥ 80; max 3 QA rounds |
 | 2026-10-10 | One approval per job covers submit + consent; Apply pauses on unknown questions |
 | 2026-10-10 | Parallel fan-out allowed; caps Claude 2 / Codex 2; browser lock |
+| 2026-10-10 | Bots drive Ba's real Chrome via Claude in Chrome / ChatGPT for Chrome extensions (reuse logins); per-bot site allowlists; `needs_browser` wait when Chrome is closed |
 | 2026-10-10 | Usage limit → wait for reset → auto-continue; no engine switching |
 | 2026-10-10 | Promotion: system suggests, Ba approves |
 | 2026-10-10 | UI: chat-first (Grok Bot style), bs-kara theme, Tailwind v4, React Flow canvas (ElevenLabs Flows style) |
