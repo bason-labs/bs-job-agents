@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Agents Prototype</title>
+<!-- STAGE 0 CLICKABLE PROTOTYPE — throwaway. Fake data, simulated bots. Not product code. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.11"></script>
+<style type="text/tailwindcss">
+  @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+  :root {
+    --bg:#f7f8fa; --surface:#ffffff; --surface-2:#f1f4f8; --surface-3:#e8edf3; --border:#e3e7ec;
+    --fg:#0f172a; --muted:#64748b; --brand:#006d6f; --brand-2:#008b8b; --glow:#0d98ba; --accent:#15a3c7; --danger:#c92d3a;
+    --ok:#1a7f37; --warn:#b7791f; --grid: rgba(15,23,42,.08);
+  }
+  [data-theme="dark"] {
+    --bg:#06100f; --surface:#0e1c1c; --surface-2:#152a2a; --surface-3:#1a3535; --border:#1f3a3a;
+    --fg:#e0ffff; --muted:#7aa8a8; --brand:#008b8b; --brand-2:#006d6f; --glow:#7df9ff; --accent:#40e0d0; --danger:#ff5f6d;
+    --ok:#3fd68a; --warn:#f2c14e; --grid: rgba(125,249,255,.07);
+  }
+  @theme inline {
+    --color-bg:var(--bg); --color-surface:var(--surface); --color-surface-2:var(--surface-2); --color-surface-3:var(--surface-3);
+    --color-border:var(--border); --color-fg:var(--fg); --color-muted:var(--muted); --color-brand:var(--brand); --color-brand-2:var(--brand-2);
+    --color-glow:var(--glow); --color-accent:var(--accent); --color-danger:var(--danger); --color-ok:var(--ok); --color-warn:var(--warn);
+    --font-sans:"Be Vietnam Pro","Segoe UI",Arial,sans-serif; --font-display:"Space Grotesk","Be Vietnam Pro",sans-serif;
+  }
+  @utility bg-gradient-brand { background-image: linear-gradient(135deg,#008b8b 0%,#006d6f 60%,#0d98ba 100%); }
+  @utility shadow-glow { box-shadow: 0 0 24px -4px rgba(13,152,186,.45); }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--font-sans);
+    background-image:
+      radial-gradient(60vmax 60vmax at 15% -10%, color-mix(in oklab, var(--brand) 18%, transparent), transparent 60%),
+      radial-gradient(50vmax 50vmax at 110% 110%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 60%);
+    background-attachment: fixed;
+  }
+  [x-cloak] { display: none !important; }
+  .canvas { background-image: radial-gradient(var(--grid) 1.2px, transparent 1.2px); background-size: 18px 18px; }
+  @keyframes dash { to { stroke-dashoffset: -24; } }
+  .flowing { stroke-dasharray: 6 6; animation: dash .8s linear infinite; }
+  @keyframes ring { 0%,100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 55%, transparent), 0 0 24px -4px rgba(13,152,186,.45);} 50% { box-shadow: 0 0 0 6px transparent, 0 0 30px -2px rgba(64,224,208,.6);} }
+  .running { animation: ring 1.8s ease-in-out infinite; border-color: var(--accent) !important; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .caret { display:inline-block; width:7px; height:14px; background:var(--accent); vertical-align:-2px; animation: blink 1s steps(2) infinite; }
+  .nav-on { background: var(--surface-2); color: var(--fg); }
+  input, textarea, select { background: var(--surface); border: 1px solid var(--border); border-radius: .75rem; padding: .5rem .75rem; color: var(--fg); outline: none; }
+  input:focus, textarea:focus, select:focus { box-shadow: 0 0 0 3px rgba(13,152,186,.35); }
+</style>
+<script>
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+function app() {
+  return {
+    view: 'chat',
+    theme: 'dark',
+    drawer: null,          // node key for inspect drawer
+    modal: null,           // {type, job}
+    toasts: [],
+    composer: '',
+    roomInput: '',
+    changeComment: '',
+    skipReason: 'salary_low',
+    skipNote: '',
+    answer: '',
+    rememberAnswer: true,
+    runCounter: 12,
+    run: null,             // active simulated run
+    engines: { claude: { pausedUntil: 0, left: 0 }, codex: { pausedUntil: 0, left: 0 } },
+    chromeConnected: true,
+    bots: [
+      { name: 'Lead', key: 'lead', engine: 'Claude', trust: 'L1', status: 'idle', role: 'Receives every request; only divides work.', track: '—', promptVersion: 3, memory: ['Ba prefers product companies over outsourcing.', 'Ask one question max before starting a scan.'] },
+      { name: 'Research', key: 'research', engine: 'Codex', trust: 'L2', status: 'idle', role: 'Finds jobs, scores fit, profiles companies (read-only browser).', track: '41 tasks · 95% self-check pass', promptVersion: 2, memory: ['TopCV salary often hidden: read "Mức lương" field.', 'LinkedIn: stop at 40 page views.'] },
+      { name: 'CV', key: 'cv', engine: 'Claude', trust: 'L2', status: 'idle', role: 'Tailors CV in Figma from master facts; never invents.', track: '18 CVs · 61% pass QA first round', promptVersion: 4, memory: ['Template "Refreshed" fits 1 page with max 3 projects.', 'Always check hidden frames before export.'] },
+      { name: 'QA', key: 'qa', engine: 'Codex', trust: 'L2', status: 'idle', role: 'Scores CV vs JD + company; hard-fails invented facts.', track: '29 reviews', promptVersion: 2, memory: ['Vietnamese JDs: check diacritics in PDF text.'] },
+      { name: 'Apply', key: 'apply', engine: 'Claude', trust: 'L1', status: 'idle', role: 'Fills & submits forms in your Chrome after your approval.', track: '10 approved in a row without edits', promptVersion: 1, memory: ['TopCV: upload limit 5MB.'], promoteSuggested: true },
+    ],
+    steps: [],
+    jobs: [
+      { id: 1, company: 'NovaPay', title: 'Senior Frontend Engineer (React/Next.js)', source: 'ITviec', salary: '2,000–2,800 USD', loc: 'HCM · hybrid', fit: 87, lang: 'EN', status: 'review', qa: 88, round: 1, qaPassed: true,
+        why: ['React/Next.js + TypeScript ownership matches Gradion apps', 'Payments flow experience (Apps Cyclone)', 'Gap: asks for GraphQL — not in master data'],
+        companyNote: 'Fintech product company, ~250 people. Culture: ownership, code review heavy. Benefits: 13th month, hybrid 3/2, MacBook, health insurance.',
+        scores: { jd: 36, tone: 17, ats: 19, clarity: 16 }, needsAnswer: false },
+      { id: 2, company: 'Sao Việt Tech', title: 'Lập trình viên Frontend ReactJS', source: 'TopCV', salary: '25–35 triệu', loc: 'HCM · onsite', fit: 82, lang: 'VI', status: 'review', qa: 84, round: 2, qaPassed: true, cvLang: 'VI',
+        why: ['ReactJS + responsive UI matches', 'Vietnamese JD → VI and EN CVs prepared', 'Gap: prefers Redux Toolkit experience'],
+        companyNote: 'Product + some outsourcing, ~80 people. Culture: young team, Friday tech talks. Benefits: lunch allowance, 13th month.',
+        scores: { jd: 33, tone: 17, ats: 18, clarity: 16 }, needsAnswer: true },
+      { id: 3, company: 'Kite Labs', title: 'Software Engineer — AI Workflows', source: 'LinkedIn', salary: 'not listed', loc: 'Remote (VN)', fit: 79, lang: 'EN', status: 'review', qa: 76, round: 3, qaPassed: false,
+        why: ['n8n + Genkit AI workflow experience is a direct match', 'Node.js backend ownership', 'Gap: asks for Python 3+ years'],
+        companyNote: 'AI SaaS startup, ~30 people, remote-first. Culture: async, writing-heavy. Benefits: equity, flexible hours.',
+        scores: { jd: 30, tone: 16, ats: 16, clarity: 14 }, needsAnswer: false,
+        qaNote: 'QA did not pass after 3 rounds: JD wants Python, master data has none. Decide: approve anyway, request changes, or skip.' },
+    ],
+    applications: [
+      { company: 'DEKON', role: 'Senior Developer (NodeJS, ReactJS, AI)', source: 'TopCV', cv: 'DEKON_Figma_EN_v1', at: '2026-10-10 15:40', status: 'submitted' },
+      { company: 'SMARTBIT', role: 'Frontend Developer', source: 'TopCV', cv: 'SMARTBIT_Figma_EN_v2', at: '2026-10-10 15:44', status: 'submitted' },
+      { company: 'YAVIET', role: 'Frontend Developer (ReactJS, NextJS, TS)', source: 'TopCV', cv: 'YAVIET_Figma_EN_v1', at: '2026-10-10 15:38', status: 'submitted' },
+    ],
+    criteria: {
+      version: 3, updated: '2026-10-10',
+      roles: ['Frontend Engineer', 'Software Engineer (React/Node)'], locations: ['Ho Chi Minh City', 'Remote (VN)'],
+      modes: { onsite: true, hybrid: true, remote: true }, minSalary: 25000000, currency: 'VND', seniority: { junior: false, mid: true, senior: true },
+      sources: { TopCV: true, ITviec: true, LinkedIn: true }, include: ['React', 'Next.js', 'TypeScript'], exclude: ['PHP', 'WordPress'],
+      excludedCompanies: [], companyTypes: ['product', 'AI'], maxJobs: 5, fit: 60, dirty: false,
+    },
+    newChip: { roles: '', locations: '', include: '', exclude: '', excludedCompanies: '', companyTypes: '' },
+    schedules: [ { name: 'Weekday morning scan', cron: 'Weekdays 09:00', profile: 'Default (v3)', enabled: true, next: 'Mon 13 Oct, 09:00', last: 'Fri 10 Oct · 3 to review' } ],
+    facts: [
+      { id: 'grad-1', org: 'Gradion', type: 'experience', text: 'Owned a React/Node.js performance review app used by ~300 employees across VN, TH, SG, DE; embedded in internal workspace.' },
+      { id: 'grad-2', org: 'Gradion', type: 'experience', text: 'Owned multi-country purchase order system and invoice extraction workflow for finance teams.' },
+      { id: 'grad-3', org: 'Gradion', type: 'project', text: 'AI-assisted CV screening: n8n scoring vs requirements; Genkit flow refines prompts from reviewer votes.' },
+      { id: 'grad-4', org: 'Gradion', type: 'experience', text: 'Ops: Grafana logs, Kubernetes runtime, Jenkins builds, SendGrid email.' },
+      { id: 'aeg-1', org: 'Aegona', type: 'experience', text: 'Built booking, dynamic pricing and loyalty flows (AngularJS, Flutter, Firebase, Vendure).' },
+      { id: 'apc-1', org: 'Apps Cyclone', type: 'experience', text: 'Role-based education portal and payment flows with Next.js 14, Tailwind, Ant Design.' },
+      { id: 'skill-1', org: '—', type: 'skill', text: 'JavaScript, TypeScript, React, Next.js, Vue/Nuxt, Angular, Node.js, PostgreSQL, Vitest, Playwright' },
+    ],
+    chat: [],
+    room: [
+      { from: 'Ba', text: '@CV @QA how should I present the AI lab work for AI-focused roles?' },
+      { from: 'CV', text: 'Lead with the CV-screening project as the first Gradion bullet: "Built AI-assisted CV screening (n8n + Genkit) that learns from reviewer feedback". Keep it to one line, link to fact grad-3.' },
+      { from: 'QA', text: 'Agree. For ATS, include the literal keywords "LLM", "prompt engineering" only if master data supports them — right now it supports "AI workflows" and "prompts", not "LLM fine-tuning".' },
+    ],
+
+    init() {
+      this.resetSteps();
+      this.chat = [
+        { from: 'lead', html: 'Hi Ba 👋 I take every request and hand work to the team. Try: <b>"Find frontend jobs in HCM, React/Next.js, ≥ 25M"</b> — or use the <b>Simulate</b> menu to run a scheduled scan.' },
+      ];
+      setInterval(() => this.tickEngines(), 1000);
+    },
+
+    // ---------- helpers ----------
+    toast(msg, kind = 'ok') { const id = Date.now() + Math.random(); this.toasts.push({ id, msg, kind }); setTimeout(() => this.toasts = this.toasts.filter(t => t.id !== id), 3500); },
+    toggleTheme() { this.theme = this.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = this.theme; },
+    bot(key) { return this.bots.find(b => b.key === key); },
+    get reviewCount() { return this.jobs.filter(j => j.status === 'review').length; },
+    get anyPaused() { return this.engines.claude.left > 0 || this.engines.codex.left > 0; },
+    step(key) { return this.steps.find(s => s.key === key); },
+    get dd() { return this.drawer ? this.drawerData(this.drawer) : {}; },
+    get edgesSvg() {
+      const pairs = [['trigger','scan'],['scan','fit'],['fit','company'],['company','cv'],['cv','qa'],['qa','review']];
+      let out = pairs.map(([a, b]) => {
+        const A = this.step(a), B = this.step(b); if (!A || !B) return '';
+        const x1 = A.x + 150, y1 = A.y + 28, x2 = B.x, y2 = B.y + 28;
+        const st = B.status;
+        const lit = ['done','failed','running'].includes(st) || (b === 'review' && st === 'waiting');
+        const stroke = lit ? '#40e0d0' : 'var(--border)';
+        const dash = ['pending','locked'].includes(st) ? ' stroke-dasharray="3 5"' : '';
+        const cls = st === 'running' ? ' class="flowing"' : '';
+        return `<path d="M${x1},${y1} C${x1+30},${y1} ${x2-30},${y2} ${x2},${y2}" stroke="${stroke}" stroke-width="2"${dash}${cls}/>`;
+      }).join('');
+      if (this.step('qa') && this.step('qa').rounds.length) out += '<path d="M1095,330 C1095,450 895,460 895,360" stroke="#ff5f6d" stroke-width="2" stroke-dasharray="4 5"/>';
+      out += '<path d="M1295,330 L1295,470" stroke="var(--border)" stroke-width="2" stroke-dasharray="3 5"/>';
+      out += '<path d="M1220,510 L1170,510" stroke="var(--border)" stroke-width="2" stroke-dasharray="3 5"/>';
+      return out;
+    },
+    dot(status) { return { done: 'bg-ok', running: 'bg-accent animate-pulse', failed: 'bg-danger', waiting: 'bg-warn', paused: 'bg-warn', pending: 'bg-surface-3', locked: 'bg-warn' }[status] || 'bg-surface-3'; },
+
+    resetSteps() {
+      this.steps = [
+        { key: 'trigger', label: 'Trigger', bot: 'You / schedule', engine: '—', status: 'done', detail: 'Chat or weekdays 09:00', x: 20, y: 200 },
+        { key: 'scan', label: 'Scan sources', bot: 'research', engine: 'Codex', status: 'pending', detail: 'TopCV · ITviec · LinkedIn', x: 220, y: 140, parallel: 3 },
+        { key: 'fit', label: 'Dedupe + fit score', bot: 'research', engine: 'Codex', status: 'pending', detail: 'keep fit ≥ 60, top 5', x: 420, y: 200 },
+        { key: 'company', label: 'Company profile', bot: 'research', engine: 'Codex', status: 'pending', detail: '×3 in parallel', x: 620, y: 110, parallel: 3 },
+        { key: 'cv', label: 'Tailor CV', bot: 'cv', engine: 'Claude', status: 'pending', detail: 'Figma Drafts page', x: 820, y: 200 },
+        { key: 'qa', label: 'QA score vs JD', bot: 'qa', engine: 'Codex', status: 'pending', detail: 'pass ≥ 80 · max 3 rounds', x: 1020, y: 140, rounds: [] },
+        { key: 'review', label: 'Your review', bot: 'you', engine: '—', status: 'pending', detail: 'approve / changes / skip', x: 1220, y: 200 },
+        { key: 'apply', label: 'Fill & submit', bot: 'apply', engine: 'Claude', status: 'locked', detail: 'unlocks after approval', x: 1220, y: 470 },
+        { key: 'record', label: 'Applications', bot: 'store', engine: '—', status: 'pending', detail: 'link · CV version · screenshot', x: 1020, y: 480 },
+      ];
+    },
+
+    // engine pause / resume (UC-16)
+    tickEngines() {
+      for (const name of ['claude', 'codex']) {
+        const e = this.engines[name];
+        if (e.pausedUntil) {
+          e.left = Math.max(0, Math.ceil((e.pausedUntil - Date.now()) / 1000));
+          if (e.left === 0) {
+            e.pausedUntil = 0;
+            this.lead(`✅ ${name === 'claude' ? 'Claude' : 'ChatGPT'} usage limit has reset — <b>resumed automatically</b>. No action needed.`);
+            this.toast(`${name === 'claude' ? 'Claude' : 'ChatGPT'} resumed`);
+            this.steps.forEach(s => { if (s.status === 'waiting' && s.waitReason === 'limit') { s.status = s.prevStatus || 'running'; s.waitReason = null; } });
+          }
+        }
+      }
+    },
+    async gate(engineName) { // waits while engine paused or chrome disconnected
+      const key = engineName === 'Claude' ? 'claude' : 'codex';
+      while (this.engines[key].pausedUntil || !this.chromeConnected) await wait(400);
+    },
+    simulateLimit(engine) {
+      const e = this.engines[engine];
+      e.pausedUntil = Date.now() + 15000; e.left = 15;
+      const label = engine === 'claude' ? 'Claude' : 'ChatGPT';
+      this.steps.forEach(s => { if (s.status === 'running' && s.engine === (engine === 'claude' ? 'Claude' : 'Codex')) { s.prevStatus = 'running'; s.status = 'waiting'; s.waitReason = 'limit'; } });
+      this.lead(`⏸ ${label} usage limit reached. Paused tasks on ${label} until the reset (<b>~15 s in this demo</b>); they'll <b>continue automatically</b>.`);
+    },
+    simulateChrome() {
+      this.chromeConnected = !this.chromeConnected;
+      if (!this.chromeConnected) this.lead('🌐 Chrome is closed — browser steps are waiting (<i>needs_browser</i>). They start as soon as Chrome reconnects.');
+      else this.lead('🌐 Chrome reconnected — browser steps resumed.');
+    },
+
+    // ---------- chat ----------
+    lead(html, extra = {}) { this.chat.push({ from: 'lead', html, ...extra }); this.$nextTick(() => { const el = document.getElementById('chatScroll'); if (el) el.scrollTop = el.scrollHeight; }); },
+    send() {
+      const text = this.composer.trim(); if (!text) return;
+      this.chat.push({ from: 'ba', text }); this.composer = '';
+      if (/include|also/i.test(text) && /đà nẵng|da nang/i.test(text)) {
+        this.lead('Add <b>Đà Nẵng</b> just for this run, or save it to your search criteria?', { choice: 'criteria' });
+        return;
+      }
+      if (/https?:\/\//.test(text)) { this.lead('Got the link. Starting <b>apply-to-link</b>: Research reads the JD, then company → CV → QA → your review.'); this.startRun('link'); return; }
+      if (/status|progress|where/i.test(text) && this.run) { this.lead(`Run #${this.run.id} is at <b>${(this.steps.find(s => s.status === 'running' || s.status === 'waiting') || {}).label || 'review'}</b>. ${this.reviewCount} cards are waiting for you.`); return; }
+      this.startRun('chat');
+    },
+    criteriaChoice(save) {
+      if (save) { this.criteria.locations.push('Đà Nẵng'); this.criteria.version++; this.lead('Saved to your search criteria (now <b>v' + this.criteria.version + '</b>). Next scan includes Đà Nẵng.'); }
+      else this.lead('OK — Đà Nẵng only for the next run. Your saved criteria stay the same.');
+    },
+
+    // ---------- simulated run (UC-01..07) ----------
+    async startRun(trigger) {
+      if (this.run && this.run.active) { this.lead('A scan is already running — I\'ll fold this into the next one.'); return; }
+      this.resetSteps(); this.runCounter++;
+      this.run = { id: this.runCounter, trigger, active: true, started: Date.now() };
+      this.lead(`Started <b>Job scan #${this.run.id}</b> (${trigger === 'schedule' ? 'scheduled' : 'from chat'}) using search criteria v${this.criteria.version}. Delegating now.`, { runCard: true });
+      const S = k => this.step(k);
+      const work = async (k, ms, bot) => { const s = S(k); await this.gate(s.engine); s.status = 'running'; if (bot) this.bot(bot).status = 'working'; let t = 0; while (t < ms) { await wait(200); if (s.status !== 'waiting') t += 200; } s.status = 'done'; if (bot) this.bot(bot).status = 'idle'; };
+
+      await work('scan', 2600, 'research'); S('scan').detail = '34 found → 21 new';
+      await work('fit', 1800, 'research'); S('fit').detail = '3 jobs ≥ 60 (16 dropped, 2 already applied)';
+      await work('company', 2200, 'research'); S('company').detail = '3/3 profiles · 1 cached';
+      // CV ⇄ QA gate
+      S('cv').detail = 'round 1'; await work('cv', 2200, 'cv');
+      await work('qa', 1600, 'qa'); S('qa').rounds.push({ n: 1, score: 72, pass: false, note: 'missing "Next.js" · 2 pages' }); S('qa').status = 'failed';
+      this.lead('QA sent the NovaPay CV back (72): missing <b>Next.js</b> and ran to 2 pages. CV is revising (round 2).');
+      S('cv').detail = 'round 2 · adding Next.js, fit to 1 page'; await work('cv', 2200, 'cv');
+      await work('qa', 1600, 'qa'); S('qa').rounds.push({ n: 2, score: 88, pass: true, note: 'all criteria met' });
+      S('review').status = 'waiting'; S('review').detail = this.reviewCount + ' ready for you';
+      this.run.active = false;
+      this.lead(`🎯 <b>${this.reviewCount} jobs ready for review</b>: NovaPay 87 · Sao Việt Tech 82 · Kite Labs 79 (QA not passed — needs your decision).`, { reviewLink: true });
+      this.toast('Review queue: ' + this.reviewCount + ' ready');
+    },
+
+    // ---------- review actions (UC-08..12) ----------
+    approve(job) { this.modal = { type: 'approve', job }; },
+    async confirmApprove() {
+      const job = this.modal.job; this.modal = null;
+      job.status = 'applying'; const ap = this.step('apply'); ap.status = 'running'; ap.detail = `${job.company}: filling form`; this.bot('apply').status = 'working';
+      this.lead(`Approval token created for <b>${job.company}</b>. Apply is filling the form in your Chrome (tab group "Apply").`);
+      await this.gate('Claude'); await wait(2200);
+      if (job.needsAnswer) {
+        ap.status = 'paused'; ap.detail = 'waiting for your answer';
+        this.lead(`❓ ${job.company}'s form asks a question I have no saved answer for:`, { question: true, job });
+        return;
+      }
+      this.finishApply(job);
+    },
+    async answerQuestion(msg) {
+      if (!this.answer.trim()) return;
+      const job = msg.job; msg.answered = this.answer; msg.remembered = this.rememberAnswer;
+      this.chat.push({ from: 'ba', text: this.answer }); this.answer = '';
+      job.needsAnswer = false; this.step('apply').status = 'running';
+      this.lead(this.rememberAnswer ? 'Thanks — saved as a remembered answer for future forms. Continuing.' : 'Thanks — continuing (not saved).');
+      await wait(1800); this.finishApply(job);
+    },
+    finishApply(job) {
+      job.status = 'applied'; const ap = this.step('apply'); ap.status = 'done'; ap.detail = `${job.company}: submitted ✓`; this.bot('apply').status = 'idle';
+      this.step('record').status = 'done';
+      this.applications.unshift({ company: job.company, role: job.title, source: job.source, cv: `${job.company.replace(/\s/g,'')}_${job.cvLang || job.lang}_v${job.round}`, at: 'just now', status: 'submitted', fresh: true });
+      this.lead(`✅ <b>${job.company}</b> submitted. Confirmation captured and saved to Applications.`);
+      this.toast(job.company + ' submitted');
+    },
+    requestChanges(job) { this.changeComment = ''; this.modal = { type: 'changes', job }; },
+    async confirmChanges() {
+      const job = this.modal.job; const c = this.changeComment || '(no comment)'; this.modal = null;
+      job.status = 'revising'; this.lead(`Sent your note to <b>@CV</b> for ${job.company}: “${c}”. QA will re-score it.`);
+      await wait(3000); job.round++; job.qa = Math.min(95, job.qa + 4); job.status = 'review'; job.qaPassed = job.qa >= 80;
+      this.toast(job.company + ': revised CV back in review');
+    },
+    skip(job) { this.skipReason = 'salary_low'; this.skipNote = ''; this.modal = { type: 'skip', job }; },
+    confirmSkip() { const job = this.modal.job; job.status = 'skipped'; job.skipReason = this.skipReason; this.modal = null; this.toast(job.company + ' skipped (' + this.skipReason.replace('_', ' ') + ')'); },
+
+    // ---------- criteria ----------
+    addChip(field) { const v = this.newChip[field].trim(); if (!v) return; this.criteria[field].push(v); this.newChip[field] = ''; this.criteria.dirty = true; },
+    removeChip(field, i) { this.criteria[field].splice(i, 1); this.criteria.dirty = true; },
+    saveCriteria() {
+      if (!this.criteria.roles.length || !this.criteria.locations.length || !Object.values(this.criteria.sources).some(Boolean)) { this.toast('Need at least one role, location and source', 'err'); return; }
+      this.criteria.version++; this.criteria.dirty = false; this.criteria.updated = 'just now'; this.toast('Search criteria saved as v' + this.criteria.version);
+    },
+
+    // ---------- room (UC-15) ----------
+    sendRoom() {
+      const t = this.roomInput.trim(); if (!t) return; this.room.push({ from: 'Ba', text: t }); this.roomInput = '';
+      const mentions = ['CV', 'QA', 'Research', 'Apply', 'Lead'].filter(n => t.includes('@' + n));
+      if (!mentions.length) { this.room.push({ from: 'system', text: 'No bot mentioned — type @ to ask a specific bot.' }); return; }
+      const canned = {
+        CV: 'From my side: I can draft two variants and let QA pick. I only use facts already in your master data.',
+        QA: 'I would score this on JD keyword coverage first; tone second. Happy to run a dry score.',
+        Research: 'I can pull 3 example JDs for that role so we compare against real requirements.',
+        Apply: 'I don\'t act in rooms (discussion mode). Approve a review card and I\'ll handle the form.',
+        Lead: 'Want me to turn this into a task? Say "@Lead make it a task".',
+      };
+      mentions.forEach((m, i) => setTimeout(() => this.room.push({ from: m, text: canned[m] }), 900 + i * 700));
+    },
+
+    // ---------- drawer content (UC-22) ----------
+    drawerData(key) {
+      const s = this.step(key); if (!s) return {};
+      const io = {
+        scan: { input: '{ sources: [TopCV, ITviec, LinkedIn], criteria: v' + this.criteria.version + ' }', output: '34 JobCandidate (21 new)', checks: ['Every job has a reachable URL ✓', 'Full JD text captured ✓', 'No duplicates in output ✓'] },
+        fit: { input: '21 candidates + master CV v7', output: 'FitScore ×21 → top 3 ≥ 60', checks: ['Every score has reasons ✓', 'Gaps listed ✓'] },
+        company: { input: 'NovaPay, Sao Việt Tech, Kite Labs', output: 'CompanyProfile ×3 (1 cache hit)', checks: ['≥ 2 independent sources each ✓'] },
+        cv: { input: 'JD + company profile + master facts + QA fixes', output: 'CvDraft (Figma frame NovaPay_FE_EN_v2, PDF 1 page)', checks: ['One A4 page ✓', 'No hidden/overflow frames ✓', 'Every bullet cites factIds ✓', 'Company name correct ✓'] },
+        qa: { input: 'CvDraft + JD + PDF text', output: 'QaReview rounds: ' + (s.rounds||[]).map(r => r.score).join(' → '), checks: ['Each score justified ✓', 'Fixes actionable ✓'] },
+        apply: { input: 'approval token + PDF + intro text', output: s.detail, checks: ['Correct PDF attached', 'Required fields filled', 'Page company matches approved job'] },
+      }[key] || { input: '—', output: s.detail, checks: [] };
+      return { ...s, ...io };
+    },
+  };
+}
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+</head>
+<body class="text-sm">
+<div x-data="app()" x-init="init()" x-cloak class="h-screen flex p-3 gap-3">
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="w-60 shrink-0 rounded-3xl border border-border bg-surface/50 backdrop-blur-md flex flex-col overflow-hidden">
+    <div class="flex items-center gap-2 px-4 py-4">
+      <div class="size-8 rounded-xl bg-gradient-brand shadow-glow grid place-items-center font-display font-bold text-white">J</div>
+      <span class="font-display font-semibold tracking-tight">Job Agents</span>
+      <span class="ml-auto text-[9px] rounded-full border border-border px-1.5 text-muted">prototype</span>
+    </div>
+    <nav class="px-2 space-y-0.5">
+      <template x-for="n in [['chat','Chat'],['flow','Flows'],['review','Review'],['apps','Applications'],['criteria','Search criteria'],['schedules','Schedules']]">
+        <a @click="view=n[0]" :class="view===n[0] ? 'nav-on' : 'text-muted'" class="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-surface-2 cursor-pointer">
+          <span x-text="n[1]"></span>
+          <span x-show="n[0]==='review' && reviewCount" x-text="reviewCount" class="rounded-full bg-danger text-white text-[10px] px-1.5"></span>
+          <span x-show="n[0]==='flow' && run && run.active" class="size-1.5 rounded-full bg-accent animate-pulse"></span>
+        </a>
+      </template>
+    </nav>
+    <p class="px-5 mt-4 mb-1 text-[10px] uppercase tracking-wider text-muted">Team</p>
+    <div class="px-2 space-y-0.5">
+      <template x-for="b in bots" :key="b.key">
+        <a @click="view='bots'" class="flex items-center justify-between rounded-lg px-3 py-1.5 hover:bg-surface-2 cursor-pointer">
+          <span class="flex items-center gap-2.5">
+            <span class="relative size-6 rounded-full grid place-items-center text-[10px] font-bold" :class="b.key==='lead' ? 'bg-gradient-brand text-white' : 'bg-surface-3 text-accent'" x-text="b.name[0]"></span>
+            <span x-text="b.name"></span>
+          </span>
+          <span class="flex items-center gap-1.5">
+            <span x-show="b.status==='working'" class="text-[10px] text-accent">working</span>
+            <span x-show="b.trust==='L1' && b.key==='apply'" class="rounded border border-warn/40 text-warn text-[9px] px-1">L1</span>
+            <span class="size-2 rounded-full" :class="b.status==='working' ? 'bg-accent animate-pulse' : 'bg-muted/50'"></span>
+          </span>
+        </a>
+      </template>
+    </div>
+    <p class="px-5 mt-4 mb-1 text-[10px] uppercase tracking-wider text-muted">Rooms</p>
+    <a @click="view='room'" :class="view==='room' ? 'nav-on' : 'text-muted'" class="mx-2 rounded-lg px-3 py-1.5 hover:bg-surface-2 cursor-pointer"># cv-brainstorm</a>
+    <a @click="view='cv'" :class="view==='cv' ? 'nav-on' : 'text-muted'" class="mx-2 mt-3 rounded-lg px-3 py-1.5 hover:bg-surface-2 cursor-pointer">Master CV</a>
+
+    <div class="mt-auto m-3 rounded-2xl border border-border bg-surface-2/50 p-3 space-y-1.5">
+      <p class="text-xs font-medium">Subscriptions</p>
+      <template x-for="e in [['claude','Claude',42],['codex','ChatGPT',18]]">
+        <div>
+          <div class="flex justify-between text-[10px]"><span class="text-muted" x-text="e[1]"></span>
+            <span x-show="!engines[e[0]].left" class="text-muted" x-text="e[2]+'%'"></span>
+            <span x-show="engines[e[0]].left" class="text-warn" x-text="'paused · resumes in '+engines[e[0]].left+'s'"></span></div>
+          <div class="h-1 rounded-full bg-surface-3"><div class="h-1 rounded-full" :class="engines[e[0]].left ? 'bg-warn w-full' : 'bg-gradient-brand'" :style="engines[e[0]].left ? '' : 'width:'+e[2]+'%'"></div></div>
+        </div>
+      </template>
+      <div class="flex justify-between text-[10px] pt-1"><span class="text-muted">Chrome extension</span><span :class="chromeConnected ? 'text-ok' : 'text-warn'" x-text="chromeConnected ? 'connected' : 'not connected'"></span></div>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <section class="flex-1 min-w-0 rounded-3xl border border-border bg-surface/50 backdrop-blur-md flex flex-col overflow-hidden relative">
+    <!-- top bar -->
+    <header class="flex items-center justify-between px-5 py-3 border-b border-border/60">
+      <div class="flex items-center gap-2 text-muted">
+        <span class="text-fg font-display font-semibold" x-text="{chat:'Chat with Lead',flow:'Flow · Job scan #'+(run?run.id:12),review:'Review queue',apps:'Applications',criteria:'Search criteria',schedules:'Schedules',bots:'Bots',cv:'Master CV',room:'# cv-brainstorm'}[view]"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <div x-data="{open:false}" class="relative">
+          <button @click="open=!open" class="rounded-xl border border-warn/50 text-warn bg-surface/70 px-3 py-1.5">Simulate ▾</button>
+          <div x-show="open" @click.outside="open=false" class="absolute right-0 mt-2 w-64 rounded-2xl border border-border bg-surface shadow-2xl p-1 z-30">
+            <button @click="open=false; startRun('schedule')" class="w-full text-left rounded-xl px-3 py-2 hover:bg-surface-2">⏰ Scheduled scan fires (UC-02)</button>
+            <button @click="open=false; simulateLimit('claude')" class="w-full text-left rounded-xl px-3 py-2 hover:bg-surface-2">⏸ Claude usage limit hit (UC-16)</button>
+            <button @click="open=false; simulateLimit('codex')" class="w-full text-left rounded-xl px-3 py-2 hover:bg-surface-2">⏸ ChatGPT usage limit hit (UC-16)</button>
+            <button @click="open=false; simulateChrome()" class="w-full text-left rounded-xl px-3 py-2 hover:bg-surface-2" x-text="chromeConnected ? '🌐 Close Chrome (needs_browser)' : '🌐 Reopen Chrome'"></button>
+          </div>
+        </div>
+        <button @click="toggleTheme()" class="rounded-xl border border-border bg-surface/70 px-3 py-1.5" x-text="theme==='dark' ? '☀︎ Light' : '☾ Dark'"></button>
+      </div>
+    </header>
+
+    <!-- paused banner -->
+    <div x-show="anyPaused || !chromeConnected" class="mx-5 mt-3 rounded-2xl border border-warn/40 bg-warn/10 px-4 py-2 text-xs text-warn flex gap-4">
+      <span x-show="engines.claude.left">⏸ Claude paused (usage limit) — auto-resume in <b x-text="engines.claude.left"></b>s</span>
+      <span x-show="engines.codex.left">⏸ ChatGPT paused (usage limit) — auto-resume in <b x-text="engines.codex.left"></b>s</span>
+      <span x-show="!chromeConnected">🌐 Chrome not connected — browser steps waiting</span>
+    </div>
+
+    <!-- ========== CHAT ========== -->
+    <div x-show="view==='chat'" class="flex-1 flex flex-col min-h-0 relative">
+      <div class="pointer-events-none absolute -top-32 left-1/4 h-64 w-1/2 rounded-full blur-3xl opacity-25 bg-gradient-brand"></div>
+      <div id="chatScroll" class="relative flex-1 overflow-y-auto">
+        <div class="mx-auto max-w-2xl px-6 py-6 space-y-5">
+          <template x-for="(m, i) in chat" :key="i">
+            <div>
+              <div x-show="m.from==='ba'" class="flex justify-end"><div class="max-w-[80%] rounded-3xl rounded-br-md bg-surface-2 border border-border px-4 py-3" x-text="m.text"></div></div>
+              <div x-show="m.from==='lead'" class="flex gap-3">
+                <div class="size-8 shrink-0 rounded-full bg-gradient-brand shadow-glow grid place-items-center text-xs font-bold text-white">L</div>
+                <div class="flex-1 space-y-2.5">
+                  <div class="flex items-center gap-2"><span class="font-display font-semibold">Lead</span><span class="text-[10px] rounded-full border border-border px-2 text-muted">Claude</span></div>
+                  <p class="leading-relaxed" x-html="m.html"></p>
+                  <!-- delegation trace -->
+                  <div x-show="m.runCard" class="rounded-2xl border border-border bg-surface/70 overflow-hidden">
+                    <div class="flex items-center justify-between px-4 py-2 border-b border-border bg-surface-2/50 text-xs">
+                      <span class="flex items-center gap-2"><span class="size-1.5 rounded-full" :class="run && run.active ? 'bg-accent animate-pulse' : 'bg-ok'"></span><b x-text="'Job scan #'+(run?run.id:'')"></b> · delegated tasks</span>
+                      <button @click="view='flow'" class="text-accent">Open flow ↗</button>
+                    </div>
+                    <div class="divide-y divide-border/60 text-xs">
+                      <template x-for="s in steps.filter(s => ['scan','fit','company','cv','qa'].includes(s.key))" :key="s.key">
+                        <div class="flex items-center gap-3 px-4 py-2" :class="s.status==='running' ? 'bg-accent/5' : (s.status==='pending' ? 'opacity-50' : '')">
+                          <span class="size-2 rounded-full" :class="dot(s.status)"></span>
+                          <span class="text-muted">Lead →</span><b :class="s.status==='running' ? 'text-accent' : ''" x-text="'@'+bot(s.bot).name"></b>
+                          <span class="text-muted flex-1 truncate" x-text="s.label+' — '+s.detail"></span>
+                          <span :class="{running:'text-accent',failed:'text-danger',waiting:'text-warn'}[s.status] || 'text-muted'" x-text="s.status==='waiting' ? 'waiting (limit)' : s.status"></span>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                  <button x-show="m.reviewLink" @click="view='review'" class="rounded-full bg-gradient-brand text-white text-xs px-3 py-1.5 shadow-glow">Open review queue →</button>
+                  <div x-show="m.choice==='criteria'" class="flex gap-2">
+                    <button @click="criteriaChoice(false); m.choice=null" class="rounded-full border border-border px-3 py-1.5 text-xs">Just this run</button>
+                    <button @click="criteriaChoice(true); m.choice=null" class="rounded-full bg-gradient-brand text-white px-3 py-1.5 text-xs shadow-glow">Save to my criteria</button>
+                  </div>
+                  <!-- unknown question (UC-12) -->
+                  <template x-if="m.question && !m.answered">
+                  <div class="rounded-2xl border border-warn/40 bg-warn/5 p-3 space-y-2">
+                    <p class="text-xs text-muted">Form field (required)</p>
+                    <p class="font-medium">Mức lương mong muốn / Expected salary (VND)</p>
+                    <div class="flex gap-2"><input x-model="answer" @keydown.enter="answerQuestion(m)" placeholder="e.g. 32,000,000" class="flex-1"><button @click="answerQuestion(m)" class="rounded-xl bg-gradient-brand text-white px-4 shadow-glow">Send</button></div>
+                    <label class="flex items-center gap-2 text-xs text-muted"><input type="checkbox" x-model="rememberAnswer" class="!p-0"> Remember this answer for future forms</label>
+                  </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="relative px-6 pb-5">
+        <div class="mx-auto max-w-2xl">
+          <div class="flex flex-wrap gap-2 mb-2 text-xs">
+            <button @click="composer='Find frontend jobs in HCM, React/Next.js, salary ≥ 25M'; send()" class="rounded-full border border-border bg-surface/70 px-3 py-1 text-muted hover:text-fg">Find frontend jobs in HCM</button>
+            <button @click="composer='Apply to this: https://itviec.com/it-jobs/frontend-engineer-novapay'; send()" class="rounded-full border border-border bg-surface/70 px-3 py-1 text-muted hover:text-fg">Paste a job link</button>
+            <button @click="composer='Also include Đà Nẵng'; send()" class="rounded-full border border-border bg-surface/70 px-3 py-1 text-muted hover:text-fg">Also include Đà Nẵng</button>
+            <button @click="composer='What is the status?'; send()" class="rounded-full border border-border bg-surface/70 px-3 py-1 text-muted hover:text-fg">Status?</button>
+          </div>
+          <div class="rounded-3xl border border-border bg-surface/80 shadow-glow p-3">
+            <input x-model="composer" @keydown.enter="send()" placeholder="Message Lead…  (/ commands · ⏎ send)" class="w-full !border-0 !shadow-none !bg-transparent">
+            <div class="flex items-center justify-between mt-2">
+              <div class="flex gap-1.5 text-xs"><span class="rounded-full border border-border px-2.5 py-1 text-muted">📎 Attach JD</span><span class="rounded-full border border-border px-2.5 py-1 text-muted">Lead · Claude</span></div>
+              <button @click="send()" class="size-9 rounded-full bg-gradient-brand shadow-glow grid place-items-center text-white">↑</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== FLOW CANVAS ========== -->
+    <div x-show="view==='flow'" class="flex-1 relative min-h-0">
+      <div class="absolute z-10 top-3 left-3 flex items-center gap-2 rounded-2xl border border-border bg-surface/80 backdrop-blur-md px-3 py-2">
+        <b class="font-display" x-text="'Job scan #'+(run?run.id:12)"></b>
+        <span x-show="run && run.active" class="flex items-center gap-1.5 rounded-full bg-accent/10 border border-accent/40 text-accent text-[11px] px-2 py-0.5"><span class="size-1.5 rounded-full bg-accent animate-pulse"></span>Running</span>
+        <span x-show="!run" class="text-muted text-xs">No run yet — start one from Chat or Simulate</span>
+      </div>
+      <div class="absolute z-10 top-3 right-3 flex gap-2">
+        <button @click="toast('Paused: no new tasks will start (prototype)')" class="rounded-xl border border-border bg-surface/80 px-3 py-2">⏸ Pause</button>
+        <button @click="view='review'" class="rounded-xl bg-gradient-brand text-white px-3 py-2 shadow-glow" x-text="'Open review ('+reviewCount+')'"></button>
+      </div>
+      <div class="canvas absolute inset-0 overflow-auto">
+        <div class="relative" style="width:1420px;height:640px">
+          <svg class="absolute inset-0" width="1420" height="640" fill="none" x-html="edgesSvg"></svg>
+          <div x-show="step('qa').rounds.length" class="absolute text-[10px] text-danger rounded-full border border-danger/40 bg-surface/90 px-2 py-0.5" style="left:915px;top:432px">QA fail → fixes → next round</div>
+          <template x-for="s in steps" :key="s.key">
+            <div @click="drawer=s.key" class="absolute w-[150px] rounded-2xl border bg-surface/95 backdrop-blur p-3 cursor-pointer hover:border-accent transition"
+                 :class="[s.status==='running' ? 'running' : 'border-border', ['pending','locked'].includes(s.status) ? 'opacity-70 border-dashed' : '', s.status==='waiting' ? '!border-warn' : '', s.status==='failed' ? '!border-danger' : '']"
+                 :style="`left:${s.x}px;top:${s.y}px`">
+              <div class="flex justify-between text-[10px] uppercase tracking-wider text-muted">
+                <span x-text="(bot(s.bot) ? bot(s.bot).name : s.bot) + (s.parallel ? ' ×'+s.parallel : '')"></span>
+                <span :class="{done:'text-ok',running:'text-accent',failed:'text-danger',waiting:'text-warn',paused:'text-warn',locked:'text-warn'}[s.status]" x-text="{done:'✓ done',running:'● running',failed:'✗ round failed',waiting:s.key==='review'?'waiting':'⏸ limit',paused:'⏸ paused',locked:'🔒 locked',pending:'pending'}[s.status]"></span>
+              </div>
+              <p class="font-medium mt-1" x-text="s.label"></p>
+              <p class="text-[11px] text-muted mt-1" x-text="s.detail"></p>
+              <template x-if="s.key==='qa'">
+                <div class="mt-2 space-y-1">
+                  <template x-for="r in s.rounds"><div class="flex justify-between rounded-lg px-2 py-1 text-[11px]" :class="r.pass ? 'bg-ok/10 text-ok' : 'bg-danger/10 text-danger'"><span x-text="'Round '+r.n"></span><b x-text="r.score + (r.pass ? ' ✓' : ' ✗')"></b></div></template>
+                </div>
+              </template>
+              <template x-if="s.key==='cv' && s.status!=='pending'">
+                <div class="mt-2 rounded-lg bg-white p-2 h-[60px] overflow-hidden text-[5px] leading-tight text-slate-700">
+                  <p class="text-[8px] font-bold text-slate-900">BA HUYNH</p><p class="font-bold text-teal-700">FRONTEND ENGINEER | REACT, NEXT.JS &amp; TS</p>
+                  <div class="mt-1 h-1 w-full bg-slate-200 rounded"></div><div class="mt-0.5 h-1 w-5/6 bg-slate-200 rounded"></div><div class="mt-0.5 h-1 w-3/4 bg-teal-100 rounded" :class="s.status==='running' ? 'animate-pulse' : ''"></div>
+                </div>
+              </template>
+              <span class="absolute -right-1.5 top-[24px] size-3 rounded-full ring-2 ring-surface" :class="s.status==='done' ? 'bg-accent' : 'bg-surface-3'"></span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== REVIEW ========== -->
+    <div x-show="view==='review'" class="flex-1 overflow-y-auto p-5 space-y-4">
+      <p x-show="!jobs.filter(j=>['review','revising','applying'].includes(j.status)).length" class="text-muted text-center py-16">Nothing to review 🎉 — Lead will ping you after the next scan.</p>
+      <template x-for="job in jobs.filter(j => ['review','revising','applying'].includes(j.status))" :key="job.id">
+        <div class="rounded-3xl border bg-surface/60 p-5 grid grid-cols-[1fr_250px] gap-5" :class="job.qaPassed ? 'border-border' : 'border-warn/50'">
+          <div class="space-y-3">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="font-display text-lg font-semibold" x-text="job.title + ' — ' + job.company"></p>
+                <p class="text-muted text-xs" x-text="job.source + ' · ' + job.loc + ' · ' + job.salary + ' · JD language: ' + job.lang"></p>
+              </div>
+              <div class="text-right shrink-0"><p class="text-[10px] uppercase text-muted">Fit</p><p class="font-display text-2xl font-bold text-accent" x-text="job.fit"></p></div>
+            </div>
+            <div x-show="!job.qaPassed" class="rounded-xl border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn" x-text="job.qaNote"></div>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="rounded-xl border border-border bg-surface-2/40 p-3"><p class="text-[10px] uppercase tracking-wider text-muted mb-1">Why it fits / gaps</p><ul class="list-disc pl-4 space-y-0.5 text-xs"><template x-for="w in job.why"><li x-text="w"></li></template></ul></div>
+              <div class="rounded-xl border border-border bg-surface-2/40 p-3"><p class="text-[10px] uppercase tracking-wider text-muted mb-1">Company</p><p class="text-xs" x-text="job.companyNote"></p></div>
+            </div>
+            <div class="rounded-xl border border-border bg-surface-2/40 p-3">
+              <div class="flex justify-between"><p class="text-[10px] uppercase tracking-wider text-muted">QA score</p><p class="text-xs"><b :class="job.qaPassed ? 'text-ok' : 'text-warn'" x-text="job.qa + (job.qaPassed ? ' · passed' : ' · not passed')"></b> <span class="text-muted" x-text="'round '+job.round+' of 3'"></span></p></div>
+              <div class="mt-2 grid grid-cols-4 gap-2 text-xs">
+                <template x-for="c in [['JD match','jd',40],['Company tone','tone',20],['Format/ATS','ats',20],['Clarity','clarity',20]]">
+                  <div><span x-text="c[0]"></span> <b x-text="job.scores[c[1]]+'/'+c[2]"></b><div class="h-1 rounded-full bg-surface-3 mt-1"><div class="h-1 rounded-full bg-gradient-brand" :style="'width:'+(job.scores[c[1]]/c[2]*100)+'%'"></div></div></div>
+                </template>
+              </div>
+              <p class="text-xs text-muted mt-2">Hard fails: none · Truth check: every claim traced to master facts ✓</p>
+            </div>
+            <div x-show="job.status==='review'" class="flex flex-wrap gap-2">
+              <button @click="approve(job)" class="rounded-full bg-gradient-brand text-white px-5 py-2 shadow-glow font-medium" x-text="job.qaPassed ? 'Approve & submit' : 'Approve anyway & submit'"></button>
+              <button @click="requestChanges(job)" class="rounded-full border border-border bg-surface px-5 py-2">Request changes…</button>
+              <button @click="skip(job)" class="rounded-full border border-border bg-surface px-5 py-2 text-muted">Skip (give reason)</button>
+            </div>
+            <p x-show="job.status==='revising'" class="text-accent text-xs">● CV is revising with your note → QA will re-score…</p>
+            <p x-show="job.status==='applying'" class="text-accent text-xs">● Apply is working in your Chrome… <button @click="view='chat'" class="underline">see chat</button></p>
+          </div>
+          <div class="space-y-2">
+            <div x-show="job.lang==='VI'" class="flex rounded-full border border-border p-0.5 text-xs">
+              <button @click="job.cvLang='VI'" :class="job.cvLang==='VI' ? 'bg-gradient-brand text-white' : 'text-muted'" class="flex-1 rounded-full py-1">CV tiếng Việt</button>
+              <button @click="job.cvLang='EN'" :class="job.cvLang==='EN' ? 'bg-gradient-brand text-white' : 'text-muted'" class="flex-1 rounded-full py-1">CV English</button>
+            </div>
+            <div class="rounded-xl border border-border bg-white p-3 text-[7px] leading-tight text-slate-800 h-[300px] overflow-hidden">
+              <p class="text-[13px] font-bold">BA HUYNH</p>
+              <p class="text-[7px] font-bold text-teal-700" x-text="job.cvLang==='VI' ? 'LẬP TRÌNH VIÊN FRONTEND | REACT, NEXT.JS & TYPESCRIPT' : 'FRONTEND ENGINEER | REACT, NEXT.JS & TYPESCRIPT'"></p>
+              <p class="text-slate-500 mt-0.5">Ho Chi Minh City · huynhthienba4@gmail.com · linkedin.com/in/bahuynh</p>
+              <hr class="my-1.5">
+              <p class="font-bold text-teal-700" x-text="job.cvLang==='VI' ? 'TÓM TẮT' : 'PROFILE'"></p>
+              <p x-text="job.cvLang==='VI' ? 'Lập trình viên frontend với hơn 4 năm kinh nghiệm phát triển ứng dụng web bằng React, Next.js…' : 'Frontend engineer with 4+ years building React/Next.js products, payments and internal workflow apps…'"></p>
+              <p class="font-bold text-teal-700 mt-1" x-text="job.cvLang==='VI' ? 'KINH NGHIỆM' : 'EXPERIENCE'"></p>
+              <p class="font-bold">Gradion | Software Engineer</p><p>• React/Node.js performance review app, ~300 employees, 4 countries [grad-1]</p><p>• Multi-country PO & invoice extraction [grad-2]</p>
+              <p class="font-bold mt-1">Aegona | Frontend Engineer</p><p>• Booking, dynamic pricing, loyalty flows [aeg-1]</p>
+              <p class="text-center text-slate-400 mt-6">— tailored CV preview · [fact ids] shown for truth check —</p>
+            </div>
+            <p class="text-[11px] text-muted" x-text="'Figma: '+job.company.replace(/\s/g,'')+'_FE_'+(job.cvLang||job.lang)+'_v'+job.round"></p>
+          </div>
+        </div>
+      </template>
+      <div x-show="jobs.some(j=>j.status==='skipped')" class="text-xs text-muted">Skipped: <template x-for="j in jobs.filter(j=>j.status==='skipped')"><span class="mr-3" x-text="j.company+' ('+j.skipReason.replace('_',' ')+')'"></span></template></div>
+    </div>
+
+    <!-- ========== APPLICATIONS ========== -->
+    <div x-show="view==='apps'" class="flex-1 overflow-y-auto p-5">
+      <div class="rounded-3xl border border-border bg-surface/60 overflow-hidden">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-surface-2/60 text-muted uppercase tracking-wider text-[10px]"><tr><th class="px-4 py-3">Company</th><th>Role</th><th>Source</th><th>CV version</th><th>Submitted</th><th>Status</th><th>Proof</th></tr></thead>
+          <tbody class="divide-y divide-border/60">
+            <template x-for="a in applications">
+              <tr :class="a.fresh ? 'bg-accent/5' : ''">
+                <td class="px-4 py-3 font-medium" x-text="a.company"></td><td x-text="a.role"></td><td x-text="a.source"></td>
+                <td><span class="text-accent underline cursor-pointer" x-text="a.cv + '.pdf'"></span></td><td class="text-muted" x-text="a.at"></td>
+                <td><select x-model="a.status" class="!py-1 !px-2 text-xs"><option value="submitted">submitted</option><option value="interviewing">interviewing</option><option value="offer">offer</option><option value="rejected">rejected</option><option value="withdrawn">withdrawn</option><option value="no_response">no response</option><option value="needs_check">needs check</option></select></td>
+                <td><span class="text-accent underline cursor-pointer">screenshot</span></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <p class="text-muted text-xs mt-3">DEKON, SMARTBIT, YAVIET are your real 2026-10-10 TopCV applications — the dedupe step excludes them from new scans.</p>
+    </div>
+
+    <!-- ========== SEARCH CRITERIA (UC-21b) ========== -->
+    <div x-show="view==='criteria'" class="flex-1 overflow-y-auto p-5">
+      <div class="max-w-3xl space-y-4">
+        <div class="flex items-center justify-between">
+          <p class="text-muted text-xs" x-text="'Active profile v'+criteria.version+' · updated '+criteria.updated+' · used by scheduled scans and chat requests'"></p>
+          <div class="flex gap-2 items-center"><span x-show="criteria.dirty" class="text-warn text-xs">unsaved changes</span><button @click="saveCriteria()" class="rounded-full bg-gradient-brand text-white px-5 py-2 shadow-glow">Save</button></div>
+        </div>
+        <template x-for="f in [['roles','Roles'],['locations','Locations'],['include','Must include keywords'],['exclude','Exclude keywords'],['excludedCompanies','Excluded companies'],['companyTypes','Preferred company types']]">
+          <div class="rounded-2xl border border-border bg-surface/60 p-4">
+            <p class="text-xs font-medium mb-2" x-text="f[1]"></p>
+            <div class="flex flex-wrap gap-2 items-center">
+              <template x-for="(c, i) in criteria[f[0]]"><span class="rounded-full bg-surface-2 border border-border px-3 py-1 text-xs flex items-center gap-1.5"><span x-text="c"></span><button @click="removeChip(f[0], i)" class="text-muted hover:text-danger">×</button></span></template>
+              <input x-model="newChip[f[0]]" @keydown.enter="addChip(f[0])" placeholder="+ add, press ⏎" class="!py-1 text-xs w-40">
+            </div>
+          </div>
+        </template>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="rounded-2xl border border-border bg-surface/60 p-4 space-y-2">
+            <p class="text-xs font-medium">Minimum salary</p>
+            <div class="flex gap-2"><input type="number" x-model="criteria.minSalary" @input="criteria.dirty=true" class="flex-1"><select x-model="criteria.currency" @change="criteria.dirty=true"><option>VND</option><option>USD</option></select></div>
+          </div>
+          <div class="rounded-2xl border border-border bg-surface/60 p-4 space-y-2">
+            <p class="text-xs font-medium">Sources</p>
+            <div class="flex gap-2"><template x-for="(on, s) in criteria.sources"><button @click="criteria.sources[s]=!on; criteria.dirty=true" :class="on ? 'bg-gradient-brand text-white' : 'border border-border text-muted'" class="rounded-full px-3 py-1 text-xs" x-text="s"></button></template></div>
+          </div>
+          <div class="rounded-2xl border border-border bg-surface/60 p-4 space-y-2">
+            <p class="text-xs font-medium">Work mode</p>
+            <div class="flex gap-2"><template x-for="(on, s) in criteria.modes"><button @click="criteria.modes[s]=!on; criteria.dirty=true" :class="on ? 'bg-gradient-brand text-white' : 'border border-border text-muted'" class="rounded-full px-3 py-1 text-xs" x-text="s"></button></template></div>
+          </div>
+          <div class="rounded-2xl border border-border bg-surface/60 p-4 space-y-2">
+            <p class="text-xs font-medium">Seniority</p>
+            <div class="flex gap-2"><template x-for="(on, s) in criteria.seniority"><button @click="criteria.seniority[s]=!on; criteria.dirty=true" :class="on ? 'bg-gradient-brand text-white' : 'border border-border text-muted'" class="rounded-full px-3 py-1 text-xs" x-text="s"></button></template></div>
+          </div>
+          <div class="rounded-2xl border border-border bg-surface/60 p-4 space-y-2">
+            <p class="text-xs font-medium" x-text="'Max jobs per scan: '+criteria.maxJobs"></p><input type="range" min="1" max="10" x-model="criteria.maxJobs" @input="criteria.dirty=true" class="w-full !p-0">
+          </div>
+          <div class="rounded-2xl border border-border bg-surface/60 p-4 space-y-2">
+            <p class="text-xs font-medium" x-text="'Fit threshold: '+criteria.fit"></p><input type="range" min="40" max="90" x-model="criteria.fit" @input="criteria.dirty=true" class="w-full !p-0">
+          </div>
+        </div>
+        <p class="text-xs text-muted">CV languages: English for English JDs; Vietnamese + English for Vietnamese JDs (spec §6.3).</p>
+      </div>
+    </div>
+
+    <!-- ========== SCHEDULES ========== -->
+    <div x-show="view==='schedules'" class="flex-1 overflow-y-auto p-5 space-y-3">
+      <template x-for="s in schedules">
+        <div class="rounded-2xl border border-border bg-surface/60 p-4 flex items-center justify-between">
+          <div><p class="font-medium" x-text="s.name"></p><p class="text-xs text-muted" x-text="s.cron+' · criteria '+s.profile+' · next: '+s.next+' · last: '+s.last"></p></div>
+          <div class="flex items-center gap-3">
+            <button @click="startRun('schedule'); view='flow'" class="rounded-full border border-border px-3 py-1.5 text-xs">Run now</button>
+            <button @click="s.enabled=!s.enabled" class="relative w-11 h-6 rounded-full transition" :class="s.enabled ? 'bg-gradient-brand' : 'bg-surface-3'"><span class="absolute top-0.5 size-5 rounded-full bg-white transition-all" :class="s.enabled ? 'left-5' : 'left-0.5'"></span></button>
+          </div>
+        </div>
+      </template>
+      <button @click="schedules.push({name:'Evening scan', cron:'Daily 20:00', profile:'Default (v'+criteria.version+')', enabled:true, next:'Today 20:00', last:'—'}); toast('Schedule added')" class="rounded-full border border-dashed border-border px-4 py-2 text-muted">+ New schedule</button>
+      <p class="text-xs text-muted">Missed while your Mac was asleep → one catch-up run if within 12 h. A schedule never overlaps its previous run.</p>
+    </div>
+
+    <!-- ========== BOTS ========== -->
+    <div x-show="view==='bots'" class="flex-1 overflow-y-auto p-5 grid grid-cols-2 gap-4 content-start">
+      <template x-for="b in bots" :key="b.key">
+        <div class="rounded-3xl border border-border bg-surface/60 p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3"><span class="size-9 rounded-full grid place-items-center font-bold" :class="b.key==='lead' ? 'bg-gradient-brand text-white' : 'bg-surface-3 text-accent'" x-text="b.name[0]"></span><div><p class="font-display font-semibold" x-text="b.name"></p><p class="text-xs text-muted" x-text="b.role"></p></div></div>
+            <span class="rounded-full border px-2 py-0.5 text-xs" :class="b.trust==='L1' ? 'border-warn/50 text-warn' : 'border-ok/50 text-ok'" x-text="b.trust"></span>
+          </div>
+          <div class="flex items-center gap-2 text-xs"><span class="text-muted">Engine</span>
+            <div class="flex rounded-full border border-border p-0.5"><template x-for="e in ['Claude','Codex']"><button @click="b.engine=e" :class="b.engine===e ? 'bg-gradient-brand text-white' : 'text-muted'" class="rounded-full px-3 py-0.5" x-text="e"></button></template></div>
+            <span class="ml-auto text-muted" x-text="'prompt v'+b.promptVersion"></span>
+          </div>
+          <p class="text-xs text-muted" x-text="'Track record: '+b.track"></p>
+          <div x-show="b.promoteSuggested" class="rounded-xl border border-accent/40 bg-accent/5 p-3 text-xs space-y-2">
+            <p>💡 System suggests promoting <b>Apply</b> to L2 (10 approved in a row without edits).</p>
+            <button disabled class="rounded-full border border-border px-3 py-1 text-muted">Promote (disabled in Phase 1 for Apply)</button>
+          </div>
+          <details class="text-xs"><summary class="text-muted">Memory (<span x-text="b.memory.length"></span> notes)</summary><ul class="mt-2 list-disc pl-4 space-y-1"><template x-for="m in b.memory"><li x-text="m"></li></template></ul></details>
+        </div>
+      </template>
+    </div>
+
+    <!-- ========== MASTER CV ========== -->
+    <div x-show="view==='cv'" class="flex-1 overflow-y-auto p-5 space-y-3">
+      <p class="text-xs text-muted">Only you edit these facts. Every CV bullet must cite fact ids; QA hard-fails anything not traceable here. Master version <b>v7</b>.</p>
+      <template x-for="f in facts" :key="f.id">
+        <div class="rounded-2xl border border-border bg-surface/60 p-3 flex gap-3 items-start">
+          <span class="rounded-full bg-surface-2 border border-border px-2 py-0.5 text-[10px] font-mono" x-text="f.id"></span>
+          <div class="flex-1"><p class="text-[10px] uppercase tracking-wider text-muted" x-text="f.org+' · '+f.type"></p><p class="text-xs mt-0.5" contenteditable="true" x-text="f.text"></p></div>
+        </div>
+      </template>
+      <div class="rounded-2xl border border-warn/40 bg-warn/5 p-3 text-xs">❓ <b>CV asks:</b> "Do you have GraphQL experience? NovaPay asks for it." <button @click="facts.push({id:'skill-2',org:'—',type:'skill',text:'GraphQL (Apollo Client) — used at Aegona'}); toast('Fact skill-2 added')" class="ml-2 underline text-accent">Add a fact</button> <button class="ml-2 underline text-muted">No, I don't</button></div>
+    </div>
+
+    <!-- ========== ROOM (UC-15) ========== -->
+    <div x-show="view==='room'" class="flex-1 flex flex-col min-h-0">
+      <div class="flex-1 overflow-y-auto"><div class="mx-auto max-w-2xl px-6 py-6 space-y-4">
+        <p class="text-xs text-muted text-center">Discussion mode — bots answer only when @mentioned and never take actions here.</p>
+        <template x-for="(m, i) in room" :key="i">
+          <div :class="m.from==='Ba' ? 'flex justify-end' : 'flex gap-3'">
+            <template x-if="m.from==='Ba'"><div class="max-w-[80%] rounded-3xl rounded-br-md bg-surface-2 border border-border px-4 py-3" x-text="m.text"></div></template>
+            <template x-if="m.from==='system'"><p class="text-xs text-warn mx-auto" x-text="m.text"></p></template>
+            <template x-if="m.from!=='Ba' && m.from!=='system'">
+              <div class="flex gap-3"><span class="size-8 shrink-0 rounded-full bg-surface-3 grid place-items-center text-xs font-bold text-accent" x-text="m.from[0]"></span><div><p class="font-display font-semibold text-xs" x-text="m.from"></p><p class="leading-relaxed" x-text="m.text"></p></div></div>
+            </template>
+          </div>
+        </template>
+      </div></div>
+      <div class="px-6 pb-5"><div class="mx-auto max-w-2xl rounded-3xl border border-border bg-surface/80 shadow-glow p-3 flex gap-2">
+        <input x-model="roomInput" @keydown.enter="sendRoom()" placeholder="Message #cv-brainstorm — try @Research @CV …" class="flex-1 !border-0 !shadow-none !bg-transparent">
+        <button @click="sendRoom()" class="size-9 rounded-full bg-gradient-brand shadow-glow grid place-items-center text-white">↑</button>
+      </div></div>
+    </div>
+
+    <!-- ========== DRAWER (UC-22) ========== -->
+    <div x-show="drawer" x-transition.opacity class="absolute inset-0 bg-black/30 z-20" @click="drawer=null"></div>
+    <aside x-show="drawer" x-transition class="absolute top-0 right-0 bottom-0 w-[420px] z-30 border-l border-border bg-surface p-5 overflow-y-auto space-y-4">
+      <template x-if="drawer">
+        <div class="space-y-4">
+          <div class="flex justify-between items-start"><div><p class="text-[10px] uppercase tracking-wider text-muted" x-text="(bot(dd.bot)?bot(dd.bot).name:dd.bot)+' · '+dd.engine"></p><p class="font-display text-lg font-semibold" x-text="dd.label"></p></div><button @click="drawer=null" class="text-muted text-lg">×</button></div>
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            <div class="rounded-xl bg-surface-2 p-2"><p class="text-muted">Status</p><b x-text="dd.status"></b></div>
+            <div class="rounded-xl bg-surface-2 p-2"><p class="text-muted">Attempt</p><b>1 of 2</b></div>
+            <div class="rounded-xl bg-surface-2 p-2"><p class="text-muted">Prompt</p><b x-text="bot(dd.bot) ? 'v'+bot(dd.bot).promptVersion : '—'"></b></div>
+          </div>
+          <div><p class="text-xs text-muted mb-1">Input</p><pre class="rounded-xl bg-surface-2 p-3 text-[11px] whitespace-pre-wrap" x-text="dd.input"></pre></div>
+          <div><p class="text-xs text-muted mb-1">Output</p><pre class="rounded-xl bg-surface-2 p-3 text-[11px] whitespace-pre-wrap" x-text="dd.output"></pre></div>
+          <div><p class="text-xs text-muted mb-1">Self-check (rule 4)</p><ul class="space-y-1 text-xs"><template x-for="c in dd.checks"><li class="rounded-lg border border-border px-2 py-1" x-text="c"></li></template></ul></div>
+          <div><p class="text-xs text-muted mb-1">Transcript</p>
+            <div class="rounded-xl bg-bg border border-border p-3 font-mono text-[11px] space-y-1 text-muted">
+              <p>› task started · cwd bots/<span x-text="dd.bot"></span></p><p>› reading memory.md (rule 2)</p><p>› tool: <span x-text="dd.key==='cv' ? 'figma.duplicate_frame' : (dd.key==='apply' ? 'chrome.fill_form' : 'web.search')"></span></p><p>› validating output schema ✓</p><p x-show="dd.status==='running'">› working<span class="caret ml-1" style="height:10px;width:5px"></span></p>
+            </div></div>
+        </div>
+      </template>
+    </aside>
+
+    <!-- ========== MODALS ========== -->
+    <div x-show="modal" class="absolute inset-0 bg-black/40 z-40 grid place-items-center" @click.self="modal=null">
+      <div class="w-[460px] rounded-3xl border border-border bg-surface p-5 space-y-4 shadow-2xl">
+        <template x-if="modal && modal.type==='approve'">
+          <div class="space-y-3">
+            <p class="font-display text-lg font-semibold" x-text="'Approve & submit to '+modal.job.company+'?'"></p>
+            <ul class="text-xs space-y-1.5 text-muted list-disc pl-4">
+              <li>Apply fills the form <b class="text-fg">in your Chrome</b> (your existing login), on <b class="text-fg" x-text="({TopCV:'topcv.vn',ITviec:'itviec.com',LinkedIn:'linkedin.com'})[modal.job.source]"></b> only.</li>
+              <li>Uploads <b class="text-fg" x-text="modal.job.company.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/gi,'d').replace(/\s/g,'')+'_FE_'+(modal.job.cvLang||modal.job.lang)+'_v'+modal.job.round+'.pdf'"></b>.</li>
+              <li>This approval also lets Apply <b class="text-fg">tick the employer's personal-data consent box</b> for this application.</li>
+              <li>If the form asks something I don't know, I'll pause and ask you.</li>
+            </ul>
+            <div class="flex justify-end gap-2"><button @click="modal=null" class="rounded-full border border-border px-4 py-2">Cancel</button><button @click="confirmApprove()" class="rounded-full bg-gradient-brand text-white px-4 py-2 shadow-glow">Approve & submit</button></div>
+          </div>
+        </template>
+        <template x-if="modal && modal.type==='changes'">
+          <div class="space-y-3">
+            <p class="font-display text-lg font-semibold" x-text="'Request changes — '+modal.job.company"></p>
+            <textarea x-model="changeComment" rows="4" class="w-full" placeholder="e.g. Lead with Next.js; drop the education portal project"></textarea>
+            <p class="text-xs text-muted">Goes to @CV → new round → QA re-scores → back to your queue.</p>
+            <div class="flex justify-end gap-2"><button @click="modal=null" class="rounded-full border border-border px-4 py-2">Cancel</button><button @click="confirmChanges()" class="rounded-full bg-gradient-brand text-white px-4 py-2 shadow-glow">Send to CV</button></div>
+          </div>
+        </template>
+        <template x-if="modal && modal.type==='skip'">
+          <div class="space-y-3">
+            <p class="font-display text-lg font-semibold" x-text="'Skip '+modal.job.company+' — why?'"></p>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <template x-for="r in [['salary_low','Salary too low'],['outsourcing','Outsourcing company'],['location','Location'],['tech_mismatch','Tech mismatch'],['company_culture','Company culture'],['seniority','Seniority'],['other','Other']]">
+                <button @click="skipReason=r[0]" :class="skipReason===r[0] ? 'bg-gradient-brand text-white' : 'border border-border'" class="rounded-xl px-3 py-2 text-left" x-text="r[1]"></button>
+              </template>
+            </div>
+            <input x-model="skipNote" class="w-full" placeholder="Optional note">
+            <p class="text-xs text-muted">Reasons teach the insights bot (later phase) what you don't want.</p>
+            <div class="flex justify-end gap-2"><button @click="modal=null" class="rounded-full border border-border px-4 py-2">Cancel</button><button @click="confirmSkip()" class="rounded-full bg-gradient-brand text-white px-4 py-2 shadow-glow">Skip job</button></div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- toasts -->
+    <div class="absolute bottom-4 right-4 z-50 space-y-2">
+      <template x-for="t in toasts" :key="t.id"><div class="rounded-2xl border px-4 py-2 text-xs shadow-2xl bg-surface" :class="t.kind==='err' ? 'border-danger text-danger' : 'border-accent/50'" x-text="t.msg"></div></template>
+    </div>
+  </section>
+</div>
+</body>
+</html>
