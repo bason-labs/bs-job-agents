@@ -1,4 +1,5 @@
-import { and, asc, count, eq, gt, inArray, notExists, type SQL } from "drizzle-orm";
+import { PauseReasonSchema, formatPauseReason, type PauseReason } from "@bs-job-agents/shared";
+import { and, asc, count, eq, gt, inArray, isNull, notExists, or, type SQL } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { TERMINAL_TASK_STATUSES, type Engine, type TaskStatus } from "../enums.js";
 import { InvalidTransitionError, NotFoundError } from "../errors.js";
@@ -7,13 +8,15 @@ import { nowIso, type ClockOpts } from "../time.js";
 import type { Task } from "../types.js";
 
 export interface CreateTaskInput {
-  runId: number;
-  stepId: number;
+  /** null for consult (UC-25) and discussion (UC-15) tasks, which run outside a workflow. */
+  runId: number | null;
+  stepId: number | null;
   botName: string;
   kind: string;
   engine: Engine;
   input: unknown;
-  promptVersion?: number | null;
+  /** bot.json promptVersion the task runs with (stored for the lookback loop, §1.3 C). */
+  promptVersion: number;
   /** Needs the browser lock (drives Ba's Chrome). */
   usesBrowser?: boolean;
   /** Needs the Figma lock. */
@@ -31,7 +34,7 @@ export function createTask(db: Conn, input: CreateTaskInput, opts?: ClockOpts): 
       kind: input.kind,
       engine: input.engine,
       input: input.input,
-      promptVersion: input.promptVersion ?? null,
+      promptVersion: input.promptVersion,
       usesBrowser: input.usesBrowser ?? false,
       usesFigma: input.usesFigma ?? false,
       attempt: input.attempt ?? 1,
@@ -95,9 +98,10 @@ export interface ClaimFilter extends ClockOpts {
  * Atomically claim the oldest runnable task and mark it `running`.
  *
  * Runnable = `queued`, its run is `running` or `waiting` (not paused/cancelled/
- * finished, UC-23), it matches the filter, and its engine is not paused for a
- * usage limit (UC-16). Runs inside `BEGIN IMMEDIATE`, so two connections (or
- * processes) never claim the same task.
+ * finished, UC-23) or it has no run (consult / discussion, §10.3 caps still apply),
+ * it matches the filter, and its engine is not paused for a usage limit (UC-16).
+ * Runs inside `BEGIN IMMEDIATE`, so two connections (or processes) never claim the
+ * same task.
  */
 export function claimNextTask(db: Conn, filter: ClaimFilter = {}): Task | undefined {
   const now = nowIso(filter);
@@ -106,11 +110,11 @@ export function claimNextTask(db: Conn, filter: ClaimFilter = {}): Task | undefi
       const candidate = tx
         .select({ id: tasks.id })
         .from(tasks)
-        .innerJoin(runs, eq(runs.id, tasks.runId))
+        .leftJoin(runs, eq(runs.id, tasks.runId))
         .where(
           and(
             eq(tasks.status, "queued"),
-            inArray(runs.status, ["running", "waiting"]),
+            or(isNull(tasks.runId), inArray(runs.status, ["running", "waiting"])),
             filter.engines ? inArray(tasks.engine, [...filter.engines]) : undefined,
             filter.botNames ? inArray(tasks.botName, [...filter.botNames]) : undefined,
             filter.kinds ? inArray(tasks.kind, [...filter.kinds]) : undefined,
@@ -175,9 +179,14 @@ export function failTask(
   });
 }
 
-/** `needs_login(site)` / `captcha(site)` / `needs_figma` / `needs_browser` / pending question (UC-12, UC-17). */
-export function pauseTask(db: Conn, id: number, reason: string): Task {
-  return transition(db, id, ["running", "queued"], "paused", { pauseReason: reason });
+/**
+ * Pause with a shared `PauseReason` (needs_browser, needs_figma, needs_login(site),
+ * captcha(site), usage_limit, needs_answer, domain_confirm(site); UC-11/12/16/17).
+ * Stored in the column form `code(site)` (formatPauseReason); invalid reasons throw.
+ */
+export function pauseTask(db: Conn, id: number, reason: PauseReason): Task {
+  const valid = PauseReasonSchema.parse(reason);
+  return transition(db, id, ["running", "queued"], "paused", { pauseReason: formatPauseReason(valid) });
 }
 
 /**

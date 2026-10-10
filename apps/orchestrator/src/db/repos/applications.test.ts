@@ -4,6 +4,7 @@ import { ImmutableRecordError, InvalidTransitionError } from "../errors.js";
 import { at, seedCv, seedJob, T0 } from "../test-helpers.js";
 import type { CvVersion, Job } from "../types.js";
 import { addApprovalDomain, checkApproval, consumeApproval, createApproval, getApproval } from "./approvals.js";
+import { clearJobInjection, flagJobInjection } from "./jobs.js";
 import {
   canTransitionApplication,
   createApplication,
@@ -18,7 +19,7 @@ import {
   transitionApplication,
   updateJobSnapshot,
   updateSubmission,
-  type SnapshotInput,
+  type CompleteSnapshotInput,
   type SubmissionInput,
 } from "./applications.js";
 
@@ -48,7 +49,7 @@ const SUBMISSION: SubmissionInput = {
   confirmationText: "Application sent",
 };
 
-const SNAPSHOT: SnapshotInput = {
+const SNAPSHOT: CompleteSnapshotInput = {
   url: "https://itviec.com/it-jobs/senior-frontend-engineer-react-nextjs-novapay-1234",
   title: "Senior Frontend Engineer (React/Next.js)",
   company: "NovaPay",
@@ -87,6 +88,26 @@ describe("approvals (UC-08, §10.2 rule 1)", () => {
     expect(() => db.$client.prepare("UPDATE approvals SET used_at = NULL WHERE token = ?").run(token)).toThrow(/already used/);
   });
 
+  it("refuses a token for an injection-flagged job until Ba confirms it (UC-07 b, §10.2 rule 4)", () => {
+    flagJobInjection(db, job.id);
+    expect(() => createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] })).toThrow(
+      InvalidTransitionError,
+    );
+    clearJobInjection(db, job.id, { now: T0 });
+    expect(createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] }).token).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("denies (and does not use up) a token whose job was flagged after approval", () => {
+    const { token } = createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] }, { now: T0 });
+    flagJobInjection(db, job.id);
+    const expect_ = { jobId: job.id, cvVersionId: cv.id, now: at(5) };
+    expect(checkApproval(db, token, expect_)).toEqual({ ok: false, reason: "injection_flagged" });
+    expect(consumeApproval(db, token, expect_)).toEqual({ ok: false, reason: "injection_flagged" });
+    expect(getApproval(db, token)?.usedAt).toBeNull();
+    clearJobInjection(db, job.id, { now: at(6) });
+    expect(consumeApproval(db, token, expect_)).toMatchObject({ ok: true });
+  });
+
   it("adds a domain Ba confirmed (UC-11e)", () => {
     const { token } = createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] });
     expect(addApprovalDomain(db, token, "novapay.breezy.hr").allowedDomains).toEqual(["itviec.com", "novapay.breezy.hr"]);
@@ -101,7 +122,7 @@ describe("applications: create, one per job (§10.2 rule 5)", () => {
       status: "approved",
       origin: "app",
       submittedAt: null,
-      statusHistory: [{ status: "approved", at: T0.toISOString() }],
+      statusHistory: [{ status: "approved", at: T0.toISOString(), note: null }],
     });
     expect(getApplicationByJob(db, job.id)?.id).toBe(app.id);
   });
@@ -181,6 +202,25 @@ describe("submission record (§9.1)", () => {
     const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
     const rec = recordSubmission(db, { applicationId: app.id, status: "needs_check", submission: SUBMISSION, snapshot: SNAPSHOT });
     expect(rec.application.status).toBe("needs_check");
+    expect(rec.submission.dryRun).toBe(false);
+  });
+
+  it("records a dry-run Apply as needs_check with dryRun, never as submitted (§12)", () => {
+    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id }, { now: T0 });
+    const dry = { ...SUBMISSION, confirmationText: null, confirmationScreenshotPath: null };
+    expect(() =>
+      recordSubmission(db, { applicationId: app.id, dryRun: true, status: "submitted", submission: dry, snapshot: SNAPSHOT }),
+    ).toThrow(InvalidTransitionError);
+    const rec = recordSubmission(db, { applicationId: app.id, dryRun: true, submission: dry, snapshot: SNAPSHOT }, { now: at(9) });
+    expect(rec.application.status).toBe("needs_check");
+    expect(rec.application.statusHistory.at(-1)).toEqual({
+      status: "needs_check",
+      at: at(9).toISOString(),
+      note: "dry run: form filled, not submitted",
+    });
+    expect(rec.submission.dryRun).toBe(true);
+    // Nothing was sent, so the job is not "applied".
+    expect(getSubmissionRecord(db, app.id)?.job.status).toBe("approved");
   });
 
   it("rolls back everything if any part fails", () => {
@@ -246,11 +286,12 @@ describe("submission record (§9.1)", () => {
 describe("imported applications (UC-13)", () => {
   it("stores a partial record with origin imported", () => {
     const dekon = seedJob(db, {
-      source: "TopCV",
+      source: "topcv",
       url: "https://www.topcv.vn/viec-lam/senior-developer-nodejs-reactjs-ai/2316742.html",
       title: "Senior Developer (NodeJS, ReactJS, AI)",
       company: "DEKON",
       location: "Ho Chi Minh City",
+      language: "vi",
     });
     const rec = importApplication(
       db,

@@ -11,8 +11,10 @@ export const UNDO_WINDOW_MS = 6000;
 
 export interface CreateScheduleInput {
   name: string;
-  /** 5-field cron, Asia/Ho_Chi_Minh (validated by the API). */
+  /** 5-field cron (validated by the API). */
   cron: string;
+  /** IANA zone the cron runs in; defaults to Asia/Ho_Chi_Minh (§11 Schedules, §15.2). */
+  timezone?: string;
   workflowName: string;
   /** NULL = the active Search Profile. */
   searchProfileId?: number | null;
@@ -29,6 +31,7 @@ export function createSchedule(db: Conn, input: CreateScheduleInput, opts?: Cloc
     .values({
       name: input.name,
       cron: input.cron,
+      ...(input.timezone ? { timezone: input.timezone } : {}),
       workflowName: input.workflowName,
       searchProfileId: input.searchProfileId ?? null,
       params: input.params ?? {},
@@ -59,7 +62,7 @@ export function listSchedules(db: Conn, opts: { includeDeleted?: boolean } = {})
 }
 
 export type SchedulePatch = Partial<
-  Pick<Schedule, "name" | "cron" | "workflowName" | "searchProfileId" | "params" | "enabled" | "nextRunAt">
+  Pick<Schedule, "name" | "cron" | "timezone" | "workflowName" | "searchProfileId" | "params" | "enabled" | "nextRunAt">
 >;
 
 /** Edit a live (not deleted) schedule. */

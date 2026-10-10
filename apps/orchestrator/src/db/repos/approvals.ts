@@ -1,12 +1,23 @@
 import { randomBytes } from "node:crypto";
+import { LIMITS, isApplyBlockedByInjection } from "@bs-job-agents/shared";
 import { and, eq, isNull } from "drizzle-orm";
 import type { Conn } from "../client.js";
-import { NotFoundError } from "../errors.js";
-import { approvals } from "../schema.js";
+import { InvalidTransitionError, NotFoundError } from "../errors.js";
+import { approvals, jobs } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
 import type { Approval } from "../types.js";
 
-export const APPROVAL_TTL_MS = 24 * 3600_000;
+export const APPROVAL_TTL_MS = LIMITS.approvalTokenTtlMs;
+
+/** UC-07 b, §10.2 rule 4: is Apply blocked for this job until Ba confirms a suspected injection? */
+function injectionBlocked(db: Conn, jobId: number): boolean {
+  const job = db
+    .select({ injectionFlagged: jobs.injectionFlagged, injectionClearedAt: jobs.injectionClearedAt })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .get();
+  return job !== undefined && isApplyBlockedByInjection(job);
+}
 
 export interface CreateApprovalInput {
   jobId: number;
@@ -15,8 +26,14 @@ export interface CreateApprovalInput {
   ttlMs?: number;
 }
 
-/** UC-08 step 1: a single-use token bound to job + CV version + domains, valid 24 h. */
+/**
+ * UC-08 step 1: a single-use token bound to job + CV version + domains, valid 24 h.
+ * Refused while the job is injection-flagged and Ba has not confirmed it (UC-07 b).
+ */
 export function createApproval(db: Conn, input: CreateApprovalInput, opts?: ClockOpts): Approval {
+  if (injectionBlocked(db, input.jobId)) {
+    throw new InvalidTransitionError("job", "injection flagged (not confirmed)", "approved");
+  }
   const now = opts?.now ?? new Date();
   return db
     .insert(approvals)
@@ -36,7 +53,14 @@ export function getApproval(db: Conn, token: string): Approval | undefined {
   return db.select().from(approvals).where(eq(approvals.token, token)).get();
 }
 
-export type ApprovalDenial = "not_found" | "used" | "expired" | "job_mismatch" | "cv_mismatch" | "domain_mismatch";
+export type ApprovalDenial =
+  | "not_found"
+  | "used"
+  | "expired"
+  | "job_mismatch"
+  | "cv_mismatch"
+  | "domain_mismatch"
+  | "injection_flagged";
 export type ApprovalCheck = { ok: true; approval: Approval } | { ok: false; reason: ApprovalDenial };
 
 export interface ApprovalExpectation extends ClockOpts {
@@ -55,7 +79,7 @@ export function domainAllowed(allowed: readonly string[], host: string): boolean
   return allowed.some((d) => h === d || h.endsWith(`.${d}`));
 }
 
-function evaluate(approval: Approval | undefined, expect: ApprovalExpectation): ApprovalCheck {
+function evaluate(db: Conn, approval: Approval | undefined, expect: ApprovalExpectation): ApprovalCheck {
   if (!approval) return { ok: false, reason: "not_found" };
   if (approval.usedAt) return { ok: false, reason: "used" };
   if (approval.expiresAt <= nowIso(expect)) return { ok: false, reason: "expired" };
@@ -64,19 +88,20 @@ function evaluate(approval: Approval | undefined, expect: ApprovalExpectation): 
   if (expect.domain !== undefined && !domainAllowed(approval.allowedDomains, expect.domain)) {
     return { ok: false, reason: "domain_mismatch" };
   }
+  if (injectionBlocked(db, approval.jobId)) return { ok: false, reason: "injection_flagged" };
   return { ok: true, approval };
 }
 
-/** Read-only validation (the trust guard's check, §10.2 rule 1). */
+/** Read-only validation (the trust guard's check, §10.2 rules 1 and 4). */
 export function checkApproval(db: Conn, token: string, expect: ApprovalExpectation): ApprovalCheck {
-  return evaluate(getApproval(db, token), expect);
+  return evaluate(db, getApproval(db, token), expect);
 }
 
 /** Validate and mark the token used, atomically. A second call returns `used`. */
 export function consumeApproval(db: Conn, token: string, expect: ApprovalExpectation): ApprovalCheck {
   return db.transaction(
     (tx) => {
-      const check = evaluate(getApproval(tx, token), expect);
+      const check = evaluate(tx, getApproval(tx, token), expect);
       if (!check.ok) return check;
       const approval = tx
         .update(approvals)

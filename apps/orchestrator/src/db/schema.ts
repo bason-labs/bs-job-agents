@@ -21,11 +21,27 @@ import {
   type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core";
 import {
+  DEFAULT_TIMEZONE,
+  type CompanyProfile,
+  type CvLanguage,
+  type FactRequest,
+  type QaFix,
+  type QaHardFail,
+  type QaScores,
+  type SearchSource,
+  type Seniority,
+  type StatusHistoryEntry,
+  type SubmittedField,
+  type TailoredCv,
+  type WorkMode,
+} from "@bs-job-agents/shared";
+import {
   APPLICATION_ORIGINS,
   APPLICATION_STATUSES,
   COMPANY_CONFIDENCE,
   CURRENCIES,
   CV_LANGUAGES,
+  ENGINE_PAUSE_REASONS,
   ENGINES,
   JOB_STATUSES,
   ROOM_KINDS,
@@ -35,8 +51,8 @@ import {
   SKIP_REASONS,
   STEP_STATUSES,
   TASK_STATUSES,
-  type FieldSource,
-  type ApplicationStatus,
+  TRUST_LEVELS,
+  WORK_MODES,
 } from "./enums.js";
 
 /** `CHECK (<column> IN ('a','b'))`, nullable columns pass when NULL. */
@@ -49,26 +65,10 @@ const createdAt = () => text("created_at").notNull();
 const boolCol = (name: string) => integer(name, { mode: "boolean" });
 
 // ---------------------------------------------------------------------------
-// JSON column payload types (map to shared Zod types later; see report).
+// JSON column payload types: the shared Zod types (packages/shared) where one exists.
 
 export type JsonObject = Record<string, unknown>;
-
-export interface SubmittedField {
-  label: string;
-  name: string | null;
-  value: string | null;
-  source: FieldSource;
-}
-
-export interface StatusHistoryEntry {
-  status: ApplicationStatus;
-  at: string;
-  note?: string;
-}
-
-export interface MessageMention {
-  bot: string;
-}
+export type { StatusHistoryEntry, SubmittedField };
 
 // ---------------------------------------------------------------------------
 // Bots, prompts, memory, workflows
@@ -86,7 +86,7 @@ export const bots = sqliteTable(
   },
   () => [
     oneOf("bots_engine_check", "engine", ENGINES),
-    oneOf("bots_trust_level_check", "trust_level", [0, 1, 2]),
+    oneOf("bots_trust_level_check", "trust_level", TRUST_LEVELS),
   ],
 );
 
@@ -143,6 +143,8 @@ export const runs = sqliteTable(
     trigger: text("trigger", { enum: RUN_TRIGGERS }).notNull(),
     params: text("params_json", { mode: "json" }).$type<JsonObject>().notNull(),
     status: text("status", { enum: RUN_STATUSES }).notNull().default("running"),
+    // Extra (not in §9): the Search Profile version the run started with (UC-21b).
+    searchProfileVersion: integer("search_profile_version"),
     // Extra (not in §9): which schedule fired this run, for overlap checks (UC-02a).
     scheduleId: integer("schedule_id").references((): AnySQLiteColumn => schedules.id, {
       onDelete: "set null",
@@ -172,6 +174,8 @@ export const steps = sqliteTable(
     // Job id for per-job branches; '' for run-level steps (so the unique key works).
     branchKey: text("branch_key").notNull().default(""),
     status: text("status", { enum: STEP_STATUSES }).notNull().default("pending"),
+    // Extra (not in §9): gate round 1..maxRounds (§7.2 step 7).
+    round: integer("round"),
     output: text("output_json", { mode: "json" }).$type<unknown>(),
     error: text("error"),
     startedAt: text("started_at"),
@@ -187,12 +191,10 @@ export const tasks = sqliteTable(
   "tasks",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
-    runId: integer("run_id")
-      .notNull()
-      .references(() => runs.id, { onDelete: "cascade" }),
-    stepId: integer("step_id")
-      .notNull()
-      .references(() => steps.id, { onDelete: "cascade" }),
+    // NULL for consult (UC-25) and room discussion (UC-15) tasks, which run outside a
+    // workflow but still go through the queue and its caps (§10.3).
+    runId: integer("run_id").references(() => runs.id, { onDelete: "cascade" }),
+    stepId: integer("step_id").references(() => steps.id, { onDelete: "cascade" }),
     botName: text("bot_name").notNull(),
     kind: text("kind").notNull(),
     input: text("input_json", { mode: "json" }).$type<unknown>().notNull(),
@@ -231,7 +233,7 @@ export const companies = sqliteTable(
     // Extra (not in §9): normalised name used for lookups and dedupe.
     nameKey: text("name_key").notNull(),
     website: text("website"),
-    profile: text("profile_json", { mode: "json" }).$type<JsonObject>(),
+    profile: text("profile_json", { mode: "json" }).$type<CompanyProfile>(),
     confidence: text("confidence", { enum: COMPANY_CONFIDENCE }),
     researchedAt: text("researched_at"),
   },
@@ -246,14 +248,17 @@ export const jobs = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     source: text("source").notNull(),
-    url: text("url").notNull(),
-    canonicalUrl: text("canonical_url").notNull(),
+    // NULL only for an uploaded JD whose posting was not found (§7.3b "no apply link found").
+    url: text("url"),
+    canonicalUrl: text("canonical_url"),
     dedupeHash: text("dedupe_hash").notNull(),
     title: text("title").notNull(),
     companyId: integer("company_id")
       .notNull()
       .references(() => companies.id),
     location: text("location"),
+    // Extra (not in §9): JobCandidate.workMode (§7.5 work modes).
+    workMode: text("work_mode", { enum: WORK_MODES }),
     salaryText: text("salary_text"),
     language: text("language"),
     jdText: text("jd_text"),
@@ -265,11 +270,16 @@ export const jobs = sqliteTable(
     skipNote: text("skip_note"),
     // Extra (not in §9): JobCandidate.postedAt (UC-03).
     postedAt: text("posted_at"),
+    // Extras (not in §9), UC-07 b / §10.2 rule 4: QA suspected prompt injection, and
+    // when Ba confirmed the job is safe. Apply is blocked while flagged and not cleared.
+    injectionFlagged: boolCol("injection_flagged").notNull().default(false),
+    injectionClearedAt: text("injection_cleared_at"),
     firstSeenAt: text("first_seen_at").notNull(),
   },
   (t) => [
     oneOf("jobs_status_check", "status", JOB_STATUSES),
     oneOf("jobs_skip_reason_check", "skip_reason", SKIP_REASONS),
+    oneOf("jobs_work_mode_check", "work_mode", WORK_MODES),
     check("jobs_fit_score_check", sql.raw(`"fit_score" IS NULL OR ("fit_score" BETWEEN 0 AND 100)`)),
     uniqueIndex("jobs_canonical_url_uq").on(t.canonicalUrl),
     uniqueIndex("jobs_dedupe_hash_uq").on(t.dedupeHash),
@@ -287,11 +297,16 @@ export const cvVersions = sqliteTable(
       .references(() => jobs.id),
     language: text("language", { enum: CV_LANGUAGES }).notNull(),
     round: integer("round").notNull(),
-    tailored: text("tailored_json", { mode: "json" }).$type<JsonObject>(),
+    tailored: text("tailored_json", { mode: "json" }).$type<TailoredCv>(),
+    // Extra (not in §9): Drafts frame `<COMPANY>_<ROLE>_<LANG>_v<n>`; the PDF is data/pdf/<name>.pdf (§6.2).
+    figmaFrameName: text("figma_frame_name"),
     figmaFrameUrl: text("figma_frame_url"),
     pdfPath: text("pdf_path"),
     // Extra (not in §9): SHA-256 of the exported PDF, checked before upload (§9.1).
     pdfSha256: text("pdf_sha256"),
+    // Extras (not in §9): CvDraft.changeNotes and factRequests (§5.2 CV, §6.1).
+    changeNotes: text("change_notes_json", { mode: "json" }).$type<string[]>().notNull().default([]),
+    factRequests: text("fact_requests_json", { mode: "json" }).$type<FactRequest[]>().notNull().default([]),
     masterVersion: integer("master_version"),
     promptVersion: integer("prompt_version"),
     createdAt: createdAt(),
@@ -310,9 +325,9 @@ export const qaReviews = sqliteTable(
       .notNull()
       .references(() => cvVersions.id),
     total: integer("total").notNull(),
-    scores: text("scores_json", { mode: "json" }).$type<Record<string, number>>().notNull(),
-    hardFails: text("hard_fails_json", { mode: "json" }).$type<unknown[]>().notNull(),
-    fixes: text("fixes_json", { mode: "json" }).$type<unknown[]>().notNull(),
+    scores: text("scores_json", { mode: "json" }).$type<QaScores>().notNull(),
+    hardFails: text("hard_fails_json", { mode: "json" }).$type<QaHardFail[]>().notNull(),
+    fixes: text("fixes_json", { mode: "json" }).$type<QaFix[]>().notNull(),
     injectionSuspected: boolCol("injection_suspected").notNull().default(false),
     passed: boolCol("passed").notNull(),
     createdAt: createdAt(),
@@ -386,6 +401,9 @@ export const submissions = sqliteTable("submissions", {
   confirmationText: text("confirmation_text"),
   approvalToken: text("approval_token").references(() => approvals.token),
   submittedAt: text("submitted_at"),
+  // Extra (not in §9): dry-run acceptance (§12) filled the form but never clicked submit;
+  // its application is `needs_check` (coordinator decision, Phase 1 QA).
+  dryRun: boolCol("dry_run").notNull().default(false),
 });
 
 export const jobSnapshots = sqliteTable("job_snapshots", {
@@ -423,16 +441,16 @@ export const rooms = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     name: text("name").notNull(),
-    // Extra (not in §9): lead chat, consult thread (UC-25) or group room (UC-15).
+    // Extra (not in §9): lead chat, direct consult-mode thread (UC-25) or group room (UC-15).
     kind: text("kind", { enum: ROOM_KINDS }).notNull(),
-    // Consult threads: the bot Ba is talking to.
+    // Lead and direct rooms: the bot Ba is talking to.
     botName: text("bot_name").references(() => bots.name),
     createdAt: createdAt(),
   },
   (t) => [
     oneOf("rooms_kind_check", "kind", ROOM_KINDS),
     uniqueIndex("rooms_name_uq").on(t.name),
-    uniqueIndex("rooms_consult_bot_uq").on(t.botName).where(sql`"kind" = 'consult'`),
+    uniqueIndex("rooms_direct_bot_uq").on(t.botName).where(sql`"kind" = 'direct'`),
     uniqueIndex("rooms_single_lead_uq").on(t.kind).where(sql`"kind" = 'lead'`),
   ],
 );
@@ -497,16 +515,16 @@ export const searchProfiles = sqliteTable(
     active: boolCol("active").notNull().default(false),
     roles: text("roles_json", { mode: "json" }).$type<string[]>().notNull(),
     locations: text("locations_json", { mode: "json" }).$type<string[]>().notNull(),
-    workModes: text("work_modes_json", { mode: "json" }).$type<string[]>().notNull(),
+    workModes: text("work_modes_json", { mode: "json" }).$type<WorkMode[]>().notNull(),
     minSalary: real("min_salary"),
     currency: text("currency", { enum: CURRENCIES }),
-    seniority: text("seniority_json", { mode: "json" }).$type<string[]>().notNull(),
-    sources: text("sources_json", { mode: "json" }).$type<string[]>().notNull(),
+    seniority: text("seniority_json", { mode: "json" }).$type<Seniority[]>().notNull(),
+    sources: text("sources_json", { mode: "json" }).$type<SearchSource[]>().notNull(),
     includeKeywords: text("include_keywords_json", { mode: "json" }).$type<string[]>().notNull(),
     excludeKeywords: text("exclude_keywords_json", { mode: "json" }).$type<string[]>().notNull(),
     excludeCompanies: text("exclude_companies_json", { mode: "json" }).$type<string[]>().notNull(),
     companyTypes: text("company_types_json", { mode: "json" }).$type<string[]>().notNull(),
-    languages: text("languages_json", { mode: "json" }).$type<string[]>().notNull(),
+    languages: text("languages_json", { mode: "json" }).$type<CvLanguage[]>().notNull(),
     maxJobs: integer("max_jobs").notNull().default(5),
     fitThreshold: integer("fit_threshold").notNull().default(60),
     salaryPolicy: text("salary_policy", { enum: SALARY_POLICIES })
@@ -530,6 +548,8 @@ export const schedules = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     name: text("name").notNull(),
     cron: text("cron").notNull(),
+    // Extra (not in §9): the cron's time zone (§11 Schedules: Asia/Ho_Chi_Minh).
+    timezone: text("timezone").notNull().default(DEFAULT_TIMEZONE),
     workflowName: text("workflow_name").notNull(),
     // NULL = use the active Search Profile (UC-21 default).
     searchProfileId: integer("search_profile_id").references(() => searchProfiles.id),
@@ -555,9 +575,12 @@ export const engineState = sqliteTable(
   {
     engine: text("engine", { enum: ENGINES }).primaryKey(),
     pausedUntil: text("paused_until"),
-    reason: text("reason"),
+    reason: text("reason", { enum: ENGINE_PAUSE_REASONS }),
   },
-  () => [oneOf("engine_state_engine_check", "engine", ENGINES)],
+  () => [
+    oneOf("engine_state_engine_check", "engine", ENGINES),
+    oneOf("engine_state_reason_check", "reason", ENGINE_PAUSE_REASONS),
+  ],
 );
 
 export const events = sqliteTable(

@@ -57,7 +57,7 @@ describe("rooms and messages (UC-15, UC-25)", () => {
 
     const qa = getOrCreateConsultRoom(db, "qa");
     expect(getOrCreateConsultRoom(db, "qa").id).toBe(qa.id);
-    expect(qa).toMatchObject({ kind: "consult", botName: "qa" });
+    expect(qa).toMatchObject({ kind: "direct", botName: "qa" });
     expect(listRoomMembers(db, qa.id)).toEqual(["qa"]);
     expect(() => createRoom(db, { name: "lead-2", kind: "lead" })).toThrow(/UNIQUE/);
   });

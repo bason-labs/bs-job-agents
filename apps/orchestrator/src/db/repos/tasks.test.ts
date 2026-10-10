@@ -13,6 +13,7 @@ import {
   claimNextTask,
   completeTask,
   countTasks,
+  createTask,
   failTask,
   getTask,
   holdEngineTasks,
@@ -40,7 +41,7 @@ describe("tasks: create and lifecycle", () => {
       usesBrowser: true,
       usesFigma: false,
       promptVersion: 3,
-      input: { source: "TopCV" },
+      input: { source: "topcv" },
       createdAt: T0.toISOString(),
     });
     expect(listTasks(db, { runId: ctx.run.id })).toHaveLength(1);
@@ -72,12 +73,25 @@ describe("tasks: create and lifecycle", () => {
     const ctx = seedRun(db);
     const t = seedTask(db, ctx);
     claimNextTask(db);
-    expect(pauseTask(db, t.id, "needs_login(topcv.vn)")).toMatchObject({ status: "paused", pauseReason: "needs_login(topcv.vn)" });
+    expect(pauseTask(db, t.id, { code: "needs_login", site: "topcv.vn", detail: null })).toMatchObject({
+      status: "paused",
+      pauseReason: "needs_login(topcv.vn)",
+    });
     const same = requeueTask(db, t.id);
     expect(same).toMatchObject({ status: "queued", attempt: 1, pauseReason: null, startedAt: null });
     claimNextTask(db);
     const retry = requeueTask(db, t.id, { newAttempt: true });
     expect(retry.attempt).toBe(2);
+  });
+
+  it("only stores pause reasons the shared schema accepts (UC-17: login and CAPTCHA name the site)", () => {
+    const ctx = seedRun(db);
+    const t = seedTask(db, ctx);
+    claimNextTask(db);
+    expect(() => pauseTask(db, t.id, { code: "needs_login", site: null, detail: null })).toThrow();
+    expect(() => pauseTask(db, t.id, { code: "rate_limited" as "usage_limit", site: null, detail: null })).toThrow();
+    expect(getTask(db, t.id)?.status).toBe("running");
+    expect(pauseTask(db, t.id, { code: "needs_figma", site: null, detail: "bridge not running" }).pauseReason).toBe("needs_figma");
   });
 
   it("refuses to requeue finished tasks", () => {
@@ -102,6 +116,25 @@ describe("claimNextTask", () => {
 
   it("returns undefined when nothing is runnable", () => {
     expect(claimNextTask(db)).toBeUndefined();
+  });
+
+  it("claims consult and discussion tasks, which have no run, under the same caps (UC-15, UC-25, §10.3)", () => {
+    const ctx = seedRun(db);
+    updateRunStatus(db, ctx.run.id, "paused");
+    seedTask(db, ctx, {}, at(1));
+    const consult = createTask(
+      db,
+      { runId: null, stepId: null, botName: "qa", kind: "consult", engine: "codex", promptVersion: 1, input: { text: "why did QA fail NovaPay?" } },
+      { now: at(2) },
+    );
+    expect(consult).toMatchObject({ runId: null, stepId: null, status: "queued" });
+    // The paused run's task is skipped; the run-less consult task is claimable.
+    expect(claimNextTask(db, { now: at(3) })?.id).toBe(consult.id);
+    // Engine pauses still apply to it (UC-16).
+    const later = createTask(db, { runId: null, stepId: null, botName: "cv", kind: "discussion", engine: "claude", promptVersion: 1, input: {} }, { now: at(4) });
+    pauseEngine(db, "claude", { until: at(60), reason: "usage_limit" });
+    expect(claimNextTask(db, { now: at(5) })).toBeUndefined();
+    expect(claimNextTask(db, { now: at(61) })?.id).toBe(later.id);
   });
 
   it("respects engine, bot and kind filters", () => {
@@ -135,7 +168,7 @@ describe("claimNextTask", () => {
   it("skips engines paused for a usage limit until the reset time (UC-16)", () => {
     const ctx = seedRun(db);
     seedTask(db, ctx, { engine: "claude", botName: "cv", kind: "tailor" });
-    pauseEngine(db, "claude", { until: at(60), reason: "rate_limit" });
+    pauseEngine(db, "claude", { until: at(60), reason: "usage_limit" });
     expect(claimNextTask(db, { now: at(10) })).toBeUndefined();
     expect(claimNextTask(db, { now: at(10), respectEnginePause: false })).toBeDefined();
   });
@@ -143,7 +176,7 @@ describe("claimNextTask", () => {
   it("claims again once the pause has expired", () => {
     const ctx = seedRun(db);
     seedTask(db, ctx, { engine: "claude", botName: "cv", kind: "tailor" });
-    pauseEngine(db, "claude", { until: at(60), reason: "rate_limit" });
+    pauseEngine(db, "claude", { until: at(60), reason: "usage_limit" });
     expect(claimNextTask(db, { now: at(61) })).toBeDefined();
   });
 

@@ -1,25 +1,20 @@
-import { desc, eq, inArray, or } from "drizzle-orm";
+import type { JobCandidate } from "@bs-job-agents/shared";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { canonicalizeUrl, jobDedupeHash } from "../dedupe.js";
 import type { JobStatus, SkipReason } from "../enums.js";
-import { NotFoundError } from "../errors.js";
+import { InvalidTransitionError, NotFoundError } from "../errors.js";
 import { jobs } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
 import type { Job } from "../types.js";
 import { ensureCompany } from "./companies.js";
 
-/** Fields of a `JobCandidate` (UC-03) the data layer stores. */
-export interface JobCandidateInput {
-  source: string;
-  url: string;
-  title: string;
-  company: string;
-  location?: string | null;
-  salaryText?: string | null;
-  postedAt?: string | null;
-  language?: string | null;
-  jdText?: string | null;
-}
+/**
+ * The shared `JobCandidate` (UC-03) fields the data layer stores. `url` is null only
+ * for an uploaded JD whose posting was not found (§7.3b); such a job dedupes by hash.
+ */
+export type JobCandidateInput = Pick<JobCandidate, "source" | "url" | "title" | "company" | "language"> &
+  Partial<Pick<JobCandidate, "companyWebsite" | "location" | "workMode" | "salaryText" | "postedAt" | "jdText">>;
 
 export type DuplicateMatch = "canonical_url" | "dedupe_hash";
 
@@ -30,7 +25,7 @@ export interface UpsertJobResult {
 }
 
 export function dedupeKeys(c: Pick<JobCandidateInput, "url" | "company" | "title" | "location">) {
-  return { canonicalUrl: canonicalizeUrl(c.url), dedupeHash: jobDedupeHash(c) };
+  return { canonicalUrl: c.url ? canonicalizeUrl(c.url) : null, dedupeHash: jobDedupeHash(c) };
 }
 
 /** Existing job matching the candidate's canonical URL or company+title+location hash. */
@@ -42,9 +37,9 @@ export function findDuplicateJob(
   const rows = db
     .select()
     .from(jobs)
-    .where(or(eq(jobs.canonicalUrl, canonicalUrl), eq(jobs.dedupeHash, dedupeHash)))
+    .where(or(canonicalUrl ? eq(jobs.canonicalUrl, canonicalUrl) : undefined, eq(jobs.dedupeHash, dedupeHash)))
     .all();
-  const byUrl = rows.find((r) => r.canonicalUrl === canonicalUrl);
+  const byUrl = canonicalUrl ? rows.find((r) => r.canonicalUrl === canonicalUrl) : undefined;
   if (byUrl) return { job: byUrl, matchedBy: "canonical_url" };
   if (rows[0]) return { job: rows[0], matchedBy: "dedupe_hash" };
   return undefined;
@@ -59,7 +54,7 @@ export function upsertJobCandidate(db: Conn, c: JobCandidateInput, opts?: ClockO
   return db.transaction((tx) => {
     const dup = findDuplicateJob(tx, c);
     if (dup) return { job: dup.job, created: false, matchedBy: dup.matchedBy };
-    const company = ensureCompany(tx, { name: c.company });
+    const company = ensureCompany(tx, { name: c.company, website: c.companyWebsite ?? null });
     const { canonicalUrl, dedupeHash } = dedupeKeys(c);
     const job = tx
       .insert(jobs)
@@ -71,9 +66,10 @@ export function upsertJobCandidate(db: Conn, c: JobCandidateInput, opts?: ClockO
         title: c.title,
         companyId: company.id,
         location: c.location ?? null,
+        workMode: c.workMode ?? null,
         salaryText: c.salaryText ?? null,
         postedAt: c.postedAt ?? null,
-        language: c.language ?? null,
+        language: c.language,
         jdText: c.jdText ?? null,
         status: "new",
         firstSeenAt: nowIso(opts),
@@ -151,4 +147,27 @@ export function setJobStatus(db: Conn, id: number, status: JobStatus): Job {
 /** UC-10: skip with a reason (input for sub-project D). */
 export function skipJob(db: Conn, id: number, input: { reason: SkipReason; note?: string | null }): Job {
   return updateJob(db, id, { status: "skipped", skipReason: input.reason, skipNote: input.note ?? null });
+}
+
+/**
+ * UC-07 b / §10.2 rule 4: QA suspected prompt injection in this job's JD or page.
+ * Apply stays blocked until Ba confirms (clearJobInjection). Idempotent; a new flag
+ * after Ba confirmed keeps the confirmation (same posting).
+ */
+export function flagJobInjection(db: Conn, id: number): Job {
+  return updateJob(db, id, { injectionFlagged: true });
+}
+
+/** UC-07 b: Ba confirmed a flagged job is safe to apply to. */
+export function clearJobInjection(db: Conn, id: number, opts?: ClockOpts): Job {
+  const row = db
+    .update(jobs)
+    .set({ injectionClearedAt: nowIso(opts) })
+    .where(and(eq(jobs.id, id), eq(jobs.injectionFlagged, true)))
+    .returning()
+    .get();
+  if (row) return row;
+  const job = getJob(db, id);
+  if (!job) throw new NotFoundError("job", id);
+  throw new InvalidTransitionError("job injection flag", "not flagged", "cleared");
 }

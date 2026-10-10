@@ -1,6 +1,6 @@
+import { SEARCH_PROFILE_DEFAULTS, type SearchProfileFieldsBase } from "@bs-job-agents/shared";
 import { desc, eq, max } from "drizzle-orm";
 import type { Conn } from "../client.js";
-import type { Currency, SalaryPolicy } from "../enums.js";
 import { NotFoundError } from "../errors.js";
 import { searchProfiles } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
@@ -8,45 +8,18 @@ import type { SearchProfile } from "../types.js";
 
 export const DEFAULT_PROFILE_NAME = "Default";
 
-/** Editable fields of a Search Profile (§7.5). Omitted fields take the §7.5 defaults. */
-export interface SearchProfileInput {
-  roles: string[];
-  locations: string[];
-  workModes?: string[];
-  minSalary?: number | null;
-  currency?: Currency | null;
-  seniority?: string[];
-  sources?: string[];
-  includeKeywords?: string[];
-  excludeKeywords?: string[];
-  excludeCompanies?: string[];
-  companyTypes?: string[];
-  /** Empty = follow the §6.3 language rule (VI JD → VI + EN, otherwise EN). */
-  languages?: string[];
-  maxJobs?: number;
-  fitThreshold?: number;
-  salaryPolicy?: SalaryPolicy;
-  salaryAmount?: number | null;
-}
+/**
+ * Editable fields of a Search Profile (shared `SearchProfileFieldsBase`, §7.5). Omitted
+ * fields take the shared §7.5 defaults. Validation (UC-21b b) is the API's job, with
+ * the shared `SearchProfileFieldsSchema`.
+ */
+export type SearchProfileInput = Pick<SearchProfileFieldsBase, "roles" | "locations"> &
+  Partial<Omit<SearchProfileFieldsBase, "roles" | "locations">>;
 
-export const SEARCH_PROFILE_DEFAULTS = {
-  workModes: ["onsite", "hybrid", "remote"],
-  minSalary: null,
-  currency: null,
-  seniority: ["mid", "senior"],
-  sources: ["TopCV", "ITviec", "LinkedIn"],
-  includeKeywords: [],
-  excludeKeywords: [],
-  excludeCompanies: [],
-  companyTypes: [],
-  languages: [],
-  maxJobs: 5,
-  fitThreshold: 60,
-  salaryPolicy: "blank_if_optional",
-  salaryAmount: null,
-} as const satisfies Omit<Required<SearchProfileInput>, "roles" | "locations">;
+/** The shared §7.5 defaults (lowercase source keys, CV languages ["en"]). */
+export { SEARCH_PROFILE_DEFAULTS };
 
-type ProfileFields = Required<SearchProfileInput>;
+type ProfileFields = SearchProfileFieldsBase;
 
 function fieldsOf(p: SearchProfile): ProfileFields {
   const {

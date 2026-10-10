@@ -33,9 +33,29 @@ function configure(client: Database.Database, inMemory: boolean): void {
   client.pragma("synchronous = NORMAL");
 }
 
+/**
+ * Apply pending migrations. SQLite can only change CHECK / NOT NULL by rebuilding a
+ * table (create new, copy, drop old, rename), and that recipe needs foreign keys OFF:
+ * with them on, DROP TABLE fails on referenced rows or fires ON DELETE CASCADE on child
+ * rows. `PRAGMA foreign_keys` is a no-op inside the migrator's transaction, so it is
+ * switched here, around the whole migration, followed by `foreign_key_check`.
+ */
+function runMigrations(client: Database.Database, db: Db, migrationsFolder: string): void {
+  client.pragma("foreign_keys = OFF");
+  try {
+    migrate(db, { migrationsFolder });
+    const broken = client.pragma("foreign_key_check") as unknown[];
+    if (broken.length > 0) {
+      throw new Error(`database has ${broken.length} broken foreign key reference(s): ${JSON.stringify(broken.slice(0, 5))}`);
+    }
+  } finally {
+    client.pragma("foreign_keys = ON");
+  }
+}
+
 function wrap(client: Database.Database, options: OpenDbOptions): Db {
   const db = drizzle(client, { schema }) as Db;
-  migrate(db, { migrationsFolder: options.migrationsFolder ?? MIGRATIONS_FOLDER });
+  runMigrations(client, db, options.migrationsFolder ?? MIGRATIONS_FOLDER);
   return db;
 }
 

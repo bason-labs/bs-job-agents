@@ -1,20 +1,24 @@
 import { and, isNotNull, lte } from "drizzle-orm";
 import type { Conn } from "../client.js";
-import { ENGINES, type Engine } from "../enums.js";
+import { ENGINES, type Engine, type EnginePauseReason } from "../enums.js";
 import { engineState } from "../schema.js";
 import { nowIso, toIso, type ClockOpts } from "../time.js";
 
 export interface EngineState {
   engine: Engine;
   pausedUntil: string | null;
-  reason: string | null;
+  reason: EnginePauseReason | null;
 }
 
 /**
  * Pause an engine until `until` (UC-16). Callers that cannot parse a reset time
  * pass `now + 30 min` and pause again when it is still limited.
  */
-export function pauseEngine(db: Conn, engine: Engine, opts: { until: Date | string; reason: string }): EngineState {
+export function pauseEngine(
+  db: Conn,
+  engine: Engine,
+  opts: { until: Date | string; reason: EnginePauseReason },
+): EngineState {
   const pausedUntil = toIso(opts.until);
   return db
     .insert(engineState)
