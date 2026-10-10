@@ -20,6 +20,11 @@ export const ReviewCardFlagsSchema = z.object({
   noApplyLink: z.boolean(),
   /** Company profile marked low_confidence (UC-05 b). */
   lowConfidenceCompany: z.boolean(),
+  /**
+   * Apply was denied before it ran (e.g. its token expired) and waits for Ba to approve again:
+   * Approve issues a new token for the same application and CV version (PM M2). W3a, additive.
+   */
+  approveAgain: z.boolean().optional(),
 });
 
 export const ReviewCvOptionSchema = z.object({

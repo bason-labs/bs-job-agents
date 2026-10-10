@@ -1,7 +1,7 @@
 // Runs, steps and tasks (UC-22 inspect, UC-23 pause/cancel/re-run, UC-17 resume).
 import { z } from "zod";
 import { IdSchema } from "../common/primitives.js";
-import { RunSchema, StepSchema, TaskSchema } from "../domain/run.js";
+import { RunSchema, RunStatusSchema, StepSchema, TaskSchema } from "../domain/run.js";
 import { StartWorkflowInputSchema } from "../workflow/params.js";
 
 export const StartRunRequestSchema = StartWorkflowInputSchema;
@@ -9,6 +9,16 @@ export const StartRunResponseSchema = z.object({ runId: IdSchema });
 
 export const RunControlRequestSchema = z.object({ action: z.enum(["pause", "resume", "cancel"]) });
 export type RunControlRequest = z.infer<typeof RunControlRequestSchema>;
+
+/** The run after the control; `cancel` also lists the running tasks that got the abort signal. */
+export const RunControlResponseSchema = z.object({ run: RunSchema, abortedTaskIds: z.array(IdSchema) });
+export type RunControlResponse = z.infer<typeof RunControlResponseSchema>;
+
+/** GET /runs?status=&limit= (newest first). */
+export const RunsQuerySchema = z.object({
+  status: RunStatusSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
 
 export const RunDetailSchema = z.object({
   run: RunSchema,

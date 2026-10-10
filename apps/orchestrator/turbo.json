@@ -1,0 +1,9 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "dev": {
+      "passThroughEnv": ["ORCH_*", "CLAUDE_BIN", "CLAUDE_CONFIG_DIR", "CODEX_BIN", "CODEX_HOME"]
+    }
+  }
+}

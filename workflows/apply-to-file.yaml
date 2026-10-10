@@ -1,0 +1,82 @@
+# apply-to-file (spec §7.3b, UC-24): Ba uploads a JD file in chat.
+# As apply-to-link, but step 1 is research.scan kind `file`: Research reads the uploaded file
+# (PDF/Word/TXT/image) and extracts a JobCandidate. With no apply URL found, the review card says
+# "no apply link found" and Approve only produces the CV PDF; nothing is submitted.
+# Bump `version` with every change: runs keep the version they started with.
+name: apply-to-file
+version: 1
+description: Apply to a job from an uploaded JD file.
+triggers: [chat]
+steps:
+  - key: scan
+    type: task
+    task:
+      bot: research
+      kind: file
+      input:
+        uploadId: $params.uploadId
+  - key: fit
+    type: map
+    over: $steps.scan.output.jobs
+    task:
+      bot: research
+      kind: fit
+      input:
+        job: $item
+  - key: fit-join
+    type: join
+    of: fit
+  - key: selected
+    type: filter
+    fn: dedupe
+    from: fit-join
+    options:
+      applyAgain: $params.applyAgain
+
+  # ── per job (as job-scan steps 6–10) ──
+  - key: company
+    type: task
+    branch: selected
+    task:
+      bot: research
+      kind: company
+      input:
+        name: $item.company
+        website: $item.companyWebsite
+    cacheDays: 30
+  - key: tailor
+    type: gate
+    branch: selected
+    producer:
+      bot: cv
+      kind: tailor
+      input:
+        job: $item
+        company: $steps.company.output
+    checker:
+      bot: qa
+      kind: review
+      input:
+        job: $item
+        draft: $producer.output
+    maxRounds: 3
+    perLanguage: true
+  - key: review
+    type: human
+    branch: selected
+    kind: review
+    decisions: [approve, request_changes, skip]
+    onRequestChanges: tailor
+  - key: apply
+    type: action
+    branch: selected
+    task:
+      bot: apply
+      kind: submit
+      input:
+        approval: $steps.review.output
+    approvalFrom: review
+  - key: record
+    type: record
+    branch: selected
+    fn: submission

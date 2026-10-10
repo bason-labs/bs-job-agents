@@ -1,0 +1,103 @@
+# job-scan (spec §7.2): scheduled or from chat.
+# Scan the sources, dedupe, score fit, keep the top jobs, then one pipeline per job:
+# company → CV ⇄ QA gate → Ba's review → Apply (needs the review's approval token) → record.
+# Values starting with $ are templates the engine resolves ($params, $profile, $item, $steps.<key>.output).
+# Bump `version` with every change: runs keep the version they started with (§7, rule 3).
+name: job-scan
+version: 1
+description: Scan sources, score fit, then tailor, QA, review and apply per job.
+triggers: [chat, schedule]
+steps:
+  # 1  map research.scan over the sources → JobCandidate[]
+  - key: scan
+    type: map
+    over: $params.sources
+    task:
+      bot: research
+      kind: scan
+      input:
+        source: $item
+        criteria: $profile
+  # 2  join (partial ok; failed sources are reported)
+  - key: scan-join
+    type: join
+    of: scan
+    requireAll: false
+  # 3  filter dedupe vs the jobs table and applications
+  - key: dedupe
+    type: filter
+    fn: dedupe
+    from: scan-join
+  # 4  map research.fit over the new candidates → FitScore
+  - key: fit
+    type: map
+    over: $steps.dedupe.output
+    task:
+      bot: research
+      kind: fit
+      input:
+        job: $item
+  - key: fit-join
+    type: join
+    of: fit
+  # 5  filter top: fit ≥ fitThreshold, best first, at most maxJobs
+  - key: top
+    type: filter
+    fn: top
+    from: fit-join
+    options:
+      threshold: $profile.fitThreshold
+      take: $profile.maxJobs
+
+  # ── per selected job (parallel branches) ──
+  # 6  research.company (a profile younger than 30 days is reused)
+  - key: company
+    type: task
+    branch: top
+    task:
+      bot: research
+      kind: company
+      input:
+        name: $item.company
+        website: $item.companyWebsite
+    cacheDays: 30
+  # 7  gate cv.tailor ⇄ qa.review until total ≥ 80 and no hard fails, at most 3 rounds (VI JD: VI and EN)
+  - key: tailor
+    type: gate
+    branch: top
+    producer:
+      bot: cv
+      kind: tailor
+      input:
+        job: $item
+        company: $steps.company.output
+    checker:
+      bot: qa
+      kind: review
+      input:
+        job: $item
+        draft: $producer.output
+    maxRounds: 3
+    perLanguage: true
+  # 8  human review: approve | request_changes(comment) → back to 7 | skip(reason)
+  - key: review
+    type: human
+    branch: top
+    kind: review
+    decisions: [approve, request_changes, skip]
+    onRequestChanges: tailor
+  # 9  action apply.submit: requires the approval token from step 8
+  - key: apply
+    type: action
+    branch: top
+    task:
+      bot: apply
+      kind: submit
+      input:
+        approval: $steps.review.output
+    approvalFrom: review
+  # 10 record: application + submission record + JD snapshot, one transaction (§9.1)
+  - key: record
+    type: record
+    branch: top
+    fn: submission
