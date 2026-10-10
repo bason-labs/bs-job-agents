@@ -4,7 +4,9 @@
 import type { FastifyInstance } from "fastify";
 import type { ApiContext } from "./context.js";
 import { applicationRoutes } from "./routes/applications.js";
+import { botRoutes } from "./routes/bots.js";
 import { criteriaRoutes } from "./routes/criteria.js";
+import { engineRoutes } from "./routes/engines.js";
 import { exportRoutes } from "./routes/exports.js";
 import { fileRoutes } from "./routes/files.js";
 import { healthRoutes } from "./routes/health.js";
@@ -28,6 +30,8 @@ export function registerRoutes(app: FastifyInstance, ctx: ApiContext, _opts: Rou
   applicationRoutes(app, ctx);
   exportRoutes(app, ctx);
   uploadRoutes(app, ctx);
+  botRoutes(app, ctx);
+  engineRoutes(app, ctx);
 }
 
 export type { ApiConfig, ApiContext, EventHub, OrchestratorState, Recovered } from "./context.js";
