@@ -15,17 +15,18 @@ Owner instruction (2026-10-10): no separate implementation plan. Build in phases
    ```
    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
    ```
-4. **Definition of done:**
+4. **Migration rule:** never rebuild `applications`, `submissions`, `job_snapshots` or `approvals` (it drops their immutability triggers). Use ADD COLUMN; `openDb` refuses to start if any trigger or index is missing. Shared changes are additive; the drift tests must stay green.
+5. **Definition of done:**
    - `pnpm install && pnpm -w typecheck && pnpm -w lint && pnpm -w test` pass from the repo root
    - no `TODO`s left without a matching note in your report
-5. **Report back:**
+6. **Report back:**
    - what you built (paths)
    - tests added (count) and their results
    - spec sections covered
    - deviations from the spec, with reasons
    - handoffs and open questions
-6. **No secrets or API keys anywhere.** Engines run only through the user's `claude` / `codex` subscriptions (spec §1.4).
-7. **UI:**
+7. **No secrets or API keys anywhere.** Engines run only through the user's `claude` / `codex` subscriptions (spec §1.4).
+8. **UI:**
    - bs-kara theme tokens, own components (Radix primitives for behaviour, lucide-react icons)
    - `cursor-pointer` on everything clickable; narrow pages centered
    - file viewer first, download from inside the viewer (spec §11)
@@ -38,12 +39,14 @@ Owner instruction (2026-10-10): no separate implementation plan. Build in phases
 | **1 Foundations** | W1a Shared schemas | `packages/shared/**` | §5, §7, §9, §9.1, §5.5 (strict JSON Schema converter) |
 | | W1b Data layer | `apps/orchestrator/src/db/**` | §9, §9.1 |
 | | W1c Design system + app shell | `apps/web/**` | §11 (components, layout, theme, sidebar, routing shell) |
-| **2 Engine and runner** | W2a Engine | `apps/orchestrator/src/engine/**` (workflow engine, task queue, limiter, browser/Figma locks, trust guard, scheduler, FakeRunner) | §3, §5.3, §7, §10 |
-| | W2b Runner | `apps/orchestrator/src/runner/**`, `bots/**` (bot.json, ROLE.md, memory.md) | §5, §5.5, §10.2, spike S1/S2/S4 |
-| | W2c Bridges | `apps/orchestrator/src/bridges/**` (Figma bridge, Chrome site-guard hook, PDF text + SHA-256 tools) | §4.4, §6.2, spike S2/S3b |
-| **3 API and UI** | W3a API | `apps/orchestrator/src/api/**`, `src/mcp/**`, `workflows/**` | §4.2, §7, §8, §11 (SSE events) |
-| | W3b UI: chat, flows, review | `apps/web/app/(chat\|flows\|review)/**` and their components | §11, UC-01/07/08/09/10/16/22/25 |
-| | W3c UI: apps, criteria, schedules, bots, CV, rooms, viewer | the other `apps/web/app/**` routes | §11, UC-12/13/13b/15/19/20/21/21b/24 |
+| **1→2 Must-fix** | F1 Fixer (PM M1–M4, S11, S12) | `apps/orchestrator/src/db/**`, `apps/orchestrator/drizzle/**`, `packages/shared/src/{domain,workflow,events,api,fixtures}/**`, `apps/orchestrator/src/config.ts`, root `package.json`/`.npmrc`/README (engines, port) | pm-phase-1.md M1–M4, S11, S12 |
+| **2 Engine and runner** | W2a Engine (starts after F1 merges) | `apps/orchestrator/src/engine/**`; after F1 also `apps/orchestrator/src/db/**`, `apps/orchestrator/drizzle/**`, `packages/shared/src/{domain,workflow,events,api,fixtures}/**` (additive only) | §3, §5.3, §7, §10; pm-phase-1.md §7 W2a, S1–S4 |
+| | W2b Runner | `apps/orchestrator/src/runner/**`, `bots/**` (bot.json, ROLE.md, memory.md), `packages/shared/src/{bots,json-schema}/**` (additive only) | §5, §5.5, §10.2, spike S1/S2/S4; pm-phase-1.md §7 W2b, S5–S7 |
+| | W2c Bridges | `apps/orchestrator/src/bridges/**` (Figma bridge, Chrome site-guard hook, PDF text + SHA-256 tools); asks for shared/db changes through its handoff | §4.4, §6.2, spike S2/S3b; pm-phase-1.md §7 W2c |
+| **3 API and UI** | W3a API | `apps/orchestrator/src/api/**`, `src/mcp/**`, `workflows/**` | §4.2, §7, §8, §11 (SSE events); pm S10 |
+| | W3b UI: chat, flows, review | `apps/web/app/(shell)/{chat,flows,review}/**`, `apps/web/components/{chat,flows,review}/**`, and `apps/web/lib/api/**` (the data seam: API client, SSE subscription, mappers) | §11, UC-01/07/08/09/10/16/22/25; pm S8 |
+| | W3c UI: apps, criteria, schedules, bots, CV, rooms, viewer | the other `apps/web/app/(shell)/**` routes, `apps/web/components/{applications,criteria,schedules,bots,cv,rooms}/**`; uses W3b's `lib/api` (asks for additions via handoff or adds new files only) | §11, UC-12/13/13b/15/19/20/21/21b/24; pm S9 |
+| | (shared) | `apps/web/components/ui/**` and `components/shell/**` changes: W3b owns; W3c adds new components in its own folders | pm S13 |
 | **4 Integration** | W4a Source adapters | `bots/research/skills/**`, `apps/orchestrator/src/adapters/**` | UC-03/04, §12 source adapters |
 | | W4b End-to-end | `apps/web/e2e/**`, wiring fixes | §12 integration + UI e2e, dry-run acceptance |
 | | W4c Bot prompts + master CV | `bots/*/ROLE.md`, `data.example/master-cv.yaml` | §5.2, §6.1, §6.3 |
