@@ -20,7 +20,10 @@ export default defineConfig({
   webServer: {
     command: `pnpm exec next dev --port ${PORT}`,
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    // Opt-in only (E2E_REUSE=1): agents run e2e from parallel worktrees, and silently
+    // reusing a server already on the port would test another worktree's code. Use
+    // E2E_PORT to run several suites side by side.
+    reuseExistingServer: process.env.E2E_REUSE === "1",
     timeout: 120_000,
   },
 });
