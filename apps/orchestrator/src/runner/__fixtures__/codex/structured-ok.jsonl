@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"01a126da-c068-79b0-93c3-7cf34d4305ec"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Under-development features enabled: skip_host_skill_discovery. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in /Users/ba/.codex/config.toml."}}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"{\"reply\":\"I run on GPT-6.\",\"handoffToLead\":null,\"selfCheck\":[{\"item\":\"Answered within my role; no work was done\",\"passed\":true,\"note\":null}],\"memoryNotes\":[]}"}}
+{"type":"turn.completed","usage":{"input_tokens":19619,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":56,"reasoning_output_tokens":0}}

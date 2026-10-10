@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a126dc-e579-7312-bbc9-91947b7f50d5"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"{\"reply\":\"\",\"handoffToLead\":null,\"selfCheck\":[{\"item\":\"Answered within my role; no work was done\",\"passed\":true,\"note\":\"A CV may use Arial, Calibri, or Garamond.\"}],\"memoryNotes\":[]}"}}
+{"type":"turn.completed","usage":{"input_tokens":18793,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":62,"reasoning_output_tokens":0}}
