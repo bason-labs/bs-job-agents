@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job Agents mockup v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.11"></script>
+<style type="text/tailwindcss">
+  @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+  :root {
+    --bg:#f7f8fa; --surface:#ffffff; --surface-2:#f1f4f8; --surface-3:#e8edf3; --border:#e3e7ec;
+    --fg:#0f172a; --muted:#64748b; --brand:#006d6f; --brand-2:#008b8b; --glow:#0d98ba; --accent:#15a3c7; --danger:#c92d3a;
+    --ok:#1a7f37; --warn:#b7791f; --grid: rgba(15,23,42,.08);
+  }
+  [data-theme="dark"] {
+    --bg:#06100f; --surface:#0e1c1c; --surface-2:#152a2a; --surface-3:#1a3535; --border:#1f3a3a;
+    --fg:#e0ffff; --muted:#7aa8a8; --brand:#008b8b; --brand-2:#006d6f; --glow:#7df9ff; --accent:#40e0d0; --danger:#ff5f6d;
+    --ok:#3fd68a; --warn:#f2c14e; --grid: rgba(125,249,255,.07);
+  }
+  @theme inline {
+    --color-bg:var(--bg); --color-surface:var(--surface); --color-surface-2:var(--surface-2); --color-surface-3:var(--surface-3);
+    --color-border:var(--border); --color-fg:var(--fg); --color-muted:var(--muted); --color-brand:var(--brand); --color-brand-2:var(--brand-2);
+    --color-glow:var(--glow); --color-accent:var(--accent); --color-danger:var(--danger); --color-ok:var(--ok); --color-warn:var(--warn);
+    --font-sans:"Be Vietnam Pro","Segoe UI",Arial,sans-serif; --font-display:"Space Grotesk","Be Vietnam Pro",sans-serif;
+  }
+  @utility bg-gradient-brand { background-image: linear-gradient(135deg,#008b8b 0%,#006d6f 60%,#0d98ba 100%); }
+  @utility shadow-glow { box-shadow: 0 0 24px -4px rgba(13,152,186,.45); }
+  @utility text-gradient { background: linear-gradient(90deg,var(--glow),var(--accent),var(--brand-2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  body {
+    background: var(--bg); color: var(--fg); font-family: var(--font-sans);
+    background-image:
+      radial-gradient(60vmax 60vmax at 15% -10%, color-mix(in oklab, var(--brand) 18%, transparent), transparent 60%),
+      radial-gradient(50vmax 50vmax at 110% 110%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 60%);
+    background-attachment: fixed;
+  }
+  .canvas { background-color: var(--bg); background-image: radial-gradient(var(--grid) 1.2px, transparent 1.2px); background-size: 18px 18px; }
+  .node { position:absolute; width:150px; }
+  @keyframes dash { to { stroke-dashoffset: -24; } }
+  .flowing { stroke-dasharray: 6 6; animation: dash .8s linear infinite; }
+  @keyframes ring { 0%,100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 55%, transparent), 0 0 24px -4px rgba(13,152,186,.45);} 50% { box-shadow: 0 0 0 6px transparent, 0 0 30px -2px rgba(64,224,208,.6);} }
+  .running { animation: ring 1.8s ease-in-out infinite; border-color: var(--accent) !important; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .caret { display:inline-block; width:7px; height:14px; background:var(--accent); vertical-align:-2px; animation: blink 1s steps(2) infinite; }
+  @keyframes aurora { 0% { transform: translateX(-10%) } 100% { transform: translateX(10%) } }
+</style>
+</head>
+<body class="min-h-screen p-6 text-sm">
+<div class="max-w-[1400px] mx-auto space-y-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="font-display text-2xl font-semibold">v3: more polish, plus a Flow canvas</h1>
+      <p class="text-muted">Still the bs-kara theme. Screen 1 = chat, Screen 2 = live workflow canvas (React Flow in the real app).</p>
+    </div>
+    <button onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme==='dark'?'light':'dark'" class="rounded-full border border-border bg-surface px-4 py-2">Toggle light / dark</button>
+  </div>
+
+  <!-- ================= SCREEN 1: CHAT ================= -->
+  <p class="font-display text-muted uppercase tracking-wider text-xs">Screen 1 · Chat with Lead</p>
+  <div class="relative flex h-[760px] rounded-3xl border border-border bg-surface/50 backdrop-blur-md overflow-hidden shadow-2xl">
+    <!-- sidebar -->
+    <aside class="w-60 border-r border-border bg-bg/50 flex flex-col">
+      <div class="flex items-center gap-2 px-4 py-4">
+        <div class="size-8 rounded-xl bg-gradient-brand shadow-glow grid place-items-center font-display font-bold text-white">J</div>
+        <span class="font-display font-semibold tracking-tight">Job Agents</span>
+      </div>
+      <button class="mx-3 mb-2 rounded-xl bg-gradient-brand text-white py-2 shadow-glow font-medium">+ New chat</button>
+      <nav class="px-2 space-y-0.5">
+        <a class="flex items-center gap-2.5 rounded-lg px-3 py-2 bg-surface-2"><svg class="size-4 text-accent" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Chat</a>
+        <a class="flex items-center gap-2.5 rounded-lg px-3 py-2 hover:bg-surface-2 text-muted"><svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M7 6h10M6 8l5 8M18 8l-5 8"/></svg>Flows</a>
+        <a class="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-surface-2 text-muted"><span class="flex items-center gap-2.5"><svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>Review</span><span class="rounded-full bg-danger text-white text-[10px] px-1.5">3</span></a>
+        <a class="flex items-center gap-2.5 rounded-lg px-3 py-2 hover:bg-surface-2 text-muted"><svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Applications</a>
+        <a class="flex items-center gap-2.5 rounded-lg px-3 py-2 hover:bg-surface-2 text-muted"><svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Schedules</a>
+      </nav>
+      <p class="px-5 mt-5 mb-1 text-[10px] uppercase tracking-wider text-muted">Team</p>
+      <div class="px-2 space-y-0.5">
+        <a class="flex items-center gap-2.5 rounded-lg px-3 py-1.5 hover:bg-surface-2"><span class="relative size-6 rounded-full bg-gradient-brand grid place-items-center text-[10px] font-bold text-white">L<span class="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-ok ring-2 ring-bg"></span></span>Lead</a>
+        <a class="flex items-center justify-between rounded-lg px-3 py-1.5 hover:bg-surface-2"><span class="flex items-center gap-2.5"><span class="relative size-6 rounded-full bg-surface-3 grid place-items-center text-[10px] font-bold text-accent">R<span class="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-accent ring-2 ring-bg animate-pulse"></span></span>Research</span><span class="text-[10px] text-accent">working</span></a>
+        <a class="flex items-center justify-between rounded-lg px-3 py-1.5 hover:bg-surface-2"><span class="flex items-center gap-2.5"><span class="relative size-6 rounded-full bg-surface-3 grid place-items-center text-[10px] font-bold text-accent">C<span class="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-accent ring-2 ring-bg animate-pulse"></span></span>CV</span><span class="text-[10px] text-accent">working</span></a>
+        <a class="flex items-center gap-2.5 rounded-lg px-3 py-1.5 hover:bg-surface-2"><span class="relative size-6 rounded-full bg-surface-3 grid place-items-center text-[10px] font-bold text-muted">Q<span class="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-muted ring-2 ring-bg"></span></span>QA</a>
+        <a class="flex items-center justify-between rounded-lg px-3 py-1.5 hover:bg-surface-2"><span class="flex items-center gap-2.5"><span class="relative size-6 rounded-full bg-surface-3 grid place-items-center text-[10px] font-bold text-warn">A<span class="absolute -right-0.5 -bottom-0.5 size-2 rounded-full bg-warn ring-2 ring-bg"></span></span>Apply</span><span class="rounded border border-warn/40 text-warn text-[9px] px-1">L1</span></a>
+      </div>
+      <p class="px-5 mt-5 mb-1 text-[10px] uppercase tracking-wider text-muted">Rooms</p>
+      <a class="mx-2 rounded-lg px-3 py-1.5 hover:bg-surface-2 text-muted"># cv-brainstorm</a>
+      <div class="mt-auto m-3 rounded-2xl border border-border bg-surface-2/50 p-3">
+        <p class="text-xs font-medium">Subscription usage</p>
+        <div class="mt-2 flex justify-between text-[10px] text-muted"><span>Claude</span><span>42%</span></div>
+        <div class="h-1 rounded-full bg-surface-3"><div class="h-1 w-[42%] rounded-full bg-gradient-brand"></div></div>
+        <div class="mt-1.5 flex justify-between text-[10px] text-muted"><span>ChatGPT</span><span>18%</span></div>
+        <div class="h-1 rounded-full bg-surface-3"><div class="h-1 w-[18%] rounded-full bg-gradient-brand"></div></div>
+      </div>
+    </aside>
+
+    <!-- main chat -->
+    <main class="relative flex-1 flex flex-col">
+      <div class="pointer-events-none absolute -top-32 left-1/4 h-64 w-1/2 rounded-full blur-3xl opacity-30 bg-gradient-brand"></div>
+      <header class="relative flex items-center justify-between px-6 py-3 border-b border-border/60">
+        <div class="flex items-center gap-2 text-muted"><span>Chat</span><span>/</span><span class="text-fg font-medium">Frontend jobs in HCM</span></div>
+        <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 rounded-xl border border-border bg-surface/70 px-3 py-1.5 text-muted w-64"><svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search everything…<span class="ml-auto rounded border border-border px-1 text-[10px]">⌘K</span></div>
+          <button class="rounded-xl border border-border bg-surface/70 px-3 py-1.5">Open flow ↗</button>
+        </div>
+      </header>
+
+      <div class="relative flex-1 overflow-hidden">
+        <div class="mx-auto max-w-2xl px-6 py-6 space-y-6">
+          <!-- user -->
+          <div class="flex justify-end">
+            <div class="max-w-[80%] rounded-3xl rounded-br-md bg-surface-2 border border-border px-4 py-3">Find frontend jobs in HCM — React/Next.js, salary ≥ 25M. Prefer product companies.</div>
+          </div>
+          <!-- lead reply with delegation trace -->
+          <div class="flex gap-3">
+            <div class="size-8 shrink-0 rounded-full bg-gradient-brand shadow-glow grid place-items-center text-xs font-bold text-white">L</div>
+            <div class="flex-1 space-y-3">
+              <div class="flex items-center gap-2"><span class="font-display font-semibold">Lead</span><span class="text-[10px] rounded-full border border-border px-2 text-muted">Claude</span></div>
+              <!-- delegation trace -->
+              <div class="rounded-2xl border border-border bg-surface/70 overflow-hidden">
+                <div class="flex items-center justify-between px-4 py-2 border-b border-border bg-surface-2/50 text-xs">
+                  <span class="flex items-center gap-2"><span class="size-1.5 rounded-full bg-accent animate-pulse"></span><b>Job scan #12</b> · delegated 4 tasks</span>
+                  <span class="text-muted">2m 14s</span>
+                </div>
+                <div class="divide-y divide-border/60 text-xs">
+                  <div class="flex items-center gap-3 px-4 py-2"><span class="text-ok">✓</span><span class="text-muted">Lead →</span><b>@Research</b><span class="text-muted flex-1">scan TopCV, ITviec, LinkedIn</span><span class="text-muted">34 found</span></div>
+                  <div class="flex items-center gap-3 px-4 py-2"><span class="text-ok">✓</span><span class="text-muted">Lead →</span><b>@Research</b><span class="text-muted flex-1">fit score + company research</span><span class="text-muted">top 5</span></div>
+                  <div class="flex items-center gap-3 px-4 py-2 bg-accent/5"><span class="size-3 rounded-full border-2 border-accent border-t-transparent animate-spin"></span><span class="text-muted">Lead →</span><b class="text-accent">@CV</b><span class="text-muted flex-1">tailor CV for DEKON (round 2: QA asked for Next.js)</span><span class="text-accent">running</span></div>
+                  <div class="flex items-center gap-3 px-4 py-2 opacity-50"><span class="size-3 rounded-full border border-border"></span><span class="text-muted">Lead →</span><b>@QA</b><span class="text-muted flex-1">score vs JD (pass ≥ 80)</span><span>queued</span></div>
+                </div>
+              </div>
+              <p class="leading-relaxed">Found <b>21 new jobs</b>; 5 fit above 60. Two are already through QA. I'm waiting on the DEKON CV. QA sent it back once because it was missing Next.js and ran to 2 pages<span class="caret ml-0.5"></span></p>
+              <!-- job chips -->
+              <div class="grid grid-cols-3 gap-2">
+                <div class="rounded-2xl border border-border bg-surface/70 p-3 hover:border-accent transition"><p class="text-[10px] text-muted">TopCV · 30–45M</p><p class="font-medium truncate">DEKON — Sr Node/React</p><p class="mt-1 font-display text-accent font-bold">86 <span class="text-[10px] text-muted font-sans font-normal">fit</span></p></div>
+                <div class="rounded-2xl border border-border bg-surface/70 p-3"><p class="text-[10px] text-muted">TopCV · 25–35M</p><p class="font-medium truncate">YAVIET — Frontend</p><p class="mt-1 font-display text-accent font-bold">84 <span class="text-[10px] text-ok font-sans font-normal">QA 88 ✓</span></p></div>
+                <div class="rounded-2xl border border-border bg-surface/70 p-3"><p class="text-[10px] text-muted">ITviec · 1.5–2.5k$</p><p class="font-medium truncate">SMARTBIT — Frontend</p><p class="mt-1 font-display text-accent font-bold">81 <span class="text-[10px] text-ok font-sans font-normal">QA 83 ✓</span></p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- composer -->
+      <div class="relative px-6 pb-5">
+        <div class="mx-auto max-w-2xl">
+          <div class="flex gap-2 mb-2 text-xs">
+            <button class="rounded-full border border-border bg-surface/70 px-3 py-1 text-muted hover:text-fg">Show review queue</button>
+            <button class="rounded-full border border-border bg-surface/70 px-3 py-1 text-muted hover:text-fg">Scan again tomorrow 9:00</button>
+            <button class="rounded-full border border-border bg-surface/70 px-3 py-1 text-muted hover:text-fg">Why did DEKON fail QA?</button>
+          </div>
+          <div class="rounded-3xl border border-border bg-surface/80 shadow-glow p-3">
+            <p class="px-2 py-1 text-muted">Message Lead…  <span class="text-[11px]">/ commands · @ mention · ⌘↵ send</span></p>
+            <div class="flex items-center justify-between mt-2">
+              <div class="flex gap-1.5 text-xs">
+                <span class="rounded-full border border-border px-2.5 py-1 text-muted">📎 Attach JD</span>
+                <span class="rounded-full border border-border px-2.5 py-1 text-muted">Lead · Claude ▾</span>
+              </div>
+              <button class="size-9 rounded-full bg-gradient-brand shadow-glow grid place-items-center text-white">↑</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ================= SCREEN 2: FLOW CANVAS ================= -->
+  <p class="font-display text-muted uppercase tracking-wider text-xs pt-6">Screen 2 · Flow canvas: monitor the run live (like ElevenLabs Flows)</p>
+  <div class="relative rounded-3xl border border-border overflow-hidden shadow-2xl">
+    <!-- toolbar -->
+    <div class="absolute z-10 top-3 left-3 right-3 flex items-center justify-between">
+      <div class="flex items-center gap-2 rounded-2xl border border-border bg-surface/80 backdrop-blur-md px-3 py-2">
+        <span class="text-muted">Flows /</span><b class="font-display">Job scan #12</b>
+        <span class="ml-2 flex items-center gap-1.5 rounded-full bg-accent/10 border border-accent/40 text-accent text-[11px] px-2 py-0.5"><span class="size-1.5 rounded-full bg-accent animate-pulse"></span>Running · step 5/8</span>
+        <span class="text-muted text-xs ml-2">trigger: schedule weekdays 09:00</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="rounded-xl border border-border bg-surface/80 backdrop-blur-md px-3 py-2">⏸ Pause</button>
+        <button class="rounded-xl border border-border bg-surface/80 backdrop-blur-md px-3 py-2">↻ Re-run step</button>
+        <button class="rounded-xl bg-gradient-brand text-white px-3 py-2 shadow-glow">Open review (3)</button>
+      </div>
+    </div>
+
+    <div class="canvas relative h-[640px] overflow-x-auto">
+      <div class="relative" style="width:1420px;height:640px">
+        <!-- edges -->
+        <svg class="absolute inset-0" width="1420" height="640" fill="none">
+          <defs>
+            <linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#008b8b"/><stop offset="1" stop-color="#40e0d0"/></linearGradient>
+            <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#40e0d0"/></marker>
+          </defs>
+          <!-- done edges -->
+          <path d="M170,228 C200,228 190,168 220,168" stroke="url(#g)" stroke-width="2"/>
+          <path d="M370,168 C400,168 390,228 420,228" stroke="url(#g)" stroke-width="2"/>
+          <path d="M570,228 C600,228 590,138 620,138" stroke="url(#g)" stroke-width="2"/>
+          <path d="M770,138 C800,138 790,228 820,228" stroke="url(#g)" stroke-width="2"/>
+          <!-- running edge -->
+          <path class="flowing" d="M970,228 C1000,228 990,168 1020,168" stroke="#40e0d0" stroke-width="2.5"/>
+          <!-- QA fail loop back to CV -->
+          <path d="M1095,275 C1095,430 895,440 895,358" stroke="#ff5f6d" stroke-width="2" stroke-dasharray="4 5" marker-end="url(#arr)"/>
+          <!-- pending -->
+          <path d="M1170,168 C1200,168 1190,228 1220,228" stroke="var(--border)" stroke-width="2" stroke-dasharray="3 5"/>
+          <path d="M1295,330 L1295,500" stroke="var(--border)" stroke-width="2" stroke-dasharray="3 5"/>
+          <path d="M1220,548 L1170,548" stroke="var(--border)" stroke-width="2" stroke-dasharray="3 5"/>
+        </svg>
+        <div class="absolute text-[10px] text-danger rounded-full border border-danger/40 bg-surface/90 px-2 py-0.5" style="left:905px;top:428px">QA fail (72) → fixes → round 2</div>
+
+        <!-- Trigger -->
+        <div class="node rounded-2xl border border-border bg-surface/90 backdrop-blur p-3" style="left:20px;top:200px">
+          <p class="text-[10px] uppercase tracking-wider text-muted">Trigger</p>
+          <p class="font-medium mt-1">⏰ Weekdays 09:00</p>
+          <p class="text-[11px] text-muted mt-1">or chat with Lead</p>
+          <span class="absolute -right-1.5 top-[24px] size-3 rounded-full bg-accent ring-2 ring-surface"></span>
+        </div>
+
+        <!-- Scan -->
+        <div class="node rounded-2xl border border-border bg-surface/90 backdrop-blur p-3" style="left:220px;top:140px">
+          <div class="flex justify-between text-[10px] uppercase tracking-wider text-muted"><span>Research</span><span class="text-ok">✓ done</span></div>
+          <p class="font-medium mt-1">Scan sources</p>
+          <div class="mt-2 space-y-1 text-[11px]">
+            <div class="flex justify-between rounded-lg bg-surface-2 px-2 py-1"><span>TopCV</span><b>18</b></div>
+            <div class="flex justify-between rounded-lg bg-surface-2 px-2 py-1"><span>ITviec</span><b>9</b></div>
+            <div class="flex justify-between rounded-lg bg-surface-2 px-2 py-1"><span>LinkedIn</span><b>7</b></div>
+          </div>
+          <p class="text-[11px] text-muted mt-2">34 found → <b class="text-fg">21 new</b></p>
+          <p class="text-[10px] text-muted mt-1">Codex · 48s</p>
+        </div>
+
+        <!-- Fit -->
+        <div class="node rounded-2xl border border-border bg-surface/90 backdrop-blur p-3" style="left:420px;top:200px">
+          <div class="flex justify-between text-[10px] uppercase tracking-wider text-muted"><span>Research</span><span class="text-ok">✓ done</span></div>
+          <p class="font-medium mt-1">Fit score</p>
+          <div class="mt-2 space-y-1 text-[11px]">
+            <div class="flex justify-between"><span>DEKON</span><b class="text-accent">86</b></div>
+            <div class="flex justify-between"><span>YAVIET</span><b class="text-accent">84</b></div>
+            <div class="flex justify-between"><span>SMARTBIT</span><b class="text-accent">81</b></div>
+            <div class="flex justify-between text-muted"><span>+2 more ≥ 60</span><span>16 dropped</span></div>
+          </div>
+        </div>
+
+        <!-- Company research (stacked) -->
+        <div class="node" style="left:620px;top:110px">
+          <div class="absolute inset-0 translate-x-2 translate-y-2 rounded-2xl border border-border bg-surface-2/80"></div>
+          <div class="absolute inset-0 translate-x-1 translate-y-1 rounded-2xl border border-border bg-surface-2/90"></div>
+          <div class="relative rounded-2xl border border-border bg-surface/95 p-3">
+            <div class="flex justify-between text-[10px] uppercase tracking-wider text-muted"><span>Research ×5</span><span class="text-ok">✓ 5/5</span></div>
+            <p class="font-medium mt-1">Company profile</p>
+            <p class="text-[11px] text-muted mt-1.5">DEKON: construction SaaS · ~120 ppl · hybrid · 13th month</p>
+            <div class="mt-2 flex flex-wrap gap-1 text-[10px]"><span class="rounded-full bg-surface-2 px-2">product</span><span class="rounded-full bg-surface-2 px-2">AI</span><span class="rounded-full bg-surface-2 px-2">2 cached</span></div>
+          </div>
+        </div>
+
+        <!-- CV running -->
+        <div class="node running rounded-2xl border bg-surface/95 backdrop-blur p-3" style="left:820px;top:200px">
+          <div class="flex justify-between text-[10px] uppercase tracking-wider"><span class="text-muted">CV · Claude</span><span class="text-accent">● round 2</span></div>
+          <p class="font-medium mt-1">Tailor CV</p>
+          <div class="mt-2 rounded-lg bg-white p-2 h-[86px] overflow-hidden text-[5px] leading-tight text-slate-700">
+            <p class="text-[8px] font-bold text-slate-900">BA HUYNH</p><p class="font-bold text-teal-700">SOFTWARE ENGINEER | REACT, NEXT.JS, NODE &amp; AI</p>
+            <div class="mt-1 h-1 w-full bg-slate-200 rounded"></div><div class="mt-0.5 h-1 w-5/6 bg-slate-200 rounded"></div><div class="mt-0.5 h-1 w-4/6 bg-slate-200 rounded"></div>
+            <div class="mt-1 h-1 w-full bg-teal-100 rounded animate-pulse"></div><div class="mt-0.5 h-1 w-3/4 bg-teal-100 rounded animate-pulse"></div>
+          </div>
+          <p class="text-[11px] text-muted mt-2">Adding Next.js · fitting to 1 page<span class="caret ml-0.5" style="height:10px;width:5px"></span></p>
+        </div>
+
+        <!-- QA -->
+        <div class="node rounded-2xl border border-border bg-surface/90 backdrop-blur p-3" style="left:1020px;top:140px">
+          <div class="flex justify-between text-[10px] uppercase tracking-wider text-muted"><span>QA · Codex</span><span>queued</span></div>
+          <p class="font-medium mt-1">Score vs JD</p>
+          <div class="mt-2 rounded-lg border border-danger/40 bg-danger/10 px-2 py-1.5 text-[11px]">
+            <div class="flex justify-between"><span>Round 1</span><b class="text-danger">72 ✗</b></div>
+            <p class="text-muted text-[10px] mt-0.5">missing "Next.js" · 2 pages</p>
+          </div>
+          <div class="mt-1.5 rounded-lg border border-border px-2 py-1.5 text-[11px] text-muted flex justify-between"><span>Round 2</span><span>waiting…</span></div>
+          <p class="text-[10px] text-muted mt-2">pass ≥ 80 · max 3 rounds</p>
+        </div>
+
+        <!-- Review -->
+        <div class="node rounded-2xl border border-dashed border-border bg-surface/70 backdrop-blur p-3 opacity-80" style="left:1220px;top:200px">
+          <div class="flex justify-between text-[10px] uppercase tracking-wider text-muted"><span>You</span><span>pending</span></div>
+          <p class="font-medium mt-1">Review &amp; approve</p>
+          <p class="text-[11px] text-muted mt-1.5">2 ready · 1 waiting on QA</p>
+          <div class="mt-2 flex gap-1"><span class="rounded-full bg-gradient-brand text-white text-[10px] px-2 py-0.5">Approve</span><span class="rounded-full border border-border text-[10px] px-2 py-0.5">Changes</span></div>
+        </div>
+
+        <!-- Apply -->
+        <div class="node rounded-2xl border border-dashed border-warn/50 bg-surface/70 backdrop-blur p-3 opacity-80" style="left:1220px;top:500px">
+          <div class="flex justify-between text-[10px] uppercase tracking-wider text-muted"><span>Apply · L1</span><span class="text-warn">🔒 locked</span></div>
+          <p class="font-medium mt-1">Fill &amp; submit</p>
+          <p class="text-[11px] text-muted mt-1">Unlocks after your approval</p>
+        </div>
+
+        <!-- Applications -->
+        <div class="node rounded-2xl border border-dashed border-border bg-surface/70 backdrop-blur p-3 opacity-80" style="left:1020px;top:510px">
+          <p class="text-[10px] uppercase tracking-wider text-muted">Store</p>
+          <p class="font-medium mt-1">Applications</p>
+          <p class="text-[11px] text-muted mt-1">link · CV version · screenshot</p>
+        </div>
+
+        <!-- side drawer hint -->
+      </div>
+    </div>
+    <!-- minimap + zoom -->
+    <div class="absolute bottom-3 left-3 flex items-center gap-1 rounded-xl border border-border bg-surface/80 backdrop-blur-md p-1 text-muted">
+      <button class="px-2">−</button><span class="text-xs">100%</span><button class="px-2">+</button><button class="px-2 border-l border-border">⤢</button>
+    </div>
+    <div class="absolute bottom-3 left-48 w-44 h-24 rounded-xl border border-border bg-surface/80 backdrop-blur-md p-2">
+      <div class="relative w-full h-full">
+        <span class="absolute left-[2%] top-[38%] w-[10%] h-[18%] rounded bg-accent/40"></span>
+        <span class="absolute left-[16%] top-[22%] w-[10%] h-[30%] rounded bg-accent/40"></span>
+        <span class="absolute left-[30%] top-[38%] w-[10%] h-[22%] rounded bg-accent/40"></span>
+        <span class="absolute left-[44%] top-[16%] w-[10%] h-[24%] rounded bg-accent/40"></span>
+        <span class="absolute left-[58%] top-[38%] w-[10%] h-[30%] rounded bg-accent"></span>
+        <span class="absolute left-[72%] top-[22%] w-[10%] h-[30%] rounded bg-surface-3"></span>
+        <span class="absolute left-[86%] top-[38%] w-[10%] h-[22%] rounded bg-surface-3"></span>
+        <span class="absolute inset-0 rounded border border-accent/60"></span>
+      </div>
+    </div>
+  </div>
+  <p class="text-muted text-xs">Click any node in the real app → side drawer with that bot's full transcript, inputs, outputs, and the prompt version it used.</p>
+</div>
+</body>
+</html>
