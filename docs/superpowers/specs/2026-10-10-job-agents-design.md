@@ -58,7 +58,7 @@ These six rules come from the owner ("6 nguyên tắc cốt lõi"). Each is enfo
 
 | # | Rule | Enforcement |
 |---|---|---|
-| 1 | One manager bot receives every request | The chat composer in the main view always addresses **Lead**. Other bots cannot be messaged directly, except in group rooms via `@mention` (brainstorm only; there they cannot start workflows). |
+| 1 | One manager bot receives every request | **Every work request goes through Lead.** Ba can also open a **direct chat with any bot in consult mode** (UC-25) and `@mention` bots in group rooms (UC-15). In both, the bot answers within its role and memory but cannot create tasks, start workflows or use outward-facing tools. A message that asks for work is **handed to Lead automatically**, with a note in the Lead chat (owner decision 2026-10-10). |
 | 2 | Each bot has one name, one role, one memory | One folder per bot with its own role prompt, `memory.md` and skills. Parallel instances share the definition and memory. Memory writes are *proposed* in task output and appended one at a time by the orchestrator. |
 | 3 | Repeated work becomes a workflow | Workflows are named, versioned definitions (§7). Lead starts workflows rather than improvising chains. When Lead sees a request pattern repeat (2+ similar requests), it suggests saving it as a workflow; Ba approves. |
 | 4 | A bot checks its own work before handing in | Every bot definition has a `selfCheck` checklist. Output must include `selfCheck: [{item, passed, note}]`, and the orchestrator rejects output with any failed item (counted as a failed attempt). |
@@ -181,7 +181,7 @@ bs-job-agents/
 ### 5.2 The five Phase 1 bots
 
 #### Lead (Claude, L1)
-- **Receives:** every chat message from Ba; scheduled triggers; results from other bots.
+- **Receives:** every message in the Lead chat; requests handed over from consult-mode chats (UC-25); scheduled triggers; results from other bots.
 - **Tools:** orchestrator MCP only: `start_workflow`, `create_task`, `get_status`, `get_result`, `message_user`, `propose_workflow`.
 - **Does:** decides which workflow or task fits a request, fills its parameters (roles, locations, salary floor, sources, job link), starts it, reports progress, answers status questions from stored data.
 - **Never:** browses, edits files, writes CVs, or applies.
@@ -320,6 +320,11 @@ params: searchProfileId (defaults to the active Search Profile, §7.5), optional
 
 ### 7.3 `apply-to-link` (Ba pastes a job URL in chat)
 Same as `job-scan` steps 6–10, preceded by `research.scan` on the single URL (kind `single`). There are no fit threshold or top-N filters. Fit is still computed and shown.
+
+### 7.3b `apply-to-file` (Ba uploads a JD file in chat)
+Same as `apply-to-link`, but step 1 is `research.scan` kind `file`: Research reads the uploaded file (PDF/Word/TXT/image) and extracts a `JobCandidate`.
+- If the file has no apply URL, Research searches for the posting; if it can't find it, the review card says "no apply link found".
+- In that case Approve only produces the CV PDF for manual sending; nothing is submitted.
 
 ### 7.4 Scheduling
 - Schedules are stored with a cron expression, workflow name and params; they can be edited in the Schedules screen or via Lead ("scan every weekday at 9").
@@ -530,6 +535,33 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 ### UC-22: Inspect a step
 - **Main flow:** clicking a Flow canvas node opens a side drawer with the input, output, self-check results, transcript (streamed live if running), duration, attempts, engine, and the prompt version used.
 
+### UC-24: Ba uploads a file in chat
+- **Trigger:** 📎 **Attach file** in the composer (file picker) or drag-and-drop onto the composer.
+- **Allowed files:** PDF, DOC/DOCX, TXT, PNG/JPG, at most 10 MB each, multiple per message. Others are rejected with a message naming the file.
+- **Main flow:**
+  1. Attached files show as chips above the input (click → viewer; × removes).
+  2. On send, files are stored in `data/uploads/` (`uploads` table) and the message carries their ids.
+  3. In the Lead chat, Lead decides the intent:
+     - a JD → `apply-to-file` (§7.3b)
+     - an old CV → offer to import facts into master data (Ba confirms each fact)
+     - anything else → ask what to do with it
+- **Alternate flows:**
+  - (a) Sent in a direct bot chat → the bot can discuss it (consult); any work is handed to Lead (UC-25).
+  - (b) File contents are untrusted (§10.2 rule 4).
+- **End state:** file stored and linked to the message; workflow started or question asked.
+
+### UC-25: Ba chats directly with a bot (consult mode)
+- **Trigger:** clicking a bot in the sidebar Team list, or a bot tab at the top of the chat view.
+- **Main flow:** a 1:1 thread with that bot, labelled "consult mode". The bot answers questions within its role and memory (e.g. "why did QA fail NovaPay?", "which template fits AI startups?").
+- **Rules:**
+  - The bot's CLI session runs with read-only tools.
+  - It cannot create tasks, start workflows, edit Figma or touch the browser.
+  - The trust guard rejects any attempt.
+- **Alternate flows:**
+  - (a) The message asks for work (find/apply/tailor/update…) → the bot replies that it has handed the request to Lead. Lead receives "Handed over from @Bot: …" in its chat and plans the work as in UC-01, and Ba gets an "Open Lead chat" button.
+  - (b) Settings for the bot are one click away (⚙ in the sidebar Team list).
+- **End state:** answer given, or request handed to Lead; Lead remains the only bot that assigns work.
+
 ### UC-23: Pause, cancel, or re-run
 - **Main flow:** a run can be paused (no new tasks start; running ones finish) or cancelled (running tasks killed, run `cancelled`). A failed or finished step can be re-run, which invalidates and re-runs the steps after it in that branch.
 - **Exception:** a submitted apply step can never be re-run.
@@ -554,6 +586,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | `approvals` | token PK, job_id, cv_version_id, allowed_domains_json, expires_at, used_at |
 | `applications` | id, job_id, cv_version_id, submitted_at, status, confirmation_text, screenshot_paths_json, status_history_json |
 | `saved_answers` | key PK, label, answer, updated_at |
+| `uploads` | id, filename, mime, size, path, sha256, uploaded_at, message_id |
 | `search_profiles` | id, name, version, active, roles_json, locations_json, work_modes_json, min_salary, currency, seniority_json, sources_json, include_keywords_json, exclude_keywords_json, exclude_companies_json, company_types_json, languages_json, max_jobs, fit_threshold, updated_at |
 | `schedules` | id, name, cron, workflow_name, search_profile_id, params_json (overrides), enabled, last_run_id, next_run_at |
 | `rooms` / `room_members` / `messages` | chat rooms (Lead chat is a room), members, messages (author = ba or bot, mentions, run refs) |
@@ -601,16 +634,18 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 
 | Screen | Content | Key states |
 |---|---|---|
-| **Chat (Lead)** | Centered conversation; Lead replies with delegation trace (Lead → @Bot: task · status); run progress cards; job cards with fit/QA; suggestion chips; composer with `/` commands, `@` mentions (rooms), attach JD, engine chip | empty (first-run guide), streaming, error message from Lead |
-| **Sidebar** | Chat, Flows, Review (badge), Applications, Search criteria, Schedules; Team list with live status dots and trust badge; Rooms; subscription usage / pause status per engine | engine paused banner |
+| **Chat** | Bot tabs at the top (Lead default; Research, CV, QA, Apply open consult-mode threads, UC-25). Centered conversation; Lead replies with delegation trace (Lead → @Bot: task · status); run progress cards; job cards with fit/QA; suggestion chips; composer with 📎 Attach file + drag-and-drop (UC-24), attachment chips, `@` mentions (rooms), engine chip | empty (first-run guide), streaming, drag-over, file rejected, error message, consult-mode banner, handoff to Lead |
+| **Sidebar** | Chat, Flows, Review (badge), Applications, Search criteria, Schedules; Team list with live status dots and trust badge (click a bot → direct chat; ⚙ on hover → bot settings); Rooms; subscription usage / pause status per engine | engine paused banner |
 | **Flow canvas** | React Flow: nodes per step with live output preview, animated edges for running, red dashed QA loop edge, stacked nodes for `map` (×N, running/queued counts), locked Apply node; Pause / Re-run step; zoom, minimap; node click → drawer (UC-22) | running, paused, failed node (red), waiting_limit (clock) |
 | **Review queue** | Cards: job header + fit score, why it fits / gaps, company profile, QA breakdown + truth check, CV preview (VI/EN toggle when both), editable intro text; Approve & submit / Request changes / Skip with reason | QA not passed (escalated), needs your input, injection flagged |
 | **Applications** | Table: company, role, link, CV version (PDF), submitted at, status (editable), screenshot | needs_check highlighted |
 | **Search criteria** | Form for the active Search Profile (§7.5): roles, locations, work mode, salary floor + currency, seniority, sources (toggles), include/exclude keywords, excluded companies, preferred company types, CV languages, max jobs per scan, fit threshold; version history | unsaved changes, validation errors |
-| **Schedules** | List + editor (cron presets: weekdays 9:00, daily, custom), Search Profile used, next run, last result | |
+| **Schedules** | Centered list. **+ New schedule** and clicking a row open a **modal editor**: name, repeat (Weekdays / Daily / Weekly + day / Custom cron), time (Asia/Ho_Chi_Minh), Search Profile, enabled, a "Runs: …" summary, Save / Cancel / Delete (edit only). Row actions: Run now, enable toggle | validation (name required, cron must have 5 fields) |
 | **Bots** | Per bot: role, engine switch, trust level, track record, promotion suggestion, prompt version, memory view | |
 | **Master CV** | Facts editor (EN/VI text, tags, org, dates), version history | |
 | **Rooms** | Group chat with @mentions; bots answer in discussion mode | |
+
+**Layout rule:** pages whose content is narrower than the screen (Search criteria, Schedules, Master CV, Review, Applications, Bots) center their content column (`mx-auto` with a max width). Content never sticks to the left with empty space on the right.
 
 **File viewer rule:** clicking any file (CV PDF, confirmation screenshot, exported JD) **opens it in an in-app viewer**; it never downloads straight away.
 - **PDFs** render with PDF.js (`pdfjs-dist`), with page count, zoom and "Open in Figma ↗" for CV versions.
@@ -670,6 +705,8 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | 2026-10-10 | Usage limit → wait for reset → auto-continue; no engine switching |
 | 2026-10-10 | Promotion: system suggests, Ba approves |
 | 2026-10-10 | UI: chat-first (Grok Bot style), bs-kara theme, Tailwind v4, React Flow canvas (ElevenLabs Flows style) |
+| 2026-10-10 | Direct consult-mode chat with any bot; work requests auto-handed to Lead |
+| 2026-10-10 | File upload in chat (picker + drag-and-drop) → `apply-to-file`; schedules edited in a modal; constrained pages centered; files open in a viewer first |
 
 ## 15. Confirmed defaults (2026-10-10)
 1. Default sources for scheduled scans are TopCV + ITviec + LinkedIn; career sites only via links or on request.

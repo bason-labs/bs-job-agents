@@ -64,6 +64,16 @@ function app() {
     viewer: null,          // {name, kind:'pdf'|'image', lang, company, zoom}
     toasts: [],
     composer: '',
+    chatWith: 'lead',      // which bot the chat view talks to
+    dm: {
+      research: [{ from: 'bot', text: 'Hi Ba — Research here (consult mode). Ask me about job markets, companies or why a job scored the way it did. Work requests go to Lead.' }],
+      cv: [{ from: 'bot', text: 'Hi Ba — CV here (consult mode). Ask me how to position your experience, which template fits, or why I wrote a bullet. To change a CV, ask Lead or use “Request changes”.' }],
+      qa: [{ from: 'bot', text: 'Hi Ba — QA here (consult mode). Ask me why a CV passed or failed, or how I score.' }],
+      apply: [{ from: 'bot', text: 'Hi Ba — Apply here (consult mode). Ask me about forms, saved answers or past submissions. I only submit after you approve a review card.' }],
+    },
+    attachments: [],       // files waiting to be sent from the composer
+    dragOver: false,
+    schedForm: null,
     roomInput: '',
     changeComment: '',
     skipReason: 'salary_low',
@@ -110,7 +120,7 @@ function app() {
       excludedCompanies: [], companyTypes: ['product', 'AI'], maxJobs: 5, fit: 60, dirty: false,
     },
     newChip: { roles: '', locations: '', include: '', exclude: '', excludedCompanies: '', companyTypes: '' },
-    schedules: [ { name: 'Weekday morning scan', cron: 'Weekdays 09:00', profile: 'Default (v3)', enabled: true, next: 'Mon 13 Oct, 09:00', last: 'Fri 10 Oct · 3 to review' } ],
+    schedules: [ { name: 'Weekday morning scan', cron: 'Weekdays 09:00', profile: 'Default (v3)', enabled: true, next: 'Mon 13 Oct, 09:00', last: 'Fri 10 Oct · 3 to review', form: { name: 'Weekday morning scan', freq: 'weekdays', time: '09:00', day: 'Mon', cron: '0 9 * * 1-5', profile: 'Default (v3)', enabled: true } } ],
     facts: [
       { id: 'grad-1', org: 'Gradion', type: 'experience', text: 'Owned a React/Node.js performance review app used by ~300 employees across VN, TH, SG, DE; embedded in internal workspace.' },
       { id: 'grad-2', org: 'Gradion', type: 'experience', text: 'Owned multi-country purchase order system and invoice extraction workflow for finance teams.' },
@@ -210,7 +220,51 @@ function app() {
 
     // ---------- chat ----------
     lead(html, extra = {}) { this.chat.push({ from: 'lead', html, ...extra }); this.$nextTick(() => { const el = document.getElementById('chatScroll'); if (el) el.scrollTop = el.scrollHeight; }); },
+    openChat(key) { this.view = 'chat'; this.chatWith = key; this.attachments = []; this.$nextTick(() => this.scrollChat()); },
+    scrollChat() { const el = document.getElementById('chatScroll'); if (el) el.scrollTop = el.scrollHeight; },
+    addFiles(list) {
+      const ok = ['pdf', 'doc', 'docx', 'txt', 'png', 'jpg', 'jpeg'];
+      for (const f of list) {
+        const ext = f.name.split('.').pop().toLowerCase();
+        if (!ok.includes(ext)) { this.toast(f.name + ': only PDF, Word, TXT or images', 'err'); continue; }
+        if (f.size > 10 * 1024 * 1024) { this.toast(f.name + ': larger than 10 MB', 'err'); continue; }
+        this.attachments.push({ name: f.name, size: f.size, ext, url: URL.createObjectURL(f) });
+      }
+    },
+    fileKind(a) { return ['png', 'jpg', 'jpeg'].includes(a.ext) ? 'image' : (a.ext === 'pdf' ? 'pdf' : 'other'); },
+    openUpload(a) { this.openFile(a.name, this.fileKind(a), { url: a.url }); },
+    sizeLabel(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB'; },
+    sendDm() {
+      const text = this.composer.trim(); const files = this.attachments.slice();
+      if (!text && !files.length) return;
+      const key = this.chatWith, name = this.bot(key).name, thread = this.dm[key];
+      thread.push({ from: 'ba', text, files }); this.composer = ''; this.attachments = [];
+      const isWork = /\b(find|scan|search|apply|submit|tailor|make|create|update|generate|rewrite|fix)\b/i.test(text) || files.length;
+      setTimeout(() => {
+        if (isWork) {
+          thread.push({ from: 'bot', text: `That's a work request, so I've passed it to Lead — Lead assigns all work (rule 1 & 5). You'll see the progress in the Lead chat.`, handoff: true });
+          this.lead(`📨 Handed over from <b>@${name}</b>: Ba asked “${(text || files.map(f => f.name).join(', ')).replace(/</g, '&lt;')}”. I'll plan it and assign the work.`);
+        } else {
+          const canned = {
+            research: 'Short answer: product companies in HCM are hiring mostly mid/senior React + TypeScript; Next.js shows up in about 60% of the JDs I scanned this week. Want me to include more AI-focused roles? (Ask Lead to change criteria.)',
+            cv: 'I would lead with ownership and scale: “~300 employees across 4 countries” is your strongest line. For AI roles I put the CV-screening project first. Everything I write is traced to your master facts.',
+            qa: 'I score JD match 40, company tone 20, format/ATS 20, clarity 20. Pass is ≥ 80 with no hard fails — invented facts, wrong language, wrong company, or more than 1 page.',
+            apply: 'I have 3 saved answers (expected salary, notice period, work permit). I always stop before submit unless you approved that exact job, and I only work on that job\'s site.',
+          };
+          thread.push({ from: 'bot', text: canned[key] });
+        }
+        this.$nextTick(() => this.scrollChat());
+      }, 700);
+      this.$nextTick(() => this.scrollChat());
+    },
     send() {
+      if (this.chatWith !== 'lead') return this.sendDm();
+      if (this.attachments.length) {
+        const files = this.attachments.slice(); this.attachments = [];
+        this.chat.push({ from: 'ba', text: this.composer.trim(), files }); this.composer = '';
+        this.lead(`Got <b>${files.map(f => f.name).join(', ')}</b>. Research will read the job description from the file, then company → CV → QA → your review.`);
+        this.startRun('file'); return;
+      }
       const text = this.composer.trim(); if (!text) return;
       this.chat.push({ from: 'ba', text }); this.composer = '';
       if (/include|also/i.test(text) && /đà nẵng|da nang/i.test(text)) {
@@ -294,6 +348,7 @@ function app() {
     openFile(name, kind, extra = {}) { this.viewer = { name, kind, zoom: 100, lang: 'EN', company: '', ...extra }; },
     downloadFile() {
       const v = this.viewer; let blob;
+      if (v.url) { const a = document.createElement('a'); a.href = v.url; a.download = v.name; document.body.appendChild(a); a.click(); a.remove(); this.toast('Downloaded ' + v.name); return; }
       if (v.kind === 'pdf') blob = new Blob([this.makePdf('Prototype placeholder for ' + v.name)], { type: 'application/pdf' });
       else {
         const c = document.createElement('canvas'); c.width = 900; c.height = 500; const g = c.getContext('2d');
@@ -318,6 +373,26 @@ function app() {
       out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
       return out;
     },
+
+    // ---------- schedules ----------
+    openSchedule(i = null) {
+      const s = i === null ? null : this.schedules[i];
+      this.schedForm = s ? { ...s.form, index: i } : { index: null, name: '', freq: 'weekdays', time: '09:00', day: 'Mon', cron: '0 9 * * 1-5', profile: 'Default (v' + this.criteria.version + ')', enabled: true };
+      this.modal = { type: 'schedule' };
+    },
+    schedLabel(f) {
+      return { weekdays: 'Weekdays ' + f.time, daily: 'Daily ' + f.time, weekly: 'Every ' + f.day + ' ' + f.time, custom: 'cron: ' + f.cron }[f.freq];
+    },
+    saveSchedule() {
+      const f = this.schedForm;
+      if (!f.name.trim()) { this.toast('Give the schedule a name', 'err'); return; }
+      if (f.freq === 'custom' && f.cron.trim().split(/\s+/).length !== 5) { this.toast('Cron needs 5 fields, e.g. 0 9 * * 1-5', 'err'); return; }
+      const row = { name: f.name.trim(), cron: this.schedLabel(f), profile: f.profile, enabled: f.enabled, next: f.freq === 'custom' ? 'per cron' : 'next ' + this.schedLabel(f), last: '—', form: { ...f } };
+      if (f.index === null) { this.schedules.push(row); this.toast('Schedule created'); }
+      else { const old = this.schedules[f.index]; this.schedules[f.index] = { ...row, last: old.last }; this.toast('Schedule updated'); }
+      this.modal = null;
+    },
+    deleteSchedule() { this.schedules.splice(this.schedForm.index, 1); this.modal = null; this.toast('Schedule deleted'); },
 
     // ---------- criteria ----------
     addChip(field) { const v = this.newChip[field].trim(); if (!v) return; this.criteria[field].push(v); this.newChip[field] = ''; this.criteria.dirty = true; },
@@ -372,7 +447,7 @@ function app() {
     </div>
     <nav class="px-2 space-y-0.5">
       <template x-for="n in [['chat','Chat'],['flow','Flows'],['review','Review'],['apps','Applications'],['criteria','Search criteria'],['schedules','Schedules']]">
-        <a @click="view=n[0]" :class="view===n[0] ? 'nav-on' : 'text-muted'" class="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-surface-2 cursor-pointer">
+        <a @click="n[0]==='chat' ? openChat('lead') : view=n[0]" :class="view===n[0] ? 'nav-on' : 'text-muted'" class="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-surface-2 cursor-pointer">
           <span x-text="n[1]"></span>
           <span x-show="n[0]==='review' && reviewCount" x-text="reviewCount" class="rounded-full bg-danger text-white text-[10px] px-1.5"></span>
           <span x-show="n[0]==='flow' && run && run.active" class="size-1.5 rounded-full bg-accent animate-pulse"></span>
@@ -382,7 +457,7 @@ function app() {
     <p class="px-5 mt-4 mb-1 text-[10px] uppercase tracking-wider text-muted">Team</p>
     <div class="px-2 space-y-0.5">
       <template x-for="b in bots" :key="b.key">
-        <a @click="view='bots'" class="flex items-center justify-between rounded-lg px-3 py-1.5 hover:bg-surface-2 cursor-pointer">
+        <a @click="openChat(b.key)" :class="view==='chat' && chatWith===b.key ? 'nav-on' : ''" :title="'Chat with '+b.name" class="group flex items-center justify-between rounded-lg px-3 py-1.5 hover:bg-surface-2 cursor-pointer">
           <span class="flex items-center gap-2.5">
             <span class="relative size-6 rounded-full grid place-items-center text-[10px] font-bold" :class="b.key==='lead' ? 'bg-gradient-brand text-white' : 'bg-surface-3 text-accent'" x-text="b.name[0]"></span>
             <span x-text="b.name"></span>
@@ -390,6 +465,7 @@ function app() {
           <span class="flex items-center gap-1.5">
             <span x-show="b.status==='working'" class="text-[10px] text-accent">working</span>
             <span x-show="b.trust==='L1' && b.key==='apply'" class="rounded border border-warn/40 text-warn text-[9px] px-1">L1</span>
+            <button @click.stop="view='bots'" title="Bot settings" class="hidden group-hover:inline text-muted hover:text-fg text-xs">⚙</button>
             <span class="size-2 rounded-full" :class="b.status==='working' ? 'bg-accent animate-pulse' : 'bg-muted/50'"></span>
           </span>
         </a>
@@ -418,7 +494,7 @@ function app() {
     <!-- top bar -->
     <header class="flex items-center justify-between px-5 py-3 border-b border-border/60">
       <div class="flex items-center gap-2 text-muted">
-        <span class="text-fg font-display font-semibold" x-text="{chat:'Chat with Lead',flow:'Flow · Job scan #'+(run?run.id:12),review:'Review queue',apps:'Applications',criteria:'Search criteria',schedules:'Schedules',bots:'Bots',cv:'Master CV',room:'# cv-brainstorm'}[view]"></span>
+        <span class="text-fg font-display font-semibold" x-text="{chat:'Chat with '+bot(chatWith).name,flow:'Flow · Job scan #'+(run?run.id:12),review:'Review queue',apps:'Applications',criteria:'Search criteria',schedules:'Schedules',bots:'Bots',cv:'Master CV',room:'# cv-brainstorm'}[view]"></span>
       </div>
       <div class="flex items-center gap-2">
         <div x-data="{open:false}" class="relative">
@@ -444,11 +520,46 @@ function app() {
     <!-- ========== CHAT ========== -->
     <div x-show="view==='chat'" class="flex-1 flex flex-col min-h-0 relative">
       <div class="pointer-events-none absolute -top-32 left-1/4 h-64 w-1/2 rounded-full blur-3xl opacity-25 bg-gradient-brand"></div>
+      <div class="relative px-6 pt-4">
+        <div class="mx-auto max-w-2xl flex flex-wrap items-center gap-1.5">
+          <template x-for="b in bots" :key="b.key">
+            <button @click="openChat(b.key)" :class="chatWith===b.key ? 'bg-gradient-brand text-white shadow-glow' : 'border border-border bg-surface/70 text-muted hover:text-fg'" class="rounded-full px-3 py-1 text-xs" x-text="b.name"></button>
+          </template>
+        </div>
+        <div x-show="chatWith!=='lead'" class="mx-auto max-w-2xl mt-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-2 text-xs text-muted">
+          <b class="text-fg" x-text="'Direct chat with '+bot(chatWith).name"></b> · consult mode — it answers within its role and memory, but can't start work. Work requests are handed to Lead automatically.
+        </div>
+      </div>
       <div id="chatScroll" class="relative flex-1 overflow-y-auto">
-        <div class="mx-auto max-w-2xl px-6 py-6 space-y-5">
+        <div x-show="chatWith!=='lead'" class="mx-auto max-w-2xl px-6 py-6 space-y-5">
+          <template x-for="(m, i) in (dm[chatWith] || [])" :key="chatWith+i">
+            <div>
+              <template x-if="m.from==='ba'">
+                <div class="flex flex-col items-end gap-1.5">
+                  <div x-show="m.text" class="max-w-[80%] rounded-3xl rounded-br-md bg-surface-2 border border-border px-4 py-3" x-text="m.text"></div>
+                  <template x-for="f in (m.files || [])"><button @click="openUpload(f)" class="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-xs hover:border-accent"><span>📎</span><span x-text="f.name"></span><span class="text-muted" x-text="sizeLabel(f.size)"></span></button></template>
+                </div>
+              </template>
+              <template x-if="m.from==='bot'">
+                <div class="flex gap-3">
+                  <div class="size-8 shrink-0 rounded-full bg-surface-3 grid place-items-center text-xs font-bold text-accent" x-text="bot(chatWith).name[0]"></div>
+                  <div class="flex-1 space-y-2">
+                    <div class="flex items-center gap-2"><span class="font-display font-semibold" x-text="bot(chatWith).name"></span><span class="text-[10px] rounded-full border border-border px-2 text-muted" x-text="bot(chatWith).engine"></span><span class="text-[10px] rounded-full border border-accent/40 text-accent px-2">consult</span></div>
+                    <p class="leading-relaxed" x-text="m.text"></p>
+                    <button x-show="m.handoff" @click="openChat('lead')" class="rounded-full bg-gradient-brand text-white text-xs px-3 py-1.5 shadow-glow">Open Lead chat →</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+        <div x-show="chatWith==='lead'" class="mx-auto max-w-2xl px-6 py-6 space-y-5">
           <template x-for="(m, i) in chat" :key="i">
             <div>
-              <div x-show="m.from==='ba'" class="flex justify-end"><div class="max-w-[80%] rounded-3xl rounded-br-md bg-surface-2 border border-border px-4 py-3" x-text="m.text"></div></div>
+              <div x-show="m.from==='ba'" class="flex flex-col items-end gap-1.5">
+                <div x-show="m.text" class="max-w-[80%] rounded-3xl rounded-br-md bg-surface-2 border border-border px-4 py-3" x-text="m.text"></div>
+                <template x-for="f in (m.files || [])"><button @click="openUpload(f)" class="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-xs hover:border-accent"><span>📎</span><span x-text="f.name"></span><span class="text-muted" x-text="sizeLabel(f.size)"></span></button></template>
+              </div>
               <div x-show="m.from==='lead'" class="flex gap-3">
                 <div class="size-8 shrink-0 rounded-full bg-gradient-brand shadow-glow grid place-items-center text-xs font-bold text-white">L</div>
                 <div class="flex-1 space-y-2.5">
@@ -493,16 +604,32 @@ function app() {
       </div>
       <div class="relative px-6 pb-5">
         <div class="mx-auto max-w-2xl">
-          <div class="flex flex-wrap gap-2 mb-2 text-xs">
+          <div x-show="chatWith!=='lead'" class="flex flex-wrap gap-2 mb-2 text-xs">
+            <button @click="composer='How do you decide what to emphasise?'; send()" class="rounded-full border border-border bg-surface/70 px-3 py-1 text-muted hover:text-fg">Ask a question</button>
+            <button @click="composer='Find more AI jobs for me'; send()" class="rounded-full border border-border bg-surface/70 px-3 py-1 text-muted hover:text-fg">Ask for work (→ handed to Lead)</button>
+          </div>
+          <div x-show="chatWith==='lead'" class="flex flex-wrap gap-2 mb-2 text-xs">
             <button @click="composer='Find frontend jobs in HCM, React/Next.js, salary ≥ 25M'; send()" class="rounded-full border border-border bg-surface/70 px-3 py-1 text-muted hover:text-fg">Find frontend jobs in HCM</button>
             <button @click="composer='Apply to this: https://itviec.com/it-jobs/frontend-engineer-novapay'; send()" class="rounded-full border border-border bg-surface/70 px-3 py-1 text-muted hover:text-fg">Paste a job link</button>
             <button @click="composer='Also include Đà Nẵng'; send()" class="rounded-full border border-border bg-surface/70 px-3 py-1 text-muted hover:text-fg">Also include Đà Nẵng</button>
             <button @click="composer='What is the status?'; send()" class="rounded-full border border-border bg-surface/70 px-3 py-1 text-muted hover:text-fg">Status?</button>
           </div>
-          <div class="rounded-3xl border border-border bg-surface/80 shadow-glow p-3">
-            <input x-model="composer" @keydown.enter="send()" placeholder="Message Lead…  (/ commands · ⏎ send)" class="w-full !border-0 !shadow-none !bg-transparent">
+          <div class="rounded-3xl border bg-surface/80 shadow-glow p-3 transition" :class="dragOver ? 'border-accent border-dashed bg-accent/5' : 'border-border'"
+               @dragover.prevent="dragOver=true" @dragleave.prevent="dragOver=false" @drop.prevent="dragOver=false; addFiles($event.dataTransfer.files)">
+            <div x-show="attachments.length" class="flex flex-wrap gap-2 mb-2">
+              <template x-for="(a, i) in attachments" :key="a.url">
+                <span class="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-1.5 text-xs">
+                  <button @click="openUpload(a)" class="flex items-center gap-1.5 hover:text-accent"><span>📎</span><span x-text="a.name"></span></button>
+                  <span class="text-muted" x-text="sizeLabel(a.size)"></span>
+                  <button @click="attachments.splice(i,1)" class="text-muted hover:text-danger" title="Remove">×</button>
+                </span>
+              </template>
+            </div>
+            <p x-show="dragOver" class="text-xs text-accent px-2 pb-1">Drop to attach (PDF, Word, TXT, images · max 10 MB)</p>
+            <input x-model="composer" @keydown.enter="send()" :placeholder="'Message '+bot(chatWith).name+'…  (⏎ send · drop files here)'" class="w-full !border-0 !shadow-none !bg-transparent">
+            <input type="file" x-ref="fileInput" class="hidden" multiple accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" @change="addFiles($event.target.files); $event.target.value=''">
             <div class="flex items-center justify-between mt-2">
-              <div class="flex gap-1.5 text-xs"><span class="rounded-full border border-border px-2.5 py-1 text-muted">📎 Attach JD</span><span class="rounded-full border border-border px-2.5 py-1 text-muted">Lead · Claude</span></div>
+              <div class="flex gap-1.5 text-xs"><button @click="$refs.fileInput.click()" class="rounded-full border border-border px-2.5 py-1 text-muted hover:text-fg hover:border-accent">📎 Attach file</button><span class="rounded-full border border-border px-2.5 py-1 text-muted" x-text="bot(chatWith).name+' · '+bot(chatWith).engine"></span></div>
               <button @click="send()" class="size-9 rounded-full bg-gradient-brand shadow-glow grid place-items-center text-white">↑</button>
             </div>
           </div>
@@ -554,7 +681,8 @@ function app() {
     </div>
 
     <!-- ========== REVIEW ========== -->
-    <div x-show="view==='review'" class="flex-1 overflow-y-auto p-5 space-y-4">
+    <div x-show="view==='review'" class="flex-1 overflow-y-auto p-5">
+     <div class="mx-auto max-w-6xl space-y-4">
       <p x-show="!jobs.filter(j=>['review','revising','applying'].includes(j.status)).length" class="text-muted text-center py-16">Nothing to review 🎉 — Lead will ping you after the next scan.</p>
       <template x-for="job in jobs.filter(j => ['review','revising','applying'].includes(j.status))" :key="job.id">
         <div class="rounded-3xl border bg-surface/60 p-5 grid grid-cols-[1fr_250px] gap-5" :class="job.qaPassed ? 'border-border' : 'border-warn/50'">
@@ -610,10 +738,12 @@ function app() {
         </div>
       </template>
       <div x-show="jobs.some(j=>j.status==='skipped')" class="text-xs text-muted">Skipped: <template x-for="j in jobs.filter(j=>j.status==='skipped')"><span class="mr-3" x-text="j.company+' ('+j.skipReason.replace('_',' ')+')'"></span></template></div>
+     </div>
     </div>
 
     <!-- ========== APPLICATIONS ========== -->
     <div x-show="view==='apps'" class="flex-1 overflow-y-auto p-5">
+     <div class="mx-auto max-w-6xl">
       <div class="rounded-3xl border border-border bg-surface/60 overflow-hidden">
         <table class="w-full text-left text-xs">
           <thead class="bg-surface-2/60 text-muted uppercase tracking-wider text-[10px]"><tr><th class="px-4 py-3">Company</th><th>Role</th><th>Source</th><th>CV version</th><th>Submitted</th><th>Status</th><th>Proof</th></tr></thead>
@@ -630,11 +760,12 @@ function app() {
         </table>
       </div>
       <p class="text-muted text-xs mt-3">DEKON, SMARTBIT, YAVIET are your real 2026-10-10 TopCV applications — the dedupe step excludes them from new scans.</p>
+     </div>
     </div>
 
     <!-- ========== SEARCH CRITERIA (UC-21b) ========== -->
     <div x-show="view==='criteria'" class="flex-1 overflow-y-auto p-5">
-      <div class="max-w-3xl space-y-4">
+      <div class="mx-auto max-w-3xl space-y-4">
         <div class="flex items-center justify-between">
           <p class="text-muted text-xs" x-text="'Active profile v'+criteria.version+' · updated '+criteria.updated+' · used by scheduled scans and chat requests'"></p>
           <div class="flex gap-2 items-center"><span x-show="criteria.dirty" class="text-warn text-xs">unsaved changes</span><button @click="saveCriteria()" class="rounded-full bg-gradient-brand text-white px-5 py-2 shadow-glow">Save</button></div>
@@ -677,22 +808,25 @@ function app() {
     </div>
 
     <!-- ========== SCHEDULES ========== -->
-    <div x-show="view==='schedules'" class="flex-1 overflow-y-auto p-5 space-y-3">
-      <template x-for="s in schedules">
-        <div class="rounded-2xl border border-border bg-surface/60 p-4 flex items-center justify-between">
+    <div x-show="view==='schedules'" class="flex-1 overflow-y-auto p-5">
+     <div class="mx-auto max-w-3xl space-y-3">
+      <template x-for="(s, i) in schedules" :key="i">
+        <div @click="openSchedule(i)" title="Edit schedule" class="rounded-2xl border border-border bg-surface/60 p-4 flex items-center justify-between hover:border-accent transition">
           <div><p class="font-medium" x-text="s.name"></p><p class="text-xs text-muted" x-text="s.cron+' · criteria '+s.profile+' · next: '+s.next+' · last: '+s.last"></p></div>
           <div class="flex items-center gap-3">
-            <button @click="startRun('schedule'); view='flow'" class="rounded-full border border-border px-3 py-1.5 text-xs">Run now</button>
-            <button @click="s.enabled=!s.enabled" class="relative w-11 h-6 rounded-full transition" :class="s.enabled ? 'bg-gradient-brand' : 'bg-surface-3'"><span class="absolute top-0.5 size-5 rounded-full bg-white transition-all" :class="s.enabled ? 'left-5' : 'left-0.5'"></span></button>
+            <button @click.stop="startRun('schedule'); view='flow'" class="rounded-full border border-border px-3 py-1.5 text-xs">Run now</button>
+            <button @click.stop="s.enabled=!s.enabled" class="relative w-11 h-6 rounded-full transition" :class="s.enabled ? 'bg-gradient-brand' : 'bg-surface-3'"><span class="absolute top-0.5 size-5 rounded-full bg-white transition-all" :class="s.enabled ? 'left-5' : 'left-0.5'"></span></button>
           </div>
         </div>
       </template>
-      <button @click="schedules.push({name:'Evening scan', cron:'Daily 20:00', profile:'Default (v'+criteria.version+')', enabled:true, next:'Today 20:00', last:'—'}); toast('Schedule added')" class="rounded-full border border-dashed border-border px-4 py-2 text-muted">+ New schedule</button>
-      <p class="text-xs text-muted">Missed while your Mac was asleep → one catch-up run if within 12 h. A schedule never overlaps its previous run.</p>
+      <button @click="openSchedule()" class="rounded-full border border-dashed border-border px-4 py-2 text-muted hover:text-fg hover:border-accent">+ New schedule</button>
+      <p class="text-xs text-muted">Click a schedule to edit it. Missed while your Mac was asleep → one catch-up run if within 12 h. A schedule never overlaps its previous run.</p>
+     </div>
     </div>
 
     <!-- ========== BOTS ========== -->
-    <div x-show="view==='bots'" class="flex-1 overflow-y-auto p-5 grid grid-cols-2 gap-4 content-start">
+    <div x-show="view==='bots'" class="flex-1 overflow-y-auto p-5">
+     <div class="mx-auto max-w-6xl grid grid-cols-2 gap-4 content-start">
       <template x-for="b in bots" :key="b.key">
         <div class="rounded-3xl border border-border bg-surface/60 p-4 space-y-3">
           <div class="flex items-center justify-between">
@@ -711,10 +845,12 @@ function app() {
           <details class="text-xs"><summary class="text-muted">Memory (<span x-text="b.memory.length"></span> notes)</summary><ul class="mt-2 list-disc pl-4 space-y-1"><template x-for="m in b.memory"><li x-text="m"></li></template></ul></details>
         </div>
       </template>
+     </div>
     </div>
 
     <!-- ========== MASTER CV ========== -->
-    <div x-show="view==='cv'" class="flex-1 overflow-y-auto p-5 space-y-3">
+    <div x-show="view==='cv'" class="flex-1 overflow-y-auto p-5">
+     <div class="mx-auto max-w-3xl space-y-3">
       <p class="text-xs text-muted">Only you edit these facts. Every CV bullet must cite fact ids; QA hard-fails anything not traceable here. Master version <b>v7</b>.</p>
       <template x-for="f in facts" :key="f.id">
         <div class="rounded-2xl border border-border bg-surface/60 p-3 flex gap-3 items-start">
@@ -723,6 +859,7 @@ function app() {
         </div>
       </template>
       <div class="rounded-2xl border border-warn/40 bg-warn/5 p-3 text-xs">❓ <b>CV asks:</b> "Do you have GraphQL experience? NovaPay asks for it." <button @click="facts.push({id:'skill-2',org:'—',type:'skill',text:'GraphQL (Apollo Client) — used at Aegona'}); toast('Fact skill-2 added')" class="ml-2 underline text-accent">Add a fact</button> <button class="ml-2 underline text-muted">No, I don't</button></div>
+     </div>
     </div>
 
     <!-- ========== ROOM (UC-15) ========== -->
@@ -770,6 +907,35 @@ function app() {
     <!-- ========== MODALS ========== -->
     <div x-show="modal" class="absolute inset-0 bg-black/40 z-40 grid place-items-center" @click.self="modal=null">
       <div class="w-[460px] rounded-3xl border border-border bg-surface p-5 space-y-4 shadow-2xl">
+        <template x-if="modal && modal.type==='schedule' && schedForm">
+          <div class="space-y-3">
+            <p class="font-display text-lg font-semibold" x-text="schedForm.index===null ? 'New schedule' : 'Edit schedule'"></p>
+            <label class="block text-xs text-muted">Name<input x-model="schedForm.name" class="w-full mt-1" placeholder="e.g. Weekday morning scan"></label>
+            <div class="text-xs text-muted">Repeat
+              <div class="grid grid-cols-4 gap-1.5 mt-1">
+                <template x-for="o in [['weekdays','Weekdays'],['daily','Daily'],['weekly','Weekly'],['custom','Custom']]">
+                  <button @click="schedForm.freq=o[0]" :class="schedForm.freq===o[0] ? 'bg-gradient-brand text-white' : 'border border-border text-fg'" class="rounded-xl px-2 py-1.5" x-text="o[1]"></button>
+                </template>
+              </div>
+            </div>
+            <div x-show="schedForm.freq!=='custom'" class="flex gap-3">
+              <label x-show="schedForm.freq==='weekly'" class="block text-xs text-muted flex-1">Day
+                <select x-model="schedForm.day" class="w-full mt-1"><template x-for="d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']"><option :value="d" x-text="d"></option></template></select>
+              </label>
+              <label class="block text-xs text-muted flex-1">Time (Asia/Ho_Chi_Minh)<input type="time" x-model="schedForm.time" class="w-full mt-1"></label>
+            </div>
+            <label x-show="schedForm.freq==='custom'" class="block text-xs text-muted">Cron expression<input x-model="schedForm.cron" class="w-full mt-1 font-mono" placeholder="0 9 * * 1-5"></label>
+            <label class="block text-xs text-muted">Search criteria
+              <select x-model="schedForm.profile" class="w-full mt-1"><option x-text="'Default (v'+criteria.version+')'" :value="'Default (v'+criteria.version+')'"></option><option>AI roles only (v1)</option></select>
+            </label>
+            <label class="flex items-center gap-2 text-xs"><input type="checkbox" x-model="schedForm.enabled" class="!p-0"> Enabled</label>
+            <p class="text-xs text-muted" x-text="'Runs: ' + schedLabel(schedForm)"></p>
+            <div class="flex justify-between gap-2 pt-1">
+              <button x-show="schedForm.index!==null" @click="deleteSchedule()" class="rounded-full border border-danger/50 text-danger px-4 py-2">Delete</button>
+              <div class="flex gap-2 ml-auto"><button @click="modal=null" class="rounded-full border border-border px-4 py-2">Cancel</button><button @click="saveSchedule()" class="rounded-full bg-gradient-brand text-white px-4 py-2 shadow-glow">Save</button></div>
+            </div>
+          </div>
+        </template>
         <template x-if="modal && modal.type==='approve'">
           <div class="space-y-3">
             <p class="font-display text-lg font-semibold" x-text="'Approve & submit to '+modal.job.company+'?'"></p>
@@ -821,8 +987,12 @@ function app() {
             </div>
           </div>
           <div class="flex-1 overflow-auto p-8 grid place-items-start justify-center" @click.self="viewer=null">
+            <!-- Real uploaded file -->
+            <iframe x-show="viewer.url && viewer.kind==='pdf'" :src="viewer.url && viewer.kind==='pdf' ? viewer.url : ''" class="bg-white shadow-2xl rounded" style="width:800px;height:80vh"></iframe>
+            <img x-show="viewer.url && viewer.kind==='image'" :src="viewer.url && viewer.kind==='image' ? viewer.url : ''" class="shadow-2xl rounded origin-top max-w-none" :style="`width:${7.6*viewer.zoom}px`">
+            <div x-show="viewer.url && viewer.kind==='other'" class="rounded-2xl border border-border bg-surface p-8 text-center space-y-2"><p class="text-3xl">📄</p><p>No preview for this file type.</p><p class="text-xs text-muted">Use ⬇ Download to open it.</p></div>
             <!-- PDF page (real app renders the actual PDF with PDF.js) -->
-            <div x-show="viewer.kind==='pdf'" class="bg-white text-slate-800 shadow-2xl origin-top" :style="`width:595px;min-height:842px;transform:scale(${viewer.zoom/100});`">
+            <div x-show="!viewer.url && viewer.kind==='pdf'" class="bg-white text-slate-800 shadow-2xl origin-top" :style="`width:595px;min-height:842px;transform:scale(${viewer.zoom/100});`">
               <div class="p-10 text-[11px] leading-relaxed">
                 <p class="text-[26px] font-bold text-slate-900">BA HUYNH</p>
                 <p class="font-bold text-teal-700 tracking-wide" x-text="viewer.lang==='VI' ? 'LẬP TRÌNH VIÊN FRONTEND | REACT, NEXT.JS & TYPESCRIPT' : 'FRONTEND ENGINEER | REACT, NEXT.JS & TYPESCRIPT'"></p>
@@ -847,7 +1017,7 @@ function app() {
               </div>
             </div>
             <!-- Screenshot -->
-            <div x-show="viewer.kind==='image'" class="bg-white text-slate-800 shadow-2xl rounded-lg overflow-hidden origin-top" :style="`width:760px;transform:scale(${viewer.zoom/100});`">
+            <div x-show="!viewer.url && viewer.kind==='image'" class="bg-white text-slate-800 shadow-2xl rounded-lg overflow-hidden origin-top" :style="`width:760px;transform:scale(${viewer.zoom/100});`">
               <div class="bg-emerald-600 text-white px-5 py-2 text-xs">topcv.vn — browser tab "Apply"</div>
               <div class="p-10 text-center space-y-3"><div class="text-5xl">✅</div><p class="text-xl font-bold">Ứng tuyển việc làm thành công!</p><p class="text-slate-500" x-text="viewer.company + ' — application received'"></p><p class="text-xs text-slate-400">Captured by Apply after submit · prototype image</p></div>
             </div>
