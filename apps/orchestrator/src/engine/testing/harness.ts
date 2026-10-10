@@ -101,7 +101,7 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
   if (fresh) seedBots(db);
   const clock = opts.clock ?? new FakeClock(T0);
   const files = opts.files ?? new MemoryFileStore();
-  const runner = new FakeRunner({ clock });
+  const runner = new FakeRunner({ clock, screenshots: files });
   const browser = new FakeBrowserProbe();
   const figma = new FakeFigmaPort(files);
   const guards = new FakeGuardHooks(files);

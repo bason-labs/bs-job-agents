@@ -76,6 +76,11 @@ export class MemoryFileStore implements FileStore {
     return this.read(path) ?? null;
   }
 
+  async readHead(path: string, bytes: number): Promise<Buffer | null> {
+    const content = this.files.get(path);
+    return content ? Buffer.from(content.subarray(0, bytes)) : null;
+  }
+
   static sha256Of(content: string | Buffer): string {
     return createHash("sha256").update(Buffer.from(content)).digest("hex");
   }

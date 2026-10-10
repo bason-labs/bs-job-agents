@@ -160,7 +160,7 @@ afterAll(() => {
 });
 
 describe("the production engine on the real adapters (createProductionEngine)", () => {
-  it("runs job-scan to a submitted application through the real runners, bridges and file store", () => {
+  it("runs job-scan through Apply to its record with the real runners, bridges and file store", () => {
     expect(listTasks(db).map((t) => [`${t.botName}.${t.kind}`, t.status, t.error])).toEqual([
       ["research.scan", "done", null],
       ["research.fit", "done", null],
@@ -193,7 +193,10 @@ describe("the production engine on the real adapters (createProductionEngine)", 
     const copy = join(dataDir, "applications", String(app.id), "BA_HUYNH_NOVAPAY_EN.pdf");
     expect(await sha256File(copy)).toBe(cv.pdfSha256);
     const record = getSubmissionRecord(db, app.id)!;
-    expect(app.status).toBe("submitted");
+    // PM2 M1: no capture pipeline yet (S7), so the screenshots Apply names are not on disk: the
+    // record cites none and a real Apply ends in needs_check, never clean (the intended fail-safe).
+    expect(app).toMatchObject({ status: "needs_check", statusHistory: expect.arrayContaining([expect.objectContaining({ status: "needs_check", note: "screenshots not captured" })]) });
+    expect(record.submission).toMatchObject({ preSubmitScreenshotPath: null, confirmationScreenshotPath: null });
     expect(record.submission).toMatchObject({ uploadedPath: `applications/${app.id}/BA_HUYNH_NOVAPAY_EN.pdf`, uploadedSha256: cv.pdfSha256 });
     const apply = calls.find((c) => c.command === CLAUDE && c.args.includes("--chrome"))!;
     expect(argValue(apply.args, "--add-dir")).toBe(join(dataDir, "applications", String(app.id)));

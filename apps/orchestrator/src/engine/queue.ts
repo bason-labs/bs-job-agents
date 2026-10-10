@@ -55,6 +55,8 @@ import {
   onApplyFailedAfterSpawn,
   onApplyPaused,
   prepareApply,
+  verifyRecordFiles,
+  type RecordFiles,
 } from "./apply.js";
 import { MASTER_CV_TASK_KEYS, effectiveBot, type EffectiveBot } from "./bots.js";
 import { loadRunCtx, type RunCtx } from "./context.js";
@@ -78,7 +80,8 @@ interface SafetyNote {
 
 /** What one attempt came to, after the engine checked the runner's result. */
 export type Outcome =
-  | { kind: "ok"; output: unknown; safety?: SafetyNote[] }
+  /** `recordFiles`: apply.submit's screenshots as the record may cite them (PM2 M1), checked before settle. */
+  | { kind: "ok"; output: unknown; safety?: SafetyNote[]; recordFiles?: RecordFiles }
   /** The bot paused itself: a login, a CAPTCHA, questions, a domain to confirm (UC-03 a, UC-11, UC-12, UC-17). */
   | { kind: "paused"; reason: PauseReason; output: unknown; safety?: SafetyNote[] }
   | {
@@ -310,6 +313,10 @@ export class TaskQueue {
     const blocks = await this.readGuardLog(prepared);
     outcome = this.withGuardLog(outcome, blocks);
     outcome = this.checkSiteGuard(task, outcome, siteBlocksOf(blocks, result));
+    if (outcome.kind === "ok" && prepared.apply) {
+      const appId = Number((task.input as { applicationId?: unknown } | null)?.applicationId);
+      if (Number.isInteger(appId)) outcome = { ...outcome, recordFiles: await verifyRecordFiles(core, appId, outcome.output as ApplyOutput) };
+    }
     let exported: CvExport | undefined;
     if (task.usesFigma) ({ outcome, exported } = await this.afterFigmaTask(task, prepared, outcome));
     this.settle(task, prepared, outcome, exported);
@@ -760,7 +767,7 @@ export class TaskQueue {
           const done = completeTask(tx, task.id, { output: outcome.output, now: core.now() });
           emitTaskFinished(core, tx, done, "done", null);
           const ctx = task.runId === null ? null : loadRunCtx(core, task.runId, tx);
-          this.onDone(tx, ctx, done, outcome.output, exported);
+          this.onDone(tx, ctx, done, outcome.output, exported, outcome.recordFiles);
           return;
         }
         case "paused": {
@@ -816,7 +823,7 @@ export class TaskQueue {
     failTaskNow(core, tx, task, error, output);
   }
 
-  private onDone(tx: Conn, ctx: RunCtx | null, task: Task, output: unknown, exported: CvExport | undefined): void {
+  private onDone(tx: Conn, ctx: RunCtx | null, task: Task, output: unknown, exported: CvExport | undefined, recordFiles?: RecordFiles): void {
     const core = this.core;
     const input = (task.input ?? {}) as Record<string, unknown>;
     switch (taskKey(task.botName, task.kind)) {
@@ -835,7 +842,7 @@ export class TaskQueue {
         if (ctx) onCheckerDone(core, tx, ctx, task, output as QaOutput);
         return;
       case "apply.submit":
-        onApplyDone(core, tx, task, output as ApplyOutput);
+        onApplyDone(core, tx, task, output as ApplyOutput, recordFiles);
         return;
       default:
         return;

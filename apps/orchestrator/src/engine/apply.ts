@@ -8,7 +8,7 @@
 // - on the result: pauses Apply reports itself wait for Ba (UC-11 a/b/e, UC-12, UC-17); anything
 //   else after a spawn that is not a clean result goes to needs_check, never retried (PM FYI c);
 // - the record step writes the §9.1 record with the ORCHESTRATOR's hash of the uploaded copy.
-import { basename } from "node:path";
+import { basename, isAbsolute, relative, resolve } from "node:path";
 import {
   ApplyPromptInputSchema,
   BOT_TASK_INPUT_SCHEMAS,
@@ -302,7 +302,7 @@ export async function prepareApply(core: EngineCore, task: Task): Promise<ApplyP
  * transaction as the task's result, whatever the run's state (a paused or cancelled run must not
  * lose a submission). A dry run that says submitted is a safety event (PM §7).
  */
-export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: ApplyOutput): void {
+export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: ApplyOutput, files: RecordFiles = NO_RECORD_FILES): void {
   const row = actionRowOf(conn, task);
   const out = row?.output as ActionStepOutput | undefined;
   if (out?.dryRun && output.status === "submitted") {
@@ -315,7 +315,7 @@ export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: Ap
     });
   }
   if (!row || !out || out.applicationId === null) return;
-  const record = writeSubmissionRecord(core, conn, task, output, out);
+  const record = writeSubmissionRecord(core, conn, task, output, out, files);
   updateAction(core, conn, row, { outcome: record.status === "submitted" ? "submitted" : "needs_check", record });
 }
 
@@ -511,9 +511,49 @@ export function resumePausedTask(core: EngineCore, taskId: number, opts: { confi
 
 // ---------------------------------------------------------------- the record (§9.1)
 
-function relPath(core: EngineCore, path: string | null): string | null {
-  return path === null ? null : core.paths.rel(path);
+/** The screenshots the record may cite: data/-relative paths of verified files, or null (PM2 M1). */
+export interface RecordFiles {
+  preSubmit: string | null;
+  confirmation: string | null;
+  jdPage: string | null;
 }
+
+export const NO_RECORD_FILES: RecordFiles = { preSubmit: null, confirmation: null, jdPage: null };
+
+/** PNG (89 50 4E 47 0D 0A 1A 0A) or JPEG (FF D8 FF). */
+function isImage(head: Buffer): boolean {
+  const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (head.length >= png.length && png.every((b, i) => head[i] === b)) return true;
+  return head.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+}
+
+/**
+ * PM2 M1: a screenshot path from Apply's output (untrusted) as the record may cite it: resolved
+ * inside data/applications/<id>/ (relative names resolve there; nothing may leave it), an existing
+ * regular file (links are not followed) and a PNG or JPEG. Anything else is null: the record never
+ * cites a path the bot named, only the files the orchestrator put in the application's folder.
+ */
+async function recordFile(core: EngineCore, applicationId: number, value: string | null | undefined): Promise<string | null> {
+  if (typeof value !== "string" || value.trim() === "" || value.includes("\0")) return null;
+  const dir = resolve(core.paths.abs(core.paths.applicationDir(applicationId)));
+  const abs = isAbsolute(value) ? resolve(value) : resolve(dir, value);
+  const inside = relative(dir, abs);
+  if (inside === "" || inside.startsWith("..") || isAbsolute(inside)) return null;
+  const head = await core.deps.files.readHead(abs, 8).catch(() => null);
+  return head && isImage(head) ? core.paths.rel(abs) : null;
+}
+
+/** The record's screenshots, checked before the record's transaction (the FileStore is async). */
+export async function verifyRecordFiles(core: EngineCore, applicationId: number, output: ApplyOutput): Promise<RecordFiles> {
+  return {
+    preSubmit: await recordFile(core, applicationId, output.preSubmitScreenshot),
+    confirmation: await recordFile(core, applicationId, output.confirmationScreenshot),
+    jdPage: await recordFile(core, applicationId, output.jdSnapshot?.pageScreenshot),
+  };
+}
+
+/** The status-history note when Apply said submitted but its proof is not on disk (PM2 M1). */
+export const SCREENSHOTS_NOT_CAPTURED = "screenshots not captured";
 
 /**
  * §9.1 / UC-11 step 9: the record from Apply's result, written right after Apply reported it,
@@ -521,8 +561,18 @@ function relPath(core: EngineCore, path: string | null): string | null {
  * Apply reports another file than that copy, the record keeps the copy and the application needs
  * a check (the raw report stays on the task). A refusal (SubmissionRefusedError) moves the
  * application to needs_check with a safety.denied event; any other failure to write: needs_check.
+ * PM2 M1: the screenshots are the verified `files` only; `submitted` without a pre-submit
+ * screenshot, or without both a confirmation screenshot and text, is needs_check
+ * ("screenshots not captured"), never clean.
  */
-export function writeSubmissionRecord(core: EngineCore, conn: Conn, task: Task, output: ApplyOutput, out: ActionStepOutput): RecordStepOutput {
+export function writeSubmissionRecord(
+  core: EngineCore,
+  conn: Conn,
+  task: Task,
+  output: ApplyOutput,
+  out: ActionStepOutput,
+  files: RecordFiles = NO_RECORD_FILES,
+): RecordStepOutput {
   const appId = out.applicationId!;
   if (getSubmissionRecord(conn, appId)?.submission) {
     return { applicationId: appId, recorded: true, status: getApplication(conn, appId)?.status ?? null, refused: null, error: null };
@@ -542,8 +592,8 @@ export function writeSubmissionRecord(core: EngineCore, conn: Conn, task: Task, 
     // §9.1, decision 2: the orchestrator's hash of the file Apply could upload, never the bot's.
     uploadedSha256: uploaded?.sha256 ?? null,
     uploadedPath: uploaded?.path ?? null,
-    preSubmitScreenshotPath: relPath(core, output.preSubmitScreenshot),
-    confirmationScreenshotPath: relPath(core, output.confirmationScreenshot),
+    preSubmitScreenshotPath: files.preSubmit,
+    confirmationScreenshotPath: files.confirmation,
     confirmationText: output.confirmationText,
     approvalToken: latestApprovalForApplication(conn, appId, { usedOnly: true })?.token ?? null,
     submittedAt: core.now().toISOString(),
@@ -557,14 +607,16 @@ export function writeSubmissionRecord(core: EngineCore, conn: Conn, task: Task, 
         company: jd.company,
         salaryText: jd.salaryText,
         jdText: jd.jdText,
-        pageScreenshotPath: relPath(core, jd.pageScreenshot),
+        pageScreenshotPath: files.jdPage,
       }
     : // Apply captured no snapshot: freeze what Research stored (UC-11 step 5 fallback).
       { url: job.url ?? "", title: job.title, company: company?.name ?? "", salaryText: job.salaryText, jdText: job.jdText ?? "", pageScreenshotPath: null };
-  const status = output.status === "submitted" && !app.dryRun && sameFile ? "submitted" : "needs_check";
+  const proofMissing = files.preSubmit === null || (files.confirmation === null && !output.confirmationText);
+  const status = output.status === "submitted" && !app.dryRun && sameFile && !proofMissing ? "submitted" : "needs_check";
+  const note = output.status === "submitted" && !app.dryRun && proofMissing ? SCREENSHOTS_NOT_CAPTURED : null;
   try {
     // recordSubmission runs in its own savepoint: a refusal writes nothing.
-    const rec = recordSubmission(conn, { applicationId: appId, status, dryRun: app.dryRun, submission, snapshot }, { now: core.now() });
+    const rec = recordSubmission(conn, { applicationId: appId, status, dryRun: app.dryRun, submission, snapshot, note }, { now: core.now() });
     emitApplication(core, conn, rec.application);
     return { applicationId: appId, recorded: true, status: rec.application.status, refused: null, error: sameFile ? null : `Apply reported uploading ${output.uploadedFile!.filename}` };
   } catch (err) {

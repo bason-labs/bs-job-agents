@@ -1,6 +1,6 @@
 // Production implementations of the simplest ports: the system clock and a node:fs FileStore
 // built on W2c's PDF file tools (streamed SHA-256, verified copy).
-import { access, copyFile, mkdir, readFile } from "node:fs/promises";
+import { access, copyFile, lstat, mkdir, open, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { copyFileVerified } from "../bridges/pdf/files.js";
 import { sha256File } from "../bridges/pdf/hash.js";
@@ -53,6 +53,23 @@ export const nodeFileStore: FileStore = {
       return await readFile(path, "utf8");
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw err;
+    }
+  },
+  async readHead(path, bytes) {
+    try {
+      // lstat: a symbolic link is not a regular file here, so it is never followed (PM2 M1).
+      if (!(await lstat(path)).isFile()) return null;
+      const handle = await open(path, "r");
+      try {
+        const buffer = Buffer.alloc(bytes);
+        const { bytesRead } = await handle.read(buffer, 0, bytes, 0);
+        return buffer.subarray(0, bytesRead);
+      } finally {
+        await handle.close();
+      }
+    } catch (err) {
+      if (["ENOENT", "ENOTDIR", "ELOOP"].includes((err as NodeJS.ErrnoException).code ?? "")) return null;
       throw err;
     }
   },

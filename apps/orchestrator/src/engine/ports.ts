@@ -31,6 +31,11 @@ export interface FileStore {
   exists(path: string): Promise<boolean>;
   /** A small text file (e.g. a guard's JSONL log), or null when it does not exist. */
   readText(path: string): Promise<string | null>;
+  /**
+   * PM2 M1: the first `bytes` bytes of a regular file (to check an image's magic bytes), or null
+   * when it is missing, a folder or a symbolic link (never followed).
+   */
+  readHead(path: string, bytes: number): Promise<Buffer | null>;
 }
 
 /**
