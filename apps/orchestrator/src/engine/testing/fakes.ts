@@ -85,14 +85,26 @@ export class MemoryFileStore implements FileStore {
 export class FakeBrowserProbe implements BrowserStatusProbe {
   readonly connected: Record<Engine, boolean> = { claude: true, codex: true };
   checks = 0;
+  private held: Promise<void> | null = null;
 
   set(engine: Engine | "all", connected: boolean): void {
     if (engine === "all") this.connected.claude = this.connected.codex = connected;
     else this.connected[engine] = connected;
   }
 
+  /** Make the next checks wait until the returned function is called (a task stays in its checks). */
+  hold(): () => void {
+    let release!: () => void;
+    this.held = new Promise<void>((resolve) => (release = resolve));
+    return () => {
+      this.held = null;
+      release();
+    };
+  }
+
   async isConnected(engine: Engine): Promise<boolean> {
     this.checks++;
+    if (this.held) await this.held;
     return this.connected[engine];
   }
 }

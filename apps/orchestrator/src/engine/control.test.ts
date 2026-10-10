@@ -65,6 +65,22 @@ describe("pause, cancel and re-run (UC-23)", () => {
     expect(getApplication(u.db, queued.applicationId!)?.status).toBe("failed");
   });
 
+  it("cancel while Apply is still in its checks: nothing ran, so the application is failed, not needs_check", async () => {
+    const t = await createTestEngine();
+    const run = await startScan(t);
+    await t.idle();
+    const release = t.browser.hold();
+    const { applicationId, taskId } = t.engine.approve(1, { cvVersionId: t.review(run.id, 1)!.cvVersions[0]!.cvVersionId, introText: null });
+    await t.flush();
+    expect(getTask(t.db, taskId!)?.status).toBe("running");
+    t.engine.cancelRun(run.id);
+    release();
+    await t.idle();
+    expect(t.runner.callsFor("apply.submit")).toEqual([]);
+    expect(getTask(t.db, taskId!)).toMatchObject({ status: "failed", error: "cancelled before it started" });
+    expect(getApplication(t.db, applicationId!)?.status).toBe("failed");
+  });
+
   it("re-run a failed step: it and the later steps of its branch run again", async () => {
     const t = await createTestEngine();
     t.runner.script({ bot: "research", kind: "company", times: 2, result: fake.failed("site down") });

@@ -44,6 +44,21 @@ describe("concurrency (§10.3)", () => {
     expect(t.tasks("research.fit")).toHaveLength(3);
   });
 
+  it("a task runs on the engine it was queued on, even if Ba switches the bot's engine meanwhile", async () => {
+    const t = await createTestEngine();
+    t.browser.set("codex", false);
+    t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await t.idle();
+    (await import("../db/index.js")).updateBot(t.db, "research", { engine: "claude" });
+    t.browser.set("codex", true);
+    t.clock.advance(15_000);
+    await t.idle();
+    expect(t.runner.callsFor("research.scan")[0]!.bot.engine).toBe("codex");
+    // Tasks queued after the switch use the new engine.
+    expect(t.tasks("research.fit")[0]?.engine).toBe("claude");
+    expect(t.runner.callsFor("research.fit")[0]!.bot.engine).toBe("claude");
+  });
+
   it("caps are configurable", async () => {
     const t = await createTestEngine({ config: { engineCaps: { claude: 2, codex: 1 } } });
     t.runner.script({ bot: "research", kind: "scan", result: manyJobs(3) });

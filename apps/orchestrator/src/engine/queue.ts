@@ -43,7 +43,7 @@ import {
   type Task,
 } from "../db/index.js";
 import type { PermissionDenial, RunnerEvent, RunnerResult, RunnerTask } from "../runner/types.js";
-import { onApplyDone, onApplyFailedAfterSpawn, onApplyPaused, prepareApply, registrableHost } from "./apply.js";
+import { moveApplication, onApplyDone, onApplyFailedAfterSpawn, onApplyPaused, prepareApply, registrableHost } from "./apply.js";
 import { MASTER_CV_TASK_KEYS, effectiveBot, type EffectiveBot } from "./bots.js";
 import { loadRunCtx, type RunCtx } from "./context.js";
 import type { EngineCore } from "./core.js";
@@ -222,6 +222,17 @@ export class TaskQueue {
     const core = this.core;
     const prepared = await this.prepare(task, entry.controller);
     if (!prepared) return;
+    if (entry.controller.signal.aborted) {
+      // Cancelled during the checks: nothing ran, so even an Apply did not submit anything.
+      core.db.transaction((tx) => {
+        const current = getTask(tx, task.id);
+        if (current?.status !== "running") return;
+        failTaskNow(core, tx, current, "cancelled before it started");
+        const appId = Number((task.input as { applicationId?: unknown } | null)?.applicationId);
+        if (prepared.apply && Number.isInteger(appId)) moveApplication(core, tx, appId, "failed", "cancelled before Apply started");
+      });
+      return;
+    }
     const { runnerTask, bot } = prepared;
     core.db.transaction((tx) => {
       setTaskTranscriptPath(tx, task.id, core.paths.transcript(task.id, task.attempt));
@@ -273,7 +284,10 @@ export class TaskQueue {
     const key = taskKey(task.botName, task.kind);
     let bot: EffectiveBot;
     try {
-      bot = effectiveBot(core.db, core.deps.bots, task.botName);
+      const current = effectiveBot(core.db, core.deps.bots, task.botName);
+      // One task, one engine: the one it was queued on (caps and usage pauses count it there),
+      // even if Ba switched the bot's engine since.
+      bot = { ...current, def: { ...current.def, engine: task.engine } };
     } catch (err) {
       this.refuse(task, "trust_level", errorMessage(err));
       return null;
