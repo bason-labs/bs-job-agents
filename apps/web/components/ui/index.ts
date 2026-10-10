@@ -6,6 +6,7 @@ export { Card, CardDescription, CardHeader, CardTitle } from "./Card";
 export { Checkbox } from "./Checkbox";
 export { ConfirmDialog } from "./ConfirmDialog";
 export { Dialog, DialogClose, DialogContent, DialogTrigger } from "./Dialog";
+export { Drawer, type DrawerProps } from "./Drawer";
 export {
   DropdownMenu,
   DropdownMenuContent,

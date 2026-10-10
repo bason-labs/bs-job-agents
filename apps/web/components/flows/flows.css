@@ -1,0 +1,54 @@
+/* The flow canvas (§11): React Flow themed with the bs-kara tokens, plus the prototype's running
+   ring on nodes and flowing dashes on edges. Imported by FlowCanvas.tsx only. */
+
+.bsja-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: var(--border);
+  --xy-handle-background-color: var(--surface-3);
+  --xy-handle-border-color: transparent;
+  --xy-minimap-background-color: var(--surface);
+  --xy-minimap-mask-background-color: color-mix(in oklab, var(--bg) 65%, transparent);
+  --xy-minimap-node-background-color: var(--surface-3);
+  --xy-minimap-node-stroke-color: transparent;
+}
+
+.bsja-flow .react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+}
+
+.bsja-flow .react-flow__handle {
+  border: 0;
+  pointer-events: none;
+}
+
+@keyframes bsja-ring {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 0 color-mix(in oklab, var(--accent) 55%, transparent),
+      var(--shadow-glow);
+  }
+  50% {
+    box-shadow:
+      0 0 0 6px transparent,
+      0 0 30px -2px color-mix(in oklab, var(--accent) 60%, transparent);
+  }
+}
+
+.bsja-node-running {
+  animation: bsja-ring 1.8s ease-in-out infinite;
+  border-color: var(--accent) !important;
+}
+
+@keyframes bsja-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.bsja-edge-running {
+  stroke-dasharray: 6 6;
+  animation: bsja-dash 0.8s linear infinite;
+}
