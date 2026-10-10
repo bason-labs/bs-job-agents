@@ -612,6 +612,13 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | **Master CV** | Facts editor (EN/VI text, tags, org, dates), version history | |
 | **Rooms** | Group chat with @mentions; bots answer in discussion mode | |
 
+**File viewer rule:** clicking any file (CV PDF, confirmation screenshot, exported JD) **opens it in an in-app viewer**; it never downloads straight away.
+- **PDFs** render with PDF.js (`pdfjs-dist`), with page count, zoom and "Open in Figma ↗" for CV versions.
+- **Images** render in the same viewer with zoom.
+- A **Download** button inside the viewer saves the original file. It is served by the orchestrator at `GET /files/:id?download=1` with `Content-Disposition: attachment` and the original filename.
+- Esc or ✕ closes the viewer.
+- Where it applies: review card (CV thumbnail and filename), Applications table (CV version, screenshot), and the step drawer (output files).
+
 **Cursor rule:** every clickable element (buttons, links, tabs, toggles, chips, cards and canvas nodes with click handlers, checkboxes, sliders) uses `cursor: pointer`, and disabled elements use `cursor: not-allowed`. Set globally in `globals.css`, as in bs-kara, so components don't repeat it.
 
 **Live updates:** SSE events (`run.*`, `step.*`, `task.progress`, `engine.paused/resumed`, `review.ready`, `application.updated`).

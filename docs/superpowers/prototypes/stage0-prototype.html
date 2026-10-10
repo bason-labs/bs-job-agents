@@ -61,6 +61,7 @@ function app() {
     theme: 'dark',
     drawer: null,          // node key for inspect drawer
     modal: null,           // {type, job}
+    viewer: null,          // {name, kind:'pdf'|'image', lang, company, zoom}
     toasts: [],
     composer: '',
     roomInput: '',
@@ -287,6 +288,36 @@ function app() {
     },
     skip(job) { this.skipReason = 'salary_low'; this.skipNote = ''; this.modal = { type: 'skip', job }; },
     confirmSkip() { const job = this.modal.job; job.status = 'skipped'; job.skipReason = this.skipReason; this.modal = null; this.toast(job.company + ' skipped (' + this.skipReason.replace('_', ' ') + ')'); },
+
+    // ---------- file viewer + download ----------
+    cvFileName(job) { return job.company.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/đ/gi,'d').replace(/\s/g,'') + '_FE_' + (job.cvLang || job.lang) + '_v' + job.round + '.pdf'; },
+    openFile(name, kind, extra = {}) { this.viewer = { name, kind, zoom: 100, lang: 'EN', company: '', ...extra }; },
+    downloadFile() {
+      const v = this.viewer; let blob;
+      if (v.kind === 'pdf') blob = new Blob([this.makePdf('Prototype placeholder for ' + v.name)], { type: 'application/pdf' });
+      else {
+        const c = document.createElement('canvas'); c.width = 900; c.height = 500; const g = c.getContext('2d');
+        g.fillStyle = '#ffffff'; g.fillRect(0, 0, 900, 500); g.fillStyle = '#0f172a'; g.font = 'bold 28px sans-serif';
+        g.fillText('Application submitted successfully', 60, 120); g.font = '20px sans-serif'; g.fillText(v.company + ' - prototype screenshot', 60, 170);
+        const bin = atob(c.toDataURL('image/png').split(',')[1]); const arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        blob = new Blob([arr], { type: 'image/png' });
+      }
+      const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = v.name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000); this.toast('Downloaded ' + v.name);
+    },
+    makePdf(text) { // minimal valid one-page PDF with correct xref offsets
+      const safe = text.replace(/[()\\]/g, ' ');
+      const stream = `BT /F1 18 Tf 72 760 Td (${safe}) Tj ET`;
+      const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+        `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+      let out = '%PDF-1.4\n'; const offs = [];
+      objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+      const xref = out.length;
+      out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('');
+      out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+      return out;
+    },
 
     // ---------- criteria ----------
     addChip(field) { const v = this.newChip[field].trim(); if (!v) return; this.criteria[field].push(v); this.newChip[field] = ''; this.criteria.dirty = true; },
@@ -562,7 +593,7 @@ function app() {
               <button @click="job.cvLang='VI'" :class="job.cvLang==='VI' ? 'bg-gradient-brand text-white' : 'text-muted'" class="flex-1 rounded-full py-1">CV tiếng Việt</button>
               <button @click="job.cvLang='EN'" :class="job.cvLang==='EN' ? 'bg-gradient-brand text-white' : 'text-muted'" class="flex-1 rounded-full py-1">CV English</button>
             </div>
-            <div class="rounded-xl border border-border bg-white p-3 text-[7px] leading-tight text-slate-800 h-[300px] overflow-hidden">
+            <div @click="openFile(cvFileName(job), 'pdf', { lang: job.cvLang || job.lang, company: job.company })" title="Open PDF" class="rounded-xl border border-border bg-white p-3 text-[7px] leading-tight text-slate-800 h-[300px] overflow-hidden hover:ring-2 hover:ring-accent transition">
               <p class="text-[13px] font-bold">BA HUYNH</p>
               <p class="text-[7px] font-bold text-teal-700" x-text="job.cvLang==='VI' ? 'LẬP TRÌNH VIÊN FRONTEND | REACT, NEXT.JS & TYPESCRIPT' : 'FRONTEND ENGINEER | REACT, NEXT.JS & TYPESCRIPT'"></p>
               <p class="text-slate-500 mt-0.5">Ho Chi Minh City · huynhthienba4@gmail.com · linkedin.com/in/bahuynh</p>
@@ -574,7 +605,7 @@ function app() {
               <p class="font-bold mt-1">Aegona | Frontend Engineer</p><p>• Booking, dynamic pricing, loyalty flows [aeg-1]</p>
               <p class="text-center text-slate-400 mt-6">— tailored CV preview · [fact ids] shown for truth check —</p>
             </div>
-            <p class="text-[11px] text-muted" x-text="'Figma: '+job.company.replace(/\s/g,'')+'_FE_'+(job.cvLang||job.lang)+'_v'+job.round"></p>
+            <button @click="openFile(cvFileName(job), 'pdf', { lang: job.cvLang || job.lang, company: job.company })" class="text-[11px] text-accent underline" x-text="'📄 ' + cvFileName(job)"></button>
           </div>
         </div>
       </template>
@@ -590,9 +621,9 @@ function app() {
             <template x-for="a in applications">
               <tr :class="a.fresh ? 'bg-accent/5' : ''">
                 <td class="px-4 py-3 font-medium" x-text="a.company"></td><td x-text="a.role"></td><td x-text="a.source"></td>
-                <td><span class="text-accent underline cursor-pointer" x-text="a.cv + '.pdf'"></span></td><td class="text-muted" x-text="a.at"></td>
+                <td><button @click="openFile(a.cv + '.pdf', 'pdf', { lang: /_VI_/.test(a.cv) ? 'VI' : 'EN', company: a.company })" class="text-accent underline" x-text="a.cv + '.pdf'"></button></td><td class="text-muted" x-text="a.at"></td>
                 <td><select x-model="a.status" class="!py-1 !px-2 text-xs"><option value="submitted">submitted</option><option value="interviewing">interviewing</option><option value="offer">offer</option><option value="rejected">rejected</option><option value="withdrawn">withdrawn</option><option value="no_response">no response</option><option value="needs_check">needs check</option></select></td>
-                <td><span class="text-accent underline cursor-pointer">screenshot</span></td>
+                <td><button @click="openFile(a.company.replace(/\s/g,'') + '_confirmation.png', 'image', { company: a.company })" class="text-accent underline">screenshot</button></td>
               </tr>
             </template>
           </tbody>
@@ -773,6 +804,56 @@ function app() {
           </div>
         </template>
       </div>
+    </div>
+
+
+    <!-- ========== FILE VIEWER (click file → view; Download inside) ========== -->
+    <div x-show="viewer" x-transition.opacity class="absolute inset-0 z-[45] bg-black/60 backdrop-blur-sm flex flex-col" @keydown.escape.window="viewer=null">
+      <template x-if="viewer">
+        <div class="flex flex-col h-full">
+          <div class="flex items-center justify-between gap-3 px-4 py-3 bg-surface/95 border-b border-border">
+            <div class="flex items-center gap-2 min-w-0"><span x-text="viewer.kind==='pdf' ? '📄' : '🖼'"></span><b class="truncate" x-text="viewer.name"></b><span class="text-xs text-muted shrink-0" x-text="viewer.kind==='pdf' ? '· page 1 of 1 · A4' : '· confirmation screenshot'"></span></div>
+            <div class="flex items-center gap-2 shrink-0">
+              <div class="flex items-center rounded-xl border border-border text-muted"><button @click="viewer.zoom=Math.max(50,viewer.zoom-25)" class="px-2.5 py-1.5">−</button><span class="text-xs w-12 text-center" x-text="viewer.zoom+'%'"></span><button @click="viewer.zoom=Math.min(200,viewer.zoom+25)" class="px-2.5 py-1.5">+</button></div>
+              <button x-show="viewer.kind==='pdf'" @click="toast('Opens the Figma frame in a new tab (prototype)')" class="rounded-xl border border-border px-3 py-1.5">Open in Figma ↗</button>
+              <button @click="downloadFile()" class="rounded-xl bg-gradient-brand text-white px-4 py-1.5 shadow-glow">⬇ Download</button>
+              <button @click="viewer=null" class="rounded-xl border border-border px-3 py-1.5" title="Close (Esc)">✕</button>
+            </div>
+          </div>
+          <div class="flex-1 overflow-auto p-8 grid place-items-start justify-center" @click.self="viewer=null">
+            <!-- PDF page (real app renders the actual PDF with PDF.js) -->
+            <div x-show="viewer.kind==='pdf'" class="bg-white text-slate-800 shadow-2xl origin-top" :style="`width:595px;min-height:842px;transform:scale(${viewer.zoom/100});`">
+              <div class="p-10 text-[11px] leading-relaxed">
+                <p class="text-[26px] font-bold text-slate-900">BA HUYNH</p>
+                <p class="font-bold text-teal-700 tracking-wide" x-text="viewer.lang==='VI' ? 'LẬP TRÌNH VIÊN FRONTEND | REACT, NEXT.JS & TYPESCRIPT' : 'FRONTEND ENGINEER | REACT, NEXT.JS & TYPESCRIPT'"></p>
+                <p class="text-slate-500 mt-1">Ho Chi Minh City · huynhthienba4@gmail.com · +84 37 247 4489 · linkedin.com/in/bahuynh</p>
+                <hr class="my-3 border-slate-300">
+                <p class="font-bold text-teal-700" x-text="viewer.lang==='VI' ? 'TÓM TẮT' : 'PROFILE'"></p>
+                <p x-text="viewer.lang==='VI' ? 'Lập trình viên frontend với hơn 4 năm kinh nghiệm phát triển ứng dụng web. Xây dựng giao diện responsive bằng React, Next.js, TypeScript; tích hợp REST API.' : 'Frontend engineer with 4+ years of web development experience. Builds responsive React, Next.js and TypeScript products, payments and internal workflow apps.'"></p>
+                <p class="font-bold text-teal-700 mt-3" x-text="viewer.lang==='VI' ? 'KINH NGHIỆM LÀM VIỆC' : 'EXPERIENCE'"></p>
+                <div class="flex justify-between font-bold"><span>Gradion | Software Engineer</span><span class="font-normal text-slate-500">Sep 2025 – Present</span></div>
+                <p>• Owned a React/Node.js performance review app used by ~300 employees across Vietnam, Thailand, Singapore and Germany.</p>
+                <p>• Owned a multi-country purchase order and invoice extraction workflow for finance teams.</p>
+                <p>• Built AI-assisted CV screening with n8n and Genkit, refining prompts from reviewer feedback.</p>
+                <div class="flex justify-between font-bold mt-2"><span>Aegona | Frontend Engineer</span><span class="font-normal text-slate-500">Feb 2024 – Sep 2025</span></div>
+                <p>• Built responsive booking, dynamic pricing and loyalty flows; coordinated REST API integration.</p>
+                <div class="flex justify-between font-bold mt-2"><span>Apps Cyclone | Frontend Engineer</span><span class="font-normal text-slate-500">Sep 2022 – Jan 2024</span></div>
+                <p>• Role-based education portal and payment flows with Next.js 14, Tailwind CSS, Ant Design.</p>
+                <p class="font-bold text-teal-700 mt-3" x-text="viewer.lang==='VI' ? 'KỸ NĂNG' : 'TECHNICAL SKILLS'"></p>
+                <p>React, Next.js, TypeScript, JavaScript, Tailwind CSS, Node.js, REST APIs, PostgreSQL, Vitest, Playwright</p>
+                <p class="font-bold text-teal-700 mt-3" x-text="viewer.lang==='VI' ? 'HỌC VẤN' : 'EDUCATION'"></p>
+                <p>CTIM College — Information Technology · 2020–2023</p>
+                <p class="text-center text-slate-400 mt-10" x-text="'Prototype preview of ' + viewer.name"></p>
+              </div>
+            </div>
+            <!-- Screenshot -->
+            <div x-show="viewer.kind==='image'" class="bg-white text-slate-800 shadow-2xl rounded-lg overflow-hidden origin-top" :style="`width:760px;transform:scale(${viewer.zoom/100});`">
+              <div class="bg-emerald-600 text-white px-5 py-2 text-xs">topcv.vn — browser tab "Apply"</div>
+              <div class="p-10 text-center space-y-3"><div class="text-5xl">✅</div><p class="text-xl font-bold">Ứng tuyển việc làm thành công!</p><p class="text-slate-500" x-text="viewer.company + ' — application received'"></p><p class="text-xs text-slate-400">Captured by Apply after submit · prototype image</p></div>
+            </div>
+          </div>
+        </div>
+      </template>
     </div>
 
     <!-- toasts -->
