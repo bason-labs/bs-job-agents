@@ -9,7 +9,7 @@ A local, single-user crew of bots (Lead, Research, CV, QA, Apply) that finds job
 
 ```
 apps/web/            Next.js UI (App Router, Tailwind v4, bs-kara theme)        → http://localhost:3000
-apps/orchestrator/   Fastify API + SSE, engine, runner, MCP server, SQLite      → http://127.0.0.1:4318
+apps/orchestrator/   Fastify API + SSE, engine, runner, MCP server, SQLite      → http://127.0.0.1:4100
 packages/shared/     Zod schemas and types shared by web and orchestrator
 bots/<bot>/          bot definitions (bot.json, ROLE.md, memory.md, skills/)
 workflows/           workflow YAML (job-scan, apply-to-link, ...)
@@ -39,12 +39,12 @@ data.example/        example user data (copy to data/, which is gitignored)
 
 ```bash
 pnpm install
-pnpm dev                 # web (3000) + orchestrator (4318) together
+pnpm dev                 # web (3000) + orchestrator (4100) together
 pnpm dev:web             # web only
 pnpm dev:orchestrator    # orchestrator only (tsx watch)
 ```
 
-The orchestrator port defaults to `4318`; override with `ORCH_PORT=5000 pnpm dev:orchestrator`. Health check: `curl http://127.0.0.1:4318/health` → `{"ok":true}`.
+The orchestrator port defaults to `4100` (not `4318`, the OpenTelemetry collector port); override with `ORCH_PORT=5000 pnpm dev:orchestrator`. Health check: `curl http://127.0.0.1:4100/health` → `{"ok":true}`.
 
 ## Check
 

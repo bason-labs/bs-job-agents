@@ -22,7 +22,7 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
 
 export const OkResponseSchema = z.object({ ok: z.literal(true) });
 
-/** Orchestrator REST routes (127.0.0.1:4318 by default, `ORCH_PORT`; the spec diagram says 4100). `:id` segments are path params. */
+/** Orchestrator REST routes (127.0.0.1:4100 by default, overridable with `ORCH_PORT`). `:id` segments are path params. */
 export const API_ROUTES = {
   health: "/health",
   events: "/events",
