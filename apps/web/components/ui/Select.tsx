@@ -162,13 +162,14 @@ export function Select({
       <Popover.Trigger
         asChild
         aria-haspopup="listbox"
-        aria-controls={open ? listId : undefined}
+        aria-controls={listId}
       >
         <button
           ref={triggerRef}
           type="button"
           id={id}
           role="combobox"
+          aria-controls={listId}
           aria-label={ariaLabel}
           aria-labelledby={ariaLabelledBy}
           aria-expanded={open}

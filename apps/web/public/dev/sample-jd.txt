@@ -1,0 +1,12 @@
+Senior Frontend Engineer (React/Next.js) - NovaPay
+
+About the role
+Build and own payment flows in a product team of ~250 people.
+
+Requirements
+- 4+ years with React and TypeScript
+- Next.js App Router experience
+- Nice to have: GraphQL
+
+Benefits
+13th month salary, hybrid 3/2, MacBook, health insurance.

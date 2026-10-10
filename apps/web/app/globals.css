@@ -159,19 +159,21 @@ input:disabled {
   font-variant-numeric: tabular-nums;
 }
 
-/* Brand gradient text + background helpers. */
-.text-gradient-brand {
+/* Brand gradient text + background helpers. Declared with @utility (not plain
+   classes) so Tailwind variants work: `data-[state=checked]:bg-gradient-brand`,
+   `hover:shadow-glow`, … */
+@utility text-gradient-brand {
   background: var(--gradient-brand);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
-.bg-gradient-brand {
+@utility bg-gradient-brand {
   background: var(--gradient-brand);
 }
 
-.shadow-glow {
+@utility shadow-glow {
   box-shadow: var(--shadow-glow);
 }
 
