@@ -1,0 +1,35 @@
+{
+  "name": "@bs-job-agents/orchestrator",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@bs-job-agents/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.26.0",
+    "better-sqlite3": "~12.11.1",
+    "croner": "^10.0.1",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.5",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.19.0",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^9.39.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  }
+}
