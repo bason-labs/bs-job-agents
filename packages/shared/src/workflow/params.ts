@@ -16,6 +16,8 @@ export const JobScanParamsSchema = z
   .object({
     searchProfileId: IdSchema.nullable().default(null),
     overrides: SearchProfileOverridesSchema.nullable().default(null),
+    /** UC-04 b: Ba said "show skipped": jobs Ba skipped before are offered again in this run. */
+    showSkipped: z.boolean().optional(),
   })
   .strict();
 export type JobScanParams = z.infer<typeof JobScanParamsSchema>;

@@ -147,6 +147,11 @@ describe("workflow params", () => {
     expect(JobScanParamsSchema.parse({})).toEqual({ searchProfileId: null, overrides: null });
   });
 
+  it("job-scan may show jobs Ba skipped before (UC-04 b, optional)", () => {
+    expect(JobScanParamsSchema.parse({ showSkipped: true })).toMatchObject({ showSkipped: true });
+    expect(JobScanParamsSchema.safeParse({ showSkipped: "yes" }).success).toBe(false);
+  });
+
   it("job-scan overrides are validated", () => {
     expect(JobScanParamsSchema.safeParse({ overrides: { maxJobs: 3, locations: ["Đà Nẵng"] } }).success).toBe(true);
     expect(JobScanParamsSchema.safeParse({ overrides: { maxJobs: 0 } }).success).toBe(false);
