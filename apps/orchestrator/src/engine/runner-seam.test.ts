@@ -13,7 +13,6 @@ import {
   CONVERSATION_TASK_KINDS,
   findForbiddenPromptKeys,
   promptInputSchemaFor,
-  resolveSelfCheckItems,
   type Engine as EngineName,
 } from "@bs-job-agents/shared";
 import { researchScanFixture } from "@bs-job-agents/shared/fixtures";
@@ -93,11 +92,10 @@ function throughRealRunner(engine: EngineName, config: RunnerConfig, log: Record
   return {
     engine,
     async run(task, onEvent) {
+      // The FakeRunner's default output for the task; its selfCheck has the real bot.json's items.
       const answer = defaultFakeResult(task);
       if (answer.status !== "ok") throw new Error(`no default output for ${task.bot.name}.${task.kind}`);
-      // The real runner checks the self-check against the real bot.json's items for this kind (rule 4).
-      const selfCheck = resolveSelfCheckItems(task.bot, task.kind).map((item) => ({ item, passed: true, note: null }));
-      const output = { ...(answer.output as Record<string, unknown>), selfCheck };
+      const output = answer.output;
       const sessionId = randomUUID();
       const spawns: Spawned[] = [];
       const fake = fakeSpawn((command, args) => {

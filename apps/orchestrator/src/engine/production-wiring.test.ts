@@ -8,7 +8,7 @@
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getBotOutputJsonSchema, resolveSelfCheckItems } from "@bs-job-agents/shared";
+import { getBotOutputJsonSchema } from "@bs-job-agents/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FigmaBridge } from "../bridges/index.js";
 import { FakeFigmaApi, FakeFigmaMcp, FakeNode, FIGMA_A4, makePdf } from "../bridges/testing.js";
@@ -83,7 +83,7 @@ beforeAll(async () => {
     const def = loadBotDefinition(join(botsDir, bot));
     const answer = defaultFakeResult({ bot: def, kind, input } as unknown as RunnerTask);
     if (answer.status !== "ok") throw new Error(`no answer for ${bot}.${kind}`);
-    const output = { ...(answer.output as Record<string, unknown>), selfCheck: resolveSelfCheckItems(def, kind).map((item) => ({ item, passed: true, note: null })) };
+    const output = answer.output;
     if (bot === "cv" && kind === "tailor") {
       // What the CV bot does through figma_execute: its frame on the Drafts page.
       const frameName = String((output as { figmaFrameName?: unknown }).figmaFrameName);

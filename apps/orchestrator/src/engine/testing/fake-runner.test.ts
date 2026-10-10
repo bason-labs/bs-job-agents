@@ -48,6 +48,18 @@ describe("FakeRunner: scripted results keyed by bot, kind and scenario (§12)", 
     }
   });
 
+  it("default outputs report every self-check item of the task's bot and kind, as the real runner requires (rule 4)", async () => {
+    // The real bot.json files have per-kind lists (Research) the shared fixtures do not mirror.
+    const research = BotDefinitionSchema.parse({ ...bots.get("research")!, selfCheckByKind: { scan: ["Every job's language is detected", "No job is a duplicate"] } });
+    const r = defaultFakeResult({ ...task("research", "scan", SCAN_INPUT), bot: research });
+    expect(r.status === "ok" && (r.output as { selfCheck: unknown }).selfCheck).toEqual([
+      { item: "Every job's language is detected", passed: true, note: null },
+      { item: "No job is a duplicate", passed: true, note: null },
+    ]);
+    const consult = defaultFakeResult(task("qa", "consult", {}));
+    expect(consult.status === "ok" && (consult.output as { selfCheck: unknown }).selfCheck).toEqual([{ item: "Answered within my role; no work was done", passed: true, note: null }]);
+  });
+
   it("defaults follow the task: scan per source, CV frame per language and round, Apply's uploaded file", async () => {
     const scan = defaultFakeResult(task("research", "scan", { ...SCAN_INPUT, source: "topcv" }));
     expect(scan.status === "ok" && (scan.output as { jobs: { source: string }[] }).jobs.map((j) => j.source)).toEqual(["topcv"]);
