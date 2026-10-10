@@ -659,8 +659,8 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | `companies` | id, name, website, profile_json, confidence, researched_at |
 | `cv_versions` | id, job_id, language, round, tailored_json, figma_frame_url, pdf_path, master_version, prompt_version, created_at |
 | `qa_reviews` | id, cv_version_id, total, scores_json, hard_fails_json, fixes_json, injection_suspected, passed, created_at |
-| `approvals` | token PK, job_id, cv_version_id, allowed_domains_json, expires_at, used_at |
-| `applications` | id, job_id, cv_version_id, submitted_at, status, origin (`app` / `imported`), status_history_json |
+| `approvals` | token PK, application_id (the one application this token may start or resume), job_id, cv_version_id, allowed_domains_json (may only grow, until a record cites the token), expires_at (≤ 24 h), used_at (set once). Rows are never deleted. |
+| `applications` | id, job_id, cv_version_id, submitted_at, status, origin (`app` / `imported`), status_history_json (append-only), dry_run (dry runs never count toward one-application-per-job and can never become `submitted`), reapply |
 | `submissions` | application_id PK/FK, final_url, fields_json (label, name, value, source), intro_text, consent_ticked, consent_text, uploaded_filename, uploaded_sha256, uploaded_path, pre_submit_screenshot_path, confirmation_screenshot_path, confirmation_text, approval_token, submitted_at |
 | `job_snapshots` | application_id PK/FK, captured_at, url, title, company, salary_text, jd_text, page_screenshot_path |
 | `exports` | id, created_at, path, application_count |
