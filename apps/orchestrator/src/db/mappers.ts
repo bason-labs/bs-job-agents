@@ -149,6 +149,7 @@ export function toApplication(row: Row.Application): SharedApplication {
     status: row.status,
     origin: row.origin,
     statusHistory: row.statusHistory.map((e) => ({ status: e.status, at: e.at, note: e.note ?? null })),
+    dryRun: row.dryRun,
   };
 }
 

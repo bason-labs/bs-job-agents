@@ -120,7 +120,7 @@ describe("approvals, applications and the submission record (§9.1)", () => {
     const job = seedJob(db);
     const cv = seedCv(db, job);
     const approval = createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] }, { now: T0 });
-    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id }, { now: at(1) });
+    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id, dryRun: opts.dryRun }, { now: at(1) });
     recordSubmission(
       db,
       {
@@ -190,7 +190,7 @@ describe("approvals, applications and the submission record (§9.1)", () => {
   it("a dry-run record maps with dryRun true and a needs_check application", () => {
     const { app } = submitted({ dryRun: true });
     const rec = getSubmissionRecord(db, app.id)!;
-    expect(parsed(ApplicationSchema, m.toApplication(rec.application)).status).toBe("needs_check");
+    expect(parsed(ApplicationSchema, m.toApplication(rec.application))).toMatchObject({ status: "needs_check", dryRun: true });
     expect(parsed(SubmissionRecordSchema, m.toSubmissionRecord(rec))).toMatchObject({ dryRun: true, confirmationText: null });
   });
 

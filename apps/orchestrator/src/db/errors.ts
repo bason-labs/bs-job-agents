@@ -1,3 +1,5 @@
+import type { SubmissionRefusalReason } from "@bs-job-agents/shared";
+
 export class NotFoundError extends Error {
   constructor(
     readonly entity: string,
@@ -24,6 +26,22 @@ export class ImmutableRecordError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ImmutableRecordError";
+  }
+}
+
+/**
+ * recordSubmission refused to write the §9.1 record, and wrote nothing: the record would
+ * contradict the application or its approval. The caller (engine) keeps the raw Apply result
+ * on the task, marks the application `needs_check` and appends `safety.denied`.
+ */
+export class SubmissionRefusedError extends Error {
+  constructor(
+    readonly reason: SubmissionRefusalReason,
+    readonly applicationId: number,
+    detail: string,
+  ) {
+    super(`submission record for application ${applicationId} refused (${reason}): ${detail}`);
+    this.name = "SubmissionRefusedError";
   }
 }
 

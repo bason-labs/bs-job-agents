@@ -111,6 +111,13 @@ function populate(client: Database.Database, count: number): void {
     INSERT INTO schedules(name, cron, workflow_name, params_json, created_at, updated_at) VALUES ('Weekdays', '0 9 * * 1-5', 'job-scan', '{}', '${T}', '${T}');
     INSERT INTO events(type, payload_json, created_at) VALUES ('run.started', '{"runId":"1"}', '${T}');
   `);
+  if (count >= countAt("0003")) {
+    // A dry run for the job whose real application is paused: outside the one-per-job index.
+    client.exec(`
+      INSERT INTO applications(job_id, cv_version_id, status, origin, status_history_json, dry_run, created_at) VALUES
+        (2, 3, 'needs_check', 'app', '[{"status":"approved","at":"${T}","note":null},{"status":"needs_check","at":"${T30}","note":"dry run: form filled, not submitted"}]', 1, '${T}');
+    `);
+  }
 }
 
 type Row = Record<string, unknown>;
@@ -190,14 +197,27 @@ describe("upgrading a populated database from every earlier migration to head (P
     expect(() => c.prepare("DELETE FROM applications WHERE id = 1").run()).toThrow(/cannot be deleted/);
     expect(() => c.prepare("UPDATE applications SET cv_version_id = 2 WHERE id = 1").run()).toThrow(/only allow status/);
     expect(() => c.prepare("UPDATE applications SET status_history_json = '[]' WHERE id = 1").run()).toThrow(/append-only/);
+    const rewritten = JSON.stringify([
+      { status: "approved", at: T, note: "edited later" },
+      { status: "submitted", at: T30, note: null },
+    ]);
+    expect(() => c.prepare("UPDATE applications SET status_history_json = ? WHERE id = 1").run(rewritten)).toThrow(/append-only/);
+    expect(() => c.prepare("UPDATE applications SET created_at = ? WHERE id = 1").run(T30)).toThrow(/only allow status/);
     // UC-08: a used token stays used.
     expect(() => c.prepare("UPDATE approvals SET used_at = NULL WHERE token = 'tok-novapay'").run()).toThrow(/already used/);
-    // §10.2 rule 5: one application per job, unless "apply again".
+    // PM M3: applications from before 0003 are real ones.
+    if (count < countAt("0003")) {
+      expect(c.prepare("SELECT count(*) AS n FROM applications WHERE dry_run = 1").get()).toEqual({ n: 0 });
+    }
+    // §10.2 rule 5: one application per job, unless "apply again"; dry runs never count.
     const insertApp = c.prepare(
-      `INSERT INTO applications(job_id, cv_version_id, status, origin, status_history_json, reapply, created_at) VALUES (1, 1, 'approved', 'app', '[]', ?, '${T}')`,
+      `INSERT INTO applications(job_id, cv_version_id, status, origin, status_history_json, reapply, dry_run, created_at) VALUES (1, 1, 'approved', 'app', '[]', ?, ?, '${T}')`,
     );
-    expect(() => insertApp.run(0)).toThrow(/UNIQUE/);
-    expect(() => insertApp.run(1)).not.toThrow();
+    expect(() => insertApp.run(0, 0)).toThrow(/UNIQUE/);
+    expect(() => insertApp.run(1, 0)).not.toThrow();
+    const dry = insertApp.run(0, 1);
+    // PM M3: a dry run never reaches submitted.
+    expect(() => c.prepare("UPDATE applications SET status = 'submitted' WHERE id = ?").run(dry.lastInsertRowid)).toThrow(/dry run/);
     c.close();
   });
 });

@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { openTestDb, type Db } from "../client.js";
-import { ImmutableRecordError, InvalidTransitionError } from "../errors.js";
+import { ImmutableRecordError, InvalidTransitionError, SubmissionRefusedError } from "../errors.js";
 import { at, seedCv, seedJob, T0 } from "../test-helpers.js";
 import type { CvVersion, Job } from "../types.js";
 import { addApprovalDomain, checkApproval, consumeApproval, createApproval, getApproval } from "./approvals.js";
-import { clearJobInjection, flagJobInjection } from "./jobs.js";
+import { clearJobInjection, flagJobInjection, getJob } from "./jobs.js";
 import {
-  canTransitionApplication,
   createApplication,
   deleteJobSnapshot,
   deleteSubmission,
@@ -48,6 +47,9 @@ const SUBMISSION: SubmissionInput = {
   confirmationScreenshotPath: "data/applications/1/confirmation.png",
   confirmationText: "Application sent",
 };
+
+/** A dry run fills the form but never clicks submit, so there is no confirmation. */
+const DRY: SubmissionInput = { ...SUBMISSION, confirmationText: null, confirmationScreenshotPath: null };
 
 const SNAPSHOT: CompleteSnapshotInput = {
   url: "https://itviec.com/it-jobs/senior-frontend-engineer-react-nextjs-novapay-1234",
@@ -140,8 +142,8 @@ describe("application status transitions (UC-11, UC-13)", () => {
     transitionApplication(db, app.id, "paused", { now: at(1), note: "notice period?" });
     transitionApplication(db, app.id, "approved", { now: at(2) });
     recordSubmission(db, { applicationId: app.id, submission: SUBMISSION, snapshot: SNAPSHOT }, { now: at(3) });
-    transitionApplication(db, app.id, "interviewing", { now: at(4) });
-    const offer = transitionApplication(db, app.id, "offer", { now: at(5) });
+    transitionApplication(db, app.id, "interviewing", { now: at(4), by: "manual" });
+    const offer = transitionApplication(db, app.id, "offer", { now: at(5), by: "manual" });
     expect(offer.statusHistory.map((h) => h.status)).toEqual(["approved", "paused", "approved", "submitted", "interviewing", "offer"]);
     expect(offer.statusHistory[1]).toEqual({ status: "paused", at: at(1).toISOString(), note: "notice period?" });
   });
@@ -151,9 +153,9 @@ describe("application status transitions (UC-11, UC-13)", () => {
     expect(() => transitionApplication(db, app.id, "interviewing")).toThrow(InvalidTransitionError);
     transitionApplication(db, app.id, "needs_check");
     expect(() => transitionApplication(db, app.id, "approved")).toThrow(InvalidTransitionError);
-    expect(transitionApplication(db, app.id, "submitted").status).toBe("submitted");
-    expect(() => transitionApplication(db, app.id, "approved")).toThrow(InvalidTransitionError);
-    expect(() => transitionApplication(db, app.id, "needs_check")).toThrow(InvalidTransitionError);
+    expect(transitionApplication(db, app.id, "submitted", { by: "manual" }).status).toBe("submitted");
+    expect(() => transitionApplication(db, app.id, "approved", { by: "manual" })).toThrow(InvalidTransitionError);
+    expect(() => transitionApplication(db, app.id, "needs_check", { by: "manual" })).toThrow(InvalidTransitionError);
   });
 
   it("treats a same-status update as a no-op", () => {
@@ -161,19 +163,139 @@ describe("application status transitions (UC-11, UC-13)", () => {
     expect(transitionApplication(db, app.id, "approved").statusHistory).toHaveLength(1);
   });
 
-  it("lets Ba correct manual statuses among post-submit states", () => {
-    expect(canTransitionApplication("rejected", "interviewing")).toBe(true);
-    expect(canTransitionApplication("no_response", "interviewing")).toBe(true);
-    expect(canTransitionApplication("submitted", "paused")).toBe(false);
-    expect(canTransitionApplication("failed", "submitted")).toBe(false);
+  it("lets Ba correct a mis-click among post-submit statuses; the history keeps both (PM M3)", () => {
+    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id }, { now: T0 });
+    recordSubmission(db, { applicationId: app.id, submission: SUBMISSION, snapshot: SNAPSHOT }, { now: at(1) });
+    transitionApplication(db, app.id, "rejected", { now: at(2), by: "manual" });
+    transitionApplication(db, app.id, "interviewing", { now: at(3), by: "manual", note: "mis-click" });
+    const back = transitionApplication(db, app.id, "submitted", { now: at(4), by: "manual" });
+    expect(back.statusHistory.map((h) => h.status)).toEqual(["approved", "submitted", "rejected", "interviewing", "submitted"]);
+    expect(() => transitionApplication(db, app.id, "paused", { by: "manual" })).toThrow(InvalidTransitionError);
+    expect(() => transitionApplication(db, app.id, "needs_check", { by: "manual" })).toThrow(InvalidTransitionError);
+    expect(() => transitionApplication(db, app.id, "failed", { by: "manual" })).toThrow(InvalidTransitionError);
+  });
+
+  it("the orchestrator only moves an application within the apply flow; Ba only after it", () => {
+    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
+    expect(() => transitionApplication(db, app.id, "paused", { by: "manual" })).toThrow(InvalidTransitionError);
+    expect(() => transitionApplication(db, app.id, "failed", { by: "manual" })).toThrow(InvalidTransitionError);
+    recordSubmission(db, { applicationId: app.id, submission: SUBMISSION, snapshot: SNAPSHOT });
+    expect(() => transitionApplication(db, app.id, "interviewing")).toThrow(InvalidTransitionError);
+    expect(transitionApplication(db, app.id, "interviewing", { by: "manual" }).status).toBe("interviewing");
   });
 
   it("blocks shrinking the history in SQL (append-only trigger)", () => {
     const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
-    transitionApplication(db, app.id, "submitted");
+    transitionApplication(db, app.id, "paused");
     expect(() =>
       db.$client.prepare("UPDATE applications SET status_history_json = '[]' WHERE id = ?").run(app.id),
     ).toThrow(/append-only/);
+  });
+
+  it("blocks rewriting earlier history entries in SQL, not only shrinking (PM M3)", () => {
+    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id }, { now: T0 });
+    transitionApplication(db, app.id, "paused", { now: at(1) });
+    const rewritten = JSON.stringify([
+      { status: "approved", at: T0.toISOString(), note: "edited later" },
+      { status: "paused", at: at(1).toISOString(), note: null },
+      { status: "approved", at: at(2).toISOString(), note: null },
+    ]);
+    const setHistory = db.$client.prepare("UPDATE applications SET status_history_json = ? WHERE id = ?");
+    expect(() => setHistory.run(rewritten, app.id)).toThrow(/append-only/);
+    expect(() => setHistory.run(JSON.stringify({ status: "approved" }), app.id)).toThrow(/append-only/);
+    // Appending is what the repository does, and it stays allowed.
+    expect(transitionApplication(db, app.id, "approved", { now: at(2) }).statusHistory).toHaveLength(3);
+  });
+});
+
+describe("one status machine: submitted needs a record or Ba (PM M3, probe 6)", () => {
+  it("the orchestrator cannot move approved or paused to submitted; nothing is marked applied", () => {
+    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
+    expect(() => transitionApplication(db, app.id, "submitted")).toThrow(InvalidTransitionError);
+    expect(() => transitionApplication(db, app.id, "submitted", { by: "manual" })).toThrow(InvalidTransitionError);
+    transitionApplication(db, app.id, "paused");
+    expect(() => transitionApplication(db, app.id, "submitted")).toThrow(InvalidTransitionError);
+    expect(() => transitionApplication(db, app.id, "submitted", { by: "manual" })).toThrow(InvalidTransitionError);
+    expect(getApplication(db, app.id)).toMatchObject({ status: "paused", submittedAt: null });
+    expect(getJob(db, job.id)?.status).toBe("approved");
+  });
+
+  it("Ba settles a needs_check as submitted (UC-11 c); the orchestrator cannot", () => {
+    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
+    transitionApplication(db, app.id, "needs_check", { note: "no confirmation detected" });
+    expect(() => transitionApplication(db, app.id, "submitted")).toThrow(InvalidTransitionError);
+    expect(transitionApplication(db, app.id, "submitted", { by: "manual" }).status).toBe("submitted");
+    expect(getJob(db, job.id)?.status).toBe("applied");
+  });
+});
+
+describe("dry runs (PM M3)", () => {
+  it("a dry run does not take the job's one-application slot (probe 1b)", () => {
+    const dry = createApplication(db, { jobId: job.id, cvVersionId: cv.id, dryRun: true });
+    expect(dry).toMatchObject({ dryRun: true, reapply: false });
+    expect(createApplication(db, { jobId: job.id, cvVersionId: cv.id })).toMatchObject({ dryRun: false, reapply: false });
+    // A second real application still needs "apply again"; another dry run does not.
+    expect(() => createApplication(db, { jobId: job.id, cvVersionId: cv.id })).toThrow(/UNIQUE/);
+    expect(createApplication(db, { jobId: job.id, cvVersionId: cv.id, dryRun: true }).dryRun).toBe(true);
+  });
+
+  it("a dry run never reaches submitted and never marks the job applied (probe 1a)", () => {
+    const dry = createApplication(db, { jobId: job.id, cvVersionId: cv.id, dryRun: true });
+    recordSubmission(db, { applicationId: dry.id, dryRun: true, submission: DRY, snapshot: SNAPSHOT });
+    expect(() => transitionApplication(db, dry.id, "submitted", { by: "manual" })).toThrow(InvalidTransitionError);
+    expect(getApplication(db, dry.id)?.status).toBe("needs_check");
+    expect(getJob(db, job.id)?.status).toBe("approved");
+    // Ba closes the dry run.
+    expect(transitionApplication(db, dry.id, "failed", { by: "manual" }).status).toBe("failed");
+  });
+
+  it("SQL triggers keep a dry run out of every post-submit status and keep its flag", () => {
+    const dry = createApplication(db, { jobId: job.id, cvVersionId: cv.id, dryRun: true });
+    const setStatus = db.$client.prepare("UPDATE applications SET status = ? WHERE id = ?");
+    for (const status of ["submitted", "interviewing", "rejected", "no_response"]) {
+      expect(() => setStatus.run(status, dry.id)).toThrow(/dry run/);
+    }
+    const insertDry = db.$client.prepare(
+      "INSERT INTO applications(job_id, cv_version_id, status, origin, status_history_json, dry_run, created_at) VALUES (?, ?, 'submitted', 'app', '[]', 1, ?)",
+    );
+    expect(() => insertDry.run(job.id, cv.id, T0.toISOString())).toThrow(/dry run/);
+    const setFlag = db.$client.prepare("UPDATE applications SET dry_run = ? WHERE id = ?");
+    expect(() => setFlag.run(0, dry.id)).toThrow(/dry run/);
+    const real = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
+    expect(() => setFlag.run(1, real.id)).toThrow(/dry run/);
+  });
+
+  it("recordSubmission refuses a dry-run flag that differs from the application's and writes nothing", () => {
+    const real = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
+    const dry = createApplication(db, { jobId: job.id, cvVersionId: cv.id, dryRun: true });
+    for (const [app, dryRun] of [
+      [real, true],
+      [dry, false],
+    ] as const) {
+      let caught: unknown;
+      try {
+        recordSubmission(db, { applicationId: app.id, dryRun, status: "needs_check", submission: DRY, snapshot: SNAPSHOT });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(SubmissionRefusedError);
+      expect((caught as SubmissionRefusedError).reason).toBe("dry_run_mismatch");
+      expect(getApplication(db, app.id)?.status).toBe("approved");
+      expect(getSubmissionRecord(db, app.id)?.submission).toBeUndefined();
+    }
+  });
+
+  it("'already applied' lookups ignore dry runs; lists can filter them", () => {
+    const dry = createApplication(db, { jobId: job.id, cvVersionId: cv.id, dryRun: true }, { now: at(1) });
+    expect(getApplicationByJob(db, job.id)).toBeUndefined();
+    expect(getApplicationByJob(db, job.id, { includeDryRuns: true })?.id).toBe(dry.id);
+    const real = createApplication(db, { jobId: job.id, cvVersionId: cv.id }, { now: at(2) });
+    const laterDry = createApplication(db, { jobId: job.id, cvVersionId: cv.id, dryRun: true }, { now: at(3) });
+    expect(getApplicationByJob(db, job.id)?.id).toBe(real.id);
+    expect(getApplicationByJob(db, job.id, { includeDryRuns: true })?.id).toBe(laterDry.id);
+    expect(listApplications(db, { dryRun: false }).map((a) => a.id)).toEqual([real.id]);
+    expect(listApplications(db, { dryRun: true }).map((a) => a.id)).toEqual([laterDry.id, dry.id]);
+    expect(listApplications(db)).toHaveLength(3);
   });
 });
 
@@ -206,12 +328,11 @@ describe("submission record (§9.1)", () => {
   });
 
   it("records a dry-run Apply as needs_check with dryRun, never as submitted (§12)", () => {
-    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id }, { now: T0 });
-    const dry = { ...SUBMISSION, confirmationText: null, confirmationScreenshotPath: null };
+    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id, dryRun: true }, { now: T0 });
     expect(() =>
-      recordSubmission(db, { applicationId: app.id, dryRun: true, status: "submitted", submission: dry, snapshot: SNAPSHOT }),
+      recordSubmission(db, { applicationId: app.id, dryRun: true, status: "submitted", submission: DRY, snapshot: SNAPSHOT }),
     ).toThrow(InvalidTransitionError);
-    const rec = recordSubmission(db, { applicationId: app.id, dryRun: true, submission: dry, snapshot: SNAPSHOT }, { now: at(9) });
+    const rec = recordSubmission(db, { applicationId: app.id, dryRun: true, submission: DRY, snapshot: SNAPSHOT }, { now: at(9) });
     expect(rec.application.status).toBe("needs_check");
     expect(rec.application.statusHistory.at(-1)).toEqual({
       status: "needs_check",
@@ -278,7 +399,13 @@ describe("submission record (§9.1)", () => {
       expect(() => db.$client.prepare("UPDATE applications SET cv_version_id = NULL WHERE id = ?").run(appId)).toThrow(
         /only allow status/,
       );
-      expect(transitionApplication(db, appId, "rejected").status).toBe("rejected");
+      expect(transitionApplication(db, appId, "rejected", { by: "manual" }).status).toBe("rejected");
+    });
+
+    it("a recorded application's created_at and dry-run flag are frozen too (PM M3)", () => {
+      const setCreatedAt = db.$client.prepare("UPDATE applications SET created_at = ? WHERE id = ?");
+      expect(() => setCreatedAt.run(at(99).toISOString(), appId)).toThrow(/only allow status/);
+      expect(() => db.$client.prepare("UPDATE applications SET dry_run = 1 WHERE id = ?").run(appId)).toThrow(/dry run|only allow status/);
     });
   });
 });

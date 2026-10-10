@@ -19,10 +19,13 @@ export const GUARDED_SCHEMA_OBJECTS = [
   { type: "trigger", name: "job_snapshots_no_update", table: "job_snapshots" },
   { type: "trigger", name: "job_snapshots_no_delete", table: "job_snapshots" },
   // §9.1, UC-13: a recorded application is never deleted; only its status changes,
-  // appended to its history (0001).
+  // appended to its history (0001; the last two re-created stricter in 0003).
   { type: "trigger", name: "applications_no_delete_recorded", table: "applications" },
   { type: "trigger", name: "applications_frozen_after_record", table: "applications" },
   { type: "trigger", name: "applications_history_append_only", table: "applications" },
+  // PM M3: a dry run never reaches a post-submit status, and its flag never changes (0003).
+  { type: "trigger", name: "applications_dry_run_update_guard", table: "applications" },
+  { type: "trigger", name: "applications_dry_run_insert_guard", table: "applications" },
   // UC-08, §10.2 rule 1: approval tokens are single-use (0001).
   { type: "trigger", name: "approvals_single_use", table: "approvals" },
   // §10.2 rule 5: one application per job unless "apply again" (0000).

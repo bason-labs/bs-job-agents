@@ -1,8 +1,12 @@
-import { DRY_RUN_APPLICATION_STATUS } from "@bs-job-agents/shared";
+import {
+  DRY_RUN_APPLICATION_STATUS,
+  canTransitionApplicationStatus,
+  type ApplicationStatusChange,
+} from "@bs-job-agents/shared";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import type { ApplicationOrigin, ApplicationStatus } from "../enums.js";
-import { ImmutableRecordError, InvalidTransitionError, NotFoundError } from "../errors.js";
+import { ImmutableRecordError, InvalidTransitionError, NotFoundError, SubmissionRefusedError } from "../errors.js";
 import { applications, jobs, jobSnapshots, submissions, type StatusHistoryEntry } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
 import type { Application, Approval, Company, CvVersion, Job, JobSnapshot, Submission } from "../types.js";
@@ -12,35 +16,12 @@ import { getCvVersion } from "./cv.js";
 import { getJob } from "./jobs.js";
 
 // ---------------------------------------------------------------- status machine
+// One machine for the whole app: shared APPLICATION_STATUS_TRANSITIONS (PM M3).
+// transitionApplication makes `system` (orchestrator) or `manual` (Ba) changes. Only
+// recordSubmission makes `record` changes, the one orchestrator path to `submitted`.
 
-const POST_SUBMIT: readonly ApplicationStatus[] = [
-  "submitted",
-  "interviewing",
-  "offer",
-  "rejected",
-  "withdrawn",
-  "no_response",
-];
-
-const PRE_SUBMIT_TRANSITIONS: Partial<Record<ApplicationStatus, readonly ApplicationStatus[]>> = {
-  approved: ["paused", "submitted", "needs_check", "failed"],
-  paused: ["approved", "submitted", "needs_check", "failed"],
-  // UC-11c: never resubmitted automatically; Ba marks it submitted or failed.
-  needs_check: ["submitted", "failed"],
-  failed: [],
-};
-
-/**
- * Allowed application status changes. Submit flow: approved ⇄ paused →
- * submitted | needs_check | failed; needs_check → submitted | failed. After
- * submit, Ba tracks the status manually (UC-13) and may move freely between
- * submitted / interviewing / offer / rejected / withdrawn / no_response.
- */
-export function canTransitionApplication(from: ApplicationStatus, to: ApplicationStatus): boolean {
-  if (from === to) return false;
-  if (POST_SUBMIT.includes(from)) return POST_SUBMIT.includes(to);
-  return PRE_SUBMIT_TRANSITIONS[from]?.includes(to) ?? false;
-}
+/** Who calls transitionApplication: the orchestrator ("system") or Ba ("manual"). */
+export type ApplicationStatusActor = Exclude<ApplicationStatusChange, "record">;
 
 // ---------------------------------------------------------------- reads
 
@@ -48,12 +29,19 @@ export function getApplication(db: Conn, id: number): Application | undefined {
   return db.select().from(applications).where(eq(applications.id, id)).get();
 }
 
-/** The application for a job (the newest one if it was re-applied). */
-export function getApplicationByJob(db: Conn, jobId: number): Application | undefined {
+/**
+ * The application for a job: the newest one if it was re-applied. This is the "already
+ * applied" lookup (§10.2 rule 5, UC-14), so dry runs are ignored unless `includeDryRuns`.
+ */
+export function getApplicationByJob(
+  db: Conn,
+  jobId: number,
+  opts: { includeDryRuns?: boolean } = {},
+): Application | undefined {
   return db
     .select()
     .from(applications)
-    .where(eq(applications.jobId, jobId))
+    .where(and(eq(applications.jobId, jobId), opts.includeDryRuns ? undefined : eq(applications.dryRun, false)))
     .orderBy(desc(applications.id))
     .limit(1)
     .get();
@@ -61,7 +49,12 @@ export function getApplicationByJob(db: Conn, jobId: number): Application | unde
 
 export function listApplications(
   db: Conn,
-  filter: { status?: ApplicationStatus | readonly ApplicationStatus[]; origin?: ApplicationOrigin } = {},
+  filter: {
+    status?: ApplicationStatus | readonly ApplicationStatus[];
+    origin?: ApplicationOrigin;
+    /** true = dry runs only, false = real applications only (e.g. the export); default both. */
+    dryRun?: boolean;
+  } = {},
 ): Application[] {
   const statuses = filter.status === undefined ? undefined : ([] as ApplicationStatus[]).concat(filter.status);
   return db
@@ -71,6 +64,7 @@ export function listApplications(
       and(
         statuses ? inArray(applications.status, statuses) : undefined,
         filter.origin ? eq(applications.origin, filter.origin) : undefined,
+        filter.dryRun === undefined ? undefined : eq(applications.dryRun, filter.dryRun),
       ),
     )
     .orderBy(desc(applications.createdAt), desc(applications.id))
@@ -92,10 +86,12 @@ function markJob(db: Conn, jobId: number, status: Job["status"]): void {
 /**
  * UC-08: Ba approved a card → application `approved` (job → `approved`).
  * `reapply` is the explicit "apply again" that lifts the one-per-job rule.
+ * `dryRun` (§12 dry-run acceptance) never counts toward that rule and never reaches
+ * `submitted` (PM M3); it needs its own approval token like any application.
  */
 export function createApplication(
   db: Conn,
-  input: { jobId: number; cvVersionId: number; reapply?: boolean },
+  input: { jobId: number; cvVersionId: number; reapply?: boolean; dryRun?: boolean },
   opts?: ClockOpts,
 ): Application {
   return db.transaction((tx) => {
@@ -108,6 +104,7 @@ export function createApplication(
         status: "approved",
         origin: "app",
         reapply: input.reapply ?? false,
+        dryRun: input.dryRun ?? false,
         statusHistory: [{ status: "approved", at: now, note: null }],
         createdAt: now,
       })
@@ -118,17 +115,26 @@ export function createApplication(
   });
 }
 
-/** Change status and append it to `status_history_json` (UC-13). Same status is a no-op. */
+/**
+ * Change status and append it to `status_history_json` (UC-13). Same status is a no-op.
+ * `by` follows the shared status machine (PM M3): "system" (default) is the orchestrator
+ * while Apply runs (approved ⇄ paused → needs_check | failed); "manual" is Ba (settle a
+ * needs_check as submitted or failed; move freely between post-submit statuses). Neither
+ * moves approved/paused to submitted: only recordSubmission does. A dry run never reaches
+ * a post-submit status.
+ */
 export function transitionApplication(
   db: Conn,
   id: number,
   to: ApplicationStatus,
-  opts: ClockOpts & { note?: string } = {},
+  opts: ClockOpts & { note?: string; by?: ApplicationStatusActor } = {},
 ): Application {
   return db.transaction((tx) => {
     const app = mustGet(tx, id);
     if (app.status === to) return app;
-    if (!canTransitionApplication(app.status, to)) throw new InvalidTransitionError("application", app.status, to);
+    if (!canTransitionApplicationStatus(app.status, to, opts.by ?? "system", { dryRun: app.dryRun })) {
+      throw new InvalidTransitionError(app.dryRun ? "dry-run application" : "application", app.status, to);
+    }
     const entry: StatusHistoryEntry = { status: to, at: nowIso(opts), note: opts.note ?? null };
     const row = tx
       .update(applications)
@@ -168,7 +174,11 @@ function assertNoRecord(db: Conn, applicationId: number): void {
  *
  * `dryRun` (§12 dry-run acceptance: form filled, submit never clicked) records the
  * attempt with `dry_run = 1` and leaves the application `needs_check`; it can never
- * be recorded as `submitted`.
+ * be recorded as `submitted`. It must match the application's own flag, or the record
+ * is refused (SubmissionRefusedError `dry_run_mismatch`, PM M3).
+ *
+ * The record moves the application from approved / paused only (shared `record`
+ * transitions): it is the one orchestrator path to `submitted`.
  */
 export function recordSubmission(
   db: Conn,
@@ -189,15 +199,22 @@ export function recordSubmission(
     const now = nowIso(opts);
     const app = mustGet(tx, input.applicationId);
     assertNoRecord(tx, app.id);
+    if (dryRun !== app.dryRun) {
+      throw new SubmissionRefusedError(
+        "dry_run_mismatch",
+        app.id,
+        `the record says dryRun=${dryRun}, the application says dryRun=${app.dryRun}`,
+      );
+    }
     const status = dryRun ? DRY_RUN_APPLICATION_STATUS : (input.status ?? "submitted");
-    if (app.status !== status && !canTransitionApplication(app.status, status)) {
+    if (!canTransitionApplicationStatus(app.status, status, "record", { dryRun })) {
       throw new InvalidTransitionError("application", app.status, status);
     }
     const submittedAt = input.submission.submittedAt ?? now;
-    const history: StatusHistoryEntry[] =
-      app.status === status
-        ? app.statusHistory
-        : [...app.statusHistory, { status, at: submittedAt, note: dryRun ? "dry run: form filled, not submitted" : null }];
+    const history: StatusHistoryEntry[] = [
+      ...app.statusHistory,
+      { status, at: submittedAt, note: dryRun ? "dry run: form filled, not submitted" : null },
+    ];
     const application = tx
       .update(applications)
       .set({ status, submittedAt, statusHistory: history })
