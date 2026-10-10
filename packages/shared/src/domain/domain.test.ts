@@ -18,6 +18,7 @@ import { cvLanguagesForJd } from "../common/primitives.js";
 import {
   APPLICATION_STATUSES,
   ApplicationSchema,
+  DRY_RUN_APPLICATION_STATUS,
   JobSnapshotSchema,
   SubmissionRecordSchema,
   appendStatus,
@@ -27,7 +28,7 @@ import { ApprovalTokenSchema } from "./approval.js";
 import { MessageSchema, RoomSchema, parseMentions } from "./chat.js";
 import { EngineStateSchema } from "./engine-state.js";
 import { ExportSchema } from "./export.js";
-import { JobSchema, SKIP_REASONS, SkipDecisionSchema } from "./job.js";
+import { JobSchema, SKIP_REASONS, SkipDecisionSchema, isApplyBlockedByInjection } from "./job.js";
 import { MasterCvSchema } from "./master-cv.js";
 import {
   PauseReasonSchema,
@@ -133,6 +134,18 @@ describe("Job", () => {
     expect(JobSchema.safeParse({ ...jobFixture, status: "review" }).success).toBe(false);
   });
 
+  it("UC-07 b: a flagged job blocks Apply until Ba confirms it (injectionClearedAt)", () => {
+    const flagged = { ...jobFixture, injectionFlagged: true, injectionClearedAt: null };
+    expect(JobSchema.safeParse(flagged).success).toBe(true);
+    expect(isApplyBlockedByInjection(flagged)).toBe(true);
+    const cleared = { ...flagged, injectionClearedAt: "2026-10-10T10:00:00+07:00" };
+    expect(JobSchema.safeParse(cleared).success).toBe(true);
+    expect(isApplyBlockedByInjection(cleared)).toBe(false);
+    expect(isApplyBlockedByInjection(jobFixture)).toBe(false);
+    // Confirming a job that was never flagged makes no sense.
+    expect(JobSchema.safeParse({ ...jobFixture, injectionClearedAt: "2026-10-10T10:00:00+07:00" }).success).toBe(false);
+  });
+
   it("skip reasons per UC-10; 'other' needs a note", () => {
     expect(SKIP_REASONS).toEqual(["salary_low", "outsourcing", "location", "tech_mismatch", "company_culture", "seniority", "other"]);
     expect(SkipDecisionSchema.safeParse({ reason: "salary_low", note: null }).success).toBe(true);
@@ -196,6 +209,7 @@ describe("Application + submission record (UC-13, §9.1)", () => {
         "confirmationScreenshotPath",
         "confirmationText",
         "consent",
+        "dryRun",
         "fields",
         "finalUrl",
         "introText",
@@ -216,6 +230,14 @@ describe("Application + submission record (UC-13, §9.1)", () => {
     const b = clone(submissionRecordFixture) as { fields: Array<Record<string, unknown>> };
     b.fields[0]!.source = "magic";
     expect(SubmissionRecordSchema.safeParse(b).success).toBe(false);
+  });
+
+  it("a dry-run Apply (§12) is recorded with dryRun: true and never as submitted", () => {
+    expect(submissionRecordFixture.dryRun).toBe(false);
+    const dry = { ...clone(submissionRecordFixture), dryRun: true, confirmationText: null, confirmationScreenshotPath: null };
+    expect(SubmissionRecordSchema.safeParse(dry).success).toBe(true);
+    expect(SubmissionRecordSchema.safeParse({ ...clone(submissionRecordFixture), dryRun: undefined }).success).toBe(false);
+    expect(DRY_RUN_APPLICATION_STATUS).toBe("needs_check");
   });
 
   it("an imported record may miss parts ('not captured')", () => {

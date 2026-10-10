@@ -57,6 +57,7 @@ export const jobFixture: Job = {
   skipReason: null,
   skipNote: null,
   injectionFlagged: false,
+  injectionClearedAt: null,
   firstSeenAt: "2026-10-10T09:05:00+07:00",
 };
 
@@ -115,6 +116,7 @@ export const submissionRecordFixture: SubmissionRecord = {
     jdText: novapay.jdText,
     pageScreenshotPath: "data/applications/app_1/jd.png",
   },
+  dryRun: false,
 };
 
 export const runFixture: Run = {
