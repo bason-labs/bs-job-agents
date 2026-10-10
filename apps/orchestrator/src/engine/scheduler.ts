@@ -12,7 +12,6 @@ import {
   dueSchedules,
   getOrCreateLeadRoom,
   getSchedule,
-  getStepByKey,
   listActiveRuns,
   listSchedules,
   mappers,
@@ -25,7 +24,7 @@ import {
 import { loadRunCtx } from "./context.js";
 import type { EngineCore } from "./core.js";
 import { errorMessage, invalidInput, notFound } from "./errors.js";
-import { isTerminalStep } from "./steps.js";
+import { scanPhaseBusy } from "./workflow.js";
 
 /** The next time `cron` fires strictly after `after`, in `timezone` (ISO, UTC). */
 export function computeNextRunAt(cron: string, timezone: string, after: Date): string | null {
@@ -74,21 +73,17 @@ export class Scheduler {
   }
 
   /**
-   * UC-02a, refined (see the W2a report): a schedule overlaps while a run it started is paused, or
-   * still in its scan phase (a run-level step not finished). Per-job branches waiting for Ba's
-   * review do not hold back the next scan.
+   * UC-02a, refined (see the W2a report, PM2 decision 3 and M5): a schedule overlaps while a run it
+   * started is paused, or still in its scan phase (a run-level step not finished). Per-job branches
+   * waiting for Ba's review, and a source that only waits for Ba's login or CAPTCHA, do not hold
+   * back the next scan.
    */
   overlaps(schedule: Schedule): boolean {
     for (const run of listActiveRuns(this.core.db)) {
       if (run.scheduleId !== schedule.id && run.id !== schedule.lastRunId) continue;
       if (run.status === "paused") return true;
       const ctx = loadRunCtx(this.core, run.id);
-      if (!ctx) return true;
-      for (const step of ctx.def.steps) {
-        if (step.branch) continue;
-        const row = getStepByKey(this.core.db, run.id, step.key, "");
-        if (!row || !isTerminalStep(row)) return true;
-      }
+      if (!ctx || scanPhaseBusy(this.core.db, ctx)) return true;
     }
     return false;
   }
