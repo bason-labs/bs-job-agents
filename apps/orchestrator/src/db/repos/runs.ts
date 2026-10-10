@@ -20,6 +20,8 @@ export interface CreateRunInput {
   workflowVersion: number;
   trigger: RunTrigger;
   params: JsonObject;
+  /** The Search Profile version the run starts with; it keeps it after later edits (UC-21b). */
+  searchProfileVersion?: number | null;
   scheduleId?: number | null;
   status?: RunStatus;
 }
@@ -32,6 +34,7 @@ export function createRun(db: Conn, input: CreateRunInput, opts?: ClockOpts): Ru
       workflowVersion: input.workflowVersion,
       trigger: input.trigger,
       params: input.params,
+      searchProfileVersion: input.searchProfileVersion ?? null,
       scheduleId: input.scheduleId ?? null,
       status: input.status ?? "running",
       createdAt: nowIso(opts),
@@ -94,6 +97,8 @@ export interface CreateStepInput {
   /** Job id for per-job branches; omit for run-level steps. */
   branchKey?: string;
   status?: StepStatus;
+  /** Gate round (1..maxRounds) for gate steps. */
+  round?: number | null;
 }
 
 export function createStep(db: Conn, input: CreateStepInput): Step {
@@ -104,6 +109,7 @@ export function createStep(db: Conn, input: CreateStepInput): Step {
       stepKey: input.stepKey,
       branchKey: input.branchKey ?? "",
       status: input.status ?? "pending",
+      round: input.round ?? null,
     })
     .returning()
     .get();
@@ -135,7 +141,7 @@ export function updateStepStatus(
   db: Conn,
   id: number,
   status: StepStatus,
-  opts: ClockOpts & { output?: unknown; error?: string | null } = {},
+  opts: ClockOpts & { output?: unknown; error?: string | null; round?: number | null } = {},
 ): Step {
   const current = getStep(db, id);
   if (!current) throw new NotFoundError("step", id);
@@ -149,6 +155,7 @@ export function updateStepStatus(
       finishedAt: terminal ? now : null,
       ...(opts.output !== undefined ? { output: opts.output } : {}),
       ...(opts.error !== undefined ? { error: opts.error } : {}),
+      ...(opts.round !== undefined ? { round: opts.round } : {}),
     })
     .where(eq(steps.id, id))
     .returning()

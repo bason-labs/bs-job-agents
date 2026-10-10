@@ -18,6 +18,7 @@ import { cvLanguagesForJd } from "../common/primitives.js";
 import {
   APPLICATION_STATUSES,
   ApplicationSchema,
+  DRY_RUN_APPLICATION_STATUS,
   JobSnapshotSchema,
   SubmissionRecordSchema,
   appendStatus,
@@ -27,7 +28,8 @@ import { ApprovalTokenSchema } from "./approval.js";
 import { MessageSchema, RoomSchema, parseMentions } from "./chat.js";
 import { EngineStateSchema } from "./engine-state.js";
 import { ExportSchema } from "./export.js";
-import { JobSchema, SKIP_REASONS, SkipDecisionSchema } from "./job.js";
+import { JobSchema, SKIP_REASONS, SKIP_REASON_LABELS, SkipDecisionSchema, isApplyBlockedByInjection } from "./job.js";
+import { FIELD_SOURCE_LABELS } from "../bots/apply.js";
 import { MasterCvSchema } from "./master-cv.js";
 import {
   PauseReasonSchema,
@@ -40,6 +42,7 @@ import {
 import { normalizeAnswerKey } from "./saved-answer.js";
 import { ScheduleSchema, isValidCron } from "./schedule.js";
 import {
+  SALARY_POLICY_LABELS,
   SEARCH_PROFILE_DEFAULTS,
   SearchProfileFieldsSchema,
   SearchProfileOverridesSchema,
@@ -133,6 +136,18 @@ describe("Job", () => {
     expect(JobSchema.safeParse({ ...jobFixture, status: "review" }).success).toBe(false);
   });
 
+  it("UC-07 b: a flagged job blocks Apply until Ba confirms it (injectionClearedAt)", () => {
+    const flagged = { ...jobFixture, injectionFlagged: true, injectionClearedAt: null };
+    expect(JobSchema.safeParse(flagged).success).toBe(true);
+    expect(isApplyBlockedByInjection(flagged)).toBe(true);
+    const cleared = { ...flagged, injectionClearedAt: "2026-10-10T10:00:00+07:00" };
+    expect(JobSchema.safeParse(cleared).success).toBe(true);
+    expect(isApplyBlockedByInjection(cleared)).toBe(false);
+    expect(isApplyBlockedByInjection(jobFixture)).toBe(false);
+    // Confirming a job that was never flagged makes no sense.
+    expect(JobSchema.safeParse({ ...jobFixture, injectionClearedAt: "2026-10-10T10:00:00+07:00" }).success).toBe(false);
+  });
+
   it("skip reasons per UC-10; 'other' needs a note", () => {
     expect(SKIP_REASONS).toEqual(["salary_low", "outsourcing", "location", "tech_mismatch", "company_culture", "seniority", "other"]);
     expect(SkipDecisionSchema.safeParse({ reason: "salary_low", note: null }).success).toBe(true);
@@ -196,6 +211,7 @@ describe("Application + submission record (UC-13, §9.1)", () => {
         "confirmationScreenshotPath",
         "confirmationText",
         "consent",
+        "dryRun",
         "fields",
         "finalUrl",
         "introText",
@@ -216,6 +232,14 @@ describe("Application + submission record (UC-13, §9.1)", () => {
     const b = clone(submissionRecordFixture) as { fields: Array<Record<string, unknown>> };
     b.fields[0]!.source = "magic";
     expect(SubmissionRecordSchema.safeParse(b).success).toBe(false);
+  });
+
+  it("a dry-run Apply (§12) is recorded with dryRun: true and never as submitted", () => {
+    expect(submissionRecordFixture.dryRun).toBe(false);
+    const dry = { ...clone(submissionRecordFixture), dryRun: true, confirmationText: null, confirmationScreenshotPath: null };
+    expect(SubmissionRecordSchema.safeParse(dry).success).toBe(true);
+    expect(SubmissionRecordSchema.safeParse({ ...clone(submissionRecordFixture), dryRun: undefined }).success).toBe(false);
+    expect(DRY_RUN_APPLICATION_STATUS).toBe("needs_check");
   });
 
   it("an imported record may miss parts ('not captured')", () => {
@@ -336,9 +360,40 @@ describe("other domain records", () => {
     expect(MasterCvSchema.safeParse(dup).success).toBe(false);
   });
 
+  it("UI labels use the approved prototype copy (stage0-prototype.html)", () => {
+    expect(SALARY_POLICY_LABELS).toEqual({
+      blank_if_optional: "Leave blank when optional",
+      negotiable: "Write “Negotiable / Thỏa thuận”",
+      fixed: "Use a fixed amount",
+      ask: "Ask me each time",
+    });
+    expect(SKIP_REASON_LABELS).toEqual({
+      salary_low: "Salary too low",
+      outsourcing: "Outsourcing company",
+      location: "Location",
+      tech_mismatch: "Tech mismatch",
+      company_culture: "Company culture",
+      seniority: "Seniority",
+      other: "Other",
+    });
+    expect(FIELD_SOURCE_LABELS).toEqual({
+      master_cv: "master CV",
+      saved_answer: "saved answer",
+      ba_answer: "your answer",
+      search_profile: "search criteria",
+      form_defaults: "form defaults",
+      generated: "generated",
+      skipped: "left blank — optional",
+    });
+  });
+
   it("saved answer keys are normalised labels (UC-12)", () => {
     expect(normalizeAnswerKey("  Notice   Period: ")).toBe("notice period");
     expect(normalizeAnswerKey("Thời gian bắt đầu*")).toBe("thời gian bắt đầu");
+    // QA: the DB used to strip these too, so the same label gave two different keys.
+    expect(normalizeAnswerKey("Notice period?")).toBe("notice period");
+    expect(normalizeAnswerKey("Mức lương mong muốn：")).toBe("mức lương mong muốn");
+    expect(normalizeAnswerKey("Notice period *:")).toBe("notice period");
   });
 });
 

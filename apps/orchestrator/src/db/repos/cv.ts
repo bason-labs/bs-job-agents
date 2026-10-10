@@ -1,21 +1,37 @@
+import {
+  LIMITS,
+  qaPassed,
+  type FactRequest,
+  type QaFix,
+  type QaHardFail,
+  type QaScores,
+  type TailoredCv,
+} from "@bs-job-agents/shared";
 import { and, asc, desc, eq, max } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import type { CvLanguage } from "../enums.js";
-import { cvVersions, qaReviews, type JsonObject } from "../schema.js";
+import { NotFoundError } from "../errors.js";
+import { cvVersions, jobs, qaReviews } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
 import type { CvVersion, QaReview } from "../types.js";
 
+/** A CV bot draft (shared `CvDraft`) plus what the orchestrator adds after export (§6.2). */
 export interface CreateCvVersionInput {
   jobId: number;
   language: CvLanguage;
   /** QA gate round; defaults to the next round for this job + language. */
   round?: number;
-  tailored?: JsonObject | null;
-  figmaFrameUrl?: string | null;
+  tailored: TailoredCv;
+  /** Drafts frame `<COMPANY>_<ROLE>_<LANG>_v<n>`; the PDF is data/pdf/<name>.pdf. */
+  figmaFrameName: string;
+  figmaFrameUrl: string | null;
   pdfPath?: string | null;
+  /** SHA-256 of the exported PDF; Apply's upload must match it (§9.1). */
   pdfSha256?: string | null;
-  masterVersion?: number | null;
-  promptVersion?: number | null;
+  changeNotes?: string[];
+  factRequests?: FactRequest[];
+  masterVersion: number;
+  promptVersion: number;
 }
 
 export function createCvVersion(db: Conn, input: CreateCvVersionInput, opts?: ClockOpts): CvVersion {
@@ -32,12 +48,15 @@ export function createCvVersion(db: Conn, input: CreateCvVersionInput, opts?: Cl
       jobId: input.jobId,
       language: input.language,
       round,
-      tailored: input.tailored ?? null,
-      figmaFrameUrl: input.figmaFrameUrl ?? null,
+      tailored: input.tailored,
+      figmaFrameName: input.figmaFrameName,
+      figmaFrameUrl: input.figmaFrameUrl,
       pdfPath: input.pdfPath ?? null,
       pdfSha256: input.pdfSha256 ?? null,
-      masterVersion: input.masterVersion ?? null,
-      promptVersion: input.promptVersion ?? null,
+      changeNotes: input.changeNotes ?? [],
+      factRequests: input.factRequests ?? [],
+      masterVersion: input.masterVersion,
+      promptVersion: input.promptVersion,
       createdAt: nowIso(opts),
     })
     .returning()
@@ -62,26 +81,40 @@ export function latestCvVersion(db: Conn, jobId: number, language: CvLanguage): 
     .get();
 }
 
+/** A QA bot review (shared `QaReview`) of one CV version. */
 export interface CreateQaReviewInput {
   cvVersionId: number;
   total: number;
-  scores: Record<string, number>;
-  hardFails: unknown[];
-  fixes: unknown[];
+  scores: QaScores;
+  hardFails: QaHardFail[];
+  fixes: QaFix[];
   injectionSuspected: boolean;
   /** Defaults to the pass rule (§5.2 QA): total ≥ 80 and no hard fails. */
   passed?: boolean;
 }
 
-export const QA_PASS_TOTAL = 80;
+/** §5.2 QA pass rule threshold (shared LIMITS). */
+export const QA_PASS_TOTAL = LIMITS.qaPassScore;
 
+/**
+ * Store a QA review. When QA suspects prompt injection, the job is flagged in the same
+ * transaction, so Apply is blocked until Ba confirms (UC-07 b, §10.2 rule 4).
+ */
 export function createQaReview(db: Conn, input: CreateQaReviewInput, opts?: ClockOpts): QaReview {
-  const passed = input.passed ?? (input.total >= QA_PASS_TOTAL && input.hardFails.length === 0);
-  return db
-    .insert(qaReviews)
-    .values({ ...input, passed, createdAt: nowIso(opts) })
-    .returning()
-    .get();
+  return db.transaction((tx) => {
+    const cv = getCvVersion(tx, input.cvVersionId);
+    if (!cv) throw new NotFoundError("cv version", input.cvVersionId);
+    const passed = input.passed ?? qaPassed(input);
+    const review = tx
+      .insert(qaReviews)
+      .values({ ...input, passed, createdAt: nowIso(opts) })
+      .returning()
+      .get();
+    if (input.injectionSuspected) {
+      tx.update(jobs).set({ injectionFlagged: true }).where(eq(jobs.id, cv.jobId)).run();
+    }
+    return review;
+  });
 }
 
 export function listQaReviews(db: Conn, cvVersionId: number): QaReview[] {

@@ -77,6 +77,16 @@ describe("bot output registry", () => {
       expect(json.required).toEqual(expect.arrayContaining(["selfCheck", "memoryNotes"]));
     });
 
+    it("lets the engine enforce ≥ 1 self-check item and ≤ 3 memory notes (live-verified keywords)", () => {
+      const props = json.properties as Record<string, Record<string, unknown>>;
+      expect(props.selfCheck).toMatchObject({ type: "array", minItems: 1 });
+      expect(props.memoryNotes).toMatchObject({ type: "array", maxItems: 3 });
+    });
+
+    it("never emits pattern (an unbounded pattern hung Codex in the live check)", () => {
+      expect(JSON.stringify(json)).not.toContain('"pattern"');
+    });
+
     it("accepts its valid fixtures under both Zod and the generated JSON Schema", () => {
       for (const fixture of validBotOutputFixtures[name]) {
         const parsed = schema.safeParse(fixture);
@@ -95,6 +105,23 @@ describe("bot output registry", () => {
     it("caches the generated JSON Schema", () => {
       expect(getBotOutputJsonSchema(name)).toBe(json);
     });
+  });
+
+  it("carries score ranges and datetime formats into the JSON Schema", () => {
+    const qa = getBotOutputJsonSchema("QaOutput") as { properties: Record<string, { properties?: Record<string, unknown> } & Record<string, unknown>> };
+    expect(qa.properties.total).toMatchObject({ type: "integer", minimum: 0, maximum: 100 });
+    const jdMatch = qa.properties.scores.properties?.jdMatch as { properties: Record<string, unknown> };
+    expect(jdMatch.properties.score).toMatchObject({ type: "integer", minimum: 0, maximum: 40 });
+    const company = getBotOutputJsonSchema("ResearchCompanyOutput") as {
+      properties: { company: { properties: Record<string, unknown> } };
+    };
+    expect(company.properties.company.properties.researchedAt).toMatchObject({ type: "string", format: "date-time" });
+  });
+
+  it("describes the Figma frame name format, since the pattern stays out of the JSON Schema", () => {
+    const cv = getBotOutputJsonSchema("CvOutput") as { properties: Record<string, { description?: string }> };
+    expect(cv.properties.figmaFrameName?.description).toMatch(/<COMPANY>_<ROLE>_<LANG>_v<n>/);
+    expect(cv.properties.figmaFrameName?.description).toMatch(/EN or VI/);
   });
 
   it("parseBotOutput returns typed data or the zod issues", () => {

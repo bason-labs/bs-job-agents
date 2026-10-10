@@ -1,3 +1,4 @@
+import { LIMITS } from "@bs-job-agents/shared";
 import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { ACTIVE_RUN_STATUSES } from "../enums.js";
@@ -7,12 +8,14 @@ import { nowIso, type ClockOpts } from "../time.js";
 import type { Schedule } from "../types.js";
 
 /** UC-21: the Undo toast lasts 6 s; soft-deleted schedules are purged after it. */
-export const UNDO_WINDOW_MS = 6000;
+export const UNDO_WINDOW_MS = LIMITS.scheduleUndoMs;
 
 export interface CreateScheduleInput {
   name: string;
-  /** 5-field cron, Asia/Ho_Chi_Minh (validated by the API). */
+  /** 5-field cron (validated by the API). */
   cron: string;
+  /** IANA zone the cron runs in; defaults to Asia/Ho_Chi_Minh (§11 Schedules, §15.2). */
+  timezone?: string;
   workflowName: string;
   /** NULL = the active Search Profile. */
   searchProfileId?: number | null;
@@ -29,6 +32,7 @@ export function createSchedule(db: Conn, input: CreateScheduleInput, opts?: Cloc
     .values({
       name: input.name,
       cron: input.cron,
+      ...(input.timezone ? { timezone: input.timezone } : {}),
       workflowName: input.workflowName,
       searchProfileId: input.searchProfileId ?? null,
       params: input.params ?? {},
@@ -59,7 +63,7 @@ export function listSchedules(db: Conn, opts: { includeDeleted?: boolean } = {})
 }
 
 export type SchedulePatch = Partial<
-  Pick<Schedule, "name" | "cron" | "workflowName" | "searchProfileId" | "params" | "enabled" | "nextRunAt">
+  Pick<Schedule, "name" | "cron" | "timezone" | "workflowName" | "searchProfileId" | "params" | "enabled" | "nextRunAt">
 >;
 
 /** Edit a live (not deleted) schedule. */

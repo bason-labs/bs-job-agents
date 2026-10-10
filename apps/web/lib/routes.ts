@@ -15,7 +15,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/schedules", label: "Schedules" },
 ];
 
-export const botChatHref = (name: string) => `/chat/${name}`;
+/** Lead's chat is the main chat (/chat/lead redirects there); other bots open a direct chat. */
+export const botChatHref = (name: string) => (name === "lead" ? "/chat" : `/chat/${name}`);
 export const botSettingsHref = (name: string) => `/bots/${name}`;
 export const roomHref = (id: string) => `/rooms/${id}`;
 
@@ -24,7 +25,7 @@ export function isNavActive(href: string, pathname: string): boolean {
 }
 
 export function isTeamActive(botName: string, pathname: string): boolean {
-  return pathname === botChatHref(botName) || (botName === "lead" && pathname === "/chat");
+  return pathname === botChatHref(botName) || pathname === `/chat/${botName}`;
 }
 
 const STATIC_TITLES: Record<string, string> = {

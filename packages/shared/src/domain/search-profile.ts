@@ -23,8 +23,8 @@ export type SalaryPolicy = z.infer<typeof SalaryPolicySchema>;
 
 export const SALARY_POLICY_LABELS = {
   blank_if_optional: "Leave blank when optional",
-  negotiable: "Negotiable (Thỏa thuận)",
-  fixed: "Fixed amount",
+  negotiable: "Write “Negotiable / Thỏa thuận”",
+  fixed: "Use a fixed amount",
   ask: "Ask me each time",
 } as const satisfies Record<SalaryPolicy, string>;
 

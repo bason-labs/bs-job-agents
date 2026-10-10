@@ -43,14 +43,14 @@ export function getOrCreateLeadRoom(db: Conn, opts?: ClockOpts): Room {
   return existing ?? createRoom(db, { name: LEAD_ROOM_NAME, kind: "lead", botName: "lead", members: ["lead"] }, opts);
 }
 
-/** UC-25: one consult-mode thread per bot. */
+/** UC-25: one direct (consult-mode) thread per bot. */
 export function getOrCreateConsultRoom(db: Conn, botName: string, opts?: ClockOpts): Room {
   const existing = db
     .select()
     .from(rooms)
-    .where(and(eq(rooms.kind, "consult"), eq(rooms.botName, botName)))
+    .where(and(eq(rooms.kind, "direct"), eq(rooms.botName, botName)))
     .get();
-  return existing ?? createRoom(db, { name: `consult:${botName}`, kind: "consult", botName, members: [botName] }, opts);
+  return existing ?? createRoom(db, { name: `consult:${botName}`, kind: "direct", botName, members: [botName] }, opts);
 }
 
 export function addRoomMember(db: Conn, roomId: number, botName: string): void {

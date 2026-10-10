@@ -1,4 +1,7 @@
 // Seed helpers for data-layer tests (and for other workers' integration tests).
+// Values are realistic shared-schema values (what the bots return), so rows built from
+// them map onto the shared domain types (mappers.test.ts).
+import { cvOutputFixture } from "@bs-job-agents/shared/fixtures";
 import type { Conn } from "./client.js";
 import { upsertBot } from "./repos/bots.js";
 import { createRun, createStep } from "./repos/runs.js";
@@ -47,7 +50,8 @@ export function seedTask(
       botName: "research",
       kind: "scan",
       engine: "codex",
-      input: { source: "TopCV" },
+      input: { source: "topcv" },
+      promptVersion: 1,
       ...overrides,
     },
     { now },
@@ -55,13 +59,14 @@ export function seedTask(
 }
 
 export const NOVAPAY: JobCandidateInput = {
-  source: "ITviec",
+  source: "itviec",
   url: "https://itviec.com/it-jobs/senior-frontend-engineer-react-nextjs-novapay-1234?utm_source=feed&lab_feature=x",
   title: "Senior Frontend Engineer (React/Next.js)",
   company: "NovaPay",
   location: "Ho Chi Minh City",
+  workMode: "hybrid",
   salaryText: "2,000–2,800 USD",
-  language: "EN",
+  language: "en",
   jdText: "We are looking for a Senior Frontend Engineer…",
 };
 
@@ -74,11 +79,13 @@ export function seedCv(db: Conn, job: Job, now: Date = T0): CvVersion {
     db,
     {
       jobId: job.id,
-      language: "EN",
-      tailored: { headline: "Frontend Engineer" },
-      pdfPath: "data/pdf/NOVAPAY_FE_EN_v1.pdf",
+      language: "en",
+      tailored: cvOutputFixture.tailored,
+      figmaFrameName: "NOVAPAY_SENIOR-FE_EN_v1",
+      pdfPath: "data/pdf/NOVAPAY_SENIOR-FE_EN_v1.pdf",
       pdfSha256: "a".repeat(64),
       figmaFrameUrl: "https://www.figma.com/design/kJFoXNrTfFOtkQ515c0jHk?node-id=1-2",
+      changeNotes: ["Led with Next.js and payments work"],
       masterVersion: 1,
       promptVersion: 1,
     },

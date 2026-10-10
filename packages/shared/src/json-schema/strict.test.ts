@@ -20,8 +20,69 @@ describe("toStrictJsonSchema", () => {
   });
 
   it("maps int checks to integer", () => {
-    const js = toStrictJsonSchema(z.object({ n: z.number().int().min(0).max(100) }));
+    const js = toStrictJsonSchema(z.object({ n: z.number().int() }));
     expect(js.properties).toEqual({ n: { type: "integer" } });
+  });
+
+  // QA phase 1 live check (docs/superpowers/build/qa-phase-1.md): Codex strict mode and
+  // Claude --json-schema both accept these keywords, and without them both models sent
+  // empty selfCheck arrays and invalid datetimes.
+  describe("constraint keywords both engines accept", () => {
+    it("emits inclusive numeric bounds as minimum / maximum", () => {
+      const js = toStrictJsonSchema(z.object({ n: z.number().int().min(0).max(100), x: z.number().nonnegative() }));
+      expect(js.properties).toEqual({
+        n: { type: "integer", minimum: 0, maximum: 100 },
+        x: { type: "number", minimum: 0 },
+      });
+    });
+
+    it("emits exclusive bounds exactly (integers become inclusive)", () => {
+      const js = toStrictJsonSchema(
+        z.object({ i: z.number().int().positive().lt(10), f: z.number().gt(0).lt(1) }),
+      );
+      expect(js.properties).toEqual({
+        i: { type: "integer", minimum: 1, maximum: 9 },
+        f: { type: "number", exclusiveMinimum: 0, exclusiveMaximum: 1 },
+      });
+    });
+
+    it("emits array length bounds as minItems / maxItems", () => {
+      const js = toStrictJsonSchema(
+        z.object({
+          a: z.array(z.string()).min(1).max(3),
+          b: z.array(z.string()).length(2),
+          c: z.array(z.string()).nonempty(),
+        }),
+      );
+      expect(js.properties).toEqual({
+        a: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 3 },
+        b: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 2 },
+        c: { type: "array", items: { type: "string" }, minItems: 1 },
+      });
+    });
+
+    it("emits format date-time for datetime strings", () => {
+      const js = toStrictJsonSchema(z.object({ at: z.string().datetime({ offset: true }) }));
+      expect(js.properties).toEqual({ at: { type: "string", format: "date-time" } });
+    });
+
+    it("keeps bounds on nullable values (anyOf with null)", () => {
+      const js = toStrictJsonSchema(
+        z.object({ n: z.number().int().min(0).nullable(), at: z.string().datetime().nullable() }),
+      );
+      expect(js.properties).toEqual({
+        n: { anyOf: [{ type: "integer", minimum: 0 }, { type: "null" }] },
+        at: { anyOf: [{ type: "string", format: "date-time" }, { type: "null" }] },
+      });
+      expect(checkStrictJsonSchema(js)).toEqual([]);
+    });
+
+    it("never emits pattern, string lengths or other formats (unbounded patterns hang Codex)", () => {
+      const js = toStrictJsonSchema(
+        z.object({ s: z.string().regex(/^.+_.+_(EN|VI)_v\d+$/).min(1).max(30), u: z.string().url(), e: z.string().email() }),
+      );
+      expect(js.properties).toEqual({ s: { type: "string" }, u: { type: "string" }, e: { type: "string" } });
+    });
   });
 
   it("turns optional fields into required + nullable", () => {
@@ -265,6 +326,25 @@ describe("toStrictJsonSchema", () => {
       expect(() => toStrictJsonSchema(z.object({}).nullable())).toThrow(StrictSchemaError);
       expect(() => toStrictJsonSchema(z.object({}).optional())).toThrow(StrictSchemaError);
     });
+  });
+
+  it("the subset validator enforces the emitted bounds and date-time format", () => {
+    const js = toStrictJsonSchema(
+      z.object({
+        n: z.number().int().min(0).max(40),
+        f: z.number().gt(0),
+        list: z.array(z.string()).min(1).max(2),
+        at: z.string().datetime({ offset: true }),
+      }),
+    );
+    const ok = { n: 40, f: 0.5, list: ["a"], at: "2026-10-10T08:00:00+07:00" };
+    expect(validateJsonSchemaSubset(js, ok)).toEqual([]);
+    expect(validateJsonSchemaSubset(js, { ...ok, n: 41 })).toEqual(["$.n: above maximum 40"]);
+    expect(validateJsonSchemaSubset(js, { ...ok, n: -1 })).toEqual(["$.n: below minimum 0"]);
+    expect(validateJsonSchemaSubset(js, { ...ok, f: 0 })).toEqual(["$.f: not above exclusiveMinimum 0"]);
+    expect(validateJsonSchemaSubset(js, { ...ok, list: [] })).toEqual(["$.list: fewer than 1 items"]);
+    expect(validateJsonSchemaSubset(js, { ...ok, list: ["a", "b", "c"] })).toEqual(["$.list: more than 2 items"]);
+    expect(validateJsonSchemaSubset(js, { ...ok, at: "yesterday" })).toEqual(["$.at: not a date-time"]);
   });
 
   it("round-trips: a value valid for the JSON Schema, with nulls, is valid for a nullable zod schema", () => {

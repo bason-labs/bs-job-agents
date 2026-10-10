@@ -31,7 +31,7 @@ export const SKIP_REASON_LABELS = {
   salary_low: "Salary too low",
   outsourcing: "Outsourcing company",
   location: "Location",
-  tech_mismatch: "Tech stack mismatch",
+  tech_mismatch: "Tech mismatch",
   company_culture: "Company culture",
   seniority: "Seniority",
   other: "Other",
@@ -47,34 +47,51 @@ export const SkipDecisionSchema = z
   });
 export type SkipDecision = z.infer<typeof SkipDecisionSchema>;
 
-export const JobSchema = z.object({
-  id: IdSchema,
-  source: JobSourceSchema,
-  url: UrlSchema.nullable(),
-  /** Dedupe key 1 (UC-04). */
-  canonicalUrl: UrlSchema.nullable(),
-  /** Dedupe key 2: hash of company + title + location (UC-04). */
-  dedupeHash: z.string().min(1),
-  title: z.string().min(1),
-  companyId: IdSchema.nullable(),
-  /** Company name as posted (denormalised for lists). */
-  company: z.string().min(1),
-  location: z.string(),
-  workMode: WorkModeSchema.nullable(),
-  salaryText: z.string().nullable(),
-  language: LanguageCodeSchema,
-  jdText: z.string(),
-  fitScore: z.number().int().min(0).max(100).nullable(),
-  fitReasons: z.array(z.string()),
-  gaps: z.array(z.string()),
-  status: JobStatusSchema,
-  skipReason: SkipReasonSchema.nullable(),
-  skipNote: z.string().nullable(),
-  /** QA flagged prompt injection; Apply disabled until Ba confirms (UC-07 b). */
-  injectionFlagged: z.boolean(),
-  firstSeenAt: IsoDateTimeSchema,
-});
+export const JobSchema = z
+  .object({
+    id: IdSchema,
+    source: JobSourceSchema,
+    url: UrlSchema.nullable(),
+    /** Dedupe key 1 (UC-04). */
+    canonicalUrl: UrlSchema.nullable(),
+    /** Dedupe key 2: hash of company + title + location (UC-04). */
+    dedupeHash: z.string().min(1),
+    title: z.string().min(1),
+    companyId: IdSchema.nullable(),
+    /** Company name as posted (denormalised for lists). */
+    company: z.string().min(1),
+    location: z.string(),
+    workMode: WorkModeSchema.nullable(),
+    salaryText: z.string().nullable(),
+    language: LanguageCodeSchema,
+    jdText: z.string(),
+    fitScore: z.number().int().min(0).max(100).nullable(),
+    fitReasons: z.array(z.string()),
+    gaps: z.array(z.string()),
+    status: JobStatusSchema,
+    skipReason: SkipReasonSchema.nullable(),
+    skipNote: z.string().nullable(),
+    /** QA flagged prompt injection; Apply disabled until Ba confirms (UC-07 b). */
+    injectionFlagged: z.boolean(),
+    /** When Ba confirmed a flagged job is safe to apply to (UC-07 b); null = not confirmed. */
+    injectionClearedAt: IsoDateTimeSchema.nullable(),
+    firstSeenAt: IsoDateTimeSchema,
+  })
+  .superRefine((v, ctx) => {
+    if (v.injectionClearedAt !== null && !v.injectionFlagged) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["injectionClearedAt"],
+        message: "only a flagged job can be confirmed",
+      });
+    }
+  });
 export type Job = z.infer<typeof JobSchema>;
+
+/** §10.2 rule 4, UC-07 b: Apply stays disabled for a flagged job until Ba confirms it. */
+export function isApplyBlockedByInjection(job: Pick<Job, "injectionFlagged" | "injectionClearedAt">): boolean {
+  return job.injectionFlagged && job.injectionClearedAt === null;
+}
 
 export const CompanySchema = z.object({
   id: IdSchema,

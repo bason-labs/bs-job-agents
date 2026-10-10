@@ -1,36 +1,31 @@
-// View models the web app renders. Phase 3 maps orchestrator responses
-// (and @bs-job-agents/shared schemas from W1a) onto these.
+// View models the web app renders, derived from @bs-job-agents/shared where a shared
+// type exists. Phase 3 maps orchestrator responses onto these with lib/api/map.ts.
+import type { BotView, EngineStatus, Engine as SharedEngine, Room, TrustLevel as SharedTrustLevel } from "@bs-job-agents/shared";
 
-export type Engine = "claude" | "codex";
-export type TrustLevel = 0 | 1 | 2;
+export type Engine = SharedEngine;
+export type TrustLevel = SharedTrustLevel;
 
-/** Live bot status shown by StatusDot in the Team list. */
+/**
+ * Live bot status shown by StatusDot in the Team list. The shared BotActivity maps
+ * onto it (waiting_limit → waiting, see BOT_STATUS_BY_ACTIVITY); `offline` is the
+ * UI's own state for a bot whose engine or bridge is unreachable.
+ */
 export type BotLiveStatus = "idle" | "working" | "waiting" | "paused" | "error" | "offline";
 
-export interface BotSummary {
-  /** Route key and DB primary key, e.g. "research". */
-  name: string;
-  displayName: string;
-  engine: Engine;
-  trustLevel: TrustLevel;
+export interface BotSummary extends Pick<BotView, "name" | "displayName" | "engine" | "trustLevel" | "role"> {
   status: BotLiveStatus;
-  /** Short role line (Bots screen, tooltips). */
-  role: string;
 }
 
-export interface RoomSummary {
-  id: string;
-  name: string;
-}
+export type RoomSummary = Pick<Room, "id" | "name">;
 
 export interface EngineUsage {
   engine: Engine;
   /** "Claude" / "ChatGPT" — the subscription the engine runs on. */
   label: string;
-  /** 0..1 share of the current usage window. */
+  /** 0..1 share of the current usage window (the higher of the 5-hour and 7-day windows). */
   utilization: number;
   /** ISO time the engine resumes when paused for its usage limit (UC-16). */
-  pausedUntil: string | null;
+  pausedUntil: EngineStatus["pausedUntil"];
 }
 
 export interface ShellData {

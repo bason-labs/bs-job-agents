@@ -53,9 +53,9 @@ describe("search profiles (§7.5, UC-21b)", () => {
       active: true,
       workModes: ["onsite", "hybrid", "remote"],
       seniority: ["mid", "senior"],
-      sources: ["TopCV", "ITviec", "LinkedIn"],
+      sources: ["topcv", "itviec", "linkedin"],
       excludeCompanies: [],
-      languages: [],
+      languages: ["en"],
       maxJobs: 5,
       fitThreshold: 60,
       salaryPolicy: "blank_if_optional",
@@ -122,6 +122,13 @@ describe("schedules (§7.4, UC-21)", () => {
     expect(edited).toMatchObject({ cron: "0 9 * * *", params: { maxJobs: 3 }, updatedAt: at(1).toISOString() });
     expect(setScheduleEnabled(db, s.id, false).enabled).toBe(false);
     expect(getSchedule(db, s.id)?.enabled).toBe(false);
+  });
+
+  it("keeps the cron's time zone, Asia/Ho_Chi_Minh by default (§11 Schedules, §15.2)", () => {
+    expect(createSchedule(db, WEEKDAYS).timezone).toBe("Asia/Ho_Chi_Minh");
+    const s = createSchedule(db, { ...WEEKDAYS, name: "Tokyo", timezone: "Asia/Tokyo" });
+    expect(s.timezone).toBe("Asia/Tokyo");
+    expect(updateSchedule(db, s.id, { timezone: "Asia/Ho_Chi_Minh" }).timezone).toBe("Asia/Ho_Chi_Minh");
   });
 
   it("soft-deletes, hides from the list, and Undo restores it", () => {

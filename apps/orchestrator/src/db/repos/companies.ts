@@ -1,9 +1,9 @@
+import { LIMITS, type CompanyProfile } from "@bs-job-agents/shared";
 import { eq } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { companyKey } from "../dedupe.js";
-import type { CompanyConfidence } from "../enums.js";
 import { NotFoundError } from "../errors.js";
-import { companies, type JsonObject } from "../schema.js";
+import { companies } from "../schema.js";
 import { nowIso, toIso, type ClockOpts } from "../time.js";
 import type { Company } from "../types.js";
 
@@ -32,20 +32,24 @@ export function findCompanyByName(db: Conn, name: string): Company | undefined {
   return db.select().from(companies).where(eq(companies.nameKey, companyKey(name))).get();
 }
 
-/** Store a `CompanyProfile` from `research.company` (UC-05). */
+/**
+ * Store a shared `CompanyProfile` from `research.company` (UC-05). Confidence and
+ * website come from the profile; `researched_at` is the orchestrator's clock (the cache
+ * rule must not trust a model-written timestamp) unless given.
+ */
 export function saveCompanyProfile(
   db: Conn,
   id: number,
-  input: { profile: JsonObject; confidence: CompanyConfidence; website?: string | null; researchedAt?: Date | string },
+  input: { profile: CompanyProfile; researchedAt?: Date | string },
   opts?: ClockOpts,
 ): Company {
   const row = db
     .update(companies)
     .set({
       profile: input.profile,
-      confidence: input.confidence,
+      confidence: input.profile.confidence,
       researchedAt: input.researchedAt ? toIso(input.researchedAt) : nowIso(opts),
-      ...(input.website !== undefined ? { website: input.website } : {}),
+      ...(input.profile.website ? { website: input.profile.website } : {}),
     })
     .where(eq(companies.id, id))
     .returning()
@@ -64,5 +68,5 @@ export function getFreshCompanyProfile(
   if (!company?.profile || !company.researchedAt) return undefined;
   const now = (opts.now ?? new Date()).getTime();
   const ageMs = now - new Date(company.researchedAt).getTime();
-  return ageMs < (opts.maxAgeDays ?? 30) * 86_400_000 ? company : undefined;
+  return ageMs < (opts.maxAgeDays ?? LIMITS.companyProfileCacheDays) * 86_400_000 ? company : undefined;
 }

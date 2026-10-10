@@ -27,6 +27,13 @@ describe("Sidebar", () => {
     expect(within(research).getByRole("img", { name: "Working" })).toBeInTheDocument();
     expect(within(research).getByText("working")).toBeInTheDocument();
     expect(within(rows[4]!).getByLabelText("Trust level L1")).toBeInTheDocument();
+    // Lead's chat is the main chat; /chat/lead only redirects there.
+    expect(within(rows[0]!).getByRole("link", { name: /Chat with Lead/ })).toHaveAttribute("href", "/chat");
+  });
+
+  it("never links to the dev component gallery", () => {
+    const { container } = render(<Sidebar data={MOCK_SHELL_DATA} />);
+    expect(container.querySelectorAll('a[href^="/dev"]')).toHaveLength(0);
   });
 
   it("shows rooms, Master CV and subscription usage", () => {

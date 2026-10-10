@@ -7,11 +7,13 @@ import { FieldSourceSchema } from "../bots/apply.js";
  * approved → (Apply runs) → submitted | needs_check | paused | failed;
  * then manual (UC-13): submitted → interviewing → offer | rejected | withdrawn | no_response.
  */
+// Order matches the applications_status_check CHECK in the DB (a reorder would make
+// drizzle-kit rebuild the table and drop its immutability triggers).
 export const APPLICATION_STATUSES = [
   "approved",
   "paused",
-  "needs_check",
   "submitted",
+  "needs_check",
   "failed",
   "interviewing",
   "offer",
@@ -135,5 +137,13 @@ export const SubmissionRecordSchema = z.object({
     .nullable(),
   submittedAt: IsoDateTimeSchema.nullable(),
   jdSnapshot: JobSnapshotSchema.nullable(),
+  /**
+   * Dry-run acceptance (§12): Apply filled the form and took the screenshots but never
+   * clicked submit. The application is recorded as `needs_check` (DRY_RUN_APPLICATION_STATUS).
+   */
+  dryRun: z.boolean(),
 });
 export type SubmissionRecord = z.infer<typeof SubmissionRecordSchema>;
+
+/** Status a dry-run Apply leaves its application in (coordinator decision, Phase 1 QA). */
+export const DRY_RUN_APPLICATION_STATUS = "needs_check" as const satisfies ApplicationStatus;

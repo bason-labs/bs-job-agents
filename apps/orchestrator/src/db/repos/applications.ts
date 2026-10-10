@@ -1,3 +1,4 @@
+import { DRY_RUN_APPLICATION_STATUS } from "@bs-job-agents/shared";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import type { ApplicationOrigin, ApplicationStatus } from "../enums.js";
@@ -107,7 +108,7 @@ export function createApplication(
         status: "approved",
         origin: "app",
         reapply: input.reapply ?? false,
-        statusHistory: [{ status: "approved", at: now }],
+        statusHistory: [{ status: "approved", at: now, note: null }],
         createdAt: now,
       })
       .returning()
@@ -128,7 +129,7 @@ export function transitionApplication(
     const app = mustGet(tx, id);
     if (app.status === to) return app;
     if (!canTransitionApplication(app.status, to)) throw new InvalidTransitionError("application", app.status, to);
-    const entry: StatusHistoryEntry = { status: to, at: nowIso(opts), ...(opts.note ? { note: opts.note } : {}) };
+    const entry: StatusHistoryEntry = { status: to, at: nowIso(opts), note: opts.note ?? null };
     const row = tx
       .update(applications)
       .set({ status: to, statusHistory: [...app.statusHistory, entry] })
@@ -140,10 +141,12 @@ export function transitionApplication(
   });
 }
 
-export type SubmissionInput = Omit<typeof submissions.$inferInsert, "applicationId">;
+export type SubmissionInput = Omit<typeof submissions.$inferInsert, "applicationId" | "dryRun">;
 export type SnapshotInput = Omit<typeof jobSnapshots.$inferInsert, "applicationId" | "capturedAt"> & {
   capturedAt?: string;
 };
+/** UC-11 step 5: an app submission always freezes the posting's URL, title, company and text. */
+export type CompleteSnapshotInput = SnapshotInput & { url: string; title: string; company: string; jdText: string };
 
 export interface SubmissionRecord {
   application: Application;
@@ -162,28 +165,39 @@ function assertNoRecord(db: Conn, applicationId: number): void {
  * + `submissions` + `job_snapshots` — in one transaction. Throws (and writes
  * nothing) on any failure; the caller then marks the application `needs_check`
  * and keeps the raw ApplyResult in the task output.
+ *
+ * `dryRun` (§12 dry-run acceptance: form filled, submit never clicked) records the
+ * attempt with `dry_run = 1` and leaves the application `needs_check`; it can never
+ * be recorded as `submitted`.
  */
 export function recordSubmission(
   db: Conn,
   input: {
     applicationId: number;
     status?: Extract<ApplicationStatus, "submitted" | "needs_check">;
+    dryRun?: boolean;
     submission: SubmissionInput;
-    snapshot: SnapshotInput;
+    snapshot: CompleteSnapshotInput;
   },
   opts?: ClockOpts,
 ): SubmissionRecord {
+  const dryRun = input.dryRun ?? false;
+  if (dryRun && input.status === "submitted") {
+    throw new InvalidTransitionError("dry-run application", "approved", "submitted");
+  }
   return db.transaction((tx) => {
     const now = nowIso(opts);
     const app = mustGet(tx, input.applicationId);
     assertNoRecord(tx, app.id);
-    const status = input.status ?? "submitted";
+    const status = dryRun ? DRY_RUN_APPLICATION_STATUS : (input.status ?? "submitted");
     if (app.status !== status && !canTransitionApplication(app.status, status)) {
       throw new InvalidTransitionError("application", app.status, status);
     }
     const submittedAt = input.submission.submittedAt ?? now;
-    const history =
-      app.status === status ? app.statusHistory : [...app.statusHistory, { status, at: submittedAt }];
+    const history: StatusHistoryEntry[] =
+      app.status === status
+        ? app.statusHistory
+        : [...app.statusHistory, { status, at: submittedAt, note: dryRun ? "dry run: form filled, not submitted" : null }];
     const application = tx
       .update(applications)
       .set({ status, submittedAt, statusHistory: history })
@@ -192,7 +206,7 @@ export function recordSubmission(
       .get()!;
     const submission = tx
       .insert(submissions)
-      .values({ ...input.submission, applicationId: app.id, submittedAt })
+      .values({ ...input.submission, applicationId: app.id, submittedAt, dryRun })
       .returning()
       .get();
     const snapshot = tx

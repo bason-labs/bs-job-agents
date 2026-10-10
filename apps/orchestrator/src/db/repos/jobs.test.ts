@@ -1,10 +1,13 @@
+import { researchCompanyFixture } from "@bs-job-agents/shared/fixtures";
 import { beforeEach, describe, expect, it } from "vitest";
 import { openTestDb, type Db } from "../client.js";
 import { NOVAPAY, T0, at } from "../test-helpers.js";
-import { NotFoundError } from "../errors.js";
+import { InvalidTransitionError, NotFoundError } from "../errors.js";
 import { ensureCompany, findCompanyByName, getCompany, getFreshCompanyProfile, saveCompanyProfile } from "./companies.js";
 import {
+  clearJobInjection,
   dedupeCandidates,
+  flagJobInjection,
   findDuplicateJob,
   findJobByUrl,
   getJob,
@@ -22,13 +25,13 @@ beforeEach(() => {
 });
 
 const SAO_VIET: JobCandidateInput = {
-  source: "TopCV",
+  source: "topcv",
   url: "https://www.topcv.vn/viec-lam/lap-trinh-vien-frontend-reactjs/2400001.html?ta_source=JobSearchList",
   title: "Lập trình viên Frontend ReactJS",
   company: "Công ty TNHH Sao Việt Tech",
   location: "TP. Hồ Chí Minh",
   salaryText: "25–35 triệu",
-  language: "VI",
+  language: "vi",
   jdText: "Mô tả công việc…",
 };
 
@@ -46,9 +49,29 @@ describe("upsertJobCandidate (UC-03 / UC-04)", () => {
     expect(getCompany(db, job.companyId)?.name).toBe("NovaPay");
   });
 
+  it("stores work mode and the company website from the candidate", () => {
+    const { job } = upsertJobCandidate(db, { ...NOVAPAY, companyWebsite: "https://novapay.vn" });
+    expect(job.workMode).toBe("hybrid");
+    expect(getCompany(db, job.companyId)?.website).toBe("https://novapay.vn");
+  });
+
+  it("stores an uploaded JD whose posting was not found (url null, §7.3b) and dedupes it by hash", () => {
+    const fileJd: JobCandidateInput = { ...SAO_VIET, source: "file", url: null };
+    const first = upsertJobCandidate(db, fileJd);
+    expect(first.created).toBe(true);
+    expect(first.job).toMatchObject({ url: null, canonicalUrl: null });
+    const other = upsertJobCandidate(db, { ...fileJd, title: "Senior Frontend Engineer" });
+    expect(other.created).toBe(true);
+    const again = upsertJobCandidate(db, fileJd);
+    expect(again).toMatchObject({ created: false, matchedBy: "dedupe_hash" });
+    expect(again.job.id).toBe(first.job.id);
+    // The posting found later still matches by company + title + location.
+    expect(findDuplicateJob(db, SAO_VIET)?.job.id).toBe(first.job.id);
+  });
+
   it("returns the existing job for the same canonical URL", () => {
     const first = upsertJobCandidate(db, NOVAPAY).job;
-    const again = upsertJobCandidate(db, { ...NOVAPAY, url: NOVAPAY.url.replace("utm_source=feed", "utm_source=mail") });
+    const again = upsertJobCandidate(db, { ...NOVAPAY, url: NOVAPAY.url!.replace("utm_source=feed", "utm_source=mail") });
     expect(again).toMatchObject({ created: false, matchedBy: "canonical_url" });
     expect(again.job.id).toBe(first.id);
   });
@@ -57,7 +80,7 @@ describe("upsertJobCandidate (UC-03 / UC-04)", () => {
     const first = upsertJobCandidate(db, SAO_VIET).job;
     const cross = upsertJobCandidate(db, {
       ...SAO_VIET,
-      source: "ITviec",
+      source: "itviec",
       url: "https://itviec.com/it-jobs/frontend-reactjs-sao-viet-9",
       company: "Sao Viet Tech",
       title: "Lap trinh vien Frontend ReactJS",
@@ -121,6 +144,18 @@ describe("job updates", () => {
     expect(() => setJobStatus(db, 999, "selected")).toThrow(NotFoundError);
   });
 
+  it("flags a suspected injection and records Ba's confirmation (UC-07 b)", () => {
+    const { job } = upsertJobCandidate(db, NOVAPAY);
+    expect(job).toMatchObject({ injectionFlagged: false, injectionClearedAt: null });
+    expect(() => clearJobInjection(db, job.id)).toThrow(InvalidTransitionError);
+    expect(flagJobInjection(db, job.id)).toMatchObject({ injectionFlagged: true, injectionClearedAt: null });
+    expect(clearJobInjection(db, job.id, { now: at(3) })).toMatchObject({ injectionFlagged: true, injectionClearedAt: at(3).toISOString() });
+    // A later flag on the same posting keeps Ba's confirmation.
+    expect(flagJobInjection(db, job.id).injectionClearedAt).toBe(at(3).toISOString());
+    expect(() => flagJobInjection(db, 999)).toThrow(NotFoundError);
+    expect(() => clearJobInjection(db, 999)).toThrow(NotFoundError);
+  });
+
   it("lists by status", () => {
     const a = upsertJobCandidate(db, NOVAPAY, { now: at(1) }).job;
     const b = upsertJobCandidate(db, SAO_VIET, { now: at(2) }).job;
@@ -143,15 +178,17 @@ describe("companies (UC-05)", () => {
   it("reuses a profile younger than 30 days, not older", () => {
     const c = ensureCompany(db, { name: "NovaPay" });
     expect(getFreshCompanyProfile(db, c.id)).toBeUndefined();
-    saveCompanyProfile(db, c.id, { profile: { industry: "fintech" }, confidence: "normal" }, { now: T0 });
-    expect(getFreshCompanyProfile(db, c.id, { now: new Date(T0.getTime() + 29 * 86_400_000) })?.profile).toEqual({
-      industry: "fintech",
-    });
+    saveCompanyProfile(db, c.id, { profile: researchCompanyFixture.company }, { now: T0 });
+    expect(getFreshCompanyProfile(db, c.id, { now: new Date(T0.getTime() + 29 * 86_400_000) })?.profile).toEqual(
+      researchCompanyFixture.company,
+    );
     expect(getFreshCompanyProfile(db, c.id, { now: new Date(T0.getTime() + 31 * 86_400_000) })).toBeUndefined();
   });
 
-  it("records low confidence profiles", () => {
+  it("takes confidence and website from the profile; the cache clock is the orchestrator's", () => {
     const c = ensureCompany(db, { name: "Tiny Co" });
-    expect(saveCompanyProfile(db, c.id, { profile: {}, confidence: "low_confidence" }).confidence).toBe("low_confidence");
+    const profile = { ...researchCompanyFixture.company, name: "Tiny Co", website: "https://tiny.example", sources: [], confidence: "low_confidence" as const };
+    const saved = saveCompanyProfile(db, c.id, { profile }, { now: at(5) });
+    expect(saved).toMatchObject({ confidence: "low_confidence", website: "https://tiny.example", researchedAt: at(5).toISOString() });
   });
 });

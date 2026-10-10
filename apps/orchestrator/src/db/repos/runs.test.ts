@@ -49,6 +49,12 @@ describe("runs", () => {
     expect(failed).toMatchObject({ status: "failed", finishedAt: at(2).toISOString(), error: "TopCV adapter broken" });
   });
 
+  it("remembers the Search Profile version the run started with (UC-21b)", () => {
+    const run = createRun(db, { workflowName: "job-scan", workflowVersion: 1, trigger: "chat", params: {}, searchProfileVersion: 3 });
+    expect(getRun(db, run.id)?.searchProfileVersion).toBe(3);
+    expect(createRun(db, { workflowName: "apply-to-link", workflowVersion: 1, trigger: "link", params: {} }).searchProfileVersion).toBeNull();
+  });
+
   it("throws NotFoundError for unknown runs", () => {
     expect(() => updateRunStatus(db, 42, "done")).toThrow(NotFoundError);
   });
@@ -87,6 +93,17 @@ describe("steps", () => {
     const done = updateStepStatus(db, step.id, "done", { now: at(5), output: { jobs: [1, 2] } });
     expect(done).toMatchObject({ startedAt: at(1).toISOString(), finishedAt: at(5).toISOString(), output: { jobs: [1, 2] } });
     expect(getStep(db, step.id)?.output).toEqual({ jobs: [1, 2] });
+  });
+
+  it("stores the gate round and the shared locked / paused node states (§7.2 step 7, §11)", () => {
+    const run = createRun(db, { workflowName: "w", workflowVersion: 1, trigger: "chat", params: {} });
+    const gate = createStep(db, { runId: run.id, stepKey: "tailor", branchKey: "job-1", round: 1 });
+    expect(gate.round).toBe(1);
+    expect(updateStepStatus(db, gate.id, "running", { round: 2 }).round).toBe(2);
+    const apply = createStep(db, { runId: run.id, stepKey: "apply", branchKey: "job-1", status: "locked" });
+    expect(apply.status).toBe("locked");
+    expect(updateStepStatus(db, apply.id, "paused", { now: at(1) })).toMatchObject({ status: "paused", finishedAt: null });
+    expect(() => db.$client.prepare("UPDATE steps SET status = 'stuck' WHERE id = ?").run(apply.id)).toThrow(/CHECK/);
   });
 
   it("resets a step for re-run (UC-23)", () => {

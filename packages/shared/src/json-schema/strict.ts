@@ -9,10 +9,17 @@
 // Design choices:
 // - Everything is inlined; `$ref` / `$defs` are never emitted. Recursive (lazy)
 //   schemas are rejected instead.
-// - Only structural keywords are emitted (type, properties, required,
-//   additionalProperties, items, enum, anyOf) plus `description` / `title`.
-//   Length, range and pattern constraints stay in Zod, which validates every
-//   output after the run (a failure triggers the runner's repair prompt).
+// - Structural keywords (type, properties, required, additionalProperties,
+//   items, enum, anyOf) plus `description` / `title`, and the constraint
+//   keywords both engines were verified live to accept (QA phase 1):
+//   numeric `minimum`/`maximum` (exclusive bounds become `exclusiveMinimum`/
+//   `exclusiveMaximum`, or inclusive ±1 for integers), array `minItems`/
+//   `maxItems`, and `format: "date-time"` for datetime strings. Without them
+//   both models sent empty selfCheck arrays and invalid datetimes.
+// - `pattern`, string lengths and other formats stay in Zod only: an
+//   unbounded pattern such as `^.+_.+$` made Codex hang in the live check.
+//   Zod validates every output after the run (a failure triggers the runner's
+//   repair prompt).
 // - Shapes strict mode cannot express (record, any, unknown, date, tuple, map,
 //   set, bigint, intersection, catchall) throw a StrictSchemaError with the path.
 import { ZodFirstPartyTypeKind, type ZodTypeAny } from "zod";
@@ -202,14 +209,38 @@ function convertNode(schema: ZodTypeAny, path: string): JsonSchema {
   return nullable ? makeNullable(out) : out;
 }
 
+type NumberCheck = { kind: string; value?: number; inclusive?: boolean };
+type LengthCheck = { value: number } | null | undefined;
+
+/** `minimum`/`maximum` from Zod number checks; exclusive integer bounds become inclusive. */
+function numberBounds(checks: readonly NumberCheck[], integer: boolean): JsonSchema {
+  const out: JsonSchema = {};
+  for (const c of checks) {
+    if ((c.kind !== "min" && c.kind !== "max") || typeof c.value !== "number") continue;
+    const isMin = c.kind === "min";
+    if (c.inclusive || integer) {
+      const value = c.inclusive ? c.value : isMin ? Math.floor(c.value) + 1 : Math.ceil(c.value) - 1;
+      const key = isMin ? "minimum" : "maximum";
+      const prev = out[key] as number | undefined;
+      out[key] = prev === undefined ? value : isMin ? Math.max(prev, value) : Math.min(prev, value);
+    } else {
+      out[isMin ? "exclusiveMinimum" : "exclusiveMaximum"] = c.value;
+    }
+  }
+  return out;
+}
+
 function convertBase(schema: ZodTypeAny, path: string): JsonSchema {
   const def = defOf(schema);
   switch (def.typeName) {
-    case ZodFirstPartyTypeKind.ZodString:
-      return { type: "string" };
-    case ZodFirstPartyTypeKind.ZodNumber: {
+    case ZodFirstPartyTypeKind.ZodString: {
       const checks = (def.checks as Array<{ kind: string }> | undefined) ?? [];
-      return { type: checks.some((c) => c.kind === "int") ? "integer" : "number" };
+      return checks.some((c) => c.kind === "datetime") ? { type: "string", format: "date-time" } : { type: "string" };
+    }
+    case ZodFirstPartyTypeKind.ZodNumber: {
+      const checks = (def.checks as NumberCheck[] | undefined) ?? [];
+      const integer = checks.some((c) => c.kind === "int");
+      return { type: integer ? "integer" : "number", ...numberBounds(checks, integer) };
     }
     case ZodFirstPartyTypeKind.ZodBoolean:
       return { type: "boolean" };
@@ -228,8 +259,17 @@ function convertBase(schema: ZodTypeAny, path: string): JsonSchema {
         .map((k) => obj[k]);
       return enumOf(values, path);
     }
-    case ZodFirstPartyTypeKind.ZodArray:
-      return { type: "array", items: convertNode(def.type as ZodTypeAny, `${path}[]`) };
+    case ZodFirstPartyTypeKind.ZodArray: {
+      const exact = (def.exactLength as LengthCheck)?.value;
+      const min = exact ?? (def.minLength as LengthCheck)?.value;
+      const max = exact ?? (def.maxLength as LengthCheck)?.value;
+      return {
+        type: "array",
+        items: convertNode(def.type as ZodTypeAny, `${path}[]`),
+        ...(min !== undefined && min > 0 ? { minItems: min } : {}),
+        ...(max !== undefined ? { maxItems: max } : {}),
+      };
+    }
     case ZodFirstPartyTypeKind.ZodObject: {
       const catchall = defOf(def.catchall as ZodTypeAny).typeName;
       if (catchall !== ZodFirstPartyTypeKind.ZodNever) {
