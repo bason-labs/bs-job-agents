@@ -89,6 +89,53 @@ describe("WorkflowDefinitionSchema (§7.1)", () => {
     expect(WorkflowDefinitionSchema.safeParse(wf).success).toBe(false);
   });
 
+  it("a task kind must be one of its bot's kinds, so typos fail at load time (PM S4)", () => {
+    const wf = clone(jobScanWorkflow) as { steps: Array<Record<string, unknown>> };
+    (wf.steps.find((s) => s.key === "fit")!.task as { kind: string }).kind = "fitt";
+    const r = WorkflowDefinitionSchema.safeParse(wf);
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.path).toEqual(["steps", 3, "task", "kind"]);
+    expect(r.error?.issues[0]?.message).toMatch(/not one of research's kinds/);
+  });
+
+  it("checks the gate's producer and checker kinds too (PM S4)", () => {
+    const wf = clone(jobScanWorkflow) as { steps: Array<Record<string, unknown>> };
+    (wf.steps.find((s) => s.type === "gate")!.checker as { kind: string }).kind = "tailor";
+    const r = WorkflowDefinitionSchema.safeParse(wf);
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.path).toEqual(["steps", 7, "checker", "kind"]);
+  });
+
+  it("apply.submit may only run in an action step (PM S4, §10.2 rule 1)", () => {
+    const wf = clone(jobScanWorkflow) as { steps: Array<Record<string, unknown>> };
+    wf.steps.find((s) => s.key === "company")!.task = { bot: "apply", kind: "submit", input: {} };
+    const r = WorkflowDefinitionSchema.safeParse(wf);
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.message).toMatch(/outward-facing.*action step/);
+
+    const asMap = clone(jobScanWorkflow) as { steps: Array<Record<string, unknown>> };
+    asMap.steps[0]!.task = { bot: "apply", kind: "submit", input: {} };
+    expect(WorkflowDefinitionSchema.safeParse(asMap).success).toBe(false);
+
+    const asGate = clone(jobScanWorkflow) as { steps: Array<Record<string, unknown>> };
+    asGate.steps.find((s) => s.type === "gate")!.producer = { bot: "apply", kind: "submit", input: {} };
+    expect(WorkflowDefinitionSchema.safeParse(asGate).success).toBe(false);
+  });
+
+  it("an action step runs an outward-facing task, nothing else (§7.1)", () => {
+    const wf = clone(jobScanWorkflow) as { steps: Array<Record<string, unknown>> };
+    wf.steps.find((s) => s.type === "action")!.task = { bot: "research", kind: "company", input: {} };
+    const r = WorkflowDefinitionSchema.safeParse(wf);
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.message).toMatch(/action step runs an outward-facing task/);
+  });
+
+  it("does not check kinds of bots added after Phase 1", () => {
+    const wf = clone(jobScanWorkflow) as { steps: Array<Record<string, unknown>> };
+    wf.steps.find((s) => s.key === "company")!.task = { bot: "translator", kind: "translate", input: {} };
+    expect(WorkflowDefinitionSchema.safeParse(wf).success).toBe(true);
+  });
+
   it("stepsInBranch lists the per-job pipeline (company → CV → QA gate → review → apply → record)", () => {
     const wf = WorkflowDefinitionSchema.parse(jobScanWorkflow);
     expect(stepsInBranch(wf, "top").map((s) => s.key)).toEqual(["company", "tailor", "review", "apply", "record"]);

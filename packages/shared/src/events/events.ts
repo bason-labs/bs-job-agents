@@ -47,6 +47,8 @@ export const SAFETY_DENIAL_REASONS = [
   "application_closed",
   "sha_mismatch",
   "dry_run_mismatch",
+  // PM §7 W2a: a dry-run Apply reported `submitted`; it may really have submitted (needs_check).
+  "dry_run_submitted",
 ] as const;
 export const SafetyDenialReasonSchema = z.enum(SAFETY_DENIAL_REASONS);
 export type SafetyDenialReason = z.infer<typeof SafetyDenialReasonSchema>;
