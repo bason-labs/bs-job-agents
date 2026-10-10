@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import type { ShellData } from "@/lib/api/types";
 import { titleForPath } from "@/lib/routes";
+import { useHydrated } from "@/lib/useHydrated";
 import { secondsUntil, useNow } from "@/lib/useNow";
 import { IconButton } from "@/components/ui/IconButton";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
@@ -24,9 +25,10 @@ export function AppShell({ data, children }: AppShellProps) {
   const pathname = usePathname() ?? "/";
   const [drawerOpen, setDrawerOpen] = useState(false);
   const title = titleForPath(pathname, data.bots, data.rooms);
+  const hydrated = useHydrated();
 
   return (
-    <div className="flex h-dvh gap-3 p-0 text-sm md:p-3">
+    <div data-hydrated={hydrated || undefined} className="flex h-dvh gap-3 p-0 text-sm md:p-3">
       <aside
         aria-label="Sidebar"
         data-testid="sidebar"
@@ -41,7 +43,7 @@ export function AppShell({ data, children }: AppShellProps) {
           <RadixDialog.Content
             data-testid="sidebar-drawer"
             aria-describedby={undefined}
-            className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-border bg-surface shadow-2xl outline-none md:hidden"
+            className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-border bg-surface text-sm shadow-2xl outline-none md:hidden"
           >
             <RadixDialog.Title className="sr-only">Navigation</RadixDialog.Title>
             <Sidebar data={data} onNavigate={() => setDrawerOpen(false)} />

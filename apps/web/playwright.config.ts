@@ -9,6 +9,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
+  // First hits compile routes in `next dev`; give them room.
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
   use: {
     baseURL,
     trace: "on-first-retry",

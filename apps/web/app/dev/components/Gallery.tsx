@@ -51,6 +51,7 @@ import {
 } from "@/components/ui";
 import type { BotLiveStatus } from "@/lib/api/types";
 import { formatThousands } from "@/lib/format";
+import { useHydrated } from "@/lib/useHydrated";
 import { kindForFile } from "@/lib/files";
 import { APPLICATION_STATUSES, RUN_STATUSES, TASK_STATUSES } from "@/lib/status";
 
@@ -122,6 +123,7 @@ export function Gallery() {
     { id: "s2", name: "Weekend scan", when: "Every Sat 10:00", enabled: false },
   ]);
   const [pendingDelete, setPendingDelete] = useState<ScheduleRow | null>(null);
+  const hydrated = useHydrated();
 
   const deleteSchedule = () => {
     if (!pendingDelete) return;
@@ -142,7 +144,7 @@ export function Gallery() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8 px-4 py-8 text-sm sm:px-6">
+    <div data-hydrated={hydrated || undefined} className="mx-auto max-w-5xl space-y-8 px-4 py-8 text-sm sm:px-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-semibold">Component gallery</h1>
