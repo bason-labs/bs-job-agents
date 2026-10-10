@@ -1,6 +1,6 @@
 # QA/QC report: Phase 2 (Engine, Runner, Bridges)
 
-- **Branch:** `worktree-agent-a6044f608f8991375`, from `develop` at 4f08b31 (all Phase 2 merges: F1, W2b, W2c, W2a). 15 commits, each test-first.
+- **Branch:** `worktree-agent-a6044f608f8991375`, from `develop` at 4f08b31 (all Phase 2 merges: F1, W2b, W2c, W2a). 17 commits; every fix test-first.
 - **Result:** the definition of done passes, uncached: install, typecheck, lint, test, build and e2e are all green.
 - **Scope checked:**
   - the seams between the three parallel workers (W2a engine, W2b runner, W2c bridges), with the brief's six items (a)–(f)
@@ -37,6 +37,7 @@ Turbo's cache is shared across worktrees, so every run above used `--force`.
 | 11 | **UC-04 b** ("show skipped"): the data layer could re-offer skipped jobs, but no job-scan param could ask for it. | `JobScanParams.showSkipped` (optional, additive) → the dedupe filter's `includeSkipped`. | 56527f9 |
 | 12 | **FakeRunner fidelity.** Its default outputs came from shared fixtures whose self-check items do not match the real bot.json files (Research's per-kind lists): the real runner would have sent each of them a repair prompt. | Defaults report the task's real items (`resolveSelfCheckItems`). | 6312b2c |
 | 13 | (d) `createProductionEngine` always used the real Chrome probe, so a test of it depended on whether Chrome runs on the machine. | Optional `browser` probe (default `chromeBrowserProbe`). | fb8a6b2 |
+| 14 | Test hygiene: a schema-guard test opened two temp databases and removed one; each run left ~300 KB in `$TMPDIR` (25 had piled up). | Every temp folder is tracked and removed. A full orchestrator run now leaves nothing behind. | 4b46c23 |
 
 ## 3. Tests added: 47 (shared +4, orchestrator +43)
 
