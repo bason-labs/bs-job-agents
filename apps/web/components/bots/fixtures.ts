@@ -1,7 +1,7 @@
 // The five Phase 1 bots as the Bots screen sees them (BotView), from the shared bot.json
 // fixtures plus the prototype's track records, prompt versions and memory notes. CV starts
 // demoted (§5.3) so the restore path is visible until the API reports real demotions.
-import { canPromote } from "@bs-job-agents/shared";
+import { maxTrustLevel } from "@bs-job-agents/shared";
 import { botDefinitionFixtures } from "@bs-job-agents/shared/fixtures";
 import type { BotScreenView } from "./logic";
 
@@ -75,6 +75,7 @@ export const BOT_VIEWS: BotScreenView[] = botDefinitionFixtures.map((def) => {
     activity: extra.activity ?? "idle",
     ...extra,
     trustLevel,
-    promoteAllowed: canPromote(def.name, trustLevel).allowed,
+    // The API: below the Phase 1 cap (W3a views/bots.ts).
+    promoteAllowed: trustLevel < maxTrustLevel(def.name),
   };
 });

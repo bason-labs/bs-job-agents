@@ -82,6 +82,33 @@ describe("BotsScreen (§11 Bots)", () => {
     await waitFor(() => expect(within(card("lead")).getByRole("button", { name: "Memory (1 note)" })).toBeInTheDocument());
   });
 
+  it("raises a bot one level after confirming, within the API's Phase 1 cap", async () => {
+    const { user, data } = await setup("lead");
+    const actions = within(card("lead")).getByTestId("bot-trust-actions");
+    await user.click(within(actions).getByRole("button", { name: "Raise to L2" }));
+    const confirm = screen.getByTestId("confirm-dialog");
+    expect(confirm).toHaveTextContent("Raise Lead to L2?");
+    expect(confirm).toHaveTextContent("L2: Acts on its own within its allowed tools.");
+    await user.click(within(confirm).getByRole("button", { name: "Raise to L2" }));
+    expect(await screen.findByText("Lead raised to L2")).toBeInTheDocument();
+    expect((await data.get("lead"))!.trustLevel).toBe(2);
+    expect(within(card("lead")).queryByRole("button", { name: /^Raise/ })).toBeNull();
+  });
+
+  it("never offers to raise Apply, but lowering it to L0 stops it after a warning", async () => {
+    const { user, data } = await setup("apply");
+    const actions = within(card("apply")).getByTestId("bot-trust-actions");
+    expect(within(actions).queryByRole("button", { name: /^Raise/ })).toBeNull();
+    expect(actions).toHaveTextContent("Apply stays at L1 in Phase 1: every submit needs your approval.");
+    await user.click(within(actions).getByRole("button", { name: "Lower to L0" }));
+    expect(screen.getByTestId("confirm-dialog")).toHaveTextContent("Every Apply task is refused until you raise it again.");
+    await user.click(within(screen.getByTestId("confirm-dialog")).getByRole("button", { name: "Lower to L0" }));
+    expect(await screen.findByText("Apply lowered to L0")).toBeInTheDocument();
+    expect((await data.get("apply"))!.trustLevel).toBe(0);
+    // Now below the cap, it can go back up one step.
+    expect(within(card("apply")).getByRole("button", { name: "Raise to L1" })).toBeInTheDocument();
+  });
+
   it("renders one bot as its settings page, with the enable switch and trust ladder", async () => {
     const { user, data } = await setup("apply");
     expect(screen.queryByTestId("bot-card-research")).toBeNull();

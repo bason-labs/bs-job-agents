@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ConfirmDialog } from "@/components/ui";
 import { BotCard } from "./BotCard";
 import { botsData, type BotsData } from "./data";
-import { qaEngineWarning, type BotScreenView } from "./logic";
+import { TRUST_MEANINGS, qaEngineWarning, type BotScreenView } from "./logic";
 import { useBots, type BotsController } from "./useBots";
 
 export interface BotsScreenProps {
@@ -25,6 +25,27 @@ function MemoryConfirm({ controller }: { controller: BotsController }) {
       description={pending ? `“${pending.note}” — ${pending.bot.displayName} stops using it in its prompts. The change is logged.` : undefined}
       confirmLabel="Delete note"
       onConfirm={() => void controller.confirmDeleteMemory()}
+    />
+  );
+}
+
+function TrustConfirm({ controller }: { controller: BotsController }) {
+  const p = controller.pendingTrust;
+  const up = p ? p.kind !== "lower" : true;
+  const stopsApply = p?.bot.name === "apply" && p.to === 0;
+  return (
+    <ConfirmDialog
+      open={p !== null}
+      onOpenChange={(open) => !open && controller.cancelTrust()}
+      tone={up ? "brand" : "danger"}
+      title={p ? `${up ? (p.kind === "promote" ? "Promote" : "Raise") : "Lower"} ${p.bot.displayName} to L${p.to}?` : ""}
+      description={
+        p
+          ? `L${p.to}: ${TRUST_MEANINGS[p.to]}.${up ? " Only raise a bot whose work you have checked." : ""}${stopsApply ? " Every Apply task is refused until you raise it again." : ""}`
+          : undefined
+      }
+      confirmLabel={p ? `${up ? (p.kind === "promote" ? "Promote" : "Raise") : "Lower"} to L${p.to}` : ""}
+      onConfirm={() => void controller.confirmTrust()}
     />
   );
 }
@@ -54,6 +75,7 @@ export function BotsScreen({ initial, only, data = botsData }: BotsScreenProps) 
         </div>
       )}
       <MemoryConfirm controller={controller} />
+      <TrustConfirm controller={controller} />
     </>
   );
 }

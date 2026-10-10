@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BOT_VIEWS } from "./fixtures";
-import { engineLockReason, promoteAction, promotionText, qaEngineWarning, restoreTarget, type BotScreenView } from "./logic";
+import { engineLockReason, lowerTarget, promoteAction, promotionText, qaEngineWarning, raiseTarget, restoreTarget, type BotScreenView } from "./logic";
 
 const bot = (name: string, over: Partial<BotScreenView> = {}): BotScreenView => ({ ...BOT_VIEWS.find((b) => b.name === name)!, ...over });
 
@@ -47,6 +47,22 @@ describe("restoreTarget (PM S21: one level back, Apply up to L1 only)", () => {
 
   it("has nothing to restore without a demotion", () => {
     expect(restoreTarget(bot("qa", { demotion: null }))).toBeNull();
+  });
+});
+
+describe("raiseTarget / lowerTarget (W3a PATCH /bots/:name rules)", () => {
+  it("raises one level while the API allows it (below the Phase 1 cap)", () => {
+    expect(raiseTarget(bot("lead"))).toBe(2);
+    expect(raiseTarget(bot("cv", { trustLevel: 1, promoteAllowed: true }))).toBe(2);
+    expect(raiseTarget(bot("research"))).toBeNull(); // already L2
+    expect(raiseTarget(bot("apply"))).toBeNull(); // Apply stays L1
+    expect(raiseTarget(bot("apply", { trustLevel: 0, promoteAllowed: true }))).toBe(1);
+  });
+
+  it("lowers one level down to L0", () => {
+    expect(lowerTarget(bot("apply"))).toBe(0);
+    expect(lowerTarget(bot("research"))).toBe(1);
+    expect(lowerTarget(bot("lead", { trustLevel: 0 }))).toBeNull();
   });
 });
 

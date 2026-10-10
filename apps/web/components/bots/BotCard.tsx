@@ -1,6 +1,6 @@
 "use client";
 
-import { TRUST_LEVEL_MEANINGS, type TrustLevel } from "@bs-job-agents/shared";
+import type { TrustLevel } from "@bs-job-agents/shared";
 import { ChevronDown, Lightbulb, Lock, Settings, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useId, useState } from "react";
@@ -9,7 +9,17 @@ import { cn } from "@/lib/cn";
 import { botChatHref, botSettingsHref } from "@/lib/routes";
 import { formatDateTime } from "@/components/schedules/datetime";
 import { Segmented } from "@/components/schedules/Segmented";
-import { ENGINE_OPTIONS, engineLockReason, promoteAction, promotionText, restoreTarget, type BotScreenView } from "./logic";
+import {
+  ENGINE_OPTIONS,
+  TRUST_MEANINGS,
+  engineLockReason,
+  lowerTarget,
+  promoteAction,
+  promotionText,
+  raiseTarget,
+  restoreTarget,
+  type BotScreenView,
+} from "./logic";
 import type { BotsController } from "./useBots";
 
 const TRUST_TONE = { 0: "danger", 1: "warn", 2: "ok" } as const;
@@ -17,7 +27,7 @@ const TRUST_TONE = { 0: "danger", 1: "warn", 2: "ok" } as const;
 function TrustLevelBadge({ level }: { level: TrustLevel }) {
   return (
     <Tooltip content={TRUST_DESCRIPTIONS[level]}>
-      <span role="img" tabIndex={0} aria-label={`Trust level L${level}: ${TRUST_LEVEL_MEANINGS[level]}`} data-testid="bot-trust" className="rounded-full">
+      <span role="img" tabIndex={0} aria-label={`Trust level L${level}: ${TRUST_MEANINGS[level]}`} data-testid="bot-trust" className="rounded-full">
         <Badge tone={TRUST_TONE[level]} className="px-2 text-xs">
           L{level}
         </Badge>
@@ -42,6 +52,8 @@ export function BotCard({ bot, controller, warning, detailed = false }: BotCardP
   const lock = engineLockReason(bot.name);
   const promote = promoteAction(bot);
   const restoreTo = restoreTarget(bot);
+  const raiseTo = raiseTarget(bot);
+  const lowerTo = lowerTarget(bot);
 
   return (
     <article data-testid={`bot-card-${bot.name}`} aria-labelledby={`${ids.engine}-name`} className="space-y-3 rounded-3xl border border-border bg-surface/60 p-4">
@@ -108,7 +120,7 @@ export function BotCard({ bot, controller, warning, detailed = false }: BotCardP
             <span>{promotionText(bot)}</span>
           </p>
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" pill variant={promote.allowed ? "primary" : "secondary"} disabled={!promote.allowed} title={promote.reason ?? undefined} onClick={() => void controller.promote(bot, promote.to)}>
+            <Button size="sm" pill variant={promote.allowed ? "primary" : "secondary"} disabled={!promote.allowed} title={promote.reason ?? undefined} onClick={() => controller.askTrust(bot, promote.to, "promote")}>
               {promote.label}
             </Button>
             <Button size="sm" pill variant="ghost" onClick={() => void controller.dismissPromotion(bot)}>
@@ -160,11 +172,30 @@ export function BotCard({ bot, controller, warning, detailed = false }: BotCardP
                   className={cn("flex gap-2 rounded-lg px-3 py-1.5", level === bot.trustLevel ? "bg-surface-2 text-fg" : "text-muted")}
                 >
                   <b className="w-6 shrink-0">L{level}</b>
-                  <span>{TRUST_LEVEL_MEANINGS[level]}</span>
+                  <span>{TRUST_MEANINGS[level]}</span>
                 </li>
               ))}
             </ol>
-            <p className="text-[11px] text-muted">The system suggests promotions after 10 tasks accepted in a row without changes; only you can apply them. A safety violation demotes a bot one level automatically.</p>
+            <div data-testid="bot-trust-actions" className="flex flex-wrap items-center gap-2 pt-1">
+              {raiseTo !== null ? (
+                <Button size="sm" pill onClick={() => controller.askTrust(bot, raiseTo, "raise")}>
+                  Raise to L{raiseTo}
+                </Button>
+              ) : null}
+              {lowerTo !== null ? (
+                <Button size="sm" pill variant="ghost" onClick={() => controller.askTrust(bot, lowerTo, "lower")}>
+                  Lower to L{lowerTo}
+                </Button>
+              ) : null}
+              {raiseTo === null && bot.trustLevel < 2 ? (
+                <span className="text-[11px] text-muted">
+                  {bot.name === "apply" ? "Apply stays at L1 in Phase 1: every submit needs your approval." : `L${bot.trustLevel} is the highest level for ${bot.displayName} in Phase 1.`}
+                </span>
+              ) : null}
+            </div>
+            <p className="text-[11px] text-muted">
+              The system suggests a promotion after 10 tasks accepted in a row without changes; only you raise a level, one step at a time. A safety violation lowers a bot one level automatically.
+            </p>
           </div>
         </div>
       ) : null}

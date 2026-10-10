@@ -1,14 +1,22 @@
 // Bots screen rules (§5.3 trust levels, UC-19 promotion, §4.4/§6.2 engine locks, PM S21/S25).
 import { canPromote, maxTrustLevel, type BotView, type Engine, type TrustLevel } from "@bs-job-agents/shared";
 
-/** §5.3 automatic demotion, as the Bots screen needs it (additive API field, see data.ts). */
+/** §5.3 automatic demotion, when the API reports it (additive API need, see data.ts). */
 export interface Demotion {
   fromLevel: TrustLevel;
   at: string;
   reason: string;
 }
 
-export type BotScreenView = BotView & { demotion: Demotion | null };
+/** BotView plus the optional demotion record (the W3a API does not send one yet). */
+export type BotScreenView = BotView & { demotion?: Demotion | null };
+
+/** §5.3 trust levels, addressed to Ba (shared TRUST_LEVEL_MEANINGS speak about him). */
+export const TRUST_MEANINGS: Record<TrustLevel, string> = {
+  0: "Draft only; every output needs your acceptance",
+  1: "Acts, but every outward-facing action needs your approval",
+  2: "Acts on its own within its allowed tools",
+};
 
 export const ENGINE_LABELS: Record<Engine, string> = { claude: "Claude", codex: "Codex" };
 export const ENGINE_OPTIONS = (["claude", "codex"] as const).map((value) => ({ value, label: ENGINE_LABELS[value] }));
@@ -55,6 +63,18 @@ export function restoreTarget(bot: Pick<BotScreenView, "name" | "trustLevel" | "
   if (!bot.demotion) return null;
   const to = Math.min(bot.trustLevel + 1, bot.demotion.fromLevel, maxTrustLevel(bot.name));
   return to > bot.trustLevel ? (to as TrustLevel) : null;
+}
+
+/**
+ * The W3a API's trust rule (PATCH /bots/:name): a level rises one step at a time, up to the
+ * Phase 1 cap (`promoteAllowed` = below the cap; Apply stays L1), and may always go down.
+ */
+export function raiseTarget(bot: Pick<BotScreenView, "trustLevel" | "promoteAllowed">): TrustLevel | null {
+  return bot.promoteAllowed && bot.trustLevel < 2 ? ((bot.trustLevel + 1) as TrustLevel) : null;
+}
+
+export function lowerTarget(bot: Pick<BotScreenView, "trustLevel">): TrustLevel | null {
+  return bot.trustLevel > 0 ? ((bot.trustLevel - 1) as TrustLevel) : null;
 }
 
 /** §5.2: QA is deliberately on a different engine from CV. */

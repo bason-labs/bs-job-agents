@@ -1,5 +1,6 @@
 import { BotViewSchema } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
+import { apiErrorInfo } from "@/components/schedules/apiError";
 import { createFixtureBotsData } from "./data";
 import { BOT_VIEWS } from "./fixtures";
 
@@ -22,16 +23,20 @@ describe("fixture bots store (PM S21 rules)", () => {
     expect((await data.update("research", { engine: "claude" })).engine).toBe("claude");
   });
 
-  it("refuses Apply or CV on Codex", async () => {
+  it("refuses Apply or CV on Codex with the API's 403", async () => {
     const data = createFixtureBotsData();
-    await expect(data.update("apply", { engine: "codex" })).rejects.toThrow(/Locked to Claude/);
+    const refused = await data.update("apply", { engine: "codex" }).catch((e: unknown) => e);
+    expect(apiErrorInfo(refused)).toMatchObject({ status: 403, code: "forbidden" });
     await expect(data.update("cv", { engine: "codex" })).rejects.toThrow(/Figma/);
   });
 
-  it("refuses Apply at L2, and raising a level without a suggestion or a demotion", async () => {
+  it("raises one level at a time up to the Phase 1 cap; Apply stays L1 (403)", async () => {
     const data = createFixtureBotsData();
-    await expect(data.update("apply", { trustLevel: 2 })).rejects.toThrow(/Phase 1/);
-    await expect(data.update("lead", { trustLevel: 2 })).rejects.toThrow(/suggestion/);
+    expect(apiErrorInfo(await data.update("apply", { trustLevel: 2 }).catch((e: unknown) => e))).toMatchObject({ status: 403, message: expect.stringMatching(/Apply stays at L1/) });
+    expect((await data.update("lead", { trustLevel: 2 })).trustLevel).toBe(2);
+    const lead = await data.update("lead", { trustLevel: 0 }); // lowering is always allowed
+    expect(lead).toMatchObject({ trustLevel: 0, promoteAllowed: true });
+    expect(apiErrorInfo(await data.update("lead", { trustLevel: 2 }).catch((e: unknown) => e))).toMatchObject({ status: 403, message: expect.stringMatching(/one step at a time/) });
   });
 
   it("restores a demoted bot and clears the demotion", async () => {
