@@ -65,7 +65,7 @@ export function fieldSourceLabel(source: FieldSource): string {
 }
 
 /** A field's value; blank optional fields read "— left blank (optional)" (prototype). */
-export function fieldValueText(field: Pick<SubmittedField, "value">): string {
+export function fieldValueText(field: SubmittedField): string {
   return field.value ?? "— left blank (optional)";
 }
 
@@ -95,7 +95,7 @@ export function applicationsHeader(count: number, lastExportAt: string | null, d
   return lastExportAt ? `${base} · last export ${formatDateTime(lastExportAt)}` : base;
 }
 
-export function exportFileName(exp: Pick<Export, "path">): string {
+export function exportFileName(exp: Export): string {
   return exp.path.split(/[\\/]/).pop() || exp.path;
 }
 
