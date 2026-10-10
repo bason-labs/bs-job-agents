@@ -1,0 +1,255 @@
+import type { BotView, EngineStatus, Room } from "@bs-job-agents/shared";
+import { messageFixture, reviewCardFixture, runFixture, stepFixture, taskFixture, uploadFixture } from "@bs-job-agents/shared/fixtures";
+import { describe, expect, it } from "vitest";
+import type { EventFeed } from "./contract";
+import { isApiError } from "./errors";
+import { createHttpApi } from "./http";
+
+interface Call {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body: unknown;
+}
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+/** A fetch double: answers by "METHOD /path" (query included) and records every call. */
+function fakeFetch(routes: Record<string, () => Response | Promise<Response>>) {
+  const calls: Call[] = [];
+  const fetchImpl = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    const url = String(input);
+    const method = (init.method ?? "GET").toUpperCase();
+    const headers = Object.fromEntries(new Headers(init.headers).entries());
+    const body = init.body instanceof FormData ? init.body : typeof init.body === "string" ? JSON.parse(init.body) : init.body;
+    calls.push({ method, url, headers, body });
+    const path = url.replace("http://orch.test", "");
+    const handler = routes[`${method} ${path}`];
+    if (!handler) return json({ error: { code: "not_found", message: `no route ${method} ${path}`, details: null } }, 404);
+    return handler();
+  }) as typeof fetch;
+  return { calls, fetchImpl };
+}
+
+const noFeed: EventFeed = { subscribe: () => () => {}, getStatus: () => "idle", onStatus: () => () => {} };
+
+const api = (routes: Record<string, () => Response | Promise<Response>>, cookies = "") => {
+  const f = fakeFetch(routes);
+  return { ...f, api: createHttpApi({ baseUrl: "http://orch.test", fetch: f.fetchImpl, events: noFeed, cookies: () => cookies }) };
+};
+
+const BOT: BotView = {
+  name: "research",
+  displayName: "Research",
+  engine: "codex",
+  model: null,
+  trustLevel: 2,
+  promptVersion: 2,
+  enabled: true,
+  role: "Finds jobs",
+  activity: "idle",
+  trackRecord: null,
+  promotionSuggested: false,
+  promoteAllowed: true,
+  memory: [],
+  residualRisk: null,
+};
+const LEAD: BotView = { ...BOT, name: "lead", displayName: "Lead", engine: "claude", trustLevel: 1 };
+const ROOMS: Room[] = [
+  { id: "1", name: "Lead", kind: "lead", botName: "lead", members: ["lead"], createdAt: "2026-10-10T08:00:00Z" },
+  { id: "3", name: "cv-brainstorm", kind: "group", botName: null, members: ["cv"], createdAt: "2026-10-10T08:00:00Z" },
+];
+const ENGINES: EngineStatus[] = [
+  { engine: "claude", pausedUntil: "2026-10-10T14:05:00+07:00", reason: "usage_limit", usage: null, activeSessions: 0, maxSessions: 2 },
+];
+
+describe("createHttpApi: reads", () => {
+  it("GET /review parses the shared ReviewQueueResponse", async () => {
+    const { api: a, calls } = api({ "GET /review": () => json({ cards: [reviewCardFixture] }) });
+    const cards = await a.getReviewQueue();
+    expect(cards).toHaveLength(1);
+    expect(cards[0]!.job.company).toBe("NovaPay");
+    expect(calls[0]).toMatchObject({ method: "GET", url: "http://orch.test/review" });
+    expect(calls[0]!.headers.accept).toBe("application/json");
+    expect(calls[0]!.headers["x-requested-with"]).toBeUndefined();
+  });
+
+  it("GET /rooms/:id/messages with the paging query", async () => {
+    const { api: a, calls } = api({ "GET /rooms/7/messages?before=m1&limit=30": () => json({ messages: [messageFixture], hasMore: true }) });
+    await expect(a.listMessages("7", { before: "m1", limit: 30 })).resolves.toEqual({ messages: [messageFixture], hasMore: true });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("runs: list and detail", async () => {
+    const { api: a } = api({
+      "GET /runs": () => json({ runs: [runFixture] }),
+      "GET /runs/run_13": () => json({ run: runFixture, steps: [stepFixture], tasks: [taskFixture] }),
+    });
+    expect((await a.listRuns()).map((r) => r.id)).toEqual(["run_13"]);
+    const detail = await a.getRun("run_13");
+    expect(detail.steps[0]!.stepKey).toBe("tailor");
+    expect(detail.tasks[0]!.botName).toBe("cv");
+  });
+
+  it("composes the sidebar from five lists", async () => {
+    const { api: a } = api({
+      "GET /bots": () => json({ bots: [BOT, LEAD] }),
+      "GET /rooms": () => json({ rooms: ROOMS }),
+      "GET /engines": () => json({ engines: ENGINES }),
+      "GET /review": () => json({ cards: [reviewCardFixture, reviewCardFixture] }),
+      "GET /runs": () => json({ runs: [{ ...runFixture, id: "12", status: "waiting" }] }),
+    });
+    const shell = await a.getShellData();
+    expect(shell.bots.map((b) => b.name)).toEqual(["lead", "research"]);
+    expect(shell.rooms).toEqual([{ id: "3", name: "cv-brainstorm" }]);
+    expect(shell.usage[0]).toMatchObject({ label: "Claude", pausedUntil: "2026-10-10T14:05:00+07:00" });
+    expect(shell.reviewCount).toBe(2);
+    expect(shell.activeRunId).toBe("12");
+  });
+
+  it("getBot and getRoom look a name or id up in the lists", async () => {
+    const { api: a } = api({ "GET /bots": () => json({ bots: [BOT, LEAD] }), "GET /rooms": () => json({ rooms: ROOMS }) });
+    expect(await a.getBot("research")).toMatchObject({ name: "research", displayName: "Research", status: "idle" });
+    expect(await a.getBot("nobody")).toBeNull();
+    expect(await a.getRoom("3")).toEqual({ id: "3", name: "cv-brainstorm" });
+    expect(await a.getRoom("99")).toBeNull();
+  });
+
+  it("health: ok, degraded (S19) and unreachable never throw", async () => {
+    expect(await api({ "GET /health": () => json({ ok: true }) }).api.getHealth()).toEqual({ ok: true, reason: null, detail: null });
+    const degraded = await api({
+      "GET /health": () => json({ ok: false, reason: "prompt_version_stale", detail: { bot: "cv" } }, 503),
+    }).api.getHealth();
+    expect(degraded).toEqual({ ok: false, reason: "prompt_version_stale", detail: { bot: "cv" } });
+    const down = createHttpApi({
+      baseUrl: "http://orch.test",
+      events: noFeed,
+      fetch: (async () => {
+        throw new TypeError("fetch failed");
+      }) as typeof fetch,
+    });
+    expect(await down.getHealth()).toEqual({ ok: false, reason: "unreachable", detail: null });
+  });
+
+  it("a transcript route the server does not have yet reads as empty", async () => {
+    const { api: a } = api({});
+    expect(await a.getTranscript("t1")).toEqual([]);
+    const lines = [{ at: "2026-10-10T09:00:00+07:00", kind: "tool_use", text: "Opening TopCV", tool: "cua_repl" }];
+    expect(await api({ "GET /tasks/t1/transcript": () => json({ lines }) }).api.getTranscript("t1")).toEqual(lines);
+  });
+
+  it("file URLs go through the base URL; Download adds ?download=1", () => {
+    const { api: a } = api({});
+    expect(a.fileUrl("file_pdf_1")).toBe("http://orch.test/files/file_pdf_1");
+    expect(a.fileUrl("a b", { download: true })).toBe("http://orch.test/files/a%20b?download=1");
+  });
+});
+
+describe("createHttpApi: commands", () => {
+  it("approve posts the chosen CV and intro; the result tolerates F2's nullable applicationId and reapproval", async () => {
+    const { api: a, calls } = api(
+      {
+        "POST /review/job_1/approve": () =>
+          json({ applicationId: null, taskId: null, approval: null, reapproval: true }),
+      },
+      "bsja_csrf=t0k",
+    );
+    const result = await a.approve("job_1", { cvVersionId: "cvv_2", introText: null });
+    expect(result).toEqual({ applicationId: null, taskId: null, approval: null, reapproval: true });
+    expect(calls[0]).toMatchObject({ method: "POST", body: { cvVersionId: "cvv_2", introText: null } });
+    expect(calls[0]!.headers["content-type"]).toBe("application/json");
+    expect(calls[0]!.headers["x-requested-with"]).toBe("bs-job-agents");
+    expect(calls[0]!.headers["x-csrf-token"]).toBe("t0k");
+  });
+
+  it("approve sends dryRun only when asked", async () => {
+    const { api: a, calls } = api({
+      "POST /review/job_1/approve": () => json({ applicationId: "app_1", taskId: "t9", approval: null }),
+    });
+    const result = await a.approve("job_1", { cvVersionId: "cvv_2", introText: "Hi", dryRun: true });
+    expect(result.reapproval).toBe(false);
+    expect(calls[0]!.body).toEqual({ cvVersionId: "cvv_2", introText: "Hi", dryRun: true });
+  });
+
+  it("review decisions, injection confirm, answers, resume, run control, re-run, choice", async () => {
+    const ok = () => json({ ok: true });
+    const { api: a, calls } = api({
+      "POST /review/job_1/request-changes": ok,
+      "POST /review/job_1/skip": ok,
+      "POST /review/job_1/confirm-injection": ok,
+      "POST /questions/42/answer": () => json({ resumed: false, next: null }),
+      "POST /tasks/42/resume": ok,
+      "POST /runs/12/control": ok,
+      "POST /steps/s1/rerun": ok,
+      "POST /chat/choices": ok,
+    });
+    await a.requestChanges("job_1", { comment: "Lead with Next.js" });
+    await a.skip("job_1", { reason: "other", note: "too far" });
+    await a.confirmInjection("job_1");
+    await a.answerQuestion("42", { field: "salary", mode: "negotiable", value: null, remember: true });
+    await a.resumeTask("42", { confirmDomain: "acme.wd3.myworkdayjobs.com" });
+    await a.resumeTask("42");
+    await a.controlRun("12", "pause");
+    await a.rerunStep("s1");
+    await a.chooseOption({ messageId: "m1", key: "criteria", optionId: "save" });
+    expect(calls.map((c) => [c.method, c.url.replace("http://orch.test", ""), c.body])).toEqual([
+      ["POST", "/review/job_1/request-changes", { comment: "Lead with Next.js" }],
+      ["POST", "/review/job_1/skip", { reason: "other", note: "too far" }],
+      ["POST", "/review/job_1/confirm-injection", { confirmed: true }],
+      ["POST", "/questions/42/answer", { field: "salary", mode: "negotiable", value: null, remember: true }],
+      ["POST", "/tasks/42/resume", { confirmDomain: "acme.wd3.myworkdayjobs.com" }],
+      ["POST", "/tasks/42/resume", { confirmDomain: null }],
+      ["POST", "/runs/12/control", { action: "pause" }],
+      ["POST", "/steps/s1/rerun", {}],
+      ["POST", "/chat/choices", { messageId: "m1", key: "criteria", optionId: "save" }],
+    ]);
+  });
+
+  it("sendMessage posts the shared ChatSendRequest and returns the stored message", async () => {
+    const { api: a, calls } = api({ "POST /chat/messages": () => json({ message: messageFixture }) });
+    await expect(a.sendMessage({ roomId: "room_lead", text: "Find jobs" })).resolves.toEqual(messageFixture);
+    expect(calls[0]!.body).toEqual({ roomId: "room_lead", text: "Find jobs", uploadIds: [] });
+  });
+
+  it("uploads are multipart (files field) with the CSRF header and no hand-set content type", async () => {
+    const { api: a, calls } = api({ "POST /uploads": () => json({ uploads: [uploadFixture], rejected: [] }) });
+    const file = new File(["%PDF-1.4"], "JD_NovaPay.pdf", { type: "application/pdf" });
+    const res = await a.uploadFiles([file]);
+    expect(res.uploads[0]!.id).toBe("upl_1");
+    const body = calls[0]!.body as FormData;
+    expect(body).toBeInstanceOf(FormData);
+    expect((body.getAll("files")[0] as File).name).toBe("JD_NovaPay.pdf");
+    expect(calls[0]!.headers["content-type"]).toBeUndefined();
+    expect(calls[0]!.headers["x-requested-with"]).toBe("bs-job-agents");
+  });
+});
+
+describe("createHttpApi: errors", () => {
+  it("a shared ApiError body becomes an ApiRequestError with its code and reason", async () => {
+    const { api: a } = api({
+      "POST /review/job_1/approve": () =>
+        json({ error: { code: "forbidden", message: "Confirm the injection flag first", details: { reason: "injection_flagged" } } }, 403),
+    });
+    const err = await a.approve("job_1", { cvVersionId: "cvv_2", introText: null }).catch((e: unknown) => e);
+    expect(isApiError(err) && err.code).toBe("forbidden");
+    expect(isApiError(err) && err.reason).toBe("injection_flagged");
+  });
+
+  it("an unreachable orchestrator is code `unreachable`", async () => {
+    const down = createHttpApi({
+      baseUrl: "http://orch.test",
+      events: noFeed,
+      fetch: (async () => {
+        throw new TypeError("fetch failed");
+      }) as typeof fetch,
+    });
+    const err = await down.getReviewQueue().catch((e: unknown) => e);
+    expect(isApiError(err) && err.code).toBe("unreachable");
+  });
+
+  it("a 2xx body that breaks the shared schema is `bad_response`, not silently used", async () => {
+    const { api: a } = api({ "GET /review": () => json({ cards: [{ job: { id: 1 } }] }) });
+    const err = await a.getReviewQueue().catch((e: unknown) => e);
+    expect(isApiError(err) && err.code).toBe("bad_response");
+  });
+});
