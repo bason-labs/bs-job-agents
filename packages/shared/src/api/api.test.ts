@@ -17,7 +17,7 @@ import { BotUpdateRequestSchema, canPromote, type CanPromoteResult } from "./bot
 import { AnswerQuestionRequestSchema, ChatSendRequestSchema, CreateRoomRequestSchema } from "./chat.js";
 import { ApiErrorSchema, API_ROUTES, fileUrl } from "./common.js";
 import { CriteriaUpdateRequestSchema } from "./criteria.js";
-import { ApproveRequestSchema, RequestChangesRequestSchema, ReviewCardSchema, SkipRequestSchema } from "./review.js";
+import { ApproveRequestSchema, ApproveResponseSchema, RequestChangesRequestSchema, ReviewCardSchema, SkipRequestSchema } from "./review.js";
 import { RunControlRequestSchema } from "./runs.js";
 import {
   ScheduleCreateRequestSchema,
@@ -56,6 +56,11 @@ describe("review API (UC-08/09/10)", () => {
   it("approve picks the CV version and may carry edited intro text", () => {
     expect(ApproveRequestSchema.safeParse({ cvVersionId: "cvv_2", introText: "Edited" }).success).toBe(true);
     expect(ApproveRequestSchema.safeParse({ introText: null }).success).toBe(false);
+    // PM2 S2: §12 dry-run acceptance from the card (optional), and no application for a JD without an apply link (§7.3b).
+    expect(ApproveRequestSchema.parse({ cvVersionId: "cvv_2", introText: null, dryRun: true }).dryRun).toBe(true);
+    expect(ApproveRequestSchema.safeParse({ cvVersionId: "cvv_2", introText: null, dryRun: "yes" }).success).toBe(false);
+    expect(ApproveResponseSchema.safeParse({ applicationId: null, taskId: null, approval: null }).success).toBe(true);
+    expect(ApproveResponseSchema.safeParse({ applicationId: "app_1", taskId: "task_9", approval: { expiresAt: "2026-10-11T09:00:00+07:00", allowedDomains: ["itviec.com"] } }).success).toBe(true);
   });
 
   it("request changes needs a comment", () => {

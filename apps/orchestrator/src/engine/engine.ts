@@ -40,7 +40,8 @@ import { EventBus, type EventListener } from "./events.js";
 import { LeadTools } from "./lead-tools.js";
 import { silentLogger, type Clock, type Logger } from "./ports.js";
 import { TaskQueue, lastFigmaBeforeHash } from "./queue.js";
-import { approve, requestChanges, skip, type ApproveInput, type ApproveResult } from "./review.js";
+import { createConversationTask, sinkFailed, type ConversationRequest } from "./conversations.js";
+import { approve, confirmInjection, requestChanges, skip, type ApproveInput, type ApproveResult } from "./review.js";
 import { Scheduler } from "./scheduler.js";
 import { systemClock } from "./system.js";
 import { noticeNeedsCheck, noticeTaskFailed } from "./notices.js";
@@ -164,7 +165,10 @@ export class Engine implements EngineCore {
         const task = recovered.needsCheck.find((t) => applicationIdOfTask(t) === appId);
         noticeNeedsCheck(this, tx, appId, INTERRUPTED_APPLY_NOTE, { runId: task?.runId ?? null });
       }
-      for (const t of recovered.exhausted) noticeTaskFailed(this, tx, t, t.error ?? "interrupted by restart; no attempts left");
+      for (const t of recovered.exhausted) {
+        noticeTaskFailed(this, tx, t, t.error ?? "interrupted by restart; no attempts left");
+        sinkFailed(this, tx, t, t.error ?? "interrupted by restart; no attempts left");
+      }
       return recovered;
     });
     const interrupted = [...r.requeued, ...r.exhausted, ...r.needsCheck];
@@ -424,6 +428,25 @@ export class Engine implements EngineCore {
 
   runScheduleNow(scheduleId: number) {
     return this.scheduler.runNow(scheduleId);
+  }
+
+  /** UC-07 b: Ba confirms a flagged job is safe to apply to (audited: `injection.confirmed`). */
+  confirmInjection(jobId: number): void {
+    confirmInjection(this, jobId);
+  }
+
+  // ------------------------------------------------------------------ conversations (PM2 S2)
+
+  /**
+   * Queue Lead's chat (UC-01), a consult answer (UC-25) or a room reply (UC-15). The input is checked
+   * against the bot's strict prompt schema before anything is queued; the task runs on the bot's
+   * effective engine and waits out a usage limit. Its result reaches the ConversationSink.
+   */
+  enqueueConversation(req: ConversationRequest): { taskId: number } {
+    const task = this.db.transaction((tx) => createConversationTask(this, tx, req));
+    this.bus.flush();
+    this.dispatch();
+    return { taskId: task.id };
   }
 
   /** Events after `afterId` as the UI sees them (SSE replay; audit-only rows are left out). */

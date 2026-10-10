@@ -85,6 +85,9 @@ describe("buildPrompt (§5.5 step 1)", () => {
       ["apply", "submit", "savedAnswers", { ...applyPrompt, savedAnswers: [{ key: "evil", label: INJECTION, answer: "yes" }] }, "ApplyOutput"],
       ["cv", "tailor", "fixes", { ...cvTailorInputFixture, fixes: [{ section: "Summary", instruction: INJECTION }] }, "CvOutput"],
       ["research", "file", "filename", { ...researchFileInputFixture, filename: `${INJECTION}.pdf` }, "ResearchScanOutput"],
+      // PM2 S2: Lead's chat history and a consult bot's handoff are text other bots wrote.
+      ["lead", "chat", "history", { roomId: "1", messageId: "2", text: "Find jobs", history: [{ author: "qa", text: INJECTION }], uploadIds: [], handoff: null }, "LeadOutput"],
+      ["lead", "chat", "handoff", { roomId: "1", messageId: "2", text: "Find jobs", history: [], uploadIds: [], handoff: { fromBot: "qa", request: INJECTION } }, "LeadOutput"],
     ] as const)("%s.%s %s: an injected instruction appears only inside its block", (name, kind, field, input, schema) => {
       expect(UNTRUSTED_INPUT_FIELDS[`${name}.${kind}`]).toContain(field);
       const p = buildPrompt(parts(name, kind, input, schema));
@@ -165,7 +168,7 @@ describe("buildPrompt (§5.5 step 1)", () => {
     ["qa", "review", qaReviewInputFixture, "QaOutput", "codex"],
     ["research", "fit", researchFitInputFixture, "ResearchFitOutput", "codex"],
     ["apply", "submit", applyPrompt, "ApplyOutput", "claude"],
-    ["lead", "chat", { message: "Find frontend jobs in HCM", history: [] }, "LeadOutput", "claude"],
+    ["lead", "chat", { roomId: "r1", messageId: "m1", text: "Find frontend jobs in HCM", history: [], uploadIds: [], handoff: { fromBot: "qa", request: "Find AI-focused frontend roles" } }, "LeadOutput", "claude"],
     ["qa", "consult", { roomId: "r1", messageId: "m1", text: "Why did QA fail NovaPay?", history: [], uploadIds: [] }, "ConsultOutput", "codex"],
   ] as const)("full prompt snapshot: %s.%s", async (name, kind, input, schema, engine) => {
     const p = buildPrompt(

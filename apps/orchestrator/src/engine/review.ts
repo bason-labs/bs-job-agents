@@ -22,6 +22,7 @@ import {
   ApprovalRefusedError,
   InvalidTransitionError,
   approveApplication,
+  clearJobInjection,
   createApproval,
   createTask,
   getApplication,
@@ -347,6 +348,27 @@ export function skip(core: EngineCore, jobId: number, input: SkipDecision): void
   });
   core.advance(runId);
   core.dispatch();
+}
+
+/**
+ * UC-07 b (PM2 S2): Ba confirms a job QA flagged for a suspected injection is safe to apply to. The
+ * flag's clearing is audited as a shared event (`injection.confirmed`), with the run of its card.
+ */
+export function confirmInjection(core: EngineCore, jobId: number): void {
+  core.db.transaction((tx) => {
+    const job = getJob(tx, jobId);
+    if (!job) throw notFound("job", jobId);
+    if (!isApplyBlockedByInjection(job)) throw invalidState(`job ${jobId} is not waiting for an injection confirmation`);
+    clearJobInjection(tx, jobId, { now: core.now() });
+    let runId: number | null = null;
+    try {
+      runId = findReview(core, tx, jobId).ctx.run.id;
+    } catch {
+      runId = null; // a job without a review card (yet)
+    }
+    core.bus.emit(tx, { type: "injection.confirmed", jobId: String(jobId), runId: runId === null ? null : String(runId) });
+  });
+  core.bus.flush();
 }
 
 /** The token a re-approval would replace, for callers that show its expiry (never its value). */

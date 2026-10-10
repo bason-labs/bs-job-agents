@@ -1,6 +1,7 @@
 // Task input payloads (the JSON the runner puts in the prompt, §5.5 step 1).
 import { z } from "zod";
 import {
+  BotNameSchema,
   CurrencySchema,
   CvLanguageSchema,
   DomainSchema,
@@ -132,6 +133,22 @@ export const ConversationInputSchema = z.object({
   uploadIds: z.array(IdSchema),
 });
 
+/**
+ * lead.chat (UC-01, UC-14, UC-24, UC-25 a; PM2 S2): Ba's message in the Lead chat, or a request a
+ * consult-mode bot handed over (`handoff`, null otherwise). The prompt puts `history` and `handoff`
+ * in UNTRUSTED_CONTENT blocks (§10.2 rule 4): they hold text other bots wrote.
+ */
+export const LeadChatInputSchema = ConversationInputSchema.extend({
+  handoff: z
+    .object({
+      fromBot: BotNameSchema,
+      request: z.string().min(1).describe("The work request, as the consult-mode bot restated it"),
+    })
+    .strict()
+    .nullable(),
+});
+export type LeadChatInput = z.infer<typeof LeadChatInputSchema>;
+
 export const BOT_TASK_INPUT_SCHEMAS = {
   "research.scan": ResearchScanInputSchema,
   "research.single": ResearchSingleInputSchema,
@@ -182,9 +199,13 @@ export const BOT_TASK_PROMPT_INPUT_SCHEMAS = {
 /** Consult (UC-25) / discussion (UC-15) input as the bot sees it: strict, like the task prompt inputs. */
 export const ConversationPromptInputSchema = ConversationInputSchema.strict();
 
-/** Schema for the prompt input of `bot.kind`: consult/discussion use ConversationInput; null when none is defined (Lead chat). */
+/** lead.chat as Lead sees it (PM2 S2): strict. */
+export const LeadChatPromptInputSchema = LeadChatInputSchema.strict();
+
+/** Schema for the prompt input of `bot.kind`: consult/discussion use ConversationInput, Lead's chat LeadChatInput; null when none is defined. */
 export function promptInputSchemaFor(bot: string, kind: string): z.ZodTypeAny | null {
   if ((CONVERSATION_TASK_KINDS as readonly string[]).includes(kind)) return ConversationPromptInputSchema;
+  if (bot === "lead" && kind === "chat") return LeadChatPromptInputSchema;
   const key = `${bot}.${kind}`;
   return Object.prototype.hasOwnProperty.call(BOT_TASK_PROMPT_INPUT_SCHEMAS, key)
     ? BOT_TASK_PROMPT_INPUT_SCHEMAS[key as BotTaskKey]

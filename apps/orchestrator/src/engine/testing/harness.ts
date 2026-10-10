@@ -18,6 +18,7 @@ import {
 import { seedBots, T0 } from "../../db/test-helpers.js";
 import { EnginePaths, type EngineConfig } from "../config.js";
 import { Engine } from "../engine.js";
+import type { ConversationSink } from "../conversations.js";
 import type { MemoryWriter, OrphanKiller, RolePromptSource } from "../ports.js";
 import type { ActionStepOutput, HumanStepOutput } from "../state.js";
 import { FakeClock } from "./fake-clock.js";
@@ -53,6 +54,8 @@ export interface TestEngineOptions {
   prompts?: RolePromptSource;
   /** Rule 2 memory writer (default none); start-up seeds through it (PM2 S5). */
   memory?: MemoryWriter;
+  /** W3a's chat-flow port (PM2 S2). */
+  conversations?: ConversationSink;
 }
 
 export interface TestEngine {
@@ -142,6 +145,7 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
     ...(opts.processes ? { processes: opts.processes } : {}),
     ...(opts.prompts ? { prompts: opts.prompts } : {}),
     ...(opts.memory ? { memory: opts.memory } : {}),
+    ...(opts.conversations ? { conversations: opts.conversations } : {}),
   });
   const delivered: AppEvent[] = [];
   engine.subscribe((event) => delivered.push(event));

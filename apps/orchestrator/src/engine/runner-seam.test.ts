@@ -192,7 +192,8 @@ beforeAll(async () => {
   // The chat tasks W3a will queue: Lead's chat, a consult thread with every bot (UC-25), room replies (UC-15).
   const conversation = { roomId: "3", messageId: "9", text: "How should I present the AI lab work?", history: [{ author: "ba", text: "Hi" }], uploadIds: [] };
   const tasks: Array<{ bot: string; kind: string; engine: EngineName; input: unknown }> = [
-    { bot: "lead", kind: "chat", engine: "claude", input: { ...conversation, text: "Find frontend jobs in HCM" } },
+    // PM2 S2: Lead's chat takes the strict LeadChatInput (enqueueConversation checks it).
+    { bot: "lead", kind: "chat", engine: "claude", input: { ...conversation, text: "Find frontend jobs in HCM", handoff: null } },
     ...(["lead", "research", "cv", "qa", "apply"] as const).map((bot) => ({
       bot,
       kind: "consult",
@@ -257,10 +258,9 @@ describe("every task kind the engine produces runs through the real runners", ()
       const where = `${r.key} #${r.task.taskId}`;
       expect(findForbiddenPromptKeys(r.task.input), where).toEqual([]);
       const schema = promptInputSchemaFor(r.task.bot.name, r.task.kind) as z.AnyZodObject | null;
-      if (!schema) {
-        expect(r.key, "only Lead's chat has no prompt schema yet (W3a)").toBe("lead.chat");
-        continue;
-      }
+      // PM2 S2: Lead's chat has its schema too (LeadChatInput).
+      expect(schema, where).not.toBeNull();
+      if (!schema) continue;
       const parsed = schema.safeParse(r.task.input);
       expect(parsed.success, `${where}: ${JSON.stringify(parsed.error?.issues)}`).toBe(true);
       const unknown = Object.keys(r.task.input as object).filter((k) => !Object.hasOwn(schema.shape, k));

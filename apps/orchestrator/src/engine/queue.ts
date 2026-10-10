@@ -65,6 +65,7 @@ import type { EngineCore } from "./core.js";
 import { errorMessage } from "./errors.js";
 import { onCheckerDone, onProducerDone, type CvExport } from "./gate.js";
 import type { GuardBlock } from "./ports.js";
+import { isConversationTask, sinkContext, sinkFailed } from "./conversations.js";
 import { noticePause, noticeTaskFailed } from "./notices.js";
 import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, postLeadMessage, stillRunning } from "./task-events.js";
 import { hostOfUrl, pauseSite, siteBlocksOf, siteKey, type SiteBlock } from "./sites.js";
@@ -849,7 +850,9 @@ export class TaskQueue {
     }
     const failed = failTaskNow(core, tx, task, error, output);
     // §5.5 step 6: the task failed for good, so Lead reports it (S1); never for a retried attempt.
+    // A conversation's failure goes to W3a's sink instead (S2).
     noticeTaskFailed(core, tx, failed, error);
+    sinkFailed(core, tx, failed, error);
   }
 
   private onDone(tx: Conn, ctx: RunCtx | null, task: Task, output: unknown, exported: CvExport | undefined, recordFiles?: RecordFiles): void {
@@ -874,6 +877,11 @@ export class TaskQueue {
         onApplyDone(core, tx, task, output as ApplyOutput, recordFiles);
         return;
       default:
+        // PM2 S2: W3a posts the reply (and queues Lead's chat for a handoff) in this transaction.
+        if (isConversationTask(task) && core.deps.conversations) {
+          const result = (task.kind === "chat" ? { kind: "chat", output } : { kind: task.kind, output }) as Parameters<typeof core.deps.conversations.done>[1];
+          core.deps.conversations.done(sinkContext(core, tx, task), result);
+        }
         return;
     }
   }
@@ -887,6 +895,7 @@ export class TaskQueue {
       emitSafetyDenied(this.core, tx, { botName: task.botName, taskId: task.id, action: taskKey(task.botName, task.kind), reason, detail });
       if (reason === "protected_page_changed") postLeadMessage(this.core, tx, `I stopped a CV task: ${detail}.`, { runId: task.runId });
       else if (isRetryableTask(task.botName, task.kind)) noticeTaskFailed(this.core, tx, failed, `denied: ${detail}`);
+      sinkFailed(this.core, tx, failed, `denied: ${detail}`);
       if (!isRetryableTask(task.botName, task.kind)) applyStoppedBeforeSpawn(this.core, tx, task, "denied", detail);
     });
   }
@@ -911,6 +920,7 @@ export class TaskQueue {
         if (current?.status !== "running") return;
         const error = `engine error: ${errorMessage(err)}`;
         const failed = failTaskNow(core, tx, current, error);
+        sinkFailed(core, tx, failed, error);
         if (isRetryableTask(task.botName, task.kind)) noticeTaskFailed(core, tx, failed, error);
         else {
           // After the spawn it may have submitted; before it, nothing ran and the token is untouched.

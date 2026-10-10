@@ -51,11 +51,14 @@ export const ApproveRequestSchema = z.object({
   cvVersionId: IdSchema,
   /** Edited intro/cover text, or null to use the generated one (UC-08 b). */
   introText: z.string().nullable(),
+  /** §12 dry-run acceptance: fill and screenshot, never submit (PM2 S2). */
+  dryRun: z.boolean().optional(),
 });
 export type ApproveRequest = z.infer<typeof ApproveRequestSchema>;
 
 export const ApproveResponseSchema = z.object({
-  applicationId: IdSchema,
+  /** Null for an uploaded JD with no apply link: Approve only produced the CV PDF (§7.3b, PM2 S2). */
+  applicationId: IdSchema.nullable(),
   /** Null when there is nothing to submit (no apply link, §7.3b). */
   taskId: IdSchema.nullable(),
   approval: z.object({ expiresAt: IsoDateTimeSchema, allowedDomains: z.array(DomainSchema) }).nullable(),

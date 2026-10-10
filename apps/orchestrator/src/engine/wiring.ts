@@ -8,6 +8,7 @@ import { appendMemoryChange, type Db } from "../db/index.js";
 import { appendMemoryNotes, loadBots, readBotPromptFiles, seedMemoryFiles } from "../runner/index.js";
 import type { Runner } from "../runner/types.js";
 import { EnginePaths, type EngineConfig } from "./config.js";
+import type { ConversationSink } from "./conversations.js";
 import { Engine } from "./engine.js";
 import type {
   BotRegistry,
@@ -117,6 +118,8 @@ export interface ProductionEngineOptions {
   browser?: BrowserStatusProbe;
   config?: Partial<EngineConfig>;
   logger?: Logger;
+  /** PM2 S2: W3a's chat flows (replies, handoffs), called in the settle transaction. */
+  conversations?: ConversationSink;
 }
 
 export function createProductionEngine(opts: ProductionEngineOptions): Engine {
@@ -137,5 +140,6 @@ export function createProductionEngine(opts: ProductionEngineOptions): Engine {
     prompts: botPromptSource(opts.botsDir),
     ...(opts.config ? { config: opts.config } : {}),
     ...(opts.logger ? { logger: opts.logger } : {}),
+    ...(opts.conversations ? { conversations: opts.conversations } : {}),
   });
 }
