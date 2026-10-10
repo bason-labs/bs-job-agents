@@ -1,0 +1,99 @@
+// Search criteria form logic (UC-21b, spec §7.5). Pure: the screen and the tests share it.
+import {
+  CurrencySchema,
+  SALARY_POLICY_LABELS,
+  SalaryPolicySchema,
+  SearchProfileFieldsSchema,
+  SearchSourceSchema,
+  SenioritySchema,
+  WorkModeSchema,
+  type CriteriaUpdateRequest,
+  type SearchProfile,
+  type SearchProfileFieldsBase,
+} from "@bs-job-agents/shared";
+import { formatDate } from "@/components/schedules/datetime";
+
+/** The editable fields; the currency always has a value in the form. */
+export type CriteriaForm = Omit<SearchProfileFieldsBase, "currency"> & { currency: NonNullable<SearchProfileFieldsBase["currency"]> };
+
+export type ChipField = "roles" | "locations" | "includeKeywords" | "excludeKeywords" | "excludeCompanies" | "companyTypes";
+
+/** Chip cards, in the prototype's order and copy. */
+export const CHIP_FIELDS: readonly { key: ChipField; label: string }[] = [
+  { key: "roles", label: "Roles" },
+  { key: "locations", label: "Locations" },
+  { key: "includeKeywords", label: "Must include keywords" },
+  { key: "excludeKeywords", label: "Exclude keywords" },
+  { key: "excludeCompanies", label: "Excluded companies" },
+  { key: "companyTypes", label: "Preferred company types" },
+];
+
+const SOURCE_LABELS = { topcv: "TopCV", itviec: "ITviec", linkedin: "LinkedIn" } as const;
+const WORK_MODE_LABELS = { onsite: "Onsite", hybrid: "Hybrid", remote: "Remote" } as const;
+const SENIORITY_LABELS = { intern: "Intern", junior: "Junior", mid: "Mid", senior: "Senior", lead: "Lead" } as const;
+
+export const SOURCE_OPTIONS = SearchSourceSchema.options.map((value) => ({ value, label: SOURCE_LABELS[value] }));
+export const WORK_MODE_OPTIONS = WorkModeSchema.options.map((value) => ({ value, label: WORK_MODE_LABELS[value] }));
+export const SENIORITY_OPTIONS = SenioritySchema.options.map((value) => ({ value, label: SENIORITY_LABELS[value] }));
+export const CURRENCY_OPTIONS = CurrencySchema.options.map((value) => ({ value, label: value }));
+export const SALARY_POLICY_OPTIONS = SalaryPolicySchema.options.map((value) => ({ value, label: SALARY_POLICY_LABELS[value] }));
+
+export function profileToForm(p: SearchProfile): CriteriaForm {
+  const { id: _id, name: _name, version: _version, active: _active, updatedAt: _updatedAt, ...fields } = p;
+  return structuredClone({ ...fields, currency: fields.currency ?? "VND" });
+}
+
+export function formToRequest(form: CriteriaForm): CriteriaUpdateRequest {
+  return { ...structuredClone(form), salaryAmount: form.salaryAmount ? form.salaryAmount : null };
+}
+
+/** Adds a trimmed chip unless it is empty or already there (case-insensitive). */
+export function addChip(list: readonly string[], value: string): string[] {
+  const v = value.trim();
+  if (!v || list.some((x) => x.toLowerCase() === v.toLowerCase())) return [...list];
+  return [...list, v];
+}
+
+export function removeChip(list: readonly string[], index: number): string[] {
+  return list.filter((_, i) => i !== index);
+}
+
+/** Toggles `value` in `list`, keeping `order`. */
+export function toggleValue<T extends string>(list: readonly T[], value: T, order: readonly T[]): T[] {
+  const on = new Set(list);
+  if (on.has(value)) on.delete(value);
+  else on.add(value);
+  return order.filter((v) => on.has(v));
+}
+
+export type CriteriaErrors = Partial<Record<keyof CriteriaForm, string>>;
+
+const MESSAGES: Partial<Record<keyof CriteriaForm, string>> = {
+  roles: "Add at least one role",
+  locations: "Add at least one location",
+  sources: "Pick at least one source",
+  salaryAmount: "Enter the amount Apply should write",
+  currency: "Pick a currency (VND or USD)",
+  minSalary: "Minimum salary must be a whole number",
+};
+
+/** UC-21b (b) and §7.5 rules, through the shared schema; one message per field. */
+export function validateCriteria(form: CriteriaForm): CriteriaErrors {
+  const result = SearchProfileFieldsSchema.safeParse(formToRequest(form));
+  if (result.success) return {};
+  const errors: CriteriaErrors = {};
+  for (const issue of result.error.issues) {
+    const key = issue.path[0] as keyof CriteriaForm | undefined;
+    if (key && !errors[key]) errors[key] = MESSAGES[key] ?? issue.message;
+  }
+  return errors;
+}
+
+export function isDirty(form: CriteriaForm, saved: SearchProfile): boolean {
+  return JSON.stringify(formToRequest(form)) !== JSON.stringify(formToRequest(profileToForm(saved)));
+}
+
+/** "Active profile v3 · updated 2026-10-10" (prototype; "just now" right after saving). */
+export function profileHeader(p: Pick<SearchProfile, "version" | "updatedAt">, justSaved: boolean): string {
+  return `Active profile v${p.version} · updated ${justSaved ? "just now" : formatDate(p.updatedAt)}`;
+}
