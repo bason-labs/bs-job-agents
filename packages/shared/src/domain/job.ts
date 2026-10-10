@@ -31,7 +31,7 @@ export const SKIP_REASON_LABELS = {
   salary_low: "Salary too low",
   outsourcing: "Outsourcing company",
   location: "Location",
-  tech_mismatch: "Tech stack mismatch",
+  tech_mismatch: "Tech mismatch",
   company_culture: "Company culture",
   seniority: "Seniority",
   other: "Other",

@@ -28,7 +28,8 @@ import { ApprovalTokenSchema } from "./approval.js";
 import { MessageSchema, RoomSchema, parseMentions } from "./chat.js";
 import { EngineStateSchema } from "./engine-state.js";
 import { ExportSchema } from "./export.js";
-import { JobSchema, SKIP_REASONS, SkipDecisionSchema, isApplyBlockedByInjection } from "./job.js";
+import { JobSchema, SKIP_REASONS, SKIP_REASON_LABELS, SkipDecisionSchema, isApplyBlockedByInjection } from "./job.js";
+import { FIELD_SOURCE_LABELS } from "../bots/apply.js";
 import { MasterCvSchema } from "./master-cv.js";
 import {
   PauseReasonSchema,
@@ -41,6 +42,7 @@ import {
 import { normalizeAnswerKey } from "./saved-answer.js";
 import { ScheduleSchema, isValidCron } from "./schedule.js";
 import {
+  SALARY_POLICY_LABELS,
   SEARCH_PROFILE_DEFAULTS,
   SearchProfileFieldsSchema,
   SearchProfileOverridesSchema,
@@ -356,6 +358,33 @@ describe("other domain records", () => {
     const dup = clone(masterCvFixture);
     dup.facts.push(dup.facts[0]!);
     expect(MasterCvSchema.safeParse(dup).success).toBe(false);
+  });
+
+  it("UI labels use the approved prototype copy (stage0-prototype.html)", () => {
+    expect(SALARY_POLICY_LABELS).toEqual({
+      blank_if_optional: "Leave blank when optional",
+      negotiable: "Write “Negotiable / Thỏa thuận”",
+      fixed: "Use a fixed amount",
+      ask: "Ask me each time",
+    });
+    expect(SKIP_REASON_LABELS).toEqual({
+      salary_low: "Salary too low",
+      outsourcing: "Outsourcing company",
+      location: "Location",
+      tech_mismatch: "Tech mismatch",
+      company_culture: "Company culture",
+      seniority: "Seniority",
+      other: "Other",
+    });
+    expect(FIELD_SOURCE_LABELS).toEqual({
+      master_cv: "master CV",
+      saved_answer: "saved answer",
+      ba_answer: "your answer",
+      search_profile: "search criteria",
+      form_defaults: "form defaults",
+      generated: "generated",
+      skipped: "left blank — optional",
+    });
   });
 
   it("saved answer keys are normalised labels (UC-12)", () => {
