@@ -1,0 +1,32 @@
+# W1c design system and app shell report (Phase 1)
+
+- **Branch:** worktree-agent-ac28c237534369733, merged as d44d09a.
+- **Checks:** 68 web unit tests; e2e 35/35 (and 210/210 across 6 repeat runs); build OK.
+- **Components** (`apps/web/components/ui/`):
+  - Inputs: Button, IconButton, Input, Textarea, Field, NumberInput (`30,000,000`).
+  - Choosers: Select (own combobox on a Radix Popover portal; keyboard and type-ahead; scrolls the selected option into view), TimePicker (30-minute slots), Slider, Checkbox, Switch, Tabs.
+  - Status: Badge, StatusPill, StatusDot, TrustBadge, BotAvatar, ProgressBar, UsageMeter.
+  - Layers: Tooltip, Popover, Dialog, ConfirmDialog, DropdownMenu (portal), Toast with action (Undo).
+  - Other: Card, EmptyState, Skeleton, FileDropzone, FileViewer.
+  - FileViewer: PDF.js with page count and zoom, image, text, form preview, Download inside, optional Figma link.
+  - ThemeProvider/ThemeToggle (`bsja_theme`, no flash).
+- **Shell:**
+  - `app/(shell)/layout.tsx` with `components/shell/AppShell.tsx`: sidebar per the prototype, plus a "Manage" link to /bots.
+  - `components/shell/Page.tsx` applies the layout rule (narrow/wide pages centered, full for chat/flows/rooms).
+  - Mobile drawer; engine-paused banner.
+- **Routes** (placeholders): /chat, /chat/[bot], /flows, /flows/[runId], /review, /applications, /criteria, /schedules, /bots, /bots/[name], /cv, /rooms/[id], and /dev/components.
+- **Data seam:**
+  - `lib/api/index.ts` (WebApi, mock-backed for now), `lib/api/types.ts`.
+  - `lib/api/live.ts`: `applyShellEvent` reducer; `subscribeShellEvents` is a stub for Phase 3 SSE.
+- **Fixes:** in `globals.css`, the brand utilities became Tailwind `@utility` (variants were broken); added `--ok`/`--warn`/`--grid` tokens; the cursor rule moved into a base layer.
+- **Screenshots:** `apps/web/e2e/__screenshots__/{chat,dev-components}-{light,dark}.png`, regenerated only with `UPDATE_SCREENSHOTS=1`.
+- **Handoffs for W3:**
+  - Routes live under `app/(shell)/…`; titles come from `lib/routes.ts`.
+  - Wire `lib/api` to the orchestrator and map the types to shared.
+  - Make the `(shell)` layout dynamic once real data is in.
+  - Implement `subscribeShellEvents` with EventSource.
+  - FileViewer: `downloadUrl` = `/files/:id?download=1`.
+  - e2e: use `open()` from `e2e/helpers.ts`.
+- **Coordinator decisions on the open questions:**
+  - /chat/lead redirects to /chat.
+  - /dev/components stays available (local app) but is not linked from the app.

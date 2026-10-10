@@ -7,6 +7,7 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-10 | Phase 0 scaffold (W0) | ✅ merged on develop (c644b27..e8dc4bf), checks green |
 | 2026-10-10 | Phase 1 W1b db | ✅ merged (7b6cb0d); report in reports/phase1-w1b-db.md |
 | 2026-10-10 | Phase 1 W1a shared | ✅ merged (f122b9d); report in reports/phase1-w1a-shared.md |
-| 2026-10-10 | Phase 1 W1c design system (worktree) | 🔄 running |
+| 2026-10-10 | Phase 1 W1c design system | ✅ merged (d44d09a); report in reports/phase1-w1c-web.md; develop: 420 tests green |
+| 2026-10-10 | Phase 1 QA/QC agent (worktree) | 🔄 running |
 
-**Next action:** when W1a, W1b and W1c have all reported, merge their worktree branches into develop. Then run the Phase 1 QA/QC agent, then the PM agent, then fix the must-fix items, then start Phase 2.
+**Next action:** when the Phase 1 QA agent reports, merge its branch, then run the PM agent (worktree), merge it, fix its must-fix items, then start Phase 2 (W2a engine, W2b runner, W2c bridges).
