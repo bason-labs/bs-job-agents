@@ -46,7 +46,7 @@ Owner instruction (2026-10-10): no separate implementation plan. Build in phases
 | | W3b UI: chat, flows, review | `apps/web/app/(chat\|flows\|review)/**` and their components | §11, UC-01/07/08/09/10/16/22/25 |
 | | W3c UI: apps, criteria, schedules, bots, CV, rooms, viewer | the other `apps/web/app/**` routes | §11, UC-12/13/13b/15/19/20/21/21b/24 |
 | **4 Integration** | W4a Source adapters | `bots/research/skills/**`, `apps/orchestrator/src/adapters/**` | UC-03/04, §12 source adapters |
-| | W4b End-to-end | `e2e/**`, wiring fixes | §12 integration + UI e2e, dry-run acceptance |
+| | W4b End-to-end | `apps/web/e2e/**`, wiring fixes | §12 integration + UI e2e, dry-run acceptance |
 | | W4c Bot prompts + master CV | `bots/*/ROLE.md`, `data.example/master-cv.yaml` | §5.2, §6.1, §6.3 |
 
 **QA/QC agent (after each phase):**
