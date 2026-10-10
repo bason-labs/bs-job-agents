@@ -92,6 +92,15 @@ export interface MasterCvSource {
   version(): number | null;
 }
 
+/**
+ * bots/<name>/ROLE.md (§5.1, §9 prompt_versions): at start-up the engine stores each bot's text for
+ * its promptVersion and refuses to start when ROLE.md changed without a version bump (PM brief).
+ * Production: W2b's readBotPromptFiles. Optional (tests skip it).
+ */
+export interface RolePromptSource {
+  roleMd(botName: string): string;
+}
+
 /** bot.json definitions by name (§5.1). The DB row may override the engine and trust level (Bots screen). */
 export interface BotRegistry {
   get(name: string): BotDefinition | undefined;

@@ -104,6 +104,24 @@ describe("job-scan from trigger to record (§7.2)", () => {
     expect(t.events("run.finished")[0]).toMatchObject({ status: "done", summary: expect.stringMatching(/^No strong matches/) });
   });
 
+  it("a job Ba skipped stays out of later scans unless the run says “show skipped” (UC-04 b)", async () => {
+    const t = await createTestEngine({ sources: ["itviec"] });
+    const first = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await t.idle();
+    t.engine.skip(1, { reason: "salary_low", note: null });
+    await t.idle();
+    expect(getRun(t.db, first.id)?.status).toBe("done");
+
+    const again = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await t.idle();
+    expect(t.step(again.id, "dedupe")?.output).toMatchObject({ items: [], duplicates: 1 });
+
+    const shown = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null, showSkipped: true } }, { trigger: "chat" });
+    await t.idle();
+    expect(t.step(shown.id, "dedupe")?.output).toMatchObject({ items: [expect.objectContaining({ jobId: 1 })], duplicates: 0 });
+    expect(t.review(shown.id, 1)).toBeDefined();
+  });
+
   it("top-N keeps the best fits above the threshold (§7.2 step 5)", async () => {
     const t = await createTestEngine({ sources: ["topcv", "itviec"], profile: { maxJobs: 1, fitThreshold: 70 } });
     t.runner.script({

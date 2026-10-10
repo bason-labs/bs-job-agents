@@ -368,7 +368,9 @@ export class TaskQueue {
       readDirs = [prep.readDir];
       allowedSites = prep.allowedSites;
       authorize = prep.authorize;
-    } else if (bot.def.browser && !bot.def.browser.sitesFromApproval) {
+    } else if (task.usesBrowser && bot.def.browser && !bot.def.browser.sitesFromApproval) {
+      // Only a task that holds the browser lock drives Chrome (§10.3); the runner drops the
+      // Chrome tools of the others (RunnerTask.usesBrowser).
       allowedSites = bot.def.browser.allowedSites;
     }
     // §4.4: on Claude the allowlist is enforced by the site guard hook (Apply: the token's domains;
@@ -394,7 +396,11 @@ export class TaskQueue {
           input = { ...(input as Record<string, unknown>), templates: templatesFromFingerprint(figmaBefore) };
           core.db.transaction((tx) => updateTaskInput(tx, task.id, input));
         }
-        if (claude) hooks.push(await core.deps.guards.figmaGuard({ fingerprint: figmaBefore, dir: taskDir, logFile: guardLog!, draftsPageId: drafts.id }));
+        if (claude) {
+          // The guard's policy goes outside the bot's read folder (that holds master-cv.yaml only).
+          const guardDir = core.paths.abs(core.paths.guardDir(task.id));
+          hooks.push(await core.deps.guards.figmaGuard({ fingerprint: figmaBefore, dir: guardDir, logFile: guardLog!, draftsPageId: drafts.id }));
+        }
       } catch (err) {
         if (isFigmaUnavailable(err)) this.waitBridge(task, "needs_figma", { detail: `Figma went away: ${errorMessage(err)}` });
         else this.failBeforeSpawn(task, `Figma: ${errorMessage(err)}`);
@@ -419,7 +425,8 @@ export class TaskQueue {
         transcriptPath: core.paths.abs(core.paths.transcript(task.id, task.attempt)),
         ...(readDirs ? { readDirs } : {}),
         ...(allowedSites ? { allowedSites } : {}),
-        ...(hooks.length > 0 ? { hookSettings: mergeHookSettings(...hooks) as unknown as Record<string, unknown> } : {}),
+        usesBrowser: task.usesBrowser,
+        ...(hooks.length > 0 ? { hookSettings: mergeHookSettings(...hooks) } : {}),
         timeoutMs: bot.def.timeoutSec * 1000,
         signal: controller.signal,
       },

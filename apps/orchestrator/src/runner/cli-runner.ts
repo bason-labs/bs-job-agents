@@ -104,8 +104,13 @@ export abstract class CliRunner implements Runner {
   protected abstract initialInvocation(p: PreparedTask): Invocation;
   protected abstract repairInvocation(p: PreparedTask, sessionId: string, prompt: string): Invocation;
   protected abstract openSession(p: PreparedTask, phase: Phase, pid: number | null): EngineSession;
-  /** Delete the persisted CLI session (kept only for the repair prompt). Best effort. */
-  protected abstract removeSession(p: PreparedTask, sessionId: string): Promise<void>;
+  /** Delete the persisted CLI session (kept only for the repair prompt). Best effort. `cwd`: where a CLI call runs. */
+  protected abstract deleteSession(sessionId: string, cwd: string): Promise<void>;
+
+  /** UC-18: delete a session a crashed orchestrator left behind (Runner.removeSession). */
+  removeSession(sessionId: string): Promise<void> {
+    return this.deleteSession(sessionId, this.config.tmpRoot);
+  }
   /** Claude chooses the session id up front (--session-id); Codex learns it from thread.started. */
   protected abstract initialSessionId(): string | null;
 
@@ -149,7 +154,7 @@ export abstract class CliRunner implements Runner {
     await transcript.close();
     await rm(prepared.workDir, { recursive: true, force: true }).catch(() => undefined);
     if (this.config.cleanupSessions && prepared.sessionId) {
-      await this.removeSession(prepared, prepared.sessionId).catch(() => undefined);
+      await this.deleteSession(prepared.sessionId, prepared.task.cwd).catch(() => undefined);
     }
     return result;
   }
@@ -184,7 +189,9 @@ export abstract class CliRunner implements Runner {
     }
     const conversation = (CONVERSATION_TASK_KINDS as readonly string[]).includes(task.kind);
     const fullPlan = planTools(bot);
-    const plan = conversation ? conversationPlan(fullPlan) : fullPlan;
+    let plan = conversation ? conversationPlan(fullPlan) : fullPlan;
+    // §10.3: only a task that holds the browser lock may drive Ba's Chrome.
+    if (task.usesBrowser === false && plan.chrome) plan = { ...plan, chrome: null };
     const readDirs = checkReadDirs(task.readDirs ?? []);
     const allowedSites = plan.chrome ? checkSites(task) : [];
     const { roleMd, memoryMd } = readBotPromptFiles(task.cwd);

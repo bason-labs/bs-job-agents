@@ -9,14 +9,15 @@ import { MIGRATIONS_FOLDER, openDb, openTestDb } from "./client.js";
 import { SchemaGuardError } from "./errors.js";
 import { GUARDED_SCHEMA_OBJECTS } from "./schema-guard.js";
 
-let dir: string | undefined;
+// Every temp folder a test made (one test opens two migrated databases).
+const dirs: string[] = [];
 afterEach(() => {
-  if (dir) rmSync(dir, { recursive: true, force: true });
-  dir = undefined;
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
 function tempDir(): string {
-  dir = mkdtempSync(join(tmpdir(), "bsja-guard-"));
+  const dir = mkdtempSync(join(tmpdir(), "bsja-guard-"));
+  dirs.push(dir);
   return dir;
 }
 

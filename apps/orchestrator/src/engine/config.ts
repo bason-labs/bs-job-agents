@@ -91,4 +91,9 @@ export class EnginePaths {
   taskDir(taskId: number): string {
     return `tasks/${taskId}`;
   }
+
+  /** A task's guard files (the Figma guard's policy), outside every bot's read folder. */
+  guardDir(taskId: number): string {
+    return `guards/${taskId}`;
+  }
 }

@@ -2,7 +2,16 @@
 // S6 safety rules and the Zod-only output rules listed in prompts.
 import { describe, expect, it } from "vitest";
 import { botDefinitionFixtures, researchBotJson } from "../fixtures/bot-definitions.js";
-import { applyInputFixture, cvTailorInputFixture } from "../fixtures/task-inputs.js";
+import {
+  applyInputFixture,
+  cvTailorInputFixture,
+  qaReviewInputFixture,
+  researchCompanyInputFixture,
+  researchFileInputFixture,
+  researchFitInputFixture,
+  researchScanInputFixture,
+  researchSingleInputFixture,
+} from "../fixtures/task-inputs.js";
 import {
   BotDefinitionSchema,
   CONSULT_SELF_CHECK,
@@ -14,7 +23,8 @@ import {
   ApplyPromptInputSchema,
   BOT_TASK_INPUT_SCHEMAS,
   BOT_TASK_PROMPT_INPUT_SCHEMAS,
-  ConversationInputSchema,
+  ConversationPromptInputSchema,
+  CvTailorInputSchema,
   PROMPT_FORBIDDEN_KEYS,
   findForbiddenPromptKeys,
   promptInputSchemaFor,
@@ -23,6 +33,7 @@ import {
 import { BOT_OUTPUT_RULES, BOT_OUTPUT_SCHEMA_NAMES, COMMON_OUTPUT_RULES } from "./registry.js";
 
 const def = (name: string) => BotDefinitionSchema.parse(botDefinitionFixtures.find((d) => d.name === name));
+const CONVERSATION = { roomId: "room_1", messageId: "msg_1", text: "Why did QA fail NovaPay?", history: [], uploadIds: [] };
 
 describe("S5: the approval token never reaches a prompt", () => {
   it("splits apply.submit into the prompt input and the guard-only token", () => {
@@ -44,19 +55,49 @@ describe("S5: the approval token never reaches a prompt", () => {
     expect(BOT_TASK_INPUT_SCHEMAS["apply.submit"].safeParse(noToken).success).toBe(false);
   });
 
-  it("prompt input schemas match the task schemas except apply.submit", () => {
+  it("prompt input schemas are the task schemas (apply.submit without the token), strict", () => {
     expect(Object.keys(BOT_TASK_PROMPT_INPUT_SCHEMAS).sort()).toEqual(Object.keys(BOT_TASK_INPUT_SCHEMAS).sort());
     for (const key of Object.keys(BOT_TASK_INPUT_SCHEMAS) as Array<keyof typeof BOT_TASK_INPUT_SCHEMAS>) {
       if (key === "apply.submit") expect(BOT_TASK_PROMPT_INPUT_SCHEMAS[key]).toBe(ApplyPromptInputSchema);
-      else expect(BOT_TASK_PROMPT_INPUT_SCHEMAS[key]).toBe(BOT_TASK_INPUT_SCHEMAS[key]);
+      else expect(Object.keys(BOT_TASK_PROMPT_INPUT_SCHEMAS[key].shape).sort()).toEqual(Object.keys(BOT_TASK_INPUT_SCHEMAS[key].shape).sort());
     }
+  });
+
+  it("a key a prompt schema does not know is an error, never silently sent to a model (QA Phase 2)", () => {
+    const inputs = {
+      "research.scan": researchScanInputFixture,
+      "research.single": researchSingleInputFixture,
+      "research.file": researchFileInputFixture,
+      "research.fit": researchFitInputFixture,
+      "research.company": researchCompanyInputFixture,
+      "cv.tailor": cvTailorInputFixture,
+      "qa.review": qaReviewInputFixture,
+      "apply.submit": splitApplySubmitInput(applyInputFixture).prompt,
+    } as const;
+    for (const [key, input] of Object.entries(inputs) as Array<[keyof typeof inputs, object]>) {
+      const schema = BOT_TASK_PROMPT_INPUT_SCHEMAS[key];
+      expect(schema.safeParse(input).success, key).toBe(true);
+      expect(schema.safeParse({ ...input, notes: "stray" }).success, key).toBe(false);
+      // The engine-side task schemas keep stripping unknown keys.
+      if (key !== "apply.submit") expect(BOT_TASK_INPUT_SCHEMAS[key].safeParse({ ...input, notes: "stray" }).success, key).toBe(true);
+    }
+    expect(ConversationPromptInputSchema.safeParse({ ...CONVERSATION, extra: 1 }).success).toBe(false);
+    expect(ConversationPromptInputSchema.safeParse(CONVERSATION).success).toBe(true);
+  });
+
+  it("cv.tailor carries the CV templates the orchestrator lists from the protected pages (§6.2, optional)", () => {
+    const templates = [{ id: "459:1767", name: "BA HUYNH — Software Engineer Resume", pageId: "1:1", pageName: "resume", sectionName: "EN", width: 595, height: 842 }];
+    expect(CvTailorInputSchema.parse({ ...cvTailorInputFixture, templates }).templates).toEqual(templates);
+    expect(BOT_TASK_PROMPT_INPUT_SCHEMAS["cv.tailor"].parse({ ...cvTailorInputFixture, templates }).templates).toEqual(templates);
+    expect(CvTailorInputSchema.parse(cvTailorInputFixture)).not.toHaveProperty("templates");
+    expect(CvTailorInputSchema.safeParse({ ...cvTailorInputFixture, templates: [{ id: "" }] }).success).toBe(false);
   });
 
   it("promptInputSchemaFor picks the task schema, the conversation schema, or none", () => {
     expect(promptInputSchemaFor("apply", "submit")).toBe(ApplyPromptInputSchema);
-    expect(promptInputSchemaFor("cv", "tailor")).toBe(BOT_TASK_INPUT_SCHEMAS["cv.tailor"]);
-    expect(promptInputSchemaFor("qa", "consult")).toBe(ConversationInputSchema);
-    expect(promptInputSchemaFor("lead", "discussion")).toBe(ConversationInputSchema);
+    expect(promptInputSchemaFor("cv", "tailor")).toBe(BOT_TASK_PROMPT_INPUT_SCHEMAS["cv.tailor"]);
+    expect(promptInputSchemaFor("qa", "consult")).toBe(ConversationPromptInputSchema);
+    expect(promptInputSchemaFor("lead", "discussion")).toBe(ConversationPromptInputSchema);
     expect(promptInputSchemaFor("lead", "chat")).toBeNull();
   });
 
@@ -112,6 +153,13 @@ describe("S6: Phase 1 bot safety rules", () => {
     const scout = { ...researchBotJson, name: "scout", browser: { mode: "write" as const, allowedSites: ["topcv.vn"] } };
     expect(SafeBotDefinitionSchema.safeParse(scout).success).toBe(false);
     expect(SafeBotDefinitionSchema.safeParse({ ...scout, engine: "claude" }).success).toBe(true);
+  });
+
+  it("a bot with the Figma bridge must run on Claude, where the Drafts-only guard is a hook (§6.2, QA Phase 2)", () => {
+    const cv = botDefinitionFixtures.find((d) => d.name === "cv")!;
+    expect(checkBotSafety(BotDefinitionSchema.parse(cv))).toEqual([]);
+    expect(checkBotSafety(BotDefinitionSchema.parse({ ...cv, engine: "codex" })).join()).toMatch(/Figma bridge must run on Claude/);
+    expect(SafeBotDefinitionSchema.safeParse({ ...cv, engine: "codex" }).success).toBe(false);
   });
 
   it("Apply stays at trust level L1", () => {

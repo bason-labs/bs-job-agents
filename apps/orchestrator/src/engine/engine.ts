@@ -12,17 +12,21 @@ import {
 } from "@bs-job-agents/shared";
 import {
   createRun,
+  getPromptVersion,
   getRun,
   listActiveRuns,
   listEvents,
+  recordPromptVersion,
   recoverInterruptedTasks,
   resolveSearchProfile,
+  syncBotFromDefinition,
   type Conn,
   type Db,
   type EventRow,
   type Run,
   type Task,
 } from "../db/index.js";
+import { rolePromptHash } from "../runner/bots.js";
 import { answerQuestion, resumePausedTask, type AnswerInput } from "./apply.js";
 import { BridgeWatcher } from "./bridges.js";
 import { resolveEngineConfig, type EngineConfig, type EnginePaths } from "./config.js";
@@ -54,6 +58,8 @@ export interface StartReport {
   needsCheckApplications: number[];
   /** CLI process groups a crash left behind, by the pid their `started` event reported. */
   orphanPids: number[];
+  /** CLI sessions those attempts persisted (kept only for a repair prompt), removed through their runner. */
+  orphanSessions: string[];
 }
 
 export class Engine implements EngineCore {
@@ -144,8 +150,11 @@ export class Engine implements EngineCore {
   async start(): Promise<StartReport> {
     // Recovery marks every running task interrupted: never while this engine runs tasks itself.
     if (this.running) throw new EngineError("conflict", "the engine is already started");
+    this.syncBots();
     const r = recoverInterruptedTasks(this.db, { now: this.now(), maxAttempts: this.config.maxAttempts });
-    const orphanPids = this.killOrphans([...r.requeued, ...r.exhausted, ...r.needsCheck]);
+    const interrupted = [...r.requeued, ...r.exhausted, ...r.needsCheck];
+    const orphanPids = this.killOrphans(interrupted);
+    const orphanSessions = await this.removeOrphanSessions(interrupted);
     this.bus.flush();
     this.running = true;
     this.queue.resume();
@@ -160,7 +169,43 @@ export class Engine implements EngineCore {
       needsCheck: r.needsCheck.map((t) => t.id),
       needsCheckApplications: r.needsCheckApplicationIds,
       orphanPids,
+      orphanSessions,
     };
+  }
+
+  /**
+   * The bots table from bot.json (rows that reference a bot need it: the Lead room, memory_changes,
+   * prompt_versions), keeping Ba's Bots-screen changes; and §9 prompt_versions: each bot's ROLE.md
+   * for its promptVersion. A ROLE.md that changed without a version bump refuses the start (PM
+   * brief), so a prompt's history (sub-project C) never holds stale text.
+   */
+  private syncBots(): void {
+    const now = this.now();
+    this.db.transaction((tx) => {
+      for (const def of this.deps.bots.list()) {
+        syncBotFromDefinition(tx, {
+          name: def.name,
+          displayName: def.displayName,
+          engine: def.engine,
+          trustLevel: def.trustLevel,
+          model: def.model,
+          promptVersion: def.promptVersion,
+          enabled: def.enabled,
+        });
+        if (!this.deps.prompts) continue;
+        const text = this.deps.prompts.roleMd(def.name);
+        const hash = rolePromptHash(text);
+        const stored = getPromptVersion(tx, def.name, def.promptVersion);
+        if (stored && stored.roleMdHash !== hash) {
+          throw new EngineError(
+            "conflict",
+            `bots/${def.name}/ROLE.md changed but promptVersion is still ${def.promptVersion}: bump promptVersion in bots/${def.name}/bot.json`,
+            { reason: "prompt_version_stale", bot: def.name },
+          );
+        }
+        if (!stored) recordPromptVersion(tx, { botName: def.name, version: def.promptVersion, roleMdHash: hash, roleMdText: text }, { now });
+      }
+    });
   }
 
   /** Stop claiming and stop the timers. Running tasks are left to finish (or to recovery). */
@@ -196,6 +241,30 @@ export class Engine implements EngineCore {
       }
     }
     return pids;
+  }
+
+  /**
+   * UC-18: each interrupted attempt's CLI session (the runner persists it only for the repair
+   * prompt and deletes it after the task, which a crash skips; it holds the prompt and Ba's data).
+   * The last `runner.spawned` row of the task names the engine and the session. Best effort.
+   */
+  private async removeOrphanSessions(tasks: readonly Task[]): Promise<string[]> {
+    const removed: string[] = [];
+    for (const t of tasks) {
+      const payload = listEvents(this.db, { taskId: t.id, types: ["runner.spawned"] }).at(-1)?.payload as { engine?: unknown; sessionId?: unknown } | undefined;
+      const sessionId = payload?.sessionId;
+      if (typeof sessionId !== "string" || sessionId === "") continue;
+      const engine = payload?.engine === "claude" || payload?.engine === "codex" ? payload.engine : t.engine;
+      const runner = this.deps.runners[engine];
+      if (!runner?.removeSession) continue;
+      try {
+        await runner.removeSession(sessionId);
+        removed.push(sessionId);
+      } catch (err) {
+        this.log.warn(`could not remove the CLI session ${sessionId} of task ${t.id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return removed;
   }
 
   /** SSE (W3a): committed shared events in order, including the ones repositories append. */

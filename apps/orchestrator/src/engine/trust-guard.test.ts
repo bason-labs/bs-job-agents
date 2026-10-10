@@ -45,6 +45,10 @@ describe("checkTaskTrust: who may act (§5.3, rule 6)", () => {
     expect(checkTaskTrust(bot("apply", 1, { engine: "codex" }), "submit")).toMatchObject({ ok: false, reason: "trust_level" });
   });
 
+  it("refuses CV switched to Codex: figma_execute would run without the Drafts-only guard hook (§6.2)", () => {
+    expect(checkTaskTrust(bot("cv", 2, { engine: "codex" }), "tailor")).toMatchObject({ ok: false, reason: "trust_level", detail: expect.stringMatching(/Figma bridge must run on Claude/) });
+  });
+
   it("consult and discussion tasks never need a token: they run read-only (UC-15, UC-25)", () => {
     expect(checkTaskTrust(bot("apply", 1), "consult")).toEqual({ ok: true, needsApproval: false });
     expect(checkTaskTrust(bot("qa", 2), "discussion")).toEqual({ ok: true, needsApproval: false });

@@ -16,7 +16,6 @@ export {
   ORCHESTRATOR_MCP_SERVER,
   defaultBotsDir,
   resolveRunnerConfig,
-  type HookCommandConfig,
   type McpServerConfig,
   type RunnerConfig,
 } from "./config.js";

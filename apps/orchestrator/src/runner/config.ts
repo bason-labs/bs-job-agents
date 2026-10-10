@@ -1,10 +1,14 @@
-// Runner configuration: where the CLIs are, the MCP servers bots can name, the guard hooks.
+// Runner configuration: where the CLIs are and the MCP servers bots can name.
 // Nothing machine-specific is hardcoded in bot.json; it all comes from here (env-overridable).
+// Guard hooks are not runner config: the engine builds them per task with the bridges' builders
+// and passes RunnerTask.hookSettings (coordinator decision).
 import { existsSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LIMITS } from "@bs-job-agents/shared";
+import { FIGMA_CONSOLE_MCP_VERSION } from "../bridges/figma/constants.js";
+import { resolveFigmaConsoleMcp } from "../bridges/figma/mcp.js";
 
 export interface McpStdioServerConfig {
   command: string;
@@ -22,12 +26,6 @@ export interface McpHttpServerConfig {
 
 export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig;
 
-/** A PreToolUse hook command (built by W2c in src/bridges); the runner only references it. */
-export interface HookCommandConfig {
-  command: string;
-  args?: string[];
-}
-
 export interface RunnerConfig {
   /** Claude Code CLI (spec §1.4: ~/.local/bin/claude). Env: CLAUDE_BIN. */
   claudeBin: string;
@@ -35,12 +33,6 @@ export interface RunnerConfig {
   codexBin: string;
   /** MCP servers by the name bot.json uses in mcpServers. */
   mcpServers: Record<string, McpServerConfig>;
-  hooks: {
-    /** Site allowlist for Claude browser bots (§4.4); called with `--sites a,b`. Required for Claude browser bots. */
-    siteGuard?: HookCommandConfig;
-    /** Drafts-only guard for figma_execute (§6.2). Required for bots with the figma server on Claude. */
-    figmaGuard?: HookCommandConfig;
-  };
   /** Claude's config dir; persisted bot sessions are deleted from <dir>/projects after each task. Env: CLAUDE_CONFIG_DIR. */
   claudeConfigDir: string;
   /** Codex user config, read only to list the plugins a browser bot must disable (§4.4). Env: CODEX_HOME. */
@@ -62,9 +54,22 @@ export interface RunnerConfig {
 export const FIGMA_MCP_SERVER = "figma";
 export const ORCHESTRATOR_MCP_SERVER = "orchestrator";
 
-/** figma-console-mcp, pinned (spec §6.2, spike S3b). The orchestrator MCP server is added by W3a. */
+/**
+ * figma-console-mcp, pinned (spec §6.2, spike S3b): the copy the orchestrator installs (the same
+ * one its own FigmaBridge runs), started by this node binary. No npx: no PATH lookup (a launchd
+ * service has a minimal PATH) and no download when a CV task starts. npx only if it is missing.
+ */
+function figmaConsoleMcpServer(): McpStdioServerConfig {
+  try {
+    return { command: process.execPath, args: [resolveFigmaConsoleMcp().serverPath] };
+  } catch {
+    return { command: "npx", args: ["-y", `figma-console-mcp@${FIGMA_CONSOLE_MCP_VERSION}`] };
+  }
+}
+
+/** The orchestrator MCP server is added by W3a. */
 export const DEFAULT_MCP_SERVERS: Record<string, McpServerConfig> = {
-  [FIGMA_MCP_SERVER]: { command: "npx", args: ["-y", "figma-console-mcp@1.40.9"] },
+  [FIGMA_MCP_SERVER]: figmaConsoleMcpServer(),
 };
 
 export const DEFAULT_CODEX_BIN = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex";
@@ -85,7 +90,6 @@ export function resolveRunnerConfig(over: Partial<RunnerConfig> = {}, env: NodeJ
     env,
     ...over,
     mcpServers: { ...DEFAULT_MCP_SERVERS, ...over.mcpServers },
-    hooks: { ...over.hooks },
   };
 }
 
@@ -100,15 +104,6 @@ export function listCodexPlugins(configToml: string): string[] {
 export function codexPluginsToDisable(config: Pick<RunnerConfig, "codexUserConfigPath" | "codexChromePlugin">): string[] {
   if (!existsSync(config.codexUserConfigPath)) return [];
   return listCodexPlugins(readFileSync(config.codexUserConfigPath, "utf8")).filter((id) => id !== config.codexChromePlugin);
-}
-
-/** POSIX shell quoting for hook command lines. */
-export function shellQuote(arg: string): string {
-  return /^[A-Za-z0-9_./:=,@+-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
-}
-
-export function hookCommandLine(hook: HookCommandConfig, extra: readonly string[] = []): string {
-  return [hook.command, ...(hook.args ?? []), ...extra].map(shellQuote).join(" ");
 }
 
 /** The repo's bots/ folder: walk up from this file to the folder that holds pnpm-workspace.yaml. */

@@ -26,7 +26,7 @@ export class ClaudeRunner extends CliRunner {
       sessionId: p.sessionId ?? this.uuid(),
       workDir: p.workDir,
       readDirs: p.readDirs,
-      allowedSites: p.allowedSites,
+      hookSettings: p.task.hookSettings,
       config: this.config,
     });
   }
@@ -62,7 +62,7 @@ export class ClaudeRunner extends CliRunner {
     };
   }
 
-  protected removeSession(_p: PreparedTask, sessionId: string): Promise<void> {
+  protected deleteSession(sessionId: string): Promise<void> {
     return removeClaudeSession(this.config.claudeConfigDir, sessionId);
   }
 }

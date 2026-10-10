@@ -17,6 +17,7 @@ import type {
   MemoryWriter,
   OrphanKiller,
   PdfTextExtractor,
+  RolePromptSource,
   WorkflowSource,
 } from "./ports.js";
 
@@ -40,6 +41,8 @@ export interface EngineDeps {
   memory?: MemoryWriter;
   /** UC-18: kill CLI process groups a crash left behind. Optional. */
   processes?: OrphanKiller;
+  /** ROLE.md per bot, for prompt_versions at start-up. Optional. */
+  prompts?: RolePromptSource;
   logger?: Logger;
 }
 

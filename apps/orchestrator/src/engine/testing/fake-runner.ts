@@ -9,6 +9,7 @@
 import { basename } from "node:path";
 import {
   CONVERSATION_TASK_KINDS,
+  resolveSelfCheckItems,
   type ApplyOutput,
   type CvOutput,
   type Engine,
@@ -163,8 +164,18 @@ function candidate(base: JobCandidate, over: Partial<JobCandidate>): JobCandidat
   return { ...base, ...over };
 }
 
-/** A valid output for every Phase 1 task key, shaped by the task input. */
+/**
+ * A valid output for every Phase 1 task key, shaped by the task input. Its selfCheck lists every
+ * item of the task's bot and kind (resolveSelfCheckItems), as the real runner requires (rule 4).
+ */
 export function defaultFakeResult(task: RunnerTask): RunnerResult {
+  const result = baseFakeResult(task);
+  if (result.status !== "ok" || typeof result.output !== "object" || result.output === null) return result;
+  const selfCheck = resolveSelfCheckItems(task.bot, task.kind).map((item) => pass(item));
+  return { ...result, output: { ...(result.output as Record<string, unknown>), selfCheck } };
+}
+
+function baseFakeResult(task: RunnerTask): RunnerResult {
   const key = `${task.bot.name}.${task.kind}`;
   const input = (task.input ?? {}) as Record<string, unknown>;
   const novapay = researchScanFixture.jobs[0]!;
@@ -234,6 +245,13 @@ export class FakeRunner implements Runner {
   script(...entries: FakeScript[]): this {
     for (const e of entries) this.scripts.push({ ...e, used: 0 });
     return this;
+  }
+
+  /** Sessions the engine asked to remove (UC-18 orphan cleanup), in order. */
+  readonly removedSessions: string[] = [];
+
+  async removeSession(sessionId: string): Promise<void> {
+    this.removedSessions.push(sessionId);
   }
 
   /** Calls of one task key, e.g. "apply.submit". */

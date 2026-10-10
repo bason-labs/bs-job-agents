@@ -36,7 +36,9 @@ export function dedupeFilter(conn: Conn, ctx: RunCtx, from: JoinStepOutput, opti
     return { items, alreadyApplied };
   }
   const candidates = from.results.flatMap((r) => (r.output as Partial<ResearchScanOutput> | null)?.jobs ?? []) as JobCandidate[];
-  const r = dedupeCandidates(conn, candidates, { now, excludeRunId: ctx.run.id });
+  // UC-04 b: a job Ba skipped stays excluded unless the run says "show skipped".
+  const includeSkipped = ctx.params.showSkipped === true;
+  const r = dedupeCandidates(conn, candidates, { now, excludeRunId: ctx.run.id, includeSkipped });
   return { items: r.fresh.map((job) => jobRef(conn, job)), candidates: candidates.length, duplicates: r.duplicates.length };
 }
 

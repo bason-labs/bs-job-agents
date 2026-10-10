@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { FigmaBridge, browserReadyFor, buildSiteGuardSettings, checkBrowserBridge, extractText, prepareFigmaGuard } from "../bridges/index.js";
 import { appendMemoryChange, type Db } from "../db/index.js";
-import { appendMemoryNotes, loadBots } from "../runner/index.js";
+import { appendMemoryNotes, loadBots, readBotPromptFiles } from "../runner/index.js";
 import type { Runner } from "../runner/types.js";
 import { EnginePaths, type EngineConfig } from "./config.js";
 import { Engine } from "./engine.js";
@@ -19,6 +19,7 @@ import type {
   MemoryWriter,
   OrphanKiller,
   PdfTextExtractor,
+  RolePromptSource,
   WorkflowSource,
 } from "./ports.js";
 import { nodeFileStore } from "./system.js";
@@ -50,6 +51,11 @@ export function fileMasterCv(path: string): MasterCvSource {
       return m ? Number(m[1]) : 1;
     },
   };
+}
+
+/** bots/<name>/ROLE.md through W2b's reader: prompt_versions at start-up (PM brief). */
+export function botPromptSource(botsDir: string): RolePromptSource {
+  return { roleMd: (botName) => readBotPromptFiles(join(botsDir, botName)).roleMd };
 }
 
 /** bots/<name>/bot.json through W2b's loader (schema, safety rules, tool vocabulary). */
@@ -104,6 +110,8 @@ export interface ProductionEngineOptions {
   workflows: WorkflowSource;
   /** Default: W2c's FigmaBridge on the CV file (it satisfies FigmaPort as is). */
   figma?: FigmaPort;
+  /** Default: chromeBrowserProbe (Chrome running with the engine's extension). */
+  browser?: BrowserStatusProbe;
   config?: Partial<EngineConfig>;
   logger?: Logger;
 }
@@ -116,13 +124,14 @@ export function createProductionEngine(opts: ProductionEngineOptions): Engine {
     workflows: opts.workflows,
     paths: new EnginePaths(opts.dataDir, opts.botsDir),
     files: nodeFileStore,
-    browser: chromeBrowserProbe,
+    browser: opts.browser ?? chromeBrowserProbe,
     figma: opts.figma ?? new FigmaBridge(),
     guards: bridgeGuardHooks,
     pdf: pdfTextExtractor,
     masterCv: fileMasterCv(join(opts.dataDir, "master-cv.yaml")),
     memory: memoryWriter(opts.db, opts.botsDir),
     processes: cliOrphanKiller,
+    prompts: botPromptSource(opts.botsDir),
     ...(opts.config ? { config: opts.config } : {}),
     ...(opts.logger ? { logger: opts.logger } : {}),
   });

@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "@bs-job-agents/shared": "workspace:*",
-    "@modelcontextprotocol/sdk": "1.26.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "acorn": "^8.19.0",
     "acorn-walk": "^8.3.5",
     "better-sqlite3": "~12.11.1",

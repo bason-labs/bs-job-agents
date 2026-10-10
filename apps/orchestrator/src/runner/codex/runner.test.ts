@@ -59,6 +59,14 @@ describe("CodexRunner: a successful run", () => {
     expect(kit.workDirsLeft()).toEqual([]);
   });
 
+  it("removeSession: `codex delete --force <thread>` for a thread a crash left behind (UC-18)", async () => {
+    const { r, calls } = runner([]);
+    await r.removeSession("01a126da-c068-79b0-93c3-7cf34d4305ec");
+    expect(calls.map((c) => c.args)).toEqual([["delete", "--force", "01a126da-c068-79b0-93c3-7cf34d4305ec"]]);
+    await r.removeSession("not-a-thread; rm -rf /");
+    expect(calls).toHaveLength(1);
+  });
+
   it("writes the strict schema into the work dir for --output-schema", async () => {
     let schemaSeen: unknown = null;
     const fake = fakeSpawn((_c, args) => {
@@ -91,6 +99,18 @@ describe("CodexRunner: a successful run", () => {
     expect(args).toContain('web_search="live"');
     // The prompt names the allowed sites (Codex has no hook: prompt-only, §4.4).
     expect(args.at(-1)).toContain("topcv.vn, itviec.com, linkedin.com");
+  });
+
+  it("a Research task that does not hold the browser lock gets no Chrome (§10.3): fit, company and file are search-only", async () => {
+    const { def, cwd } = kit.realBot("research");
+    const { r, work } = runner([play(codexLines("structuredOk"))], ["browser@openai-bundled"]);
+    await r.run(kit.task(def, cwd, { kind: "company", input: { name: "NovaPay", website: null }, usesBrowser: false }), () => {});
+    const args = work()[0]!.args;
+    // The clean non-browser setup: no user config (no Chrome plugin), no ChatGPT apps; web search stays.
+    expect(args.slice(0, 6)).toEqual(["exec", "--json", "--skip-git-repo-check", "--ignore-user-config", "--disable", "apps"]);
+    expect(args).not.toContain("skip_host_skill_discovery");
+    expect(args).toContain('web_search="live"');
+    expect(args.at(-1)).not.toContain("# Boundaries\n\n- Browser");
   });
 });
 

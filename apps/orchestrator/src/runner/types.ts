@@ -1,6 +1,7 @@
 // Runner contract (spec §5.5). Shared by the engine (W2a: calls runners, owns FakeRunner)
 // and the runner (W2b: ClaudeRunner, CodexRunner). Changing this file needs the coordinator.
 import type { BotDefinition, Engine, EngineUsage } from "@bs-job-agents/shared";
+import type { ClaudeHookSettings } from "../bridges/hooks/settings.js";
 
 /** Everything one attempt of one task needs. Built by the engine; the runner never reads the DB. */
 export interface RunnerTask {
@@ -26,10 +27,20 @@ export interface RunnerTask {
   /** Sites the browser may navigate to for this task (bot allowlist, or the approval's domains for Apply). */
   allowedSites?: string[];
   /**
-   * Additive (W2a, coordinator decision): Claude --settings hook config built by the engine from
-   * the bridges' builders; merged by the runner into its base settings.
+   * Additive (QA Phase 2): whether this task holds the browser lock (§10.3, the task row's
+   * uses_browser). false = the runner gives it no Chrome tools even when its bot has them (e.g.
+   * research.fit / research.company are search-only), so a task outside the lock never drives Ba's
+   * Chrome. undefined = the bot's tools.
    */
-  hookSettings?: Record<string, unknown>;
+  usesBrowser?: boolean;
+  /**
+   * Additive (W2a, coordinator decision): the Claude `--settings` PreToolUse hooks for this task,
+   * built by the engine with the bridges' builders (site guard: the task's sites; Figma guard: the
+   * task's protected pages). The runner merges them into its base settings and refuses to spawn a
+   * Claude task with Chrome tools whose hooks do not guard `navigate`, or with the Figma bridge
+   * whose hooks do not guard `figma_execute`. Codex has no hooks and ignores them.
+   */
+  hookSettings?: ClaudeHookSettings;
   timeoutMs: number;
   signal?: AbortSignal;
 }
@@ -72,4 +83,10 @@ export type RunnerResult =
 export interface Runner {
   readonly engine: Engine | "fake";
   run(task: RunnerTask, onEvent: (event: RunnerEvent) => void): Promise<RunnerResult>;
+  /**
+   * Additive (QA Phase 2, UC-18): delete a CLI session a crashed orchestrator left behind (the
+   * runner persists each session only for the repair prompt and deletes it after the task; a crash
+   * skips that). The id is the one the `started` event reported. Best effort; ignores non-ids.
+   */
+  removeSession?(sessionId: string): Promise<void>;
 }
