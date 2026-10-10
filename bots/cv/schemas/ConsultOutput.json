@@ -1,0 +1,75 @@
+{
+  "title": "ConsultOutput",
+  "type": "object",
+  "properties": {
+    "reply": {
+      "type": "string"
+    },
+    "handoffToLead": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "request": {
+              "type": "string",
+              "description": "The work request, restated for Lead"
+            }
+          },
+          "required": [
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Set when the message asks for work (find/apply/tailor/update…)"
+    },
+    "selfCheck": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "The checklist item, copied from bot.json selfCheck"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it passed or failed; null when nothing to add"
+          }
+        },
+        "required": [
+          "item",
+          "passed",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "One entry per selfCheck item in bot.json. Any failed item fails the attempt."
+    },
+    "memoryNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "description": "Up to 3 short lessons for this bot's memory, e.g. 'TopCV upload limit is 5MB'. Empty if none."
+    }
+  },
+  "required": [
+    "reply",
+    "handoffToLead",
+    "selfCheck",
+    "memoryNotes"
+  ],
+  "additionalProperties": false
+}

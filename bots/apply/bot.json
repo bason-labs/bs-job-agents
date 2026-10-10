@@ -1,0 +1,20 @@
+{
+  "name": "apply",
+  "displayName": "Apply",
+  "role": "Fills in and submits application forms in Ba's Chrome, only after Ba's approval.",
+  "engine": "claude",
+  "model": null,
+  "trustLevel": 1,
+  "allowedTools": ["chrome:write", "read"],
+  "browser": { "mode": "write", "allowedSites": [], "sitesFromApproval": true },
+  "mcpServers": [],
+  "timeoutSec": 600,
+  "outputSchema": "ApplyOutput",
+  "selfCheck": [
+    "The correct PDF filename is attached and visible, and its SHA-256 matches the approved CV version",
+    "All required fields are filled",
+    "The company and job title on the page match the approved job",
+    "A pre-submit screenshot of the filled form has been captured"
+  ],
+  "promptVersion": 1
+}

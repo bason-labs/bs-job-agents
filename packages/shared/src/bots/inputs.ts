@@ -12,6 +12,7 @@ import {
 } from "../common/primitives.js";
 import { SalaryPolicySchema, SearchProfileFieldsBaseSchema } from "../domain/search-profile.js";
 import { CvDraftSchema } from "./cv.js";
+import { CONVERSATION_TASK_KINDS } from "./definition.js";
 import { QaFixSchema } from "./qa.js";
 import { CompanyProfileSchema, JobCandidateSchema } from "./research.js";
 
@@ -122,6 +123,55 @@ export const BOT_TASK_INPUT_SCHEMAS = {
   "apply.submit": ApplySubmitInputSchema,
 } as const;
 export type BotTaskKey = keyof typeof BOT_TASK_INPUT_SCHEMAS;
+
+// ---------------------------------------------------------------- prompt inputs (PM S5)
+
+/**
+ * Keys that never reach a model, at any depth (PM S5). The approval token is a capability:
+ * the trust guard checks it before spawning; the bot never needs it.
+ */
+export const PROMPT_FORBIDDEN_KEYS = ["approvalToken"] as const;
+
+/** apply.submit as the bot sees it: everything except the approval token. Strict, so a stray token is an error. */
+export const ApplyPromptInputSchema = ApplySubmitInputSchema.omit({ approvalToken: true }).strict();
+export type ApplyPromptInput = z.infer<typeof ApplyPromptInputSchema>;
+
+/** Split an apply.submit input into the prompt part and the guard-only token (PM S5). */
+export function splitApplySubmitInput(input: ApplySubmitInput): { prompt: ApplyPromptInput; approvalToken: string } {
+  const { approvalToken, ...prompt } = input;
+  return { prompt, approvalToken };
+}
+
+/**
+ * Task inputs as the runner puts them in the prompt (§5.5 step 1): `BOT_TASK_INPUT_SCHEMAS`
+ * without guard-only fields. The engine validates the full input, then hands the runner this part.
+ */
+export const BOT_TASK_PROMPT_INPUT_SCHEMAS = {
+  ...BOT_TASK_INPUT_SCHEMAS,
+  "apply.submit": ApplyPromptInputSchema,
+} as const satisfies Record<BotTaskKey, z.ZodTypeAny>;
+
+/** Schema for the prompt input of `bot.kind`: consult/discussion use ConversationInput; null when none is defined (Lead chat). */
+export function promptInputSchemaFor(bot: string, kind: string): z.ZodTypeAny | null {
+  if ((CONVERSATION_TASK_KINDS as readonly string[]).includes(kind)) return ConversationInputSchema;
+  const key = `${bot}.${kind}`;
+  return Object.prototype.hasOwnProperty.call(BOT_TASK_PROMPT_INPUT_SCHEMAS, key)
+    ? BOT_TASK_PROMPT_INPUT_SCHEMAS[key as BotTaskKey]
+    : null;
+}
+
+/** JSONPath-like locations of `PROMPT_FORBIDDEN_KEYS` anywhere in `value` (empty = safe to put in a prompt). */
+export function findForbiddenPromptKeys(value: unknown, path = "$"): string[] {
+  if (Array.isArray(value)) return value.flatMap((v, i) => findForbiddenPromptKeys(v, `${path}[${i}]`));
+  if (typeof value !== "object" || value === null) return [];
+  const found: string[] = [];
+  const nested: string[] = [];
+  for (const [k, v] of Object.entries(value)) {
+    if ((PROMPT_FORBIDDEN_KEYS as readonly string[]).includes(k)) found.push(`${path}.${k}`);
+    nested.push(...findForbiddenPromptKeys(v, `${path}.${k}`));
+  }
+  return [...nested, ...found];
+}
 
 export type ResearchScanInput = z.infer<typeof ResearchScanInputSchema>;
 export type ResearchSingleInput = z.infer<typeof ResearchSingleInputSchema>;

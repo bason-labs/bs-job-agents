@@ -1,0 +1,52 @@
+{
+  "name": "research",
+  "displayName": "Research",
+  "role": "Find jobs that fit Ba and profile the companies behind them.",
+  "engine": "codex",
+  "model": null,
+  "trustLevel": 2,
+  "allowedTools": ["read", "web_search", "chrome:read", "skill:source-*"],
+  "browser": { "mode": "read", "allowedSites": ["topcv.vn", "itviec.com", "linkedin.com"] },
+  "mcpServers": [],
+  "timeoutSec": 600,
+  "outputSchema": {
+    "scan": "ResearchScanOutput",
+    "single": "ResearchScanOutput",
+    "file": "ResearchScanOutput",
+    "fit": "ResearchFitOutput",
+    "company": "ResearchCompanyOutput"
+  },
+  "selfCheck": [
+    "Every job has a reachable URL",
+    "Every job has full JD text (not a snippet)",
+    "No job is a duplicate of another in this output"
+  ],
+  "selfCheckByKind": {
+    "scan": [
+      "Every job has a reachable URL",
+      "Every job has full JD text (not a snippet)",
+      "Every job's language is detected",
+      "No job is a duplicate of another in this output"
+    ],
+    "single": [
+      "The job has a reachable URL",
+      "The job has full JD text (not a snippet)",
+      "The job's language is detected"
+    ],
+    "file": [
+      "The job has a reachable URL, or url is null because no posting was found",
+      "The job has full JD text (not a snippet)",
+      "The job's language is detected"
+    ],
+    "fit": [
+      "Every reason cites master data",
+      "Every gap names a JD requirement",
+      "The score follows from the reasons and gaps"
+    ],
+    "company": [
+      "At least 2 independent sources are cited, or the profile is marked low_confidence",
+      "Every claim comes from a cited source"
+    ]
+  },
+  "promptVersion": 1
+}

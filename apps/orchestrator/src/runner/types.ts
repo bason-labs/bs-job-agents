@@ -10,7 +10,12 @@ export interface RunnerTask {
   bot: BotDefinition;
   /** Task kind, e.g. "scan", "tailor", "review", "submit", "consult" (BOT_TASK_KINDS / CONVERSATION_TASK_KINDS). */
   kind: string;
-  /** Task input, already validated against BOT_TASK_INPUT_SCHEMAS. Never contains the approval token (PM S5). */
+  /**
+   * Task input as the bot may see it: valid against `promptInputSchemaFor(bot, kind)`
+   * (BOT_TASK_PROMPT_INPUT_SCHEMAS). Never contains the approval token (PM S5): for apply.submit
+   * the engine validates the full input with BOT_TASK_INPUT_SCHEMAS, then passes
+   * `splitApplySubmitInput(full).prompt`. The runner refuses an input with a forbidden key.
+   */
   input: unknown;
   /** Absolute path of bots/<name>/; the CLI runs with this cwd. */
   cwd: string;
@@ -34,6 +39,13 @@ export type RunnerEvent =
 export interface PermissionDenial {
   tool: string;
   input: unknown;
+  /**
+   * Additive (W2b): "hook" = blocked by a PreToolUse hook (the site guard or the Figma guard:
+   * log a safety event); "permission" = a tool outside the bot's allowed tools.
+   */
+  source?: "permission" | "hook";
+  /** Additive (W2b): the CLI's message for the denial, e.g. the hook's reason. */
+  reason?: string | null;
 }
 
 export type RunnerResult =

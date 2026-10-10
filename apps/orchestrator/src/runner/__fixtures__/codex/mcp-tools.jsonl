@@ -1,0 +1,8 @@
+{"type":"thread.started","thread_id":"01a126db-893a-7311-9432-5a1a548d53c8"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"mcp_tool_call","server":"echo","tool":"echo","arguments":{"text":"hi"},"result":null,"error":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","type":"mcp_tool_call","server":"echo","tool":"echo","arguments":{"text":"hi"},"result":{"content":[{"type":"text","text":"echo: hi"}],"structured_content":null},"error":null,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_1","type":"mcp_tool_call","server":"echo","tool":"wipe","arguments":{"path":"/tmp/x"},"result":null,"error":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"mcp_tool_call","server":"echo","tool":"wipe","arguments":{"path":"/tmp/x"},"result":{"content":[{"type":"text","text":"wiped /tmp/x"}],"structured_content":null},"error":null,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"{\"reply\":\"Step 1: OK\\nStep 2: OK\",\"handoffToLead\":null,\"selfCheck\":[{\"item\":\"Tried every step once\",\"passed\":true,\"note\":null}],\"memoryNotes\":[]}"}}
+{"type":"turn.completed","usage":{"input_tokens":58919,"cached_input_tokens":55552,"cache_write_input_tokens":0,"output_tokens":146,"reasoning_output_tokens":0}}

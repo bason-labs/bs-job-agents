@@ -1,0 +1,9 @@
+{"type":"thread.started","thread_id":"01a126e3-c508-73e3-9a86-a7bfc8849825"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I’ll read `facts.txt`, then call the echo tool once with its fact ID."}}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'cat ./facts.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'cat ./facts.txt'","aggregated_output":"fact grad-1: owned a React/Node.js app used by ~300 employees\n","exit_code":0,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_2","type":"mcp_tool_call","server":"echo","tool":"echo","arguments":{"text":"grad-1"},"result":null,"error":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_2","type":"mcp_tool_call","server":"echo","tool":"echo","arguments":{"text":"grad-1"},"result":{"content":[{"type":"text","text":"echo: grad-1"}],"structured_content":null},"error":null,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"{\"reply\":\"\",\"handoffToLead\":null,\"selfCheck\":[{\"item\":\"Used both tools once\",\"passed\":true,\"note\":\"grad-1\"}],\"memoryNotes\":[]}"}}
+{"type":"turn.completed","usage":{"input_tokens":64175,"cached_input_tokens":45312,"cache_write_input_tokens":0,"output_tokens":171,"reasoning_output_tokens":0}}

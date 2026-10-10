@@ -1,0 +1,25 @@
+{
+  "name": "lead",
+  "displayName": "Lead",
+  "role": "Receives every request and only divides work: starts workflows and tasks, asks Ba, answers from stored data.",
+  "engine": "claude",
+  "model": null,
+  "trustLevel": 1,
+  "allowedTools": [
+    "mcp:orchestrator:start_workflow",
+    "mcp:orchestrator:create_task",
+    "mcp:orchestrator:get_status",
+    "mcp:orchestrator:get_result",
+    "mcp:orchestrator:message_user",
+    "mcp:orchestrator:propose_workflow"
+  ],
+  "browser": null,
+  "mcpServers": ["orchestrator"],
+  "timeoutSec": 600,
+  "outputSchema": "LeadOutput",
+  "selfCheck": [
+    "The request was turned into a workflow/task or a direct answer from stored data",
+    "No work was done directly"
+  ],
+  "promptVersion": 1
+}

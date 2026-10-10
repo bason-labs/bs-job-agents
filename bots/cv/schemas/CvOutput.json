@@ -1,0 +1,291 @@
+{
+  "title": "CvOutput",
+  "type": "object",
+  "properties": {
+    "language": {
+      "type": "string",
+      "enum": [
+        "en",
+        "vi"
+      ]
+    },
+    "tailored": {
+      "type": "object",
+      "properties": {
+        "headline": {
+          "type": "string"
+        },
+        "contactLine": {
+          "type": "string",
+          "description": "Always present (§6.2 fixed limits)"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "factIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "description": "Ids of master-cv.yaml facts that support this text (never empty)"
+                }
+              },
+              "required": [
+                "text",
+                "factIds"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "summary",
+                  "experience",
+                  "projects",
+                  "skills",
+                  "education",
+                  "other"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "description": "Section title in the CV language"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "heading": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "e.g. role and organisation"
+                    },
+                    "subheading": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "e.g. dates, location"
+                    },
+                    "bullets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          },
+                          "factIds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "minItems": 1,
+                            "description": "Ids of master-cv.yaml facts that support this text (never empty)"
+                          }
+                        },
+                        "required": [
+                          "text",
+                          "factIds"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "heading",
+                    "subheading",
+                    "bullets"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "kind",
+              "title",
+              "items"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "layout": {
+          "type": "object",
+          "properties": {
+            "template": {
+              "type": "string",
+              "description": "Template frame the draft was cloned from"
+            },
+            "font": {
+              "type": "string",
+              "enum": [
+                "Be Vietnam Pro",
+                "Inter",
+                "Space Grotesk",
+                "Arial"
+              ]
+            },
+            "accentColor": {
+              "type": "string"
+            },
+            "columns": {
+              "type": "integer",
+              "enum": [
+                1,
+                2
+              ]
+            },
+            "sectionOrder": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "summary",
+                  "experience",
+                  "projects",
+                  "skills",
+                  "education",
+                  "other"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "template",
+            "font",
+            "accentColor",
+            "columns",
+            "sectionOrder"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "headline",
+        "contactLine",
+        "summary",
+        "sections",
+        "layout"
+      ],
+      "additionalProperties": false
+    },
+    "figmaFrameName": {
+      "type": "string",
+      "description": "Drafts frame name <COMPANY>_<ROLE>_<LANG>_v<n>, LANG is EN or VI, e.g. NOVAPAY_SENIOR-FE_EN_v1"
+    },
+    "figmaFrameUrl": {
+      "type": "string"
+    },
+    "pdfPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "changeNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "factRequests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string",
+            "description": "e.g. Docker"
+          },
+          "question": {
+            "type": "string",
+            "description": "Question for Ba, e.g. 'Have you used Docker in production?'"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the JD makes it relevant"
+          }
+        },
+        "required": [
+          "topic",
+          "question",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Missing facts; CV continues without them, never invents"
+    },
+    "selfCheck": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "The checklist item, copied from bot.json selfCheck"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it passed or failed; null when nothing to add"
+          }
+        },
+        "required": [
+          "item",
+          "passed",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "One entry per selfCheck item in bot.json. Any failed item fails the attempt."
+    },
+    "memoryNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "description": "Up to 3 short lessons for this bot's memory, e.g. 'TopCV upload limit is 5MB'. Empty if none."
+    }
+  },
+  "required": [
+    "language",
+    "tailored",
+    "figmaFrameName",
+    "figmaFrameUrl",
+    "pdfPath",
+    "changeNotes",
+    "factRequests",
+    "selfCheck",
+    "memoryNotes"
+  ],
+  "additionalProperties": false
+}

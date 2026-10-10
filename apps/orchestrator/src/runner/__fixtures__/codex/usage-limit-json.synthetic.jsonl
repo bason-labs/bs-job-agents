@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"5e7e0000-0000-7000-8000-000000000003"}
+{"type":"turn.started"}
+{"type":"error","message":"{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"usage_limit_reached\",\n    \"message\": \"The usage limit has been reached\",\n    \"plan_type\": \"plus\",\n    \"resets_at\": 1791670000,\n    \"resets_in_seconds\": 5400\n  },\n  \"status\": 429\n}"}
+{"type":"turn.failed","error":{"message":"{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"usage_limit_reached\",\n    \"message\": \"The usage limit has been reached\",\n    \"plan_type\": \"plus\",\n    \"resets_at\": 1791670000,\n    \"resets_in_seconds\": 5400\n  },\n  \"status\": 429\n}"}}

@@ -67,6 +67,11 @@ export const BotDefinitionSchema = z
      */
     outputSchema: z.union([BotOutputSchemaNameSchema, z.record(z.string().min(1), BotOutputSchemaNameSchema)]),
     selfCheck: z.array(z.string().min(1)).min(1),
+    /**
+     * Optional self-check list per task kind (Research checks a scan, a fit and a company profile
+     * differently). Kinds without an entry use `selfCheck`; consult/discussion use CONSULT_SELF_CHECK.
+     */
+    selfCheckByKind: z.record(z.string().min(1), z.array(z.string().min(1)).min(1)).default({}),
     /** Bumped on every ROLE.md change. */
     promptVersion: z.number().int().positive(),
     enabled: z.boolean().default(true),
@@ -89,3 +94,49 @@ export function resolveOutputSchemaName(def: Pick<BotDefinition, "name" | "outpu
 export function isOutwardFacingBrowser(def: Pick<BotDefinition, "browser">): boolean {
   return def.browser?.mode === "write";
 }
+
+/** The self-check item for consult (UC-25) and discussion (UC-15) answers. */
+export const CONSULT_SELF_CHECK = ["Answered within my role; no work was done"] as const;
+
+/** Self-check items for a task of `kind` (rule 4): consult item, per-kind list, or the bot's list. */
+export function resolveSelfCheckItems(
+  def: Pick<BotDefinition, "selfCheck"> & { selfCheckByKind?: Record<string, string[]> },
+  kind: string,
+): string[] {
+  if ((CONVERSATION_TASK_KINDS as readonly string[]).includes(kind)) return [...CONSULT_SELF_CHECK];
+  return [...(def.selfCheckByKind?.[kind] ?? def.selfCheck)];
+}
+
+/** The only tools Lead may have (§3 rule 5): orchestrator MCP tools. */
+export const LEAD_TOOL_PREFIX = "mcp:orchestrator:";
+
+/**
+ * Phase 1 safety rules for a bot definition (PM S6). Empty = safe.
+ * - §4.4: a browser bot that writes runs on Claude, where the site allowlist is a hook.
+ * - UC-19: Apply stays at L1 (every submit needs Ba's approval token).
+ * - §3 rule 5: Lead has only orchestrator MCP tools: no browser, Figma, shell or file tools.
+ */
+export function checkBotSafety(
+  def: Pick<BotDefinition, "name" | "engine" | "trustLevel" | "browser" | "allowedTools" | "mcpServers">,
+): string[] {
+  const issues: string[] = [];
+  if (def.browser?.mode === "write" && def.engine !== "claude") {
+    issues.push(`${def.name}: a browser bot that writes must run on Claude, where the site allowlist is enforced by a hook (§4.4)`);
+  }
+  if (def.name === "apply" && def.trustLevel !== 1) {
+    issues.push("apply: Apply stays at trust level L1 in Phase 1, so every submit needs Ba's approval (UC-19)");
+  }
+  if (def.name === "lead") {
+    const extra = def.allowedTools.filter((t) => !t.startsWith(LEAD_TOOL_PREFIX));
+    if (extra.length > 0) issues.push(`lead: only orchestrator MCP tools are allowed (rule 5), not ${extra.join(", ")}`);
+    if (def.browser) issues.push("lead: no browser (rule 5)");
+    const servers = def.mcpServers.filter((s) => s !== "orchestrator");
+    if (servers.length > 0) issues.push(`lead: only the orchestrator MCP server is allowed (rule 5), not ${servers.join(", ")}`);
+  }
+  return issues;
+}
+
+/** BotDefinitionSchema plus the Phase 1 safety rules; use it wherever a bot.json is loaded or changed. */
+export const SafeBotDefinitionSchema = BotDefinitionSchema.superRefine((def, ctx) => {
+  for (const message of checkBotSafety(def)) ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+});
