@@ -1,0 +1,35 @@
+# W2a engine report (Phase 2)
+
+- **Merged** as 5b965eb; it had already merged develop with W2b and W2c. develop: 1,486 tests (shared 313, orchestrator 1,086, web 87); build OK.
+- **Engine tests:** 168. Files: apply, queue, trust-guard, db engine-support, apply-review-fixes, flows, questions, scheduler, job-scan, control, lead-tools, fake-runner, usage, templates, wiring, recovery.
+- **Public API** (`src/engine/index.ts`):
+  - **Build:** `createProductionEngine({ db, dataDir, botsDir, runners, workflows, figma?, config?, logger? })`.
+  - **Lifecycle:** `start()` (recovery, orphan kill, usage restore, bridge waits, continue runs, scheduler, dispatch), `stop()`, `idle()`.
+  - **Events:** `subscribe(listener)`, `replay(afterId)` for SSE.
+  - **Runs:** `startWorkflow(input, { trigger, scheduleId? })`, `pauseRun`, `resumeRun`, `cancelRun`, `rerunStep`.
+  - **Ba's decisions:** `approve(jobId, { cvVersionId, introText })` → `{ applicationId | null, taskId, reapproval }`, `requestChanges`, `skip`, `answerQuestion(taskId, { field, mode, value, remember })`, `resumeTask(taskId, { confirmDomain? })`, `runScheduleNow`.
+  - **Lead tools** (`engine.lead`): `createTask` (research.* only), `startWorkflow`, `getStatus`, `getResult`. There is no answer tool: only Ba's own answer resumes Apply.
+  - **Errors:** `EngineError(code: ApiErrorCode)`.
+- **Ports** (`engine/ports.ts`): Clock, FileStore, BrowserStatusProbe, FigmaPort (W2c's FigmaBridge fits as-is), GuardHooks, PdfTextExtractor, MasterCvSource, BotRegistry, WorkflowSource, MemoryWriter, OrphanKiller, Logger. `wiring.ts` adapts the bridges.
+- **FakeRunner kit** (`engine/testing/`): scenarios ok, timeout, invalidOutput, selfCheckFailed, usageLimit, denied, failed, cancelled, needsLogin, captcha, applyPaused, applyDomainConfirm. Plus FakeClock, MemoryFileStore, fake probes, ports and `createTestEngine`.
+- **Coverage:**
+  - the 8 step types with per-job branches; caps, browser and Figma locks, waits that resume on their own; 2 attempts (apply.submit never retried)
+  - trust levels; the token is consumed as the last step before spawn, re-checked on resume, never in task input
+  - Apply copies and re-hashes the PDF, uploads it as `BA_HUYNH_<COMPANY>_<LANG>.pdf`; dry runs end in needs_check
+  - UC-12 salary rules, UC-11e, the usage watcher, cron, UC-18, UC-23
+  - S1, S3, S4, S6
+  - the CV/Figma flow, where a fingerprint diff fails the task with `safety.denied`
+- **Deviations:**
+  - UC-02a refined: only a run still scanning, or paused, blocks the next fire.
+  - Apply and record steps are never re-run.
+  - When an uploaded JD has no apply link, approve returns `applicationId: null`.
+  - Migration 0006: `runs.search_profile_id` (ADD COLUMN only).
+  - New safety reasons: `dry_run_submitted`, `protected_page_blocked`.
+  - §5.3 automatic demotion is not implemented (open question).
+  - Lead may only create research.* tasks.
+  - Contract: `RunnerTask.hookSettings` (additive).
+- **Handoffs:**
+  - **W3a:** API wiring and error mapping; review queue; SSE via subscribe and replay; YAML WorkflowSource; upload paths relative to data/; Lead MCP tools (no answer tool); `ApproveResponseSchema` must allow `applicationId: null`; the UC-02 summary message and macOS notification.
+  - **Runner (QA):** use `hookSettings` and drop the runner's own `--sites` hook.
+  - **W2b area:** the cv.tailor input has an extra `templates` field.
+  - **W3c:** promotion-suggestion data.
