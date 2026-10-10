@@ -37,6 +37,10 @@
     background-attachment: fixed;
   }
   [x-cloak] { display: none !important; }
+  /* Pointer cursor on everything clickable (same rule as bs-kara globals.css) */
+  button:not(:disabled), a, summary, select, label[for], [role="button"], [\@click], [x-on\:click],
+  input[type="checkbox"]:not(:disabled), input[type="radio"]:not(:disabled), input[type="range"]:not(:disabled) { cursor: pointer; }
+  button:disabled, [aria-disabled="true"], input:disabled { cursor: not-allowed; }
   .canvas { background-image: radial-gradient(var(--grid) 1.2px, transparent 1.2px); background-size: 18px 18px; }
   @keyframes dash { to { stroke-dashoffset: -24; } }
   .flowing { stroke-dasharray: 6 6; animation: dash .8s linear infinite; }

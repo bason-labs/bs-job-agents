@@ -612,6 +612,8 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | **Master CV** | Facts editor (EN/VI text, tags, org, dates), version history | |
 | **Rooms** | Group chat with @mentions; bots answer in discussion mode | |
 
+**Cursor rule:** every clickable element (buttons, links, tabs, toggles, chips, cards and canvas nodes with click handlers, checkboxes, sliders) uses `cursor: pointer`, and disabled elements use `cursor: not-allowed`. Set globally in `globals.css`, as in bs-kara, so components don't repeat it.
+
 **Live updates:** SSE events (`run.*`, `step.*`, `task.progress`, `engine.paused/resumed`, `review.ready`, `application.updated`).
 
 ---
