@@ -17,6 +17,7 @@ const STYLES: Record<TrustLevel, string> = {
 export function TrustBadge({ level, className }: { level: TrustLevel; className?: string }) {
   return (
     <span
+      role="img"
       title={TRUST_DESCRIPTIONS[level]}
       aria-label={`Trust level L${level}`}
       data-trust={level}

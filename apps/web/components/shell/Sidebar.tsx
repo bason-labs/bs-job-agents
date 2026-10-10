@@ -68,7 +68,7 @@ export function Sidebar({ data, onNavigate, className }: SidebarProps) {
           Manage
         </Link>
       </div>
-      <ul aria-labelledby="sidebar-team" aria-label="Team" className="space-y-0.5 px-2">
+      <ul aria-labelledby="sidebar-team" className="space-y-0.5 px-2">
         {data.bots.map((bot) => {
           const active = isTeamActive(bot.name, pathname);
           return (

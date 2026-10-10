@@ -3,7 +3,8 @@
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { Menu } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useReducer, useState, type ReactNode } from "react";
+import { applyShellEvent, subscribeShellEvents } from "@/lib/api/live";
 import type { ShellData } from "@/lib/api/types";
 import { titleForPath } from "@/lib/routes";
 import { useHydrated } from "@/lib/useHydrated";
@@ -21,9 +22,12 @@ export interface AppShellProps {
  * Prototype layout: floating sidebar card + main card with a top bar.
  * Below md the sidebar becomes a drawer opened from the top bar.
  */
-export function AppShell({ data, children }: AppShellProps) {
+export function AppShell({ data: initialData, children }: AppShellProps) {
   const pathname = usePathname() ?? "/";
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Server data seeds the sidebar; live events (lib/api/live) keep it current.
+  const [data, dispatch] = useReducer(applyShellEvent, initialData);
+  useEffect(() => subscribeShellEvents(dispatch), []);
   const title = titleForPath(pathname, data.bots, data.rooms);
   const hydrated = useHydrated();
 

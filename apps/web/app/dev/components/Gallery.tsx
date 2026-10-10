@@ -366,7 +366,19 @@ export function Gallery() {
             </CardHeader>
             <p className="text-muted">A plain card.</p>
           </Card>
-          <Card interactive role="button" tabIndex={0} onClick={() => toast({ title: "Card clicked" })} data-testid="interactive-card">
+          <Card
+            interactive
+            role="button"
+            tabIndex={0}
+            onClick={() => toast({ title: "Card clicked" })}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                toast({ title: "Card clicked" });
+              }
+            }}
+            data-testid="interactive-card"
+          >
             <CardTitle>Interactive card</CardTitle>
             <p className="text-muted">The whole card is clickable (hover border, pointer).</p>
           </Card>
