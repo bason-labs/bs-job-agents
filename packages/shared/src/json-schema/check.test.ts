@@ -59,6 +59,16 @@ describe("checkStrictJsonSchema", () => {
     expect(issues).toContain("$.o: oneOf is not allowed");
   });
 
+  it("flags pattern: an unbounded pattern made Codex hang in the QA live check", () => {
+    const bad = {
+      type: "object",
+      properties: { frame: { type: "string", pattern: "^.+_.+_(EN|VI)_v\\d+$" }, n: { type: "integer", minimum: 0, maximum: 40 } },
+      required: ["frame", "n"],
+      additionalProperties: false,
+    };
+    expect(checkStrictJsonSchema(bad)).toEqual(["$.frame: pattern is not allowed (keep patterns in Zod)"]);
+  });
+
   it("flags arrays without items and nodes without a type", () => {
     const bad = {
       type: "object",

@@ -35,6 +35,9 @@ function walk(node: unknown, path: string, issues: string[]): void {
   for (const key of FORBIDDEN_KEYS) {
     if (key in node) issues.push(`${path}: ${key} is not allowed`);
   }
+  // Codex accepts `pattern`, but an unbounded one (`^.+_.+$`) made it hang in the QA
+  // phase 1 live check, so patterns stay in Zod (the converter never emits them).
+  if ("pattern" in node) issues.push(`${path}: pattern is not allowed (keep patterns in Zod)`);
   const types = typesOf(node);
   for (const t of types) {
     if (!KNOWN_TYPES.has(t)) issues.push(`${path}: unknown type ${t}`);
