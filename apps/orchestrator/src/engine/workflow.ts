@@ -506,8 +506,11 @@ function finishRun(core: EngineCore, ctx: RunCtx, status: "done" | "failed", sum
 
 const CARDS_NOTICE_PREFIX = "cards:";
 
-function cardsNoticePosted(conn: Conn, runId: number): boolean {
-  return listEvents(conn, { runId, types: [NOTICE_EVENT] }).some((e) => String((e.payload as { key?: unknown } | null)?.key ?? "").startsWith(CARDS_NOTICE_PREFIX));
+function cardsNoticePosted(conn: Conn, runId: number, key?: string): boolean {
+  return listEvents(conn, { runId, types: [NOTICE_EVENT] }).some((e) => {
+    const posted = String((e.payload as { key?: unknown } | null)?.key ?? "");
+    return key === undefined ? posted.startsWith(CARDS_NOTICE_PREFIX) : posted === key;
+  });
 }
 
 /**
@@ -517,7 +520,8 @@ function cardsNoticePosted(conn: Conn, runId: number): boolean {
  */
 function noticeCardsReady(core: EngineCore, ctx: RunCtx, passKey: string, branches: readonly BranchOutcome[]): void {
   const human = ctx.def.steps.find((s): s is HumanStep => s.type === "human");
-  if (!human || branches.length === 0) return;
+  const key = `${CARDS_NOTICE_PREFIX}${passKey || "run"}`;
+  if (!human || branches.length === 0 || cardsNoticePosted(core.db, ctx.run.id, key)) return;
   const cards = branches.filter((b) => {
     const row = getStepByKey(core.db, ctx.run.id, human.key, String(b.item.jobId));
     return row !== undefined && row.status !== "pending";
@@ -536,7 +540,7 @@ function noticeCardsReady(core: EngineCore, ctx: RunCtx, passKey: string, branch
       text: `🎯 ${n}${more} job${n === 1 ? "" : "s"} ready for review: ${parts.join(" · ")}.`,
       runId: ctx.run.id,
       cards: [{ type: "review_link", count: n }],
-      once: `${CARDS_NOTICE_PREFIX}${passKey || "run"}`,
+      once: key,
     }),
   );
 }

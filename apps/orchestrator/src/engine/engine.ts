@@ -170,7 +170,7 @@ export class Engine implements EngineCore {
         sinkFailed(this, tx, t, t.error ?? "interrupted by restart; no attempts left");
       }
       return recovered;
-    });
+    }, { behavior: "immediate" });
     const interrupted = [...r.requeued, ...r.exhausted, ...r.needsCheck];
     const orphanPids = this.killOrphans(interrupted);
     const orphanSessions = await this.removeOrphanSessions(interrupted);
