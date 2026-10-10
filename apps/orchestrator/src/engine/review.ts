@@ -34,6 +34,7 @@ import {
   isEnginePaused,
   latestApprovalForApplication,
   listActiveRuns,
+  listRuns,
   setJobStatus,
   skipJob,
   updateStepStatus,
@@ -41,7 +42,7 @@ import {
   type Conn,
   type Step,
 } from "../db/index.js";
-import { buildApplyPromptInput, emitApplication, registrableHost } from "./apply.js";
+import { buildApplyPromptInput, emitApplication, moveApplication, registrableHost } from "./apply.js";
 import { effectiveBot } from "./bots.js";
 import { loadRunCtx, type RunCtx, type Scope } from "./context.js";
 import type { EngineCore } from "./core.js";
@@ -118,9 +119,9 @@ interface ReviewRef {
   action: Step | undefined;
 }
 
-/** The newest active run with a review step for this job. */
+/** The newest active run with a review step for this job (then any run, for a precise error). */
 function findReview(core: EngineCore, conn: Conn, jobId: number): ReviewRef {
-  for (const run of listActiveRuns(conn)) {
+  for (const run of [...listActiveRuns(conn), ...listRuns(conn)]) {
     const ctx = loadRunCtx(core, run.id, conn);
     const humanDef = ctx?.def.steps.find((s): s is HumanStep => s.type === "human");
     if (!ctx || !humanDef) continue;
@@ -133,6 +134,12 @@ function findReview(core: EngineCore, conn: Conn, jobId: number): ReviewRef {
     return { ctx, scope, humanDef, human, actionDef, action };
   }
   throw notFound("review card for job", jobId);
+}
+
+/** Apply was denied before it ran and the card waits for Ba to approve again (or skip). */
+function awaitingReapproval(ref: ReviewRef): boolean {
+  const out = ref.action?.output as ActionStepOutput | null | undefined;
+  return ref.human.status === "done" && ref.action?.status === "locked" && out?.outcome === "denied" && out.applicationId !== null;
 }
 
 function decision(core: EngineCore, d: Partial<ReviewDecision> & Pick<ReviewDecision, "decision">): ReviewDecision {
@@ -210,22 +217,29 @@ export function approve(core: EngineCore, jobId: number, input: ApproveInput): A
     const job = getJob(tx, jobId)!;
     const dryRun = input.dryRun === true;
 
-    // A second approval for the same application, after Apply was refused before it ran.
-    if (ref.human.status === "done" && ref.action?.status === "failed" && actionOut?.outcome === "denied" && actionOut.applicationId !== null) {
-      const app = getApplication(tx, actionOut.applicationId)!;
+    // A second approval for the same application, after Apply was denied before it ran.
+    if (awaitingReapproval(ref)) {
+      const app = getApplication(tx, actionOut!.applicationId!)!;
       if (input.cvVersionId !== app.cvVersionId) throw invalidInput("a re-approval keeps the approved CV version");
       if (!(PRE_SUBMIT_APPLICATION_STATUSES as readonly string[]).includes(app.status) || getSubmissionRecord(tx, app.id)?.submission) {
         throw invalidState(`application ${app.id} is ${app.status}; it cannot be approved again`);
       }
+      // A token that is still unused and valid (e.g. denied while the job was injection-flagged,
+      // then Ba confirmed it) is used as is; otherwise Ba's approval issues a new one.
+      const latest = latestApprovalForApplication(tx, app.id);
       let approval: Approval;
-      try {
-        approval = createApproval(
-          tx,
-          { applicationId: app.id, jobId, cvVersionId: app.cvVersionId!, allowedDomains: [registrableHost(job.url!)] },
-          { now: core.now() },
-        );
-      } catch (err) {
-        return mapApprovalError(err);
+      if (latest && latest.usedAt === null && latest.expiresAt > core.now().toISOString()) {
+        approval = latest;
+      } else {
+        try {
+          approval = createApproval(
+            tx,
+            { applicationId: app.id, jobId, cvVersionId: app.cvVersionId!, allowedDomains: [registrableHost(job.url!)] },
+            { now: core.now() },
+          );
+        } catch (err) {
+          return mapApprovalError(err);
+        }
       }
       const taskId = queueApply(core, tx, { ...ref, action: ref.action }, approval, input.introText, app.dryRun);
       recordDecision(tx, ref.human, decision(core, { decision: "approve", cvVersionId: app.cvVersionId, introText: input.introText, introEdited: input.introText !== null, reapproval: true }));
@@ -304,13 +318,19 @@ export function skip(core: EngineCore, jobId: number, input: SkipDecision): void
   if (!parsed.success) throw invalidInput(parsed.error.issues.map((i) => i.message).join("; "));
   const runId = core.db.transaction((tx) => {
     const ref = findReview(core, tx, jobId);
-    if (ref.human.status !== "waiting") throw invalidState(`the review card for job ${jobId} is not waiting for a decision`);
+    const afterDenial = awaitingReapproval(ref);
+    if (ref.human.status !== "waiting" && !afterDenial) throw invalidState(`the review card for job ${jobId} is not waiting for a decision`);
     skipJob(tx, jobId, { reason: parsed.data.reason, note: parsed.data.note });
     const out = ref.human.output as HumanStepOutput;
-    setStep(core, tx, ref.human, "done", {
-      output: { ...out, decisions: [...out.decisions, decision(core, { decision: "skip", skip: { reason: parsed.data.reason, note: parsed.data.note } })] },
-      preview: `skipped: ${parsed.data.reason}`,
-    });
+    const d = decision(core, { decision: "skip", skip: { reason: parsed.data.reason, note: parsed.data.note } });
+    if (afterDenial) {
+      // Ba gives up after Apply was denied: the approved application never ran.
+      recordDecision(tx, ref.human, d);
+      const appId = (ref.action!.output as ActionStepOutput).applicationId!;
+      moveApplication(core, tx, appId, "failed", `skipped after Apply was denied: ${parsed.data.reason}`);
+    } else {
+      setStep(core, tx, ref.human, "done", { output: { ...out, decisions: [...out.decisions, d] }, preview: `skipped: ${parsed.data.reason}` });
+    }
     if (ref.actionDef) openStep(core, tx, ref.ctx, ref.actionDef.key, ref.scope, "skipped", { preview: "skipped" });
     const record = ref.ctx.def.steps.find((s) => s.type === "record" && s.branch === ref.humanDef.branch);
     if (record) openStep(core, tx, ref.ctx, record.key, ref.scope, "skipped", { output: { recorded: false } });

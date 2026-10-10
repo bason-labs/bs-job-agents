@@ -4,6 +4,7 @@
 // never waits for another. Task steps finish when their task settles (queue.ts); pure steps
 // (join, filter, record) run here, inside the same call.
 import {
+  PRE_SUBMIT_APPLICATION_STATUSES,
   cvLanguagesForJd,
   taskKey,
   type ActionStepSchema,
@@ -18,9 +19,11 @@ import {
 } from "@bs-job-agents/shared";
 import type { z } from "zod";
 import {
+  getApplication,
   getFreshCompanyProfile,
   getJob,
   getStepByKey,
+  getSubmissionRecord,
   getTask,
   listTasks,
   updateRunStatus,
@@ -301,8 +304,14 @@ function advanceActionStep(core: EngineCore, ctx: RunCtx, step: ActionStep, scop
       case "failed":
       case "interrupted": {
         const outcome = out.outcome ?? "needs_check";
-        // Refused before anything ran (token, SHA-256): red, Ba acts. Otherwise it may have
-        // submitted: needs_check, never retried (UC-11 c, UC-18, PM FYI c).
+        // Denied before anything ran (e.g. the token expired while Apply waited for Ba): the
+        // card waits for Ba to approve again, which issues a new token (PM M2).
+        if (outcome === "denied" && out.applicationId !== null && canApproveAgain(tx, out.applicationId)) {
+          setStep(core, tx, row, "locked", { output: { ...out, outcome }, error: out.error ?? task.error, preview: "approve again" });
+          return "active";
+        }
+        // Refused (SHA-256) or denied for good: red, Ba acts. Otherwise it may have submitted:
+        // needs_check, never retried (UC-11 c, UC-18, PM FYI c).
         if (outcome === "denied" || outcome === "refused") {
           setStep(core, tx, row, "failed", { output: { ...out, outcome }, error: out.error ?? task.error });
           return "failed";
@@ -318,6 +327,16 @@ function advanceActionStep(core: EngineCore, ctx: RunCtx, step: ActionStep, scop
         return "active";
     }
   });
+}
+
+/** Still in the apply flow with nothing recorded: Ba may approve again (PM M2). */
+export function canApproveAgain(conn: Conn, applicationId: number): boolean {
+  const app = getApplication(conn, applicationId);
+  return (
+    app !== undefined &&
+    (PRE_SUBMIT_APPLICATION_STATUSES as readonly string[]).includes(app.status) &&
+    getSubmissionRecord(conn, applicationId)?.submission === undefined
+  );
 }
 
 function advanceRecordStep(core: EngineCore, ctx: RunCtx, step: RecordStep, scope: Scope): StepState {
