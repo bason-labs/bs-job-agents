@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { open, presetTheme } from "./helpers";
+import { open, presetTheme, waitForHydration } from "./helpers";
 
 // App shell (spec §11: sidebar, layout rule, theme) on placeholder routes.
 
@@ -61,6 +61,27 @@ test("sidebar navigates to every route", async ({ page }) => {
   await sidebar.getByRole("link", { name: "Master CV" }).click();
   await expect(page).toHaveURL(/\/cv$/);
   await expect(title(page)).toHaveText("Master CV");
+});
+
+test("/chat/lead redirects to /chat, Lead's main chat", async ({ page }) => {
+  const response = await page.goto("/chat/lead");
+  expect(response?.ok()).toBe(true);
+  await expect(page).toHaveURL(/\/chat$/);
+  await waitForHydration(page);
+  await expect(title(page)).toHaveText("Chat with Lead");
+  const sidebar = page.getByTestId("sidebar");
+  await expect(sidebar.getByRole("link", { name: "Chat with Lead" })).toHaveAttribute("href", "/chat");
+  await expect(sidebar.getByRole("link", { name: "Chat with Lead" })).toHaveAttribute("aria-current", "page");
+});
+
+test("no screen links to the /dev/components gallery (it stays reachable by URL)", async ({ page }) => {
+  const paths = ["/chat", "/chat/research", "/flows", "/flows/12", "/review", "/applications", "/criteria", "/schedules", "/bots", "/bots/apply", "/cv", "/rooms/cv-brainstorm"];
+  for (const path of paths) {
+    await open(page, path);
+    await expect(page.locator('a[href^="/dev"]'), path).toHaveCount(0);
+  }
+  await open(page, "/dev/components");
+  await expect(page.getByTestId("sidebar")).toHaveCount(0);
 });
 
 test("deep links render inside the shell", async ({ page }) => {

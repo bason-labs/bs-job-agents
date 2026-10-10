@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_SHELL_DATA } from "@/lib/mock/shell";
-import { NAV_ITEMS, isNavActive, isTeamActive, titleForPath } from "./routes";
+import { NAV_ITEMS, botChatHref, isNavActive, isTeamActive, titleForPath } from "./routes";
 
 describe("NAV_ITEMS", () => {
   it("matches the prototype sidebar order and copy", () => {
@@ -27,6 +27,13 @@ describe("titleForPath", () => {
     ["/rooms/cv-brainstorm", "# cv-brainstorm"],
   ])("%s → %s", (path, title) => {
     expect(titleForPath(path, bots, rooms)).toBe(title);
+  });
+});
+
+describe("botChatHref", () => {
+  it("sends Lead to the main chat (/chat/lead only redirects there) and other bots to their direct chat", () => {
+    expect(botChatHref("lead")).toBe("/chat");
+    expect(botChatHref("research")).toBe("/chat/research");
   });
 });
 
