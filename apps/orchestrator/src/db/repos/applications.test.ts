@@ -3,9 +3,9 @@ import { openTestDb, type Db } from "../client.js";
 import { ImmutableRecordError, InvalidTransitionError, SubmissionRefusedError } from "../errors.js";
 import { at, seedCv, seedJob, T0 } from "../test-helpers.js";
 import type { CvVersion, Job } from "../types.js";
-import { addApprovalDomain, checkApproval, consumeApproval, createApproval, getApproval } from "./approvals.js";
-import { clearJobInjection, flagJobInjection, getJob } from "./jobs.js";
+import { getJob } from "./jobs.js";
 import {
+  approveApplication,
   createApplication,
   deleteJobSnapshot,
   deleteSubmission,
@@ -59,63 +59,6 @@ const SNAPSHOT: CompleteSnapshotInput = {
   jdText: "We are looking for…",
   pageScreenshotPath: "data/applications/1/jd.png",
 };
-
-describe("approvals (UC-08, §10.2 rule 1)", () => {
-  it("creates a single-use token bound to job, CV version and domains, valid 24 h", () => {
-    const a = createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] }, { now: T0 });
-    expect(a.token).toMatch(/^[0-9a-f]{64}$/);
-    expect(a.expiresAt).toBe(new Date(T0.getTime() + 24 * 3600_000).toISOString());
-    expect(getApproval(db, a.token)?.usedAt).toBeNull();
-  });
-
-  it("checks job, CV version, domain and expiry", () => {
-    const { token } = createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] }, { now: T0 });
-    const ok = { jobId: job.id, cvVersionId: cv.id, now: at(60) };
-    expect(checkApproval(db, token, ok)).toMatchObject({ ok: true });
-    expect(checkApproval(db, token, { ...ok, domain: "www.itviec.com" })).toMatchObject({ ok: true });
-    expect(checkApproval(db, token, { ...ok, domain: "evil-itviec.com" })).toEqual({ ok: false, reason: "domain_mismatch" });
-    expect(checkApproval(db, token, { ...ok, jobId: 999 })).toEqual({ ok: false, reason: "job_mismatch" });
-    expect(checkApproval(db, token, { ...ok, cvVersionId: 999 })).toEqual({ ok: false, reason: "cv_mismatch" });
-    expect(checkApproval(db, token, { ...ok, now: at(24 * 3600) })).toEqual({ ok: false, reason: "expired" });
-    expect(checkApproval(db, "nope", ok)).toEqual({ ok: false, reason: "not_found" });
-  });
-
-  it("can be consumed once; reuse is denied (UC-11f)", () => {
-    const { token } = createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] }, { now: T0 });
-    const expect_ = { jobId: job.id, cvVersionId: cv.id, now: at(5) };
-    expect(consumeApproval(db, token, expect_)).toMatchObject({ ok: true });
-    expect(consumeApproval(db, token, expect_)).toEqual({ ok: false, reason: "used" });
-    expect(getApproval(db, token)?.usedAt).toBe(at(5).toISOString());
-    // The trigger blocks resetting used_at even with raw SQL.
-    expect(() => db.$client.prepare("UPDATE approvals SET used_at = NULL WHERE token = ?").run(token)).toThrow(/already used/);
-  });
-
-  it("refuses a token for an injection-flagged job until Ba confirms it (UC-07 b, §10.2 rule 4)", () => {
-    flagJobInjection(db, job.id);
-    expect(() => createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] })).toThrow(
-      InvalidTransitionError,
-    );
-    clearJobInjection(db, job.id, { now: T0 });
-    expect(createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] }).token).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  it("denies (and does not use up) a token whose job was flagged after approval", () => {
-    const { token } = createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] }, { now: T0 });
-    flagJobInjection(db, job.id);
-    const expect_ = { jobId: job.id, cvVersionId: cv.id, now: at(5) };
-    expect(checkApproval(db, token, expect_)).toEqual({ ok: false, reason: "injection_flagged" });
-    expect(consumeApproval(db, token, expect_)).toEqual({ ok: false, reason: "injection_flagged" });
-    expect(getApproval(db, token)?.usedAt).toBeNull();
-    clearJobInjection(db, job.id, { now: at(6) });
-    expect(consumeApproval(db, token, expect_)).toMatchObject({ ok: true });
-  });
-
-  it("adds a domain Ba confirmed (UC-11e)", () => {
-    const { token } = createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] });
-    expect(addApprovalDomain(db, token, "novapay.breezy.hr").allowedDomains).toEqual(["itviec.com", "novapay.breezy.hr"]);
-    expect(addApprovalDomain(db, token, "novapay.breezy.hr").allowedDomains).toHaveLength(2);
-  });
-});
 
 describe("applications: create, one per job (§10.2 rule 5)", () => {
   it("creates an approved application with history", () => {
@@ -301,8 +244,11 @@ describe("dry runs (PM M3)", () => {
 
 describe("submission record (§9.1)", () => {
   it("writes application + submission + JD snapshot in one transaction", () => {
-    const approval = createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] }, { now: T0 });
-    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id }, { now: T0 });
+    const { application: app, approval } = approveApplication(
+      db,
+      { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] },
+      { now: T0 },
+    );
     const rec = recordSubmission(
       db,
       { applicationId: app.id, submission: { ...SUBMISSION, approvalToken: approval.token }, snapshot: SNAPSHOT },

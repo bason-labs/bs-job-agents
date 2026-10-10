@@ -30,8 +30,8 @@ import { qaPassFixture, researchCompanyFixture } from "@bs-job-agents/shared/fix
 import { beforeEach, describe, expect, it } from "vitest";
 import { openTestDb, type Db } from "./client.js";
 import * as m from "./mappers.js";
-import { createApproval, getApproval } from "./repos/approvals.js";
-import { createApplication, getSubmissionRecord, importApplication, recordSubmission } from "./repos/applications.js";
+import { getApproval } from "./repos/approvals.js";
+import { approveApplication, getSubmissionRecord, importApplication, recordSubmission } from "./repos/applications.js";
 import { getBot, getPromptVersion, appendMemoryChange, recordPromptVersion, listMemoryChanges } from "./repos/bots.js";
 import { getCompany, saveCompanyProfile } from "./repos/companies.js";
 import { createQaReview } from "./repos/cv.js";
@@ -119,8 +119,11 @@ describe("approvals, applications and the submission record (§9.1)", () => {
   function submitted(opts: { dryRun?: boolean } = {}) {
     const job = seedJob(db);
     const cv = seedCv(db, job);
-    const approval = createApproval(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] }, { now: T0 });
-    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id, dryRun: opts.dryRun }, { now: at(1) });
+    const { application: app, approval } = approveApplication(
+      db,
+      { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"], dryRun: opts.dryRun },
+      { now: T0 },
+    );
     recordSubmission(
       db,
       {
@@ -157,9 +160,10 @@ describe("approvals, applications and the submission record (§9.1)", () => {
     return { job, cv, approval, app };
   }
 
-  it("an approval token maps to the shared ApprovalToken", () => {
-    const { approval } = submitted();
+  it("an approval token maps to the shared ApprovalToken, with the application it authorises", () => {
+    const { approval, app } = submitted();
     expect(parsed(ApprovalTokenSchema, m.toApprovalToken(getApproval(db, approval.token)!))).toMatchObject({
+      applicationId: String(app.id),
       allowedDomains: ["itviec.com"],
       createdAt: T0.toISOString(),
     });

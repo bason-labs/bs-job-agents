@@ -396,6 +396,13 @@ describe("other domain records", () => {
     expect(ApprovalTokenSchema.safeParse({ ...approvalTokenFixture, allowedDomains: [] }).success).toBe(false);
   });
 
+  it("an approval token names the one application it authorises (PM M2); older tokens have none", () => {
+    expect(ApprovalTokenSchema.parse(approvalTokenFixture).applicationId).toBe("app_1");
+    const { applicationId: _applicationId, ...older } = approvalTokenFixture;
+    expect(ApprovalTokenSchema.parse(older).applicationId).toBeNull();
+    expect(ApprovalTokenSchema.safeParse({ ...approvalTokenFixture, applicationId: "" }).success).toBe(false);
+  });
+
   it("engine state", () => {
     expect(EngineStateSchema.safeParse({ engine: "claude", pausedUntil: "2026-10-10T14:05:00+07:00", reason: "usage_limit" }).success).toBe(true);
     expect(EngineStateSchema.safeParse({ engine: "claude", pausedUntil: null, reason: null }).success).toBe(true);

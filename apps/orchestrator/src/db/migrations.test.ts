@@ -72,6 +72,15 @@ const SHA_KOBE = "c".repeat(64);
 function populate(client: Database.Database, count: number): void {
   const shared = count >= countAt("0002");
   const [EN, VI] = shared ? ["en", "vi"] : ["EN", "VI"];
+  // 0004 binds each token to its application (PM M2).
+  const bound = count >= countAt("0004");
+  const approvalsSql = bound
+    ? `INSERT INTO approvals(token, job_id, cv_version_id, allowed_domains_json, expires_at, used_at, created_at, application_id) VALUES
+      ('tok-novapay', 1, 1, '["itviec.com"]', '2026-10-11T08:00:00.000Z', '${T}', '${T}', 1),
+      ('tok-kobe', 2, 3, '["topcv.vn"]', '2026-10-11T08:00:00.000Z', '${T}', '${T}', 2);`
+    : `INSERT INTO approvals(token, job_id, cv_version_id, allowed_domains_json, expires_at, used_at, created_at) VALUES
+      ('tok-novapay', 1, 1, '["itviec.com"]', '2026-10-11T08:00:00.000Z', '${T}', '${T}'),
+      ('tok-kobe', 2, 3, '["topcv.vn"]', '2026-10-11T08:00:00.000Z', '${T}', '${T}');`;
   client.exec(`
     INSERT INTO bots(name, display_name, engine, trust_level) VALUES ('cv', 'CV', 'claude', 2), ('research', 'Research', 'codex', 2), ('apply', 'Apply', 'claude', 1);
     INSERT INTO prompt_versions(bot_name, version, role_md_hash, role_md_text, created_at) VALUES ('cv', 1, 'h1', '# CV', '${T}');
@@ -88,9 +97,7 @@ function populate(client: Database.Database, count: number): void {
     INSERT INTO applications(job_id, cv_version_id, submitted_at, status, origin, status_history_json, created_at) VALUES
       (1, 1, '${T30}', 'submitted', 'app', '[{"status":"approved","at":"${T}","note":null},{"status":"submitted","at":"${T30}","note":null}]', '${T}'),
       (2, 3, NULL, 'paused', 'app', '[{"status":"approved","at":"${T}","note":null},{"status":"paused","at":"${T30}","note":"notice period?"}]', '${T}');
-    INSERT INTO approvals(token, job_id, cv_version_id, allowed_domains_json, expires_at, used_at, created_at) VALUES
-      ('tok-novapay', 1, 1, '["itviec.com"]', '2026-10-11T08:00:00.000Z', '${T}', '${T}'),
-      ('tok-kobe', 2, 3, '["topcv.vn"]', '2026-10-11T08:00:00.000Z', '${T}', '${T}');
+    ${approvalsSql}
     INSERT INTO submissions(application_id, final_url, fields_json, intro_text, consent_ticked, consent_text, uploaded_filename, uploaded_sha256, uploaded_path, confirmation_text, approval_token, submitted_at) VALUES
       (1, 'https://itviec.com/applied/1', '[{"label":"Full name","name":"name","value":"Ba Huynh","source":"master_cv"}]', 'Hi NovaPay', 1, 'I agree', 'BA_HUYNH_NOVAPAY_EN.pdf', '${SHA_NOVAPAY}', 'data/applications/1/BA_HUYNH_NOVAPAY_EN.pdf', 'Application sent', 'tok-novapay', '${T30}');
     INSERT INTO job_snapshots(application_id, captured_at, url, title, company, jd_text, page_screenshot_path) VALUES
@@ -205,6 +212,21 @@ describe("upgrading a populated database from every earlier migration to head (P
     expect(() => c.prepare("UPDATE applications SET created_at = ? WHERE id = 1").run(T30)).toThrow(/only allow status/);
     // UC-08: a used token stays used.
     expect(() => c.prepare("UPDATE approvals SET used_at = NULL WHERE token = 'tok-novapay'").run()).toThrow(/already used/);
+    // PM M2: tokens are bound to their application; older ones only where a record cites them.
+    expect(c.prepare("SELECT token, application_id AS app FROM approvals ORDER BY token").all()).toEqual([
+      { token: "tok-kobe", app: count >= countAt("0004") ? 2 : null },
+      { token: "tok-novapay", app: 1 },
+    ]);
+    // PM M2: approvals are immutable except used_at and growing domains, until a record cites them.
+    expect(() => c.prepare("UPDATE approvals SET expires_at = '2027-01-01T00:00:00.000Z' WHERE token = 'tok-kobe'").run()).toThrow(
+      /immutable/,
+    );
+    expect(() => c.prepare("UPDATE approvals SET application_id = 1 WHERE token = 'tok-kobe'").run()).toThrow(/immutable/);
+    expect(() => c.prepare("DELETE FROM approvals WHERE token = 'tok-kobe'").run()).toThrow(/immutable/);
+    const setDomains = c.prepare("UPDATE approvals SET allowed_domains_json = ? WHERE token = ?");
+    expect(() => setDomains.run("[]", "tok-kobe")).toThrow(/only grow/);
+    expect(() => setDomains.run('["itviec.com","novapay.breezy.hr"]', "tok-novapay")).toThrow(/only grow/);
+    expect(() => setDomains.run('["topcv.vn","kobe.breezy.hr"]', "tok-kobe")).not.toThrow();
     // PM M3: applications from before 0003 are real ones.
     if (count < countAt("0003")) {
       expect(c.prepare("SELECT count(*) AS n FROM applications WHERE dry_run = 1").get()).toEqual({ n: 0 });

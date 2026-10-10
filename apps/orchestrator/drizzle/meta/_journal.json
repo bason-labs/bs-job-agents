@@ -29,6 +29,13 @@
       "when": 1791653972752,
       "tag": "0003_dry_run_status_machine",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791654391080,
+      "tag": "0004_approval_binding",
+      "breakpoints": true
     }
   ]
 }

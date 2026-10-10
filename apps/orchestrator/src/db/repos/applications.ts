@@ -10,7 +10,7 @@ import { ImmutableRecordError, InvalidTransitionError, NotFoundError, Submission
 import { applications, jobs, jobSnapshots, submissions, type StatusHistoryEntry } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
 import type { Application, Approval, Company, CvVersion, Job, JobSnapshot, Submission } from "../types.js";
-import { getApproval } from "./approvals.js";
+import { createApproval, getApproval } from "./approvals.js";
 import { getCompany } from "./companies.js";
 import { getCvVersion } from "./cv.js";
 import { getJob } from "./jobs.js";
@@ -112,6 +112,45 @@ export function createApplication(
       .get();
     markJob(tx, input.jobId, "approved");
     return app;
+  });
+}
+
+/**
+ * UC-08: Ba approved a card. Creates the `approved` application and the single-use token
+ * bound to it in one transaction (PM M2); if either fails, neither exists. The engine adds
+ * the apply.submit task in the same transaction:
+ * `db.transaction((tx) => { const { application, approval } = approveApplication(tx, …); createTask(tx, …); })`.
+ */
+export function approveApplication(
+  db: Conn,
+  input: {
+    jobId: number;
+    cvVersionId: number;
+    allowedDomains: string[];
+    reapply?: boolean;
+    dryRun?: boolean;
+    ttlMs?: number;
+  },
+  opts?: ClockOpts,
+): { application: Application; approval: Approval } {
+  return db.transaction((tx) => {
+    const application = createApplication(
+      tx,
+      { jobId: input.jobId, cvVersionId: input.cvVersionId, reapply: input.reapply, dryRun: input.dryRun },
+      opts,
+    );
+    const approval = createApproval(
+      tx,
+      {
+        applicationId: application.id,
+        jobId: input.jobId,
+        cvVersionId: input.cvVersionId,
+        allowedDomains: input.allowedDomains,
+        ttlMs: input.ttlMs,
+      },
+      opts,
+    );
+    return { application, approval };
   });
 }
 

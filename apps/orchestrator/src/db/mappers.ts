@@ -131,6 +131,7 @@ export function toQaReview(row: Row.QaReview): SharedQaReviewRecord {
 export function toApprovalToken(row: Row.Approval): SharedApprovalToken {
   return {
     token: row.token,
+    applicationId: toIdOrNull(row.applicationId),
     jobId: toId(row.jobId),
     cvVersionId: toId(row.cvVersionId),
     allowedDomains: row.allowedDomains,

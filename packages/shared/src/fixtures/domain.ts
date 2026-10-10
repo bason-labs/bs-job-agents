@@ -193,6 +193,7 @@ export const uploadFixture: Upload = {
 
 export const approvalTokenFixture: ApprovalToken = {
   token: "tok_7f3a",
+  applicationId: "app_1",
   jobId: "job_1",
   cvVersionId: "cvv_2",
   allowedDomains: ["itviec.com"],

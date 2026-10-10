@@ -353,8 +353,12 @@ export const approvals = sqliteTable(
     usedAt: text("used_at"),
     // Extra (not in §9): approval time, shown in the submission record (UC-13).
     createdAt: createdAt(),
+    // Extra (not in §9, PM M2): the one application this token authorises, set when it is
+    // created (UC-08). NULL only for tokens issued before 0004 that no record cites; those
+    // cannot start or resume Apply. Added with ADD COLUMN: never rebuild this table.
+    applicationId: integer("application_id").references((): AnySQLiteColumn => applications.id),
   },
-  (t) => [index("approvals_job_idx").on(t.jobId)],
+  (t) => [index("approvals_job_idx").on(t.jobId), index("approvals_application_idx").on(t.applicationId)],
 );
 
 export const applications = sqliteTable(

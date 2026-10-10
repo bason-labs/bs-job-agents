@@ -28,6 +28,11 @@ export const GUARDED_SCHEMA_OBJECTS = [
   { type: "trigger", name: "applications_dry_run_insert_guard", table: "applications" },
   // UC-08, §10.2 rule 1: approval tokens are single-use (0001).
   { type: "trigger", name: "approvals_single_use", table: "approvals" },
+  // PM M2: an approval is immutable except used_at and allowed domains, which only grow until
+  // a submission cites the token; it is never deleted (0004).
+  { type: "trigger", name: "approvals_immutable", table: "approvals" },
+  { type: "trigger", name: "approvals_no_delete", table: "approvals" },
+  { type: "trigger", name: "approvals_domains_grow_only", table: "approvals" },
   // §10.2 rule 5: one application per job unless "apply again" (0000).
   { type: "index", name: "applications_job_uq", table: "applications" },
 ] as const satisfies readonly GuardedSchemaObject[];

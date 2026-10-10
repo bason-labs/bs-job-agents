@@ -29,6 +29,28 @@ export class ImmutableRecordError extends Error {
   }
 }
 
+/** Why the data layer refuses to issue or extend an approval token (UC-08, UC-11 e). */
+export type ApprovalRefusal =
+  /** PM M2: the application is for another job or CV version, or the token is bound to none. */
+  | "application_mismatch"
+  /** PM M2: the application already has a submission record. */
+  | "application_recorded"
+  /** PM M2: the application left the apply flow (it is not approved or paused). */
+  | "application_closed"
+  /** PM M2: the application still has an unexpired token; Ba approves again only after expiry. */
+  | "token_live";
+
+/** createApproval / addApprovalDomain refused; nothing was written. */
+export class ApprovalRefusedError extends Error {
+  constructor(
+    readonly reason: ApprovalRefusal,
+    detail: string,
+  ) {
+    super(`approval refused (${reason}): ${detail}`);
+    this.name = "ApprovalRefusedError";
+  }
+}
+
 /**
  * recordSubmission refused to write the §9.1 record, and wrote nothing: the record would
  * contradict the application or its approval. The caller (engine) keeps the raw Apply result
