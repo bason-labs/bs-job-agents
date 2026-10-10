@@ -92,6 +92,18 @@ describe("CodexRunner: a successful run", () => {
     // The prompt names the allowed sites (Codex has no hook: prompt-only, §4.4).
     expect(args.at(-1)).toContain("topcv.vn, itviec.com, linkedin.com");
   });
+
+  it("a Research task that does not hold the browser lock gets no Chrome (§10.3): fit, company and file are search-only", async () => {
+    const { def, cwd } = kit.realBot("research");
+    const { r, work } = runner([play(codexLines("structuredOk"))], ["browser@openai-bundled"]);
+    await r.run(kit.task(def, cwd, { kind: "company", input: { name: "NovaPay", website: null }, usesBrowser: false }), () => {});
+    const args = work()[0]!.args;
+    // The clean non-browser setup: no user config (no Chrome plugin), no ChatGPT apps; web search stays.
+    expect(args.slice(0, 6)).toEqual(["exec", "--json", "--skip-git-repo-check", "--ignore-user-config", "--disable", "apps"]);
+    expect(args).not.toContain("skip_host_skill_discovery");
+    expect(args).toContain('web_search="live"');
+    expect(args.at(-1)).not.toContain("# Boundaries\n\n- Browser");
+  });
 });
 
 describe("CodexRunner: repair in the same thread (§5.5 step 4)", () => {

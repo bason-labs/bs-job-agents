@@ -368,7 +368,9 @@ export class TaskQueue {
       readDirs = [prep.readDir];
       allowedSites = prep.allowedSites;
       authorize = prep.authorize;
-    } else if (bot.def.browser && !bot.def.browser.sitesFromApproval) {
+    } else if (task.usesBrowser && bot.def.browser && !bot.def.browser.sitesFromApproval) {
+      // Only a task that holds the browser lock drives Chrome (§10.3); the runner drops the
+      // Chrome tools of the others (RunnerTask.usesBrowser).
       allowedSites = bot.def.browser.allowedSites;
     }
     // §4.4: on Claude the allowlist is enforced by the site guard hook (Apply: the token's domains;
@@ -419,6 +421,7 @@ export class TaskQueue {
         transcriptPath: core.paths.abs(core.paths.transcript(task.id, task.attempt)),
         ...(readDirs ? { readDirs } : {}),
         ...(allowedSites ? { allowedSites } : {}),
+        usesBrowser: task.usesBrowser,
         ...(hooks.length > 0 ? { hookSettings: mergeHookSettings(...hooks) } : {}),
         timeoutMs: bot.def.timeoutSec * 1000,
         signal: controller.signal,

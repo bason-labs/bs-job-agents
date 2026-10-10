@@ -184,7 +184,9 @@ export abstract class CliRunner implements Runner {
     }
     const conversation = (CONVERSATION_TASK_KINDS as readonly string[]).includes(task.kind);
     const fullPlan = planTools(bot);
-    const plan = conversation ? conversationPlan(fullPlan) : fullPlan;
+    let plan = conversation ? conversationPlan(fullPlan) : fullPlan;
+    // §10.3: only a task that holds the browser lock may drive Ba's Chrome.
+    if (task.usesBrowser === false && plan.chrome) plan = { ...plan, chrome: null };
     const readDirs = checkReadDirs(task.readDirs ?? []);
     const allowedSites = plan.chrome ? checkSites(task) : [];
     const { roleMd, memoryMd } = readBotPromptFiles(task.cwd);

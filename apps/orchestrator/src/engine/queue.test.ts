@@ -85,6 +85,28 @@ describe("concurrency (§10.3)", () => {
     expect(t.tasks("research.scan").every((x) => x.status === "done")).toBe(true);
   });
 
+  it("only tasks that hold the browser lock may drive Chrome: the runner is told (usesBrowser) and only they get a site guard", async () => {
+    const t = await createTestEngine();
+    // Research on Claude, so the engine would build a site guard for any of its browser tasks.
+    updateBot(t.db, "research", { engine: "claude" });
+    const run = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await t.idle();
+    t.engine.approve(1, { cvVersionId: t.review(run.id, 1)!.cvVersions[0]!.cvVersionId, introText: null });
+    await t.idle();
+    const byKey = (key: string) => t.runner.callsFor(key)[0]!;
+    for (const key of ["research.scan", "apply.submit"]) {
+      expect(byKey(key).usesBrowser, key).toBe(true);
+      expect(byKey(key).allowedSites, key).toBeDefined();
+      expect(JSON.stringify(byKey(key).hookSettings), key).toContain("site-guard");
+    }
+    for (const key of ["research.fit", "research.company", "cv.tailor", "qa.review"]) {
+      expect(byKey(key).usesBrowser, key).toBe(false);
+      expect(byKey(key).allowedSites, key).toBeUndefined();
+      expect(JSON.stringify(byKey(key).hookSettings ?? null), key).not.toContain("site-guard");
+    }
+    expect(t.guards.siteCalls.map((c) => c.allowedSites)).toEqual([["topcv.vn", "itviec.com", "linkedin.com"], ["itviec.com"]]);
+  });
+
   it("the Figma lock runs one CV task at a time (VI JD: VI and EN gates)", async () => {
     const t = await createTestEngine({ sources: ["topcv"] });
     t.runner.script({ bot: "cv", kind: "tailor", delayMs: 50 });

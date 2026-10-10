@@ -27,6 +27,13 @@ export interface RunnerTask {
   /** Sites the browser may navigate to for this task (bot allowlist, or the approval's domains for Apply). */
   allowedSites?: string[];
   /**
+   * Additive (QA Phase 2): whether this task holds the browser lock (§10.3, the task row's
+   * uses_browser). false = the runner gives it no Chrome tools even when its bot has them (e.g.
+   * research.fit / research.company are search-only), so a task outside the lock never drives Ba's
+   * Chrome. undefined = the bot's tools.
+   */
+  usesBrowser?: boolean;
+  /**
    * Additive (W2a, coordinator decision): the Claude `--settings` PreToolUse hooks for this task,
    * built by the engine with the bridges' builders (site guard: the task's sites; Figma guard: the
    * task's protected pages). The runner merges them into its base settings and refuses to spawn a

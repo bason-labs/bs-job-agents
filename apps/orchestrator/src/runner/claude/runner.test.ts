@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { splitApplySubmitInput } from "@bs-job-agents/shared";
-import { applyInputFixture, cvTailorInputFixture } from "@bs-job-agents/shared/fixtures";
+import { applyInputFixture, cvTailorInputFixture, researchFitInputFixture, researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
 import { buildSiteGuardSettings } from "../../bridges/chrome/site-guard/settings.js";
 import { claudeLines, STDERR } from "../__fixtures__/index.js";
 import { argValue, fakeSpawn, type FakeScript } from "../__fixtures__/fake-cli.js";
@@ -337,6 +337,26 @@ describe("ClaudeRunner: refuses before spawning (fail closed)", () => {
     const result = await r.run(kit.task(def, cwd, { kind: "tailor", input: cvTailorInputFixture, readDirs: [kit.dir("task9")], hookSettings: siteOnly }), () => {});
     expect(result).toMatchObject({ status: "failed", error: expect.stringMatching(/Figma guard/) });
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("Chrome only for tasks that hold the browser lock (§10.3)", () => {
+  it("Research on Claude: a fit task gets no --chrome and needs no site guard; a scan gets both", async () => {
+    const research = kit.realBot("research");
+    const def = { ...research.def, engine: "claude" as const };
+    const { r, calls } = runner([play(claudeLines("structuredOk"))]);
+    await r.run(kit.task(def, research.cwd, { kind: "fit", input: researchFitInputFixture, readDirs: [kit.dir("task3")], usesBrowser: false }), () => {});
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls[0]!.args).not.toContain("--chrome");
+    expect(calls[0]!.args.join(" ")).not.toContain("mcp__claude-in-chrome__navigate");
+    expect(argValue(calls[0]!.args, "--settings")).toBe('{"autoMemoryEnabled":false}');
+
+    const scan = runner([play(claudeLines("structuredOk"))]);
+    const refused = await scan.r.run(kit.task(def, research.cwd, { kind: "scan", input: researchScanInputFixture, usesBrowser: true }), () => {});
+    expect(refused).toMatchObject({ status: "failed", error: expect.stringMatching(/site guard/) });
+    const hookSettings = buildSiteGuardSettings({ allowedSites: ["topcv.vn", "itviec.com", "linkedin.com"] });
+    await scan.r.run(kit.task(def, research.cwd, { kind: "scan", input: researchScanInputFixture, usesBrowser: true, hookSettings }), () => {});
+    expect(scan.calls[0]!.args).toContain("--chrome");
   });
 });
 
