@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Be_Vietnam_Pro, Space_Grotesk } from "next/font/google";
+import { InlineScript } from "@/components/InlineScript";
+import { Providers } from "@/components/Providers";
 import "./globals.css";
 
 const beVietnamPro = Be_Vietnam_Pro({
@@ -16,6 +18,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 // Runs before React hydrates so the theme is applied before first paint.
+// Must match components/theme/ThemeProvider.tsx (THEME_STORAGE_KEY).
 // Preference: localStorage "bsja_theme" = "light" | "dark" | "system" (default).
 const NO_FLASH_THEME_SCRIPT = `(function(){try{var p=localStorage.getItem('bsja_theme')||'system';var d=p==='dark'||(p==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);var t=d?'dark':'light';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t;}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`;
 
@@ -36,9 +39,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       className={`${beVietnamPro.variable} ${spaceGrotesk.variable}`}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_THEME_SCRIPT }} />
+        <InlineScript html={NO_FLASH_THEME_SCRIPT} />
       </head>
-      <body className="min-h-dvh antialiased">{children}</body>
+      <body className="min-h-dvh antialiased">
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }

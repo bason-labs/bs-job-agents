@@ -1,11 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
-import Home from "./page";
+import { describe, expect, it, vi } from "vitest";
+
+const redirect = vi.fn();
+vi.mock("next/navigation", () => ({ redirect: (url: string) => redirect(url) }));
 
 describe("Home page", () => {
-  it("renders the app name on the brand gradient", () => {
-    render(<Home />);
-    expect(screen.getByRole("heading", { level: 1, name: "bs-job-agents" })).toBeInTheDocument();
-    expect(screen.getByTestId("brand-hero")).toHaveClass("bg-gradient-brand");
+  it("redirects / to /chat", async () => {
+    const { default: Home } = await import("./page");
+    Home();
+    expect(redirect).toHaveBeenCalledWith("/chat");
   });
 });

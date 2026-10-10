@@ -1,0 +1,61 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [6 0 R 8 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+5 0 obj
+<< /Length 824 >>
+stream
+BT /F2 22 Tf 56 780 Td (BA HUYNH) Tj ET
+BT /F2 12 Tf 56 748 Td (FRONTEND ENGINEER | REACT, NEXT.JS & TYPESCRIPT) Tj ET
+BT /F1 10 Tf 56 726 Td (Ho Chi Minh City - sample CV for the dev component gallery) Tj ET
+BT /F2 12 Tf 56 706 Td (PROFILE) Tj ET
+BT /F1 10 Tf 56 684 Td (Frontend engineer with 4+ years of web development experience.) Tj ET
+BT /F2 12 Tf 56 664 Td (EXPERIENCE) Tj ET
+BT /F1 10 Tf 56 642 Td (Gradion | Software Engineer | Sep 2025 - Present) Tj ET
+BT /F1 10 Tf 56 622 Td (- Owned a React/Node.js performance review app used by ~300 employees.) Tj ET
+BT /F1 10 Tf 56 602 Td (- Built AI-assisted CV screening with n8n and Genkit.) Tj ET
+BT /F1 10 Tf 56 582 Td (Aegona | Frontend Engineer | Feb 2024 - Sep 2025) Tj ET
+BT /F1 10 Tf 56 562 Td (- Built responsive booking, dynamic pricing and loyalty flows.) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 5 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+7 0 obj
+<< /Length 306 >>
+stream
+BT /F2 22 Tf 56 780 Td (Page 2) Tj ET
+BT /F2 12 Tf 56 748 Td (TECHNICAL SKILLS) Tj ET
+BT /F1 10 Tf 56 726 Td (React, Next.js, TypeScript, Node.js, PostgreSQL, Vitest, Playwright) Tj ET
+BT /F2 12 Tf 56 706 Td (EDUCATION) Tj ET
+BT /F1 10 Tf 56 684 Td (CTIM College - Information Technology - 2020-2023) Tj ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 7 0 R /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000266 00000 n 
+0000001141 00000 n 
+0000001277 00000 n 
+0000001634 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+1770
+%%EOF

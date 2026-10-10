@@ -24,6 +24,9 @@
   --glow: #0d98ba;          /* Blue-Green */
   --accent: #15a3c7;        /* Cyan Blue */
   --danger: #c92d3a;
+  --ok: #1a7f37;
+  --warn: #b7791f;
+  --grid: rgba(15, 23, 42, 0.08);
 
   /* Derived effects */
   --gradient-brand: linear-gradient(135deg, #008b8b 0%, #006d6f 60%, #0d98ba 100%);
@@ -49,6 +52,9 @@
   --glow: #7df9ff;          /* Electric Blue */
   --accent: #40e0d0;        /* Turquoise */
   --danger: #ff5f6d;
+  --ok: #3fd68a;
+  --warn: #f2c14e;
+  --grid: rgba(125, 249, 255, 0.07);
 
   --gradient-brand: linear-gradient(135deg, #008b8b 0%, #006d6f 60%, #0d98ba 100%);
   --shadow-glow: 0 0 24px -4px rgba(125, 249, 255, 0.55);
@@ -70,6 +76,8 @@
   --color-glow: var(--glow);
   --color-accent: var(--accent);
   --color-danger: var(--danger);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
 
   --font-sans: var(--font-sans), "Segoe UI", Arial, sans-serif;
   --font-display: var(--font-display), var(--font-sans), sans-serif;
@@ -100,33 +108,58 @@ body {
 }
 
 /* Cursor rule (spec §11): pointer on every interactive element, set globally
-   so components don't repeat `cursor-pointer`. Disabled takes precedence. */
-button:not(:disabled),
-a[href],
-summary,
-[role="button"]:not([aria-disabled="true"]),
-[role="tab"]:not([aria-disabled="true"]),
-[role="radio"]:not([aria-disabled="true"]),
-[role="switch"]:not([aria-disabled="true"]),
-[role="checkbox"]:not([aria-disabled="true"]),
-[role="option"]:not([aria-disabled="true"]),
-[role="menuitem"]:not([aria-disabled="true"]),
-[role="slider"]:not([aria-disabled="true"]),
-input[type="checkbox"]:not(:disabled),
-input[type="radio"]:not(:disabled),
-input[type="range"]:not(:disabled),
-input[type="submit"]:not(:disabled),
-input[type="reset"]:not(:disabled),
-input[type="button"]:not(:disabled),
-label[for] {
-  cursor: pointer;
+   so components don't repeat `cursor-pointer`; disabled elements get
+   `not-allowed`. In the base layer so a component's `cursor-*` utility can
+   still override it. The pointer list is wrapped in :where() (zero
+   specificity) so the disabled rule always wins, e.g. for a Radix slider
+   thumb that only carries data-disabled. */
+@layer base {
+  :where(
+      button,
+      a[href],
+      summary,
+      label[for],
+      [role="button"],
+      [role="tab"],
+      [role="radio"],
+      [role="switch"],
+      [role="checkbox"],
+      [role="option"],
+      [role="menuitem"],
+      [role="menuitemcheckbox"],
+      [role="menuitemradio"],
+      [role="slider"],
+      [role="combobox"],
+      [data-clickable],
+      input[type="checkbox"],
+      input[type="radio"],
+      input[type="range"],
+      input[type="submit"],
+      input[type="reset"],
+      input[type="button"]
+    ) {
+    cursor: pointer;
+  }
+
+  :where(button, input, select, textarea):disabled,
+  [aria-disabled="true"],
+  [data-disabled] {
+    cursor: not-allowed;
+  }
 }
 
-button:disabled,
-[aria-disabled="true"],
-[data-disabled],
-input:disabled {
-  cursor: not-allowed;
+/* Focus ring for keyboard users on every interactive element. Unlayered on
+   purpose: it beats component shadows, so focus is always visible. */
+:where(button, a[href], [role="button"], [role="tab"], [role="switch"], [role="checkbox"],
+  [role="combobox"], [role="slider"], [role="menuitem"], [role="option"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+/* Dotted grid for canvas backgrounds (flows). */
+.bg-grid {
+  background-image: radial-gradient(var(--grid) 1.2px, transparent 1.2px);
+  background-size: 18px 18px;
 }
 
 /* Tabular numerics for counters, scores and money. */
@@ -134,19 +167,21 @@ input:disabled {
   font-variant-numeric: tabular-nums;
 }
 
-/* Brand gradient text + background helpers. */
-.text-gradient-brand {
+/* Brand gradient text + background helpers. Declared with @utility (not plain
+   classes) so Tailwind variants work: `data-[state=checked]:bg-gradient-brand`,
+   `hover:shadow-glow`, … */
+@utility text-gradient-brand {
   background: var(--gradient-brand);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
-.bg-gradient-brand {
+@utility bg-gradient-brand {
   background: var(--gradient-brand);
 }
 
-.shadow-glow {
+@utility shadow-glow {
   box-shadow: var(--shadow-glow);
 }
 
