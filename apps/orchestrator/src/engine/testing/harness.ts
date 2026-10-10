@@ -18,6 +18,7 @@ import {
 import { seedBots, T0 } from "../../db/test-helpers.js";
 import { EnginePaths, type EngineConfig } from "../config.js";
 import { Engine } from "../engine.js";
+import type { OrphanKiller } from "../ports.js";
 import type { ActionStepOutput, HumanStepOutput } from "../state.js";
 import { FakeClock } from "./fake-clock.js";
 import { FakeRunner } from "./fake-runner.js";
@@ -46,6 +47,8 @@ export interface TestEngineOptions {
   db?: Db;
   clock?: FakeClock;
   files?: MemoryFileStore;
+  /** UC-18: records the process groups recovery asks to stop. */
+  processes?: OrphanKiller;
 }
 
 export interface TestEngine {
@@ -113,6 +116,7 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
     masterCv,
     clock,
     config: opts.config,
+    ...(opts.processes ? { processes: opts.processes } : {}),
   });
   if (opts.start !== false) await engine.start();
   const all = () => listEvents(db).map(mappers.toAppEvent).filter((e): e is AppEvent => e !== null);

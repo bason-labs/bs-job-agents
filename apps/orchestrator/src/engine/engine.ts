@@ -130,6 +130,8 @@ export class Engine implements EngineCore {
    * finished step, start the scheduler (catch-up runs) and the queue.
    */
   async start(): Promise<StartReport> {
+    // Recovery marks every running task interrupted: never while this engine runs tasks itself.
+    if (this.running) throw new EngineError("conflict", "the engine is already started");
     const r = recoverInterruptedTasks(this.db, { now: this.now(), maxAttempts: this.config.maxAttempts });
     const orphanPids = this.killOrphans([...r.requeued, ...r.exhausted, ...r.needsCheck]);
     this.bus.flush();
