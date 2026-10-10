@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkFigmaCode, evaluateFigmaToolCall, figmaGuardPolicyFromFingerprint, type FigmaGuardPolicy } from "./guard.js";
 import { buildFingerprint } from "./fingerprint.js";
+import { duplicateTemplateCode, ensureDraftsPageCode, exportPdfCode, findDraftFrameCode } from "./plugin-code.js";
 
 const KEY = "kJFoXNrTfFOtkQ515c0jHk";
 const policy: FigmaGuardPolicy = {
@@ -85,6 +86,18 @@ describe("checkFigmaCode: CV work on Drafts is allowed", () => {
   ];
   it.each(allowed)("%s", (_name, code) => {
     expect(checkFigmaCode(code, policy)).toEqual({ allow: true });
+  });
+});
+
+describe("checkFigmaCode: the bridge's own Drafts snippets", () => {
+  it("allows the template copy a CV bot would write", () => {
+    expect(checkFigmaCode(duplicateTemplateCode("459:1767", "NOVAPAY_SENIOR-FE_EN_v1", "Drafts"), policy)).toEqual({ allow: true });
+    expect(checkFigmaCode(findDraftFrameCode("SPIKE_TEST_EN_v1", "Drafts"), policy)).toEqual({ allow: true });
+    expect(checkFigmaCode(exportPdfCode("601:1", "Drafts", true), policy)).toEqual({ allow: true });
+  });
+
+  it("blocks the orchestrator-only page creation", () => {
+    expect(checkFigmaCode(ensureDraftsPageCode("Drafts"), policy)).toMatchObject({ allow: false, rule: "figma_create_page" });
   });
 });
 
