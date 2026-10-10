@@ -1,5 +1,28 @@
 .superpowers/
-node_modules/
-data/
 .env*
 .DS_Store
+
+# dependencies
+node_modules/
+
+# build output
+.next/
+dist/
+out/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# tests
+coverage/
+playwright-report/
+test-results/
+blob-report/
+
+# local runtime data (app.db, cv/, pdf/, screenshots/, transcripts/) — root only
+/data/
+
+# logs and editor files
+*.log
+*.swp
+*~

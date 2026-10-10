@@ -1,0 +1,38 @@
+{
+  "name": "bs-job-agents",
+  "private": true,
+  "packageManager": "pnpm@10.11.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "turbo dev --filter=@bs-job-agents/web --filter=@bs-job-agents/orchestrator",
+    "dev:web": "turbo dev --filter=@bs-job-agents/web",
+    "dev:orchestrator": "turbo dev --filter=@bs-job-agents/orchestrator",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "e2e": "pnpm --filter @bs-job-agents/web e2e"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^16.5.0",
+    "turbo": "^2.11.7",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.1"
+  },
+  "pnpm": {
+    "overrides": {
+      "react": "19.0.0",
+      "react-dom": "19.0.0"
+    },
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
+}
