@@ -4,8 +4,9 @@
 // with the attempt policy: 2 attempts per task (§5.5 step 6), never for apply.submit once it
 // started (PM FYI c). Locks live in memory; they are free after a restart because recovery runs
 // first. The Figma lock covers the orchestrator's own fingerprint and export calls too.
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import {
+  ALLOWED_UPLOAD_TYPES,
   EngineSchema,
   PauseReasonSchema,
   failedSelfChecks,
@@ -108,6 +109,14 @@ interface Inflight {
 
 /** Where the orchestrator's own Figma calls went wrong. */
 class FigmaGone extends Error {}
+
+/** `upload-<id><ext>`: the file name's extension when UC-24 allows it for the mime type, else the type's own. */
+export function uploadCopyName(file: { uploadId: string; filename: string; mime: string }): string {
+  const id = file.uploadId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40) || "file";
+  const allowed: readonly string[] = (ALLOWED_UPLOAD_TYPES as Record<string, readonly string[]>)[file.mime] ?? [];
+  const fromName = /\.[A-Za-z0-9]{1,5}$/.exec(file.filename)?.[0]?.toLowerCase();
+  return `upload-${id}${fromName && allowed.includes(fromName) ? fromName : (allowed[0] ?? "")}`;
+}
 
 /** UC-11 d: Apply's own check that the page shows the approved company and title failed. */
 function pageMismatch(key: string, failed: readonly string[]): SafetyNote[] {
@@ -349,8 +358,10 @@ export class TaskQueue {
         readDirs = [taskDir];
       }
       if (key === "research.file") {
-        const file = input as { path: string; filename: string };
-        const dest = join(taskDir, basename(file.filename));
+        const file = input as { uploadId: string; path: string; filename: string; mime: string };
+        // PM2 M4: the copy is named by the orchestrator; Ba's file name (untrusted text) stays in
+        // `filename`, which the prompt puts in an UNTRUSTED_CONTENT block, never in the path.
+        const dest = join(taskDir, uploadCopyName(file));
         await core.deps.files.copy(core.paths.abs(file.path), dest);
         input = { ...file, path: dest };
         readDirs = [taskDir];

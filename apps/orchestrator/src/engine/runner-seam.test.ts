@@ -307,7 +307,9 @@ describe("flags per task (§4.4, §5.5, spike S1/S2/S4)", () => {
       expect(r.task.readDirs, key).toEqual([taskDir]);
       expect(prompt(r), key).toContain(`you may read only: ${taskDir}.`);
     }
-    expect(first("research.file").task.input).toMatchObject({ path: join(dataDir, "tasks", String(first("research.file").task.taskId), "JD (final), NovaPay.pdf") });
+    // PM2 M4: the copy's name is the orchestrator's; Ba's file name stays out of the trusted path.
+    const file = first("research.file");
+    expect(file.task.input).toMatchObject({ filename: "JD (final), NovaPay.pdf", path: join(dataDir, "tasks", String(file.task.taskId), `upload-${(file.task.input as { uploadId: string }).uploadId}.pdf`) });
     expect(first("research.company").task.readDirs).toBeUndefined();
     expect(spawned("qa.review").args).toContain('web_search="disabled"');
   });
