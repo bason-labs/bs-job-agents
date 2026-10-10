@@ -78,6 +78,10 @@ describe("labels", () => {
     expect(applicationsHeader(1, "2026-10-11T09:05:00+07:00")).toBe(
       "1 application · stored on this Mac in data/ · click a row to see exactly what was sent · last export 2026-10-11 09:05",
     );
+    // The API reports the absolute data folder (W3a dataDir).
+    expect(applicationsHeader(2, null, "/Users/bason/bs-job-agents/data")).toBe(
+      "2 applications · stored on this Mac in /Users/bason/bs-job-agents/data · click a row to see exactly what was sent",
+    );
   });
 
   it("names the export file after its path", () => {
@@ -114,8 +118,28 @@ describe("recordFiles: which file is which in the record panel", () => {
     expect(r.jdText?.id).toBe("f_jd");
   });
 
+  it("matches the API's file ids and names, whatever the stored path is called (W3a files.ts)", () => {
+    const files = [
+      ref("app-5-cv", "cv_pdf", "BA_HUYNH_NovaPay_EN_v1.pdf", "application/pdf"),
+      ref("cv-12", "cv_pdf", "NOVAPAY_SENIOR-FRONTEND_EN_v1.pdf", "application/pdf"),
+      ref("app-5-presubmit", "screenshot", "pre-submit.jpg", "image/jpeg"),
+      ref("app-5-confirmation", "screenshot", "confirmation.png"),
+      ref("app-5-jd-screenshot", "jd_screenshot", "jd.png"),
+      ref("app-5-jd", "jd_snapshot", "jd.txt", "text/plain"),
+    ];
+    const stored = { ...submissionRecordFixture, preSubmitScreenshotPath: "applications/5/shot-1.jpg", confirmationScreenshotPath: "applications/5/shot-2.png" };
+    const r = recordFiles(detail(stored, files));
+    expect([r.cv?.id, r.preSubmit?.id, r.confirmation?.id, r.jdScreenshot?.id, r.jdText?.id]).toEqual([
+      "app-5-cv",
+      "app-5-presubmit",
+      "app-5-confirmation",
+      "app-5-jd-screenshot",
+      "app-5-jd",
+    ]);
+  });
+
   it("reports missing proof as null (shown as “not captured”)", () => {
-    const r = recordFiles(detail({ ...submissionRecordFixture, preSubmitScreenshotPath: null, confirmationScreenshotPath: null }, [ref("f_pre", "screenshot", "pre-submit.png")]));
+    const r = recordFiles(detail({ ...submissionRecordFixture, preSubmitScreenshotPath: null, confirmationScreenshotPath: null }, [ref("f_jd", "jd_snapshot", "jd.txt", "text/plain")]));
     expect(r.preSubmit).toBeNull();
     expect(r.confirmation).toBeNull();
     expect(r.cv).toBeNull();

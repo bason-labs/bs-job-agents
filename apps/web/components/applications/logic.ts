@@ -99,8 +99,6 @@ export function exportFileName(exp: Export): string {
   return exp.path.split(/[\\/]/).pop() || exp.path;
 }
 
-const basename = (path: string | null | undefined) => (path ? (path.split(/[\\/]/).pop() ?? null) : null);
-
 export interface RecordFiles {
   cv: FileRef | null;
   preSubmit: FileRef | null;
@@ -110,19 +108,19 @@ export interface RecordFiles {
 }
 
 /**
- * Which file is which. The record names its screenshots by path and the API serves files by
- * id, so screenshots are matched by file name (pre-submit.png / confirmation.png).
+ * Which file is which. The API lists only files that resolve inside data/ (so a listed file is a
+ * captured one) and names each record part: ids `app-<n>-presubmit` / `-confirmation`, files
+ * `pre-submit.<ext>` / `confirmation.<ext>`, whatever the stored path is called. The first
+ * `cv_pdf` is the copy that was sent (`app-<n>-cv`); the CV version's PDF may follow it.
  */
-export function recordFiles(detail: Pick<ApplicationDetail, "files" | "submission">): RecordFiles {
-  const { files, submission } = detail;
-  const byName = (path: string | null | undefined, kind: FileRef["kind"]) => {
-    const name = basename(path);
-    return name ? (files.find((f) => f.kind === kind && f.filename === name) ?? null) : null;
-  };
+export function recordFiles(detail: Pick<ApplicationDetail, "files">): RecordFiles {
+  const { files } = detail;
+  const part = (kind: FileRef["kind"], name: string) =>
+    files.find((f) => f.kind === kind && (f.id.endsWith(`-${name.replace("-", "")}`) || f.filename.startsWith(`${name}.`))) ?? null;
   return {
-    cv: files.find((f) => f.kind === "cv_pdf") ?? byName(submission?.uploadedFile?.filename, "upload"),
-    preSubmit: byName(submission?.preSubmitScreenshotPath, "screenshot"),
-    confirmation: byName(submission?.confirmationScreenshotPath, "screenshot"),
+    cv: files.find((f) => f.kind === "cv_pdf") ?? files.find((f) => f.kind === "upload" && f.mime === "application/pdf") ?? null,
+    preSubmit: part("screenshot", "pre-submit"),
+    confirmation: part("screenshot", "confirmation"),
     jdText: files.find((f) => f.kind === "jd_snapshot") ?? null,
     jdScreenshot: files.find((f) => f.kind === "jd_screenshot") ?? null,
   };

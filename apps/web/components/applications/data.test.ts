@@ -1,5 +1,6 @@
-import { ApplicationDetailSchema, ApplicationListItemSchema, ApplicationSchema, ExportResponseSchema } from "@bs-job-agents/shared";
+import { ApplicationDetailSchema, ApplicationListItemSchema, ApplicationStatusChangeResponseSchema, ExportResponseSchema } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
+import { apiErrorInfo } from "@/components/schedules/apiError";
 import { createFixtureApplicationsData } from "./data";
 import { APPLICATION_DETAILS } from "./fixtures";
 
@@ -30,16 +31,21 @@ describe("applications fixtures", () => {
 describe("fixture applications store", () => {
   it("changes a status through the shared machine and appends the history", async () => {
     const data = make();
-    const app = await data.changeStatus("app_1", { status: "interviewing", note: null });
-    expect(ApplicationSchema.parse(app).status).toBe("interviewing");
-    expect(app.statusHistory.at(-1)).toEqual({ status: "interviewing", at: NOW.toISOString(), note: null });
+    const res = ApplicationStatusChangeResponseSchema.parse(await data.changeStatus("app_1", { status: "interviewing", note: null }));
+    expect(res.application.status).toBe("interviewing");
+    expect(res.application.statusHistory.at(-1)).toEqual({ status: "interviewing", at: NOW.toISOString(), note: null });
     expect((await data.get("app_1"))?.application.status).toBe("interviewing");
   });
 
-  it("refuses moves the machine forbids, e.g. a dry run to submitted", async () => {
+  it("refuses moves the machine forbids, e.g. a dry run to submitted, with the API's 409", async () => {
     const data = make();
-    await expect(data.changeStatus("app_3", { status: "submitted", note: null })).rejects.toThrow(/can't change/);
+    const refused = await data.changeStatus("app_3", { status: "submitted", note: null }).catch((e: unknown) => e);
+    expect(apiErrorInfo(refused)).toMatchObject({ status: 409, code: "conflict" });
     await expect(data.changeStatus("app_1", { status: "needs_check", note: null })).rejects.toThrow(/can't change/);
+  });
+
+  it("answers a missing application with null (the API's 404)", async () => {
+    expect(await make().get("nope")).toBeNull();
   });
 
   it("exports every real application and remembers the export time (UC-13b)", async () => {

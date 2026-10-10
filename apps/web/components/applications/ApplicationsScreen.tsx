@@ -59,7 +59,7 @@ export function ApplicationsScreen({ initial, data = applicationsData }: Applica
   const changeStatus = async (row: ApplicationRow, status: ApplicationStatus) => {
     const id = row.application.id;
     try {
-      const app = await data.changeStatus(id, { status, note: null });
+      const { application: app } = await data.changeStatus(id, { status, note: null });
       setRows((rs) => rs.map((r) => (r.application.id === id ? { ...r, application: app } : r)));
       setDetails((d) => (d[id] ? { ...d, [id]: { ...d[id]!, application: app } } : d));
     } catch (e) {
@@ -114,7 +114,7 @@ export function ApplicationsScreen({ initial, data = applicationsData }: Applica
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p data-testid="applications-header" className="text-xs text-muted">
-          {applicationsHeader(rows.length, lastExportAt)}
+          {applicationsHeader(rows.length, lastExportAt, initial.dataDir)}
         </p>
         <Button variant="primary" size="sm" pill onClick={() => void exportAll()} loading={exporting} leftIcon={<Download aria-hidden className="size-4" />}>
           Export all (ZIP)
