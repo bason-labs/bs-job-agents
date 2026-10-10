@@ -98,6 +98,7 @@ function app() {
     attachments: [],       // files waiting to be sent from the composer
     dragOver: false,
     schedForm: null,
+    lastDeleted: null,
     roomInput: '',
     changeComment: '',
     skipReason: 'salary_low',
@@ -170,7 +171,7 @@ function app() {
     },
 
     // ---------- helpers ----------
-    toast(msg, kind = 'ok') { const id = Date.now() + Math.random(); this.toasts.push({ id, msg, kind }); setTimeout(() => this.toasts = this.toasts.filter(t => t.id !== id), 3500); },
+    toast(msg, kind = 'ok', undo = false) { const id = Date.now() + Math.random(); this.toasts.push({ id, msg, kind, undo }); setTimeout(() => this.toasts = this.toasts.filter(t => t.id !== id), undo ? 6000 : 3500); },
     toggleTheme() { this.theme = this.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = this.theme; },
     bot(key) { return this.bots.find(b => b.key === key); },
     get reviewCount() { return this.jobs.filter(j => j.status === 'review').length; },
@@ -416,7 +417,14 @@ function app() {
       else { const old = this.schedules[f.index]; this.schedules[f.index] = { ...row, last: old.last }; this.toast('Schedule updated'); }
       this.modal = null;
     },
-    deleteSchedule() { this.schedules.splice(this.schedForm.index, 1); this.modal = null; this.toast('Schedule deleted'); },
+    askDeleteSchedule(i) { this.modal = { type: 'deleteSchedule', index: i, name: this.schedules[i].name }; },
+    deleteSchedule() {
+      const i = this.modal.index, removed = this.schedules[i];
+      this.schedules.splice(i, 1); this.modal = null;
+      this.lastDeleted = { item: removed, index: i };
+      this.toast('Deleted “' + removed.name + '”', 'ok', true);
+    },
+    undoDelete() { if (!this.lastDeleted) return; this.schedules.splice(this.lastDeleted.index, 0, this.lastDeleted.item); this.toast('Restored “' + this.lastDeleted.item.name + '”'); this.lastDeleted = null; this.toasts = this.toasts.filter(t => !t.undo); },
 
     // ---------- criteria ----------
     addChip(field) { const v = this.newChip[field].trim(); if (!v) return; this.criteria[field].push(v); this.newChip[field] = ''; this.criteria.dirty = true; },
@@ -834,11 +842,13 @@ function app() {
     <!-- ========== SCHEDULES ========== -->
     <div x-show="view==='schedules'" class="flex-1 overflow-y-auto p-5">
      <div class="mx-auto max-w-3xl space-y-3">
-      <template x-for="(s, i) in schedules" :key="i">
+      <div x-show="!schedules.length" class="rounded-2xl border border-dashed border-border p-8 text-center text-muted">No schedules — scans only run when you ask Lead. <button @click="openSchedule()" class="text-accent underline">Create one</button></div>
+      <template x-for="(s, i) in schedules" :key="s.name + i">
         <div @click="openSchedule(i)" title="Edit schedule" class="rounded-2xl border border-border bg-surface/60 p-4 flex items-center justify-between hover:border-accent transition">
           <div><p class="font-medium" x-text="s.name"></p><p class="text-xs text-muted" x-text="s.cron+' · criteria '+s.profile+' · next: '+s.next+' · last: '+s.last"></p></div>
           <div class="flex items-center gap-3">
             <button @click.stop="startRun('schedule'); view='flow'" class="rounded-full border border-border px-3 py-1.5 text-xs">Run now</button>
+            <button @click.stop="askDeleteSchedule(i)" title="Delete schedule" class="size-8 grid place-items-center rounded-full border border-border text-muted hover:text-danger hover:border-danger/60 transition"><svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button>
             <button @click.stop="s.enabled=!s.enabled" class="relative w-11 h-6 rounded-full transition" :class="s.enabled ? 'bg-gradient-brand' : 'bg-surface-3'"><span class="absolute top-0.5 size-5 rounded-full bg-white transition-all" :class="s.enabled ? 'left-5' : 'left-0.5'"></span></button>
           </div>
         </div>
@@ -955,9 +965,16 @@ function app() {
             <button type="button" role="checkbox" :aria-checked="schedForm.enabled" @click="schedForm.enabled = !schedForm.enabled" class="flex items-center gap-2 text-xs"><span :class="schedForm.enabled ? 'bg-gradient-brand border-transparent shadow-glow' : 'border-border bg-surface'" class="size-4 rounded-md border grid place-items-center transition"><svg x-show="schedForm.enabled" class="size-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span><span>Enabled</span></button>
             <p class="text-xs text-muted" x-text="'Runs: ' + schedLabel(schedForm)"></p>
             <div class="flex justify-between gap-2 pt-1">
-              <button x-show="schedForm.index!==null" @click="deleteSchedule()" class="rounded-full border border-danger/50 text-danger px-4 py-2">Delete</button>
+              <button x-show="schedForm.index!==null" @click="askDeleteSchedule(schedForm.index)" class="rounded-full border border-danger/50 text-danger px-4 py-2">Delete</button>
               <div class="flex gap-2 ml-auto"><button @click="modal=null" class="rounded-full border border-border px-4 py-2">Cancel</button><button @click="saveSchedule()" class="rounded-full bg-gradient-brand text-white px-4 py-2 shadow-glow">Save</button></div>
             </div>
+          </div>
+        </template>
+        <template x-if="modal && modal.type==='deleteSchedule'">
+          <div class="space-y-3">
+            <p class="font-display text-lg font-semibold" x-text="'Delete “' + modal.name + '”?'"></p>
+            <p class="text-xs text-muted">Future scans from this schedule stop. Past runs, review cards and applications are kept. You can undo for a few seconds.</p>
+            <div class="flex justify-end gap-2"><button @click="modal=null" class="rounded-full border border-border px-4 py-2">Cancel</button><button @click="deleteSchedule()" class="rounded-full bg-danger text-white px-4 py-2">Delete schedule</button></div>
           </div>
         </template>
         <template x-if="modal && modal.type==='approve'">
@@ -1052,7 +1069,7 @@ function app() {
 
     <!-- toasts -->
     <div class="absolute bottom-4 right-4 z-50 space-y-2">
-      <template x-for="t in toasts" :key="t.id"><div class="rounded-2xl border px-4 py-2 text-xs shadow-2xl bg-surface" :class="t.kind==='err' ? 'border-danger text-danger' : 'border-accent/50'" x-text="t.msg"></div></template>
+      <template x-for="t in toasts" :key="t.id"><div class="flex items-center gap-3 rounded-2xl border px-4 py-2 text-xs shadow-2xl bg-surface" :class="t.kind==='err' ? 'border-danger text-danger' : 'border-accent/50'"><span x-text="t.msg"></span><button x-show="t.undo" @click="undoDelete()" class="font-semibold text-accent hover:underline">Undo</button></div></template>
     </div>
   </section>
 </div>

@@ -523,6 +523,12 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 
 ### UC-21: Manage schedules
 - **Main flow:** create, edit, enable/disable and delete schedules in the Schedules screen, or by telling Lead. Each shows its next run time and last result. Each schedule uses a Search Profile (default: the active one).
+- **Delete:**
+  - From the 🗑 button on the row, or Delete inside the edit modal. Both open a confirmation dialog (our own Dialog, not the browser's).
+  - Confirming stops future scans; past runs, review cards and applications are kept.
+  - A toast offers **Undo** for 6 s. The schedule is soft-deleted (`deleted_at`) and purged after that window.
+  - Deleting a schedule while its run is active doesn't cancel the run.
+  - With no schedules left, the screen shows an empty state with "Create one".
 
 ### UC-21b: Edit search criteria on the dashboard
 - **Trigger:** Ba opens **Search criteria** from the sidebar, or the "Edit criteria" button on a run card or schedule.
@@ -588,7 +594,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | `saved_answers` | key PK, label, answer, updated_at |
 | `uploads` | id, filename, mime, size, path, sha256, uploaded_at, message_id |
 | `search_profiles` | id, name, version, active, roles_json, locations_json, work_modes_json, min_salary, currency, seniority_json, sources_json, include_keywords_json, exclude_keywords_json, exclude_companies_json, company_types_json, languages_json, max_jobs, fit_threshold, updated_at |
-| `schedules` | id, name, cron, workflow_name, search_profile_id, params_json (overrides), enabled, last_run_id, next_run_at |
+| `schedules` | id, name, cron, workflow_name, search_profile_id, params_json (overrides), enabled, last_run_id, next_run_at, deleted_at |
 | `rooms` / `room_members` / `messages` | chat rooms (Lead chat is a room), members, messages (author = ba or bot, mentions, run refs) |
 | `engine_state` | engine PK, paused_until, reason |
 | `events` | id, type, payload_json, created_at (audit log + SSE replay) |
@@ -640,7 +646,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | **Review queue** | Cards: job header + fit score, why it fits / gaps, company profile, QA breakdown + truth check, CV preview (VI/EN toggle when both), editable intro text; Approve & submit / Request changes / Skip with reason | QA not passed (escalated), needs your input, injection flagged |
 | **Applications** | Table: company, role, link, CV version (PDF), submitted at, status (editable), screenshot | needs_check highlighted |
 | **Search criteria** | Form for the active Search Profile (§7.5): roles, locations, work mode, salary floor + currency, seniority, sources (toggles), include/exclude keywords, excluded companies, preferred company types, CV languages, max jobs per scan, fit threshold; version history | unsaved changes, validation errors |
-| **Schedules** | Centered list. **+ New schedule** and clicking a row open a **modal editor**: name, repeat (Weekdays / Daily / Weekly + day / Custom cron), time (Asia/Ho_Chi_Minh), Search Profile, enabled, a "Runs: …" summary, Save / Cancel / Delete (edit only). Row actions: Run now, enable toggle | validation (name required, cron must have 5 fields) |
+| **Schedules** | Centered list. **+ New schedule** and clicking a row open a **modal editor**: name, repeat (Weekdays / Daily / Weekly + day / Custom cron), time (Asia/Ho_Chi_Minh), Search Profile, enabled, a "Runs: …" summary, Save / Cancel / Delete (edit only). Row actions: Run now, 🗑 delete (confirm dialog + Undo toast), enable toggle; empty state when none | validation (name required, cron must have 5 fields) |
 | **Bots** | Per bot: role, engine switch, trust level, track record, promotion suggestion, prompt version, memory view | |
 | **Master CV** | Facts editor (EN/VI text, tags, org, dates), version history | |
 | **Rooms** | Group chat with @mentions; bots answer in discussion mode | |
