@@ -1,5 +1,6 @@
 import {
   DRY_RUN_APPLICATION_STATUS,
+  SAFETY_REASON_FOR_SUBMISSION_REFUSAL,
   canTransitionApplicationStatus,
   type ApplicationStatusChange,
 } from "@bs-job-agents/shared";
@@ -9,8 +10,9 @@ import type { ApplicationOrigin, ApplicationStatus } from "../enums.js";
 import { ImmutableRecordError, InvalidTransitionError, NotFoundError, SubmissionRefusedError } from "../errors.js";
 import { applications, jobs, jobSnapshots, submissions, type StatusHistoryEntry } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
-import type { Application, Approval, Company, CvVersion, Job, JobSnapshot, Submission } from "../types.js";
-import { createApproval, getApproval } from "./approvals.js";
+import type { Application, Approval, Company, CvVersion, EventRow, Job, JobSnapshot, Submission } from "../types.js";
+import { createApproval, getApproval, requireCvVersionOfJob } from "./approvals.js";
+import { appendAppEvent } from "./events.js";
 import { getCompany } from "./companies.js";
 import { getCvVersion } from "./cv.js";
 import { getJob } from "./jobs.js";
@@ -95,6 +97,8 @@ export function createApplication(
   opts?: ClockOpts,
 ): Application {
   return db.transaction((tx) => {
+    // PM M1: the CV version exists and belongs to the job (ApprovalRefusedError otherwise).
+    requireCvVersionOfJob(tx, input.jobId, input.cvVersionId);
     const now = nowIso(opts);
     const app = tx
       .insert(applications)
@@ -206,10 +210,28 @@ function assertNoRecord(db: Conn, applicationId: number): void {
 }
 
 /**
+ * The approved PDF's SHA-256 against the hash of the file Apply uploaded (computed by the
+ * orchestrator on the per-application copy, never reported by the bot). Required for
+ * `submitted`; for `needs_check` it may be missing (nothing uploaded) but must match.
+ */
+function uploadedFileMatches(uploaded: string | null, approved: string | null, status: ApplicationStatus): boolean {
+  if (uploaded === null) return status !== "submitted";
+  return approved !== null && uploaded === approved;
+}
+
+/**
  * §9.1 / UC-11 step 9: write the frozen submission record — application status
  * + `submissions` + `job_snapshots` — in one transaction. Throws (and writes
  * nothing) on any failure; the caller then marks the application `needs_check`
  * and keeps the raw ApplyResult in the task output.
+ *
+ * The record is Ba's evidence, so it must match its approval (PM M1, M2). It is refused
+ * with SubmissionRefusedError (nothing written) unless `submission.approvalToken` names a
+ * token that exists (`token_missing`), was consumed by Apply's first spawn (`token_unused`)
+ * and was issued for this application, job and CV version (`token_mismatch`), and the
+ * uploaded file's SHA-256 equals the approved `cv_versions.pdf_sha256` (`sha_mismatch`;
+ * required for `submitted`, checked whenever present for `needs_check`). After a refusal
+ * the engine calls markSubmissionRefused. A SQL trigger refuses the same records.
  *
  * `dryRun` (§12 dry-run acceptance: form filled, submit never clicked) records the
  * attempt with `dry_run = 1` and leaves the application `needs_check`; it can never
@@ -246,6 +268,32 @@ export function recordSubmission(
       );
     }
     const status = dryRun ? DRY_RUN_APPLICATION_STATUS : (input.status ?? "submitted");
+    // PM M1: the record cites the token that authorised this application…
+    const token = input.submission.approvalToken;
+    const approval = token ? getApproval(tx, token) : undefined;
+    if (!approval) {
+      throw new SubmissionRefusedError("token_missing", app.id, token ? "the approval token does not exist" : "no approval token");
+    }
+    if (!approval.usedAt) {
+      throw new SubmissionRefusedError("token_unused", app.id, "the token was never consumed by Apply's first spawn");
+    }
+    if (approval.applicationId !== app.id || approval.jobId !== app.jobId || approval.cvVersionId !== app.cvVersionId) {
+      throw new SubmissionRefusedError(
+        "token_mismatch",
+        app.id,
+        `the token was issued for application ${approval.applicationId}, job ${approval.jobId}, CV version ${approval.cvVersionId}`,
+      );
+    }
+    // …and the uploaded file is the approved PDF (§9.1).
+    const uploaded = input.submission.uploadedSha256 ?? null;
+    const approvedSha = getCvVersion(tx, approval.cvVersionId)?.pdfSha256 ?? null;
+    if (!uploadedFileMatches(uploaded, approvedSha, status)) {
+      throw new SubmissionRefusedError(
+        "sha_mismatch",
+        app.id,
+        uploaded === null ? "the uploaded file's SHA-256 is missing" : `uploaded ${uploaded}, approved ${approvedSha ?? "none"}`,
+      );
+    }
     if (!canTransitionApplicationStatus(app.status, status, "record", { dryRun })) {
       throw new InvalidTransitionError("application", app.status, status);
     }
@@ -272,6 +320,39 @@ export function recordSubmission(
       .get();
     if (status === "submitted") markJob(tx, app.jobId, "applied");
     return { application, submission, snapshot };
+  });
+}
+
+/**
+ * PM M1: what the engine does after recordSubmission threw SubmissionRefusedError (which
+ * wrote nothing). In one transaction: the application goes to `needs_check` (unless it is
+ * there already, or has left the apply flow), and a `safety.denied` event is appended with
+ * the shared reason for the refusal. The engine keeps the raw Apply result on the task.
+ */
+export function markSubmissionRefused(
+  db: Conn,
+  input: { error: SubmissionRefusedError; taskId: number | null; botName?: string },
+  opts?: ClockOpts,
+): { application: Application; event: EventRow } {
+  return db.transaction((tx) => {
+    const app = mustGet(tx, input.error.applicationId);
+    const note = `submission record refused: ${input.error.reason}`;
+    const application = canTransitionApplicationStatus(app.status, "needs_check", "system", { dryRun: app.dryRun })
+      ? transitionApplication(tx, app.id, "needs_check", { ...opts, note })
+      : app;
+    const event = appendAppEvent(
+      tx,
+      {
+        type: "safety.denied",
+        botName: input.botName ?? "apply",
+        taskId: input.taskId === null ? null : String(input.taskId),
+        action: "apply.record",
+        reason: SAFETY_REASON_FOR_SUBMISSION_REFUSAL[input.error.reason],
+        detail: input.error.message,
+      },
+      opts,
+    );
+    return { application, event };
   });
 }
 

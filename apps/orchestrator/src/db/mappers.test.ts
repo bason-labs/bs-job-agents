@@ -31,7 +31,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { openTestDb, type Db } from "./client.js";
 import * as m from "./mappers.js";
 import { getApproval } from "./repos/approvals.js";
-import { approveApplication, getSubmissionRecord, importApplication, recordSubmission } from "./repos/applications.js";
+import { getSubmissionRecord, importApplication, recordSubmission } from "./repos/applications.js";
 import { getBot, getPromptVersion, appendMemoryChange, recordPromptVersion, listMemoryChanges } from "./repos/bots.js";
 import { getCompany, saveCompanyProfile } from "./repos/companies.js";
 import { createQaReview } from "./repos/cv.js";
@@ -45,7 +45,7 @@ import { saveAnswer } from "./repos/saved-answers.js";
 import { createSchedule } from "./repos/schedules.js";
 import { createSearchProfile } from "./repos/search-profiles.js";
 import { claimNextTask, createTask, pauseTask } from "./repos/tasks.js";
-import { NOVAPAY, T0, at, seedBots, seedCv, seedJob, seedRun, seedTask } from "./test-helpers.js";
+import { NOVAPAY, T0, at, seedApprovedApplication, seedBots, seedCv, seedJob, seedRun, seedTask } from "./test-helpers.js";
 
 let db: Db;
 beforeEach(() => {
@@ -119,11 +119,8 @@ describe("approvals, applications and the submission record (§9.1)", () => {
   function submitted(opts: { dryRun?: boolean } = {}) {
     const job = seedJob(db);
     const cv = seedCv(db, job);
-    const { application: app, approval } = approveApplication(
-      db,
-      { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"], dryRun: opts.dryRun },
-      { now: T0 },
-    );
+    // UC-08 + Apply's first spawn consumed the bound token (PM M1, M2).
+    const { application: app, approval } = seedApprovedApplication(db, job, cv, { dryRun: opts.dryRun, now: T0 });
     recordSubmission(
       db,
       {
@@ -139,7 +136,8 @@ describe("approvals, applications and the submission record (§9.1)", () => {
           consentTicked: true,
           consentText: "I agree to the processing of my personal data",
           uploadedFilename: "BA_HUYNH_NOVAPAY_EN.pdf",
-          uploadedSha256: SHA,
+          // The approved PDF (§9.1): the orchestrator's hash of the uploaded copy.
+          uploadedSha256: cv.pdfSha256,
           uploadedPath: `data/applications/${app.id}/BA_HUYNH_NOVAPAY_EN.pdf`,
           preSubmitScreenshotPath: `data/applications/${app.id}/pre-submit.png`,
           confirmationScreenshotPath: opts.dryRun ? null : `data/applications/${app.id}/confirmation.png`,
@@ -183,7 +181,7 @@ describe("approvals, applications and the submission record (§9.1)", () => {
     expect(shared).toMatchObject({
       applicationId: String(app.id),
       consent: { ticked: true, text: "I agree to the processing of my personal data" },
-      uploadedFile: { filename: "BA_HUYNH_NOVAPAY_EN.pdf", sha256: SHA },
+      uploadedFile: { filename: "BA_HUYNH_NOVAPAY_EN.pdf", sha256: cv.pdfSha256 },
       approvalToken: approval.token,
       approval: { approvedAt: T0.toISOString(), cvVersionId: String(cv.id), allowedDomains: ["itviec.com"] },
       jdSnapshot: { applicationId: String(app.id), company: "NovaPay" },

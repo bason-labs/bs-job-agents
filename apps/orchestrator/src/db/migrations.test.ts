@@ -227,6 +227,14 @@ describe("upgrading a populated database from every earlier migration to head (P
     expect(() => setDomains.run("[]", "tok-kobe")).toThrow(/only grow/);
     expect(() => setDomains.run('["itviec.com","novapay.breezy.hr"]', "tok-novapay")).toThrow(/only grow/);
     expect(() => setDomains.run('["topcv.vn","kobe.breezy.hr"]', "tok-kobe")).not.toThrow();
+    // PM M1: an approved CV version keeps its PDF; a record must cite its own application's used token.
+    expect(() => c.prepare("UPDATE cv_versions SET pdf_sha256 = ? WHERE id = 1").run("e".repeat(64))).toThrow(/approved/);
+    expect(() => c.prepare("UPDATE cv_versions SET pdf_path = 'data/pdf/NOVAPAY_FE_VI_v1.pdf' WHERE id = 2").run()).not.toThrow();
+    expect(() =>
+      c
+        .prepare("INSERT INTO submissions(application_id, fields_json, approval_token, uploaded_sha256, submitted_at) VALUES (2, '[]', 'tok-novapay', ?, ?)")
+        .run(SHA_KOBE, T30),
+    ).toThrow(/does not match its approval/);
     // PM M3: applications from before 0003 are real ones.
     if (count < countAt("0003")) {
       expect(c.prepare("SELECT count(*) AS n FROM applications WHERE dry_run = 1").get()).toEqual({ n: 0 });

@@ -1,6 +1,8 @@
 // Approval tokens (UC-08, UC-11, §10.2 rules 1, 2 and 4) and their binding to one application
 // (PM phase 1, M2): a token authorises one application; a used token only re-validates a
 // resume of that application while nothing was recorded and the token has not expired.
+import { AppEventSchema } from "@bs-job-agents/shared";
+import { cvOutputFixture } from "@bs-job-agents/shared/fixtures";
 import { beforeEach, describe, expect, it } from "vitest";
 import { openTestDb, type Db } from "../client.js";
 import { ApprovalRefusedError, InvalidTransitionError } from "../errors.js";
@@ -15,6 +17,8 @@ import {
   type SubmissionInput,
 } from "./applications.js";
 import {
+  APPROVAL_DENIALS,
+  SAFETY_REASON_FOR_APPROVAL_DENIAL,
   addApprovalDomain,
   checkApproval,
   checkApprovalForResume,
@@ -22,6 +26,7 @@ import {
   createApproval,
   getApproval,
 } from "./approvals.js";
+import { createCvVersion } from "./cv.js";
 import { clearJobInjection, flagJobInjection } from "./jobs.js";
 
 let db: Db;
@@ -97,6 +102,21 @@ describe("approval tokens (UC-08, §10.2 rule 1)", () => {
     expect(approval.expiresAt).toBe(new Date(T0.getTime() + DAY * 1000).toISOString());
     expect(getApproval(db, approval.token)?.usedAt).toBeNull();
     expect(application).toMatchObject({ status: "approved", jobId: job.id, cvVersionId: cv.id });
+  });
+
+  it("never lives longer than 24 h, whatever the caller asks (UC-08)", () => {
+    const longer = approveApplication(
+      db,
+      { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"], ttlMs: 7 * DAY * 1000 },
+      { now: T0 },
+    );
+    expect(longer.approval.expiresAt).toBe(at(DAY).toISOString());
+    const shorter = approveApplication(
+      db,
+      { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"], ttlMs: 60_000, dryRun: true },
+      { now: T0 },
+    );
+    expect(shorter.approval.expiresAt).toBe(at(60).toISOString());
   });
 
   it("checks application, job, CV version, domain and expiry", () => {
@@ -335,6 +355,118 @@ describe("addApprovalDomain (UC-11e, PM M2)", () => {
     transitionApplication(db, application.id, status);
     expect(refusal(() => addApprovalDomain(db, approval.token, "novapay.breezy.hr"))).toBe("application_closed");
     expect(getApproval(db, approval.token)?.allowedDomains).toEqual(["itviec.com"]);
+  });
+});
+
+describe("an approval binds the approved job, CV version and file (PM M1)", () => {
+  const count = (table: string) => (db.$client.prepare(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n;
+
+  /** A CV version of `forJob` with only some of the export done. */
+  function draftCv(forJob: Job, pdf: { pdfPath: string | null; pdfSha256: string | null }): CvVersion {
+    return createCvVersion(db, {
+      jobId: forJob.id,
+      language: "en",
+      tailored: cvOutputFixture.tailored,
+      figmaFrameName: "NOVAPAY_SENIOR-FE_EN_v2",
+      figmaFrameUrl: null,
+      ...pdf,
+      masterVersion: 1,
+      promptVersion: 1,
+    });
+  }
+
+  it("refuses a CV version of another job (PM probe 4a)", () => {
+    const other = seedJob(db, { ...seedJobInput("https://itviec.com/it-jobs/other-2"), title: "Backend Engineer" });
+    const otherCv = seedCv(db, other);
+    expect(refusal(() => approveApplication(db, { jobId: job.id, cvVersionId: otherCv.id, allowedDomains: ["itviec.com"] }))).toBe(
+      "cv_job_mismatch",
+    );
+    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
+    expect(
+      refusal(() => createApproval(db, { applicationId: app.id, jobId: job.id, cvVersionId: otherCv.id, allowedDomains: ["itviec.com"] })),
+    ).toBe("cv_job_mismatch");
+    expect(count("approvals")).toBe(0);
+  });
+
+  it("refuses a CV version that does not exist", () => {
+    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
+    expect(refusal(() => createApproval(db, { applicationId: app.id, jobId: job.id, cvVersionId: 999, allowedDomains: ["itviec.com"] }))).toBe(
+      "cv_not_found",
+    );
+  });
+
+  it.each([
+    ["no PDF yet", { pdfPath: null, pdfSha256: null }],
+    ["a PDF without its SHA-256", { pdfPath: "data/pdf/NOVAPAY_SENIOR-FE_EN_v2.pdf", pdfSha256: null }],
+    ["a SHA-256 without the PDF", { pdfPath: null, pdfSha256: "b".repeat(64) }],
+    ["a malformed SHA-256", { pdfPath: "data/pdf/NOVAPAY_SENIOR-FE_EN_v2.pdf", pdfSha256: "B".repeat(64) }],
+  ] as const)("refuses a CV version with %s (PM probe 4b); UC-08 then leaves nothing behind", (_label, pdf) => {
+    const draft = draftCv(job, pdf);
+    expect(refusal(() => approveApplication(db, { jobId: job.id, cvVersionId: draft.id, allowedDomains: ["itviec.com"] }))).toBe(
+      "pdf_missing",
+    );
+    expect(count("applications")).toBe(0);
+    expect(count("approvals")).toBe(0);
+  });
+
+  it("needs at least one valid domain; domains are normalised", () => {
+    const tryDomains = (allowedDomains: string[]) =>
+      refusal(() => approveApplication(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains }));
+    expect(tryDomains([])).toBe("no_domain");
+    expect(tryDomains(["https://itviec.com/it-jobs"])).toBe("invalid_domain");
+    expect(tryDomains(["itviec.com", "not a domain"])).toBe("invalid_domain");
+    expect(tryDomains([" "])).toBe("invalid_domain");
+    expect(count("applications")).toBe(0);
+    const { approval } = approveApplication(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: [" ItViec.COM. ", "itviec.com"] });
+    expect(approval.allowedDomains).toEqual(["itviec.com"]);
+  });
+
+  it("addApprovalDomain refuses an invalid domain", () => {
+    const { approval } = approve();
+    expect(refusal(() => addApprovalDomain(db, approval.token, "https://novapay.breezy.hr/apply"))).toBe("invalid_domain");
+    expect(getApproval(db, approval.token)?.allowedDomains).toEqual(["itviec.com"]);
+  });
+
+  it("an approved CV version's PDF can no longer be swapped (the record compares against it)", () => {
+    const draft = draftCv(job, { pdfPath: "data/pdf/NOVAPAY_SENIOR-FE_EN_v2.pdf", pdfSha256: "b".repeat(64) });
+    const setPdf = db.$client.prepare("UPDATE cv_versions SET pdf_sha256 = ?, pdf_path = ? WHERE id = ?");
+    // Before approval the orchestrator may still re-export.
+    expect(() => setPdf.run("c".repeat(64), "data/pdf/NOVAPAY_SENIOR-FE_EN_v2.pdf", draft.id)).not.toThrow();
+    approveApplication(db, { jobId: job.id, cvVersionId: draft.id, allowedDomains: ["itviec.com"] });
+    expect(() => setPdf.run("d".repeat(64), "data/pdf/NOVAPAY_SENIOR-FE_EN_v2.pdf", draft.id)).toThrow(/approved/);
+    expect(() => setPdf.run("c".repeat(64), "data/pdf/other.pdf", draft.id)).toThrow(/approved/);
+  });
+});
+
+describe("trust-guard denials become safety.denied events (§10.2 rule 8)", () => {
+  it("every denial maps to a reason the shared event accepts", () => {
+    expect(Object.keys(SAFETY_REASON_FOR_APPROVAL_DENIAL).sort()).toEqual([...APPROVAL_DENIALS].sort());
+    for (const denial of APPROVAL_DENIALS) {
+      const event = {
+        id: "1",
+        at: T0.toISOString(),
+        type: "safety.denied",
+        botName: "apply",
+        taskId: "7",
+        action: "apply.submit",
+        reason: SAFETY_REASON_FOR_APPROVAL_DENIAL[denial],
+        detail: null,
+      };
+      expect(AppEventSchema.safeParse(event).success, denial).toBe(true);
+    }
+  });
+
+  it("keeps the existing reasons for the existing denials", () => {
+    expect(SAFETY_REASON_FOR_APPROVAL_DENIAL).toMatchObject({
+      not_found: "no_token",
+      used: "token_used",
+      expired: "token_expired",
+      job_mismatch: "wrong_job",
+      domain_mismatch: "wrong_domain",
+      application_mismatch: "wrong_application",
+      cv_mismatch: "wrong_cv",
+      not_used: "token_unused",
+    });
   });
 });
 

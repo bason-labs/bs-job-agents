@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { SUBMISSION_REFUSAL_REASONS } from "../domain/application.js";
 import { sampleEvents } from "../fixtures/events.js";
 import {
   APP_EVENT_TYPES,
   AppEventSchema,
+  SAFETY_REASON_FOR_SUBMISSION_REFUSAL,
   type AppEvent,
   decodeSseData,
   encodeSseEvent,
@@ -96,5 +98,34 @@ describe("SSE encoding", () => {
   it("decodeSseData throws on invalid payloads", () => {
     expect(() => decodeSseData("{\"type\":\"nope\"}")).toThrow();
     expect(() => decodeSseData("not json")).toThrow();
+  });
+});
+
+describe("safety.denied for a refused submission record (PM M1)", () => {
+  const denied = sampleEvents.find((x) => x.type === "safety.denied")!;
+
+  it("every refusal maps to a safety.denied reason the event accepts", () => {
+    expect(Object.keys(SAFETY_REASON_FOR_SUBMISSION_REFUSAL).sort()).toEqual([...SUBMISSION_REFUSAL_REASONS].sort());
+    for (const refusal of SUBMISSION_REFUSAL_REASONS) {
+      const reason = SAFETY_REASON_FOR_SUBMISSION_REFUSAL[refusal];
+      expect(AppEventSchema.safeParse({ ...denied, action: "apply.record", reason }).success, refusal).toBe(true);
+    }
+  });
+
+  it("names the token, file and dry-run refusals; a missing token is the existing no_token", () => {
+    expect(SAFETY_REASON_FOR_SUBMISSION_REFUSAL).toEqual({
+      token_missing: "no_token",
+      token_unused: "token_unused",
+      token_mismatch: "token_mismatch",
+      sha_mismatch: "sha_mismatch",
+      dry_run_mismatch: "dry_run_mismatch",
+    });
+  });
+
+  it("the trust guard's binding denials have reasons too (PM M2)", () => {
+    for (const reason of ["wrong_application", "wrong_cv", "injection_flagged", "application_closed"]) {
+      expect(AppEventSchema.safeParse({ ...denied, reason }).success, reason).toBe(true);
+    }
+    expect(AppEventSchema.safeParse({ ...denied, reason: "because" }).success).toBe(false);
   });
 });

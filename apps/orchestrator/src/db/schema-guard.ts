@@ -16,6 +16,10 @@ export const GUARDED_SCHEMA_OBJECTS = [
   // §9.1: the submission record is frozen once written (0001).
   { type: "trigger", name: "submissions_no_update", table: "submissions" },
   { type: "trigger", name: "submissions_no_delete", table: "submissions" },
+  // PM M1: a record cites the consumed token of its own application and the approved PDF; an
+  // approved CV version keeps its PDF (0005).
+  { type: "trigger", name: "submissions_match_approval", table: "submissions" },
+  { type: "trigger", name: "cv_versions_pdf_frozen_once_approved", table: "cv_versions" },
   { type: "trigger", name: "job_snapshots_no_update", table: "job_snapshots" },
   { type: "trigger", name: "job_snapshots_no_delete", table: "job_snapshots" },
   // §9.1, UC-13: a recorded application is never deleted; only its status changes,

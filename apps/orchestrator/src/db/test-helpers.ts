@@ -8,7 +8,9 @@ import { createRun, createStep } from "./repos/runs.js";
 import { createTask, type CreateTaskInput } from "./repos/tasks.js";
 import { upsertJobCandidate, type JobCandidateInput } from "./repos/jobs.js";
 import { createCvVersion } from "./repos/cv.js";
-import type { Job, Run, Step, Task, CvVersion } from "./types.js";
+import { approveApplication } from "./repos/applications.js";
+import { consumeApproval } from "./repos/approvals.js";
+import type { Application, Approval, Job, Run, Step, Task, CvVersion } from "./types.js";
 
 export const T0 = new Date("2026-10-10T08:00:00.000Z");
 
@@ -72,6 +74,28 @@ export const NOVAPAY: JobCandidateInput = {
 
 export function seedJob(db: Conn, candidate: JobCandidateInput = NOVAPAY, now: Date = T0): Job {
   return upsertJobCandidate(db, candidate, { now }).job;
+}
+
+/**
+ * UC-08 and Apply's first spawn: an approved application whose bound token (itviec.com,
+ * 24 h) the trust guard has consumed. That is what recordSubmission requires (PM M1, M2);
+ * the record must also cite `approval.token` and upload the CV's PDF (`cv.pdfSha256`).
+ */
+export function seedApprovedApplication(
+  db: Conn,
+  job: Job,
+  cv: CvVersion,
+  opts: { now?: Date; dryRun?: boolean; reapply?: boolean } = {},
+): { application: Application; approval: Approval } {
+  const now = opts.now ?? T0;
+  const { application, approval } = approveApplication(
+    db,
+    { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"], dryRun: opts.dryRun, reapply: opts.reapply },
+    { now },
+  );
+  const used = consumeApproval(db, approval.token, { applicationId: application.id, jobId: job.id, cvVersionId: cv.id, now });
+  if (!used.ok) throw new Error(`seedApprovedApplication: the token was denied (${used.reason})`);
+  return { application, approval: used.approval };
 }
 
 export function seedCv(db: Conn, job: Job, now: Date = T0): CvVersion {

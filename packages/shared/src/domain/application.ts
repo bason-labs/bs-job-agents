@@ -235,10 +235,21 @@ export type SubmissionRecord = z.infer<typeof SubmissionRecordSchema>;
 export const DRY_RUN_APPLICATION_STATUS = "needs_check" as const satisfies ApplicationStatus;
 
 /**
- * Why the orchestrator refused to write a submission record (§9.1). The record is Ba's
- * evidence, so it is never written when it contradicts the application; nothing is written,
- * and the application goes to `needs_check` (PM M3: the dry-run flag must match the application's).
+ * Why the orchestrator refused to write a submission record (§9.1, §10.2 rule 1). The record
+ * is Ba's evidence, so it is never written with a token, a file or a dry-run flag that does
+ * not match the approval; nothing is written, and the application goes to `needs_check`.
+ * - token_missing: no token, or an unknown one (PM M1)
+ * - token_unused: the token was never consumed by Apply's first spawn (PM M1)
+ * - token_mismatch: the token was issued for another application, job or CV version (PM M1, M2)
+ * - sha_mismatch: the uploaded file is not the approved PDF (required for `submitted`) (PM M1)
+ * - dry_run_mismatch: the dry-run flag differs from the application's (PM M3)
  */
-export const SUBMISSION_REFUSAL_REASONS = ["dry_run_mismatch"] as const;
+export const SUBMISSION_REFUSAL_REASONS = [
+  "dry_run_mismatch",
+  "token_missing",
+  "token_unused",
+  "token_mismatch",
+  "sha_mismatch",
+] as const;
 export const SubmissionRefusalReasonSchema = z.enum(SUBMISSION_REFUSAL_REASONS);
 export type SubmissionRefusalReason = z.infer<typeof SubmissionRefusalReasonSchema>;

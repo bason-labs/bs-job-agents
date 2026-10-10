@@ -31,6 +31,16 @@ export class ImmutableRecordError extends Error {
 
 /** Why the data layer refuses to issue or extend an approval token (UC-08, UC-11 e). */
 export type ApprovalRefusal =
+  /** PM M1: the CV version does not exist. */
+  | "cv_not_found"
+  /** PM M1: the CV version belongs to another job. */
+  | "cv_job_mismatch"
+  /** PM M1: the CV version has no exported PDF (pdf_path and a valid pdf_sha256). */
+  | "pdf_missing"
+  /** PM M1: no allowed domain. */
+  | "no_domain"
+  /** PM M1: a domain is not a host name such as topcv.vn. */
+  | "invalid_domain"
   /** PM M2: the application is for another job or CV version, or the token is bound to none. */
   | "application_mismatch"
   /** PM M2: the application already has a submission record. */
@@ -40,7 +50,7 @@ export type ApprovalRefusal =
   /** PM M2: the application still has an unexpired token; Ba approves again only after expiry. */
   | "token_live";
 
-/** createApproval / addApprovalDomain refused; nothing was written. */
+/** createApproval / createApplication / addApprovalDomain refused; nothing was written. */
 export class ApprovalRefusedError extends Error {
   constructor(
     readonly reason: ApprovalRefusal,

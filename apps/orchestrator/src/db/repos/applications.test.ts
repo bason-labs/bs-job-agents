@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { openTestDb, type Db } from "../client.js";
-import { ImmutableRecordError, InvalidTransitionError, SubmissionRefusedError } from "../errors.js";
-import { at, seedCv, seedJob, T0 } from "../test-helpers.js";
-import type { CvVersion, Job } from "../types.js";
+import { ApprovalRefusedError, ImmutableRecordError, InvalidTransitionError, SubmissionRefusedError } from "../errors.js";
+import * as mappers from "../mappers.js";
+import { NOVAPAY, at, seedApprovedApplication, seedCv, seedJob, T0 } from "../test-helpers.js";
+import type { Application, CvVersion, Job } from "../types.js";
 import { getJob } from "./jobs.js";
 import {
   approveApplication,
@@ -14,6 +15,7 @@ import {
   getSubmissionRecord,
   importApplication,
   listApplications,
+  markSubmissionRefused,
   recordSubmission,
   transitionApplication,
   updateJobSnapshot,
@@ -41,6 +43,7 @@ const SUBMISSION: SubmissionInput = {
   consentTicked: true,
   consentText: "I agree to the processing of my personal data",
   uploadedFilename: "BA_HUYNH_NOVAPAY_EN.pdf",
+  // The orchestrator's hash of the uploaded copy: the approved PDF (seedCv's pdf_sha256).
   uploadedSha256: "a".repeat(64),
   uploadedPath: "data/applications/1/BA_HUYNH_NOVAPAY_EN.pdf",
   preSubmitScreenshotPath: "data/applications/1/pre_submit.png",
@@ -60,6 +63,15 @@ const SNAPSHOT: CompleteSnapshotInput = {
   pageScreenshotPath: "data/applications/1/jd.png",
 };
 
+/** UC-08 + Apply's first spawn: an approved application whose bound token was consumed. */
+function approved(opts: { now?: Date; dryRun?: boolean; reapply?: boolean } = {}): { app: Application; token: string } {
+  const { application, approval } = seedApprovedApplication(db, job, cv, opts);
+  return { app: application, token: approval.token };
+}
+
+/** What Apply sent, citing the token that authorised it. */
+const sent = (token: string, base: SubmissionInput = SUBMISSION): SubmissionInput => ({ ...base, approvalToken: token });
+
 describe("applications: create, one per job (§10.2 rule 5)", () => {
   it("creates an approved application with history", () => {
     const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id }, { now: T0 });
@@ -77,14 +89,32 @@ describe("applications: create, one per job (§10.2 rule 5)", () => {
     expect(() => createApplication(db, { jobId: job.id, cvVersionId: cv.id })).toThrow(/UNIQUE/);
     expect(createApplication(db, { jobId: job.id, cvVersionId: cv.id, reapply: true }).reapply).toBe(true);
   });
+
+  it("refuses a CV version that does not exist or belongs to another job (PM M1)", () => {
+    const other = seedJob(db, { ...NOVAPAY, url: "https://itviec.com/it-jobs/backend-engineer-novapay-99", title: "Backend Engineer" });
+    const otherCv = seedCv(db, other);
+    const refusal = (cvVersionId: number) => {
+      try {
+        createApplication(db, { jobId: job.id, cvVersionId });
+      } catch (err) {
+        if (err instanceof ApprovalRefusedError) return err.reason;
+        throw err;
+      }
+      return undefined;
+    };
+    expect(refusal(999)).toBe("cv_not_found");
+    expect(refusal(otherCv.id)).toBe("cv_job_mismatch");
+    expect(listApplications(db)).toEqual([]);
+    expect(getJob(db, job.id)?.status).toBe("new");
+  });
 });
 
 describe("application status transitions (UC-11, UC-13)", () => {
   it("follows submit flow and manual tracking, appending history", () => {
-    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id }, { now: T0 });
+    const { app, token } = approved({ now: T0 });
     transitionApplication(db, app.id, "paused", { now: at(1), note: "notice period?" });
     transitionApplication(db, app.id, "approved", { now: at(2) });
-    recordSubmission(db, { applicationId: app.id, submission: SUBMISSION, snapshot: SNAPSHOT }, { now: at(3) });
+    recordSubmission(db, { applicationId: app.id, submission: sent(token), snapshot: SNAPSHOT }, { now: at(3) });
     transitionApplication(db, app.id, "interviewing", { now: at(4), by: "manual" });
     const offer = transitionApplication(db, app.id, "offer", { now: at(5), by: "manual" });
     expect(offer.statusHistory.map((h) => h.status)).toEqual(["approved", "paused", "approved", "submitted", "interviewing", "offer"]);
@@ -107,8 +137,8 @@ describe("application status transitions (UC-11, UC-13)", () => {
   });
 
   it("lets Ba correct a mis-click among post-submit statuses; the history keeps both (PM M3)", () => {
-    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id }, { now: T0 });
-    recordSubmission(db, { applicationId: app.id, submission: SUBMISSION, snapshot: SNAPSHOT }, { now: at(1) });
+    const { app, token } = approved({ now: T0 });
+    recordSubmission(db, { applicationId: app.id, submission: sent(token), snapshot: SNAPSHOT }, { now: at(1) });
     transitionApplication(db, app.id, "rejected", { now: at(2), by: "manual" });
     transitionApplication(db, app.id, "interviewing", { now: at(3), by: "manual", note: "mis-click" });
     const back = transitionApplication(db, app.id, "submitted", { now: at(4), by: "manual" });
@@ -119,10 +149,10 @@ describe("application status transitions (UC-11, UC-13)", () => {
   });
 
   it("the orchestrator only moves an application within the apply flow; Ba only after it", () => {
-    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
+    const { app, token } = approved();
     expect(() => transitionApplication(db, app.id, "paused", { by: "manual" })).toThrow(InvalidTransitionError);
     expect(() => transitionApplication(db, app.id, "failed", { by: "manual" })).toThrow(InvalidTransitionError);
-    recordSubmission(db, { applicationId: app.id, submission: SUBMISSION, snapshot: SNAPSHOT });
+    recordSubmission(db, { applicationId: app.id, submission: sent(token), snapshot: SNAPSHOT });
     expect(() => transitionApplication(db, app.id, "interviewing")).toThrow(InvalidTransitionError);
     expect(transitionApplication(db, app.id, "interviewing", { by: "manual" }).status).toBe("interviewing");
   });
@@ -183,8 +213,8 @@ describe("dry runs (PM M3)", () => {
   });
 
   it("a dry run never reaches submitted and never marks the job applied (probe 1a)", () => {
-    const dry = createApplication(db, { jobId: job.id, cvVersionId: cv.id, dryRun: true });
-    recordSubmission(db, { applicationId: dry.id, dryRun: true, submission: DRY, snapshot: SNAPSHOT });
+    const { app: dry, token } = approved({ dryRun: true });
+    recordSubmission(db, { applicationId: dry.id, dryRun: true, submission: sent(token, DRY), snapshot: SNAPSHOT });
     expect(() => transitionApplication(db, dry.id, "submitted", { by: "manual" })).toThrow(InvalidTransitionError);
     expect(getApplication(db, dry.id)?.status).toBe("needs_check");
     expect(getJob(db, job.id)?.status).toBe("approved");
@@ -209,15 +239,15 @@ describe("dry runs (PM M3)", () => {
   });
 
   it("recordSubmission refuses a dry-run flag that differs from the application's and writes nothing", () => {
-    const real = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
-    const dry = createApplication(db, { jobId: job.id, cvVersionId: cv.id, dryRun: true });
-    for (const [app, dryRun] of [
+    const real = approved();
+    const dry = approved({ dryRun: true, now: at(1) });
+    for (const [{ app, token }, dryRun] of [
       [real, true],
       [dry, false],
     ] as const) {
       let caught: unknown;
       try {
-        recordSubmission(db, { applicationId: app.id, dryRun, status: "needs_check", submission: DRY, snapshot: SNAPSHOT });
+        recordSubmission(db, { applicationId: app.id, dryRun, status: "needs_check", submission: sent(token, DRY), snapshot: SNAPSHOT });
       } catch (err) {
         caught = err;
       }
@@ -244,41 +274,33 @@ describe("dry runs (PM M3)", () => {
 
 describe("submission record (§9.1)", () => {
   it("writes application + submission + JD snapshot in one transaction", () => {
-    const { application: app, approval } = approveApplication(
-      db,
-      { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] },
-      { now: T0 },
-    );
-    const rec = recordSubmission(
-      db,
-      { applicationId: app.id, submission: { ...SUBMISSION, approvalToken: approval.token }, snapshot: SNAPSHOT },
-      { now: at(30) },
-    );
+    const { app, token } = approved({ now: T0 });
+    const rec = recordSubmission(db, { applicationId: app.id, submission: sent(token), snapshot: SNAPSHOT }, { now: at(30) });
     expect(rec.application).toMatchObject({ status: "submitted", submittedAt: at(30).toISOString() });
-    expect(rec.submission).toMatchObject({ ...SUBMISSION, approvalToken: approval.token, submittedAt: at(30).toISOString() });
+    expect(rec.submission).toMatchObject({ ...SUBMISSION, approvalToken: token, submittedAt: at(30).toISOString() });
     expect(rec.snapshot).toMatchObject({ ...SNAPSHOT, capturedAt: at(30).toISOString() });
 
     const full = getSubmissionRecord(db, app.id);
     expect(full?.job.id).toBe(job.id);
     expect(full?.company?.name).toBe("NovaPay");
     expect(full?.cvVersion?.id).toBe(cv.id);
-    expect(full?.approval?.token).toBe(approval.token);
+    expect(full?.approval?.token).toBe(token);
     expect(full?.submission?.fields).toHaveLength(2);
   });
 
   it("can record a needs_check outcome (UC-11c)", () => {
-    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
-    const rec = recordSubmission(db, { applicationId: app.id, status: "needs_check", submission: SUBMISSION, snapshot: SNAPSHOT });
+    const { app, token } = approved();
+    const rec = recordSubmission(db, { applicationId: app.id, status: "needs_check", submission: sent(token), snapshot: SNAPSHOT });
     expect(rec.application.status).toBe("needs_check");
     expect(rec.submission.dryRun).toBe(false);
   });
 
   it("records a dry-run Apply as needs_check with dryRun, never as submitted (§12)", () => {
-    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id, dryRun: true }, { now: T0 });
+    const { app, token } = approved({ dryRun: true, now: T0 });
     expect(() =>
-      recordSubmission(db, { applicationId: app.id, dryRun: true, status: "submitted", submission: DRY, snapshot: SNAPSHOT }),
+      recordSubmission(db, { applicationId: app.id, dryRun: true, status: "submitted", submission: sent(token, DRY), snapshot: SNAPSHOT }),
     ).toThrow(InvalidTransitionError);
-    const rec = recordSubmission(db, { applicationId: app.id, dryRun: true, submission: DRY, snapshot: SNAPSHOT }, { now: at(9) });
+    const rec = recordSubmission(db, { applicationId: app.id, dryRun: true, submission: sent(token, DRY), snapshot: SNAPSHOT }, { now: at(9) });
     expect(rec.application.status).toBe("needs_check");
     expect(rec.application.statusHistory.at(-1)).toEqual({
       status: "needs_check",
@@ -291,23 +313,20 @@ describe("submission record (§9.1)", () => {
   });
 
   it("rolls back everything if any part fails", () => {
-    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
-    expect(() =>
-      recordSubmission(db, {
-        applicationId: app.id,
-        submission: { ...SUBMISSION, approvalToken: "missing-token" }, // FK violation
-        snapshot: SNAPSHOT,
-      }),
-    ).toThrow();
+    const { app, token } = approved();
+    // The last write fails after the application and the submission were written.
+    db.$client.exec("CREATE TEMP TRIGGER fail_snapshot BEFORE INSERT ON job_snapshots BEGIN SELECT RAISE(ABORT, 'disk full'); END;");
+    expect(() => recordSubmission(db, { applicationId: app.id, submission: sent(token), snapshot: SNAPSHOT })).toThrow(/disk full/);
     expect(getApplication(db, app.id)?.status).toBe("approved");
     expect(getSubmissionRecord(db, app.id)?.submission).toBeUndefined();
     expect(getSubmissionRecord(db, app.id)?.snapshot).toBeUndefined();
+    expect(getJob(db, job.id)?.status).toBe("approved");
   });
 
   it("refuses to write a second record for the same application", () => {
-    const app = createApplication(db, { jobId: job.id, cvVersionId: cv.id });
-    recordSubmission(db, { applicationId: app.id, submission: SUBMISSION, snapshot: SNAPSHOT });
-    expect(() => recordSubmission(db, { applicationId: app.id, submission: SUBMISSION, snapshot: SNAPSHOT })).toThrow(
+    const { app, token } = approved();
+    recordSubmission(db, { applicationId: app.id, submission: sent(token), snapshot: SNAPSHOT });
+    expect(() => recordSubmission(db, { applicationId: app.id, submission: sent(token), snapshot: SNAPSHOT })).toThrow(
       ImmutableRecordError,
     );
   });
@@ -315,8 +334,9 @@ describe("submission record (§9.1)", () => {
   describe("immutability", () => {
     let appId: number;
     beforeEach(() => {
-      appId = createApplication(db, { jobId: job.id, cvVersionId: cv.id }).id;
-      recordSubmission(db, { applicationId: appId, submission: SUBMISSION, snapshot: SNAPSHOT });
+      const { app, token } = approved();
+      appId = app.id;
+      recordSubmission(db, { applicationId: appId, submission: sent(token), snapshot: SNAPSHOT });
     });
 
     it("repository API refuses update/delete", () => {
@@ -352,6 +372,161 @@ describe("submission record (§9.1)", () => {
       const setCreatedAt = db.$client.prepare("UPDATE applications SET created_at = ? WHERE id = ?");
       expect(() => setCreatedAt.run(at(99).toISOString(), appId)).toThrow(/only allow status/);
       expect(() => db.$client.prepare("UPDATE applications SET dry_run = 1 WHERE id = ?").run(appId)).toThrow(/dry run|only allow status/);
+    });
+  });
+});
+
+describe("the record matches its approval: token and file (PM M1, §9.1, §10.2 rule 1)", () => {
+  const OTHER_SHA = "f".repeat(64);
+
+  function refused(fn: () => unknown): SubmissionRefusedError {
+    try {
+      fn();
+    } catch (err) {
+      if (err instanceof SubmissionRefusedError) return err;
+      throw err;
+    }
+    throw new Error("the record was written");
+  }
+
+  /** Nothing was written: the application is untouched, has no record, and the job is not applied. */
+  function expectNothingWritten(appId: number): void {
+    expect(getApplication(db, appId)).toMatchObject({ status: "approved", submittedAt: null });
+    const rec = getSubmissionRecord(db, appId)!;
+    expect(rec.submission).toBeUndefined();
+    expect(rec.snapshot).toBeUndefined();
+    expect(getJob(db, job.id)?.status).toBe("approved");
+  }
+
+  it("refuses a record without a token, or with an unknown one (token_missing)", () => {
+    const { app } = approved();
+    for (const approvalToken of [undefined, null, "", "nope"]) {
+      const err = refused(() =>
+        recordSubmission(db, { applicationId: app.id, submission: { ...SUBMISSION, approvalToken }, snapshot: SNAPSHOT }),
+      );
+      expect(err).toMatchObject({ reason: "token_missing", applicationId: app.id });
+    }
+    expectNothingWritten(app.id);
+  });
+
+  it("refuses a token that Apply's first spawn never consumed (token_unused)", () => {
+    const { application, approval } = approveApplication(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] });
+    const err = refused(() => recordSubmission(db, { applicationId: application.id, submission: sent(approval.token), snapshot: SNAPSHOT }));
+    expect(err.reason).toBe("token_unused");
+    expectNothingWritten(application.id);
+  });
+
+  it("refuses another job's token (token_mismatch, PM probe 3)", () => {
+    const other = seedJob(db, { ...NOVAPAY, url: "https://itviec.com/it-jobs/backend-engineer-novapay-99", title: "Backend Engineer" });
+    const theirs = seedApprovedApplication(db, other, seedCv(db, other));
+    const { app } = approved();
+    const err = refused(() => recordSubmission(db, { applicationId: app.id, submission: sent(theirs.approval.token), snapshot: SNAPSHOT }));
+    expect(err.reason).toBe("token_mismatch");
+    expectNothingWritten(app.id);
+  });
+
+  it("refuses the token of another application for the same job and CV, e.g. the dry run's (token_mismatch)", () => {
+    const dry = approved({ dryRun: true });
+    const { app } = approved({ now: at(1) });
+    const err = refused(() => recordSubmission(db, { applicationId: app.id, submission: sent(dry.token), snapshot: SNAPSHOT }));
+    expect(err.reason).toBe("token_mismatch");
+    expectNothingWritten(app.id);
+  });
+
+  it("refuses an uploaded file other than the approved PDF (sha_mismatch, PM probe 2)", () => {
+    const { app, token } = approved();
+    const err = refused(() =>
+      recordSubmission(db, { applicationId: app.id, submission: { ...sent(token), uploadedSha256: OTHER_SHA }, snapshot: SNAPSHOT }),
+    );
+    expect(err.reason).toBe("sha_mismatch");
+    expectNothingWritten(app.id);
+  });
+
+  it("requires the uploaded file's SHA-256 for submitted", () => {
+    const { app, token } = approved();
+    const err = refused(() =>
+      recordSubmission(db, { applicationId: app.id, submission: { ...sent(token), uploadedSha256: null }, snapshot: SNAPSHOT }),
+    );
+    expect(err.reason).toBe("sha_mismatch");
+    expectNothingWritten(app.id);
+  });
+
+  it("for needs_check the SHA-256 may be missing (nothing uploaded), but must match when present", () => {
+    const { app, token } = approved();
+    const err = refused(() =>
+      recordSubmission(db, {
+        applicationId: app.id,
+        status: "needs_check",
+        submission: { ...sent(token), uploadedSha256: OTHER_SHA },
+        snapshot: SNAPSHOT,
+      }),
+    );
+    expect(err.reason).toBe("sha_mismatch");
+    expectNothingWritten(app.id);
+    const noUpload = { ...sent(token), uploadedFilename: null, uploadedSha256: null, uploadedPath: null };
+    expect(recordSubmission(db, { applicationId: app.id, status: "needs_check", submission: noUpload, snapshot: SNAPSHOT }).application.status).toBe(
+      "needs_check",
+    );
+  });
+
+  it("refuses a dry run's mismatched file too", () => {
+    const { app, token } = approved({ dryRun: true });
+    const err = refused(() =>
+      recordSubmission(db, { applicationId: app.id, dryRun: true, submission: { ...sent(token, DRY), uploadedSha256: OTHER_SHA }, snapshot: SNAPSHOT }),
+    );
+    expect(err.reason).toBe("sha_mismatch");
+  });
+
+  it("the engine's follow-up: needs_check and a safety.denied event, in one transaction", () => {
+    const { app, token } = approved();
+    const err = refused(() =>
+      recordSubmission(db, { applicationId: app.id, submission: { ...sent(token), uploadedSha256: OTHER_SHA }, snapshot: SNAPSHOT }),
+    );
+    const { application, event } = markSubmissionRefused(db, { error: err, taskId: 42 }, { now: at(40) });
+    expect(application.status).toBe("needs_check");
+    expect(application.statusHistory.at(-1)).toEqual({
+      status: "needs_check",
+      at: at(40).toISOString(),
+      note: "submission record refused: sha_mismatch",
+    });
+    expect(mappers.toAppEvent(event)).toMatchObject({
+      type: "safety.denied",
+      botName: "apply",
+      taskId: "42",
+      action: "apply.record",
+      reason: "sha_mismatch",
+      at: at(40).toISOString(),
+    });
+    expect(getSubmissionRecord(db, app.id)?.submission).toBeUndefined();
+  });
+
+  describe("SQL refuses the same records, whatever the repository does", () => {
+    const insert = (appId: number, token: string | null, sha: string | null, dryRun = 0) =>
+      db.$client
+        .prepare(
+          "INSERT INTO submissions(application_id, fields_json, approval_token, uploaded_sha256, submitted_at, dry_run) VALUES (?, '[]', ?, ?, ?, ?)",
+        )
+        .run(appId, token, sha, T0.toISOString(), dryRun);
+
+    it("no token, an unused token, another application's token", () => {
+      const { app } = approved();
+      expect(() => insert(app.id, null, "a".repeat(64))).toThrow(/does not match its approval/);
+      const unused = approveApplication(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"], dryRun: true });
+      expect(() => insert(unused.application.id, unused.approval.token, "a".repeat(64), 1)).toThrow(/does not match its approval/);
+      const dry = approved({ dryRun: true, now: at(1) });
+      expect(() => insert(app.id, dry.token, "a".repeat(64))).toThrow(/does not match its approval/);
+    });
+
+    it("a dry-run flag that differs from the application's; the bound, consumed token passes", () => {
+      const { app, token } = approved();
+      expect(() => insert(app.id, token, "a".repeat(64), 1)).toThrow(/does not match its approval/);
+      // The file's hash is the repository's check (the trigger never reaches into cv_versions).
+      expect(() => insert(app.id, token, "a".repeat(64))).not.toThrow();
+    });
+
+    it("an imported application's partial record is not checked (UC-13)", () => {
+      const { application } = importApplication(db, { jobId: job.id });
+      expect(() => insert(application.id, null, null)).not.toThrow();
     });
   });
 });

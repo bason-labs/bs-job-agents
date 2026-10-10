@@ -2,7 +2,7 @@
 // Every event is also written to the `events` table (id, type, payload_json, created_at) for replay.
 import { z } from "zod";
 import { BotNameSchema, EngineSchema, IdSchema, IsoDateTimeSchema, TrustLevelSchema } from "../common/primitives.js";
-import { ApplicationOriginSchema, ApplicationStatusSchema } from "../domain/application.js";
+import { ApplicationOriginSchema, ApplicationStatusSchema, type SubmissionRefusalReason } from "../domain/application.js";
 import { BotActivitySchema } from "../domain/bot-record.js";
 import { MessageSchema } from "../domain/chat.js";
 import { EnginePauseReasonSchema, EngineUsageSchema } from "../domain/engine-state.js";
@@ -25,6 +25,43 @@ const stepRef = {
   /** Job id for per-job branches. */
   branchKey: z.string().nullable(),
 };
+
+/** Why a bot action or a record was refused (§10.2 rules 1, 2, 4, 7; §9.1). Append-only. */
+export const SAFETY_DENIAL_REASONS = [
+  "no_token",
+  "token_expired",
+  "token_used",
+  "wrong_job",
+  "wrong_domain",
+  "off_allowlist",
+  "consult_mode",
+  "trust_level",
+  "protected_page_changed",
+  "page_mismatch",
+  // PM M1/M2: the trust guard's binding checks and the submission record's checks.
+  "token_unused",
+  "token_mismatch",
+  "wrong_application",
+  "wrong_cv",
+  "injection_flagged",
+  "application_closed",
+  "sha_mismatch",
+  "dry_run_mismatch",
+] as const;
+export const SafetyDenialReasonSchema = z.enum(SAFETY_DENIAL_REASONS);
+export type SafetyDenialReason = z.infer<typeof SafetyDenialReasonSchema>;
+
+/**
+ * The `safety.denied` reason for a refused submission record (PM M1): the engine keeps the raw
+ * Apply result on the task, marks the application `needs_check` and appends this event.
+ */
+export const SAFETY_REASON_FOR_SUBMISSION_REFUSAL = {
+  token_missing: "no_token",
+  token_unused: "token_unused",
+  token_mismatch: "token_mismatch",
+  sha_mismatch: "sha_mismatch",
+  dry_run_mismatch: "dry_run_mismatch",
+} as const satisfies Record<SubmissionRefusalReason, SafetyDenialReason>;
 
 /** Map step counts for the stacked node (×N, running/queued, §11 Flow canvas). */
 const MapCountsSchema = z.object({
@@ -140,18 +177,7 @@ export const AppEventSchema = z.discriminatedUnion("type", [
     botName: BotNameSchema,
     taskId: IdSchema.nullable(),
     action: z.string().min(1),
-    reason: z.enum([
-      "no_token",
-      "token_expired",
-      "token_used",
-      "wrong_job",
-      "wrong_domain",
-      "off_allowlist",
-      "consult_mode",
-      "trust_level",
-      "protected_page_changed",
-      "page_mismatch",
-    ]),
+    reason: SafetyDenialReasonSchema,
     detail: z.string().nullable(),
   }),
   ev("export.ready", { export: ExportSchema }),

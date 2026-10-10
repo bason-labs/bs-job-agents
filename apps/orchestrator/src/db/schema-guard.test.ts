@@ -90,39 +90,71 @@ describe("openDb refuses to start without the guarded objects (PM M4)", () => {
     },
   );
 
-  it("fails closed after a future migration rebuilds `applications` the way drizzle-kit does", () => {
-    // Build the rebuild from the live definition, so the test follows future columns.
+  /**
+   * A future migration that rebuilds `table` the way drizzle-kit does (create new, copy, drop,
+   * rename, re-create its indexes), built from the live definition so it follows new columns.
+   * `legacyAlter` gets past SQLite's trigger check on RENAME; `extra` runs at the end.
+   */
+  function rebuildMigration(table: string, opts: { legacyAlter?: boolean; extra?: string[] } = {}): string {
     const probe = openTestDb();
     const objects = probe.$client
-      .prepare("SELECT type, name, sql FROM sqlite_master WHERE tbl_name = 'applications' AND sql IS NOT NULL")
-      .all() as { type: string; name: string; sql: string }[];
+      .prepare("SELECT type, sql FROM sqlite_master WHERE tbl_name = ? AND sql IS NOT NULL")
+      .all(table) as { type: string; sql: string }[];
     probe.$client.close();
-    const table = objects.find((o) => o.type === "table")!.sql;
-    const indexes = objects.filter((o) => o.type === "index").map((o) => o.sql);
-    const rebuild = [
-      table.replace("CREATE TABLE `applications`", "CREATE TABLE `__new_applications`"),
-      "INSERT INTO `__new_applications` SELECT * FROM `applications`",
-      "DROP TABLE `applications`",
-      "ALTER TABLE `__new_applications` RENAME TO `applications`",
-      ...indexes,
+    const create = objects.find((o) => o.type === "table")!.sql;
+    return [
+      ...(opts.legacyAlter ? ["PRAGMA legacy_alter_table = ON"] : []),
+      create.replace(new RegExp(`^CREATE TABLE [\`"]?${table}[\`"]?`), `CREATE TABLE \`__new_${table}\``),
+      `INSERT INTO \`__new_${table}\` SELECT * FROM \`${table}\``,
+      `DROP TABLE \`${table}\``,
+      `ALTER TABLE \`__new_${table}\` RENAME TO \`${table}\``,
+      ...objects.filter((o) => o.type === "index").map((o) => o.sql),
+      ...(opts.legacyAlter ? ["PRAGMA legacy_alter_table = OFF"] : []),
+      ...(opts.extra ?? []),
     ].join(";\n--> statement-breakpoint\n");
+  }
 
+  function openWithMigration(tag: string, sql: string): unknown {
     const base = tempDir();
-    const migrationsFolder = migrationsWithExtra(base, "9999_rebuild_applications", rebuild);
-    let caught: unknown;
     try {
-      openDb(join(base, "app.db"), { migrationsFolder }).$client.close();
+      openDb(join(base, "app.db"), { migrationsFolder: migrationsWithExtra(base, tag, sql) }).$client.close();
     } catch (err) {
-      caught = err;
+      return err;
     }
-    expect(caught).toBeInstanceOf(SchemaGuardError);
-    const missing = (caught as SchemaGuardError).missing.map((o) => o.name);
-    expect(missing).toEqual(
+    return undefined;
+  }
+
+  it("a drizzle-kit rebuild of `applications` cannot even run: the triggers that name it stop the RENAME", () => {
+    const err = openWithMigration("9999_rebuild_applications", rebuildMigration("applications"));
+    expect(err).toBeInstanceOf(Error);
+    expect(String((err as Error & { cause?: unknown }).cause ?? err)).toMatch(/error in trigger/);
+  });
+
+  it("fails closed when a rebuild of `applications` gets past that check and drops its triggers", () => {
+    const err = openWithMigration("9999_rebuild_applications", rebuildMigration("applications", { legacyAlter: true }));
+    expect(err).toBeInstanceOf(SchemaGuardError);
+    const missing = (err as SchemaGuardError).missing;
+    expect(missing.map((o) => o.name)).toEqual(
       expect.arrayContaining(["applications_no_delete_recorded", "applications_frozen_after_record", "applications_history_append_only"]),
     );
     // The index came back with the rebuild; only triggers went missing, all on applications.
-    expect(missing).not.toContain("applications_job_uq");
-    expect((caught as SchemaGuardError).missing.every((o) => o.type === "trigger" && o.table === "applications")).toBe(true);
+    expect(missing.map((o) => o.name)).not.toContain("applications_job_uq");
+    expect(missing.every((o) => o.type === "trigger" && o.table === "applications")).toBe(true);
+  });
+
+  it("a rebuild of `cv_versions` (e.g. a CHECK change) must re-create its trigger before openDb accepts it", () => {
+    const err = openWithMigration("9999_rebuild_cv_versions", rebuildMigration("cv_versions"));
+    expect(err).toBeInstanceOf(SchemaGuardError);
+    expect((err as SchemaGuardError).missing).toEqual([
+      { type: "trigger", name: "cv_versions_pdf_frozen_once_approved", table: "cv_versions" },
+    ]);
+
+    const probe = openTestDb();
+    const trigger = (
+      probe.$client.prepare("SELECT sql FROM sqlite_master WHERE name = 'cv_versions_pdf_frozen_once_approved'").get() as { sql: string }
+    ).sql;
+    probe.$client.close();
+    expect(openWithMigration("9999_rebuild_cv_versions", rebuildMigration("cv_versions", { extra: [trigger] }))).toBeUndefined();
   });
 
   it("accepts a fully migrated database and keeps accepting it on every reopen", () => {

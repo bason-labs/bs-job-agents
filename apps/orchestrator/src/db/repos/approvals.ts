@@ -1,13 +1,47 @@
 import { randomBytes } from "node:crypto";
-import { LIMITS, PRE_SUBMIT_APPLICATION_STATUSES, isApplyBlockedByInjection } from "@bs-job-agents/shared";
+import {
+  DomainSchema,
+  LIMITS,
+  PRE_SUBMIT_APPLICATION_STATUSES,
+  Sha256Schema,
+  isApplyBlockedByInjection,
+  type SafetyDenialReason,
+} from "@bs-job-agents/shared";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { ApprovalRefusedError, InvalidTransitionError, NotFoundError } from "../errors.js";
-import { applications, approvals, jobSnapshots, jobs, submissions } from "../schema.js";
+import { applications, approvals, cvVersions, jobSnapshots, jobs, submissions } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
-import type { Application, Approval } from "../types.js";
+import type { Application, Approval, CvVersion } from "../types.js";
 
 export const APPROVAL_TTL_MS = LIMITS.approvalTokenTtlMs;
+
+/**
+ * PM M1: the CV version an application or approval names must exist and belong to its job.
+ * Throws ApprovalRefusedError (`cv_not_found`, `cv_job_mismatch`).
+ */
+export function requireCvVersionOfJob(db: Conn, jobId: number, cvVersionId: number): CvVersion {
+  const cv = db.select().from(cvVersions).where(eq(cvVersions.id, cvVersionId)).get();
+  if (!cv) throw new ApprovalRefusedError("cv_not_found", `CV version ${cvVersionId} does not exist`);
+  if (cv.jobId !== jobId) {
+    throw new ApprovalRefusedError("cv_job_mismatch", `CV version ${cv.id} belongs to job ${cv.jobId}, not job ${jobId}`);
+  }
+  return cv;
+}
+
+/** PM M1: at least one domain, each a host name such as topcv.vn; normalised and de-duplicated. */
+function validDomains(domains: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const raw of domains) {
+    const d = normalizeDomain(raw);
+    if (!DomainSchema.safeParse(d).success) {
+      throw new ApprovalRefusedError("invalid_domain", `"${raw}" is not a host name such as topcv.vn`);
+    }
+    if (!out.includes(d)) out.push(d);
+  }
+  if (out.length === 0) throw new ApprovalRefusedError("no_domain", "an approval names at least one domain");
+  return out;
+}
 
 /** UC-07 b, §10.2 rule 4: is Apply blocked for this job until Ba confirms a suspected injection? */
 function injectionBlocked(db: Conn, jobId: number): boolean {
@@ -45,14 +79,17 @@ export interface CreateApprovalInput {
   jobId: number;
   cvVersionId: number;
   allowedDomains: string[];
+  /** Lifetime; at most (and by default) 24 h. */
   ttlMs?: number;
 }
 
 /**
  * UC-08 step 1: a single-use token bound to application + job + CV version + domains, valid
  * 24 h. Refused while the job is injection-flagged and Ba has not confirmed it (UC-07 b;
- * InvalidTransitionError), and with ApprovalRefusedError when the application is for another
- * job or CV version, has a record, left the apply flow, or still has an unexpired token.
+ * InvalidTransitionError). Refused with ApprovalRefusedError unless the CV version exists,
+ * belongs to the job and has its exported PDF (path + SHA-256), at least one valid domain is
+ * given (PM M1), and the application is this job's and CV version's, has no record, is
+ * approved or paused, and has no unexpired token (PM M2).
  */
 export function createApproval(db: Conn, input: CreateApprovalInput, opts?: ClockOpts): Approval {
   if (injectionBlocked(db, input.jobId)) {
@@ -60,6 +97,11 @@ export function createApproval(db: Conn, input: CreateApprovalInput, opts?: Cloc
   }
   const now = opts?.now ?? new Date();
   return db.transaction((tx) => {
+    const cv = requireCvVersionOfJob(tx, input.jobId, input.cvVersionId);
+    if (!cv.pdfPath || !Sha256Schema.safeParse(cv.pdfSha256).success) {
+      throw new ApprovalRefusedError("pdf_missing", `CV version ${cv.id} has no exported PDF with its SHA-256`);
+    }
+    const allowedDomains = validDomains(input.allowedDomains);
     const app = getApplicationRow(tx, input.applicationId);
     if (!app) throw new NotFoundError("application", input.applicationId);
     if (app.jobId !== input.jobId || app.cvVersionId !== input.cvVersionId) {
@@ -83,8 +125,9 @@ export function createApproval(db: Conn, input: CreateApprovalInput, opts?: Cloc
         applicationId: app.id,
         jobId: input.jobId,
         cvVersionId: input.cvVersionId,
-        allowedDomains: input.allowedDomains.map(normalizeDomain),
-        expiresAt: new Date(now.getTime() + (input.ttlMs ?? APPROVAL_TTL_MS)).toISOString(),
+        allowedDomains,
+        // UC-08: valid 24 h; a caller may ask for less (tests), never for more.
+        expiresAt: new Date(now.getTime() + Math.min(input.ttlMs ?? APPROVAL_TTL_MS, APPROVAL_TTL_MS)).toISOString(),
         createdAt: now.toISOString(),
       })
       .returning()
@@ -96,24 +139,44 @@ export function getApproval(db: Conn, token: string): Approval | undefined {
   return db.select().from(approvals).where(eq(approvals.token, token)).get();
 }
 
-export type ApprovalDenial =
-  | "not_found"
-  /** First spawn: the token was already used (UC-11 f). */
-  | "used"
-  /** Resume: the token was never used; the first spawn consumes it (consumeApproval). */
-  | "not_used"
-  | "expired"
-  /** PM M2: the token was issued for another application (e.g. a dry run's token), or for none. */
-  | "application_mismatch"
-  | "job_mismatch"
-  | "cv_mismatch"
-  | "domain_mismatch"
-  | "injection_flagged"
-  /** PM M2: the application already has a submission record. */
-  | "application_recorded"
-  /** PM M2: the application is no longer approved or paused (needs_check, failed, submitted, …). */
-  | "application_closed";
+/**
+ * Why the trust guard denies a token:
+ * - used: first spawn, the token was already used (UC-11 f)
+ * - not_used: resume, the token was never used; the first spawn consumes it (consumeApproval)
+ * - application_mismatch: the token was issued for another application (e.g. a dry run's), or for none (PM M2)
+ * - application_recorded: the application already has a submission record (PM M2)
+ * - application_closed: the application is no longer approved or paused (PM M2)
+ */
+export const APPROVAL_DENIALS = [
+  "not_found",
+  "used",
+  "not_used",
+  "expired",
+  "application_mismatch",
+  "job_mismatch",
+  "cv_mismatch",
+  "domain_mismatch",
+  "injection_flagged",
+  "application_recorded",
+  "application_closed",
+] as const;
+export type ApprovalDenial = (typeof APPROVAL_DENIALS)[number];
 export type ApprovalCheck = { ok: true; approval: Approval } | { ok: false; reason: ApprovalDenial };
+
+/** The `safety.denied` reason the engine appends when the trust guard denies a token (§10.2 rule 8). */
+export const SAFETY_REASON_FOR_APPROVAL_DENIAL = {
+  not_found: "no_token",
+  used: "token_used",
+  not_used: "token_unused",
+  expired: "token_expired",
+  application_mismatch: "wrong_application",
+  job_mismatch: "wrong_job",
+  cv_mismatch: "wrong_cv",
+  domain_mismatch: "wrong_domain",
+  injection_flagged: "injection_flagged",
+  application_recorded: "application_closed",
+  application_closed: "application_closed",
+} as const satisfies Record<ApprovalDenial, SafetyDenialReason>;
 
 export interface ApprovalExpectation extends ClockOpts {
   /** The application Apply runs for: the token must have been issued for it (PM M2). */
@@ -203,7 +266,7 @@ export function addApprovalDomain(db: Conn, token: string, domain: string): Appr
     if (!app) throw new ApprovalRefusedError("application_mismatch", "the token is not bound to an application");
     const state = applicationState(tx, app);
     if (state !== "open") throw new ApprovalRefusedError(state, `application ${app.id} is ${app.status}`);
-    const d = normalizeDomain(domain);
+    const [d] = validDomains([domain]) as [string];
     if (approval.allowedDomains.includes(d)) return approval;
     return tx
       .update(approvals)
