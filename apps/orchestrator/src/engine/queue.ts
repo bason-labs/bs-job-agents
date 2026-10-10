@@ -65,6 +65,7 @@ import type { EngineCore } from "./core.js";
 import { errorMessage } from "./errors.js";
 import { onCheckerDone, onProducerDone, type CvExport } from "./gate.js";
 import type { GuardBlock } from "./ports.js";
+import { noticePause, noticeTaskFailed } from "./notices.js";
 import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, postLeadMessage, stillRunning } from "./task-events.js";
 import { hostOfUrl, pauseSite, siteBlocksOf, siteKey, type SiteBlock } from "./sites.js";
 import { checkTaskTrust } from "./trust-guard.js";
@@ -797,6 +798,8 @@ export class TaskQueue {
         case "paused": {
           const paused = pauseTask(tx, task.id, outcome.reason, { output: outcome.output });
           emitTaskPaused(core, tx, paused, outcome.reason);
+          // S1: the UC-17 card (login, CAPTCHA, a domain to confirm); questions get their own cards.
+          noticePause(core, tx, paused, outcome.reason);
           if (key === "apply.submit") onApplyPaused(core, tx, paused, outcome.output as ApplyOutput);
           return;
         }
@@ -844,7 +847,9 @@ export class TaskQueue {
       requeueTask(tx, task.id, { newAttempt: true });
       return;
     }
-    failTaskNow(core, tx, task, error, output);
+    const failed = failTaskNow(core, tx, task, error, output);
+    // §5.5 step 6: the task failed for good, so Lead reports it (S1); never for a retried attempt.
+    noticeTaskFailed(core, tx, failed, error);
   }
 
   private onDone(tx: Conn, ctx: RunCtx | null, task: Task, output: unknown, exported: CvExport | undefined, recordFiles?: RecordFiles): void {
@@ -878,9 +883,10 @@ export class TaskQueue {
   /** The trust guard refused (nothing ran): the task fails with a safety.denied event. */
   private refuse(task: Task, reason: SafetyDenialReason, detail: string): void {
     this.core.db.transaction((tx) => {
-      failTaskNow(this.core, tx, task, `denied: ${detail}`);
+      const failed = failTaskNow(this.core, tx, task, `denied: ${detail}`);
       emitSafetyDenied(this.core, tx, { botName: task.botName, taskId: task.id, action: taskKey(task.botName, task.kind), reason, detail });
       if (reason === "protected_page_changed") postLeadMessage(this.core, tx, `I stopped a CV task: ${detail}.`, { runId: task.runId });
+      else if (isRetryableTask(task.botName, task.kind)) noticeTaskFailed(this.core, tx, failed, `denied: ${detail}`);
       if (!isRetryableTask(task.botName, task.kind)) applyStoppedBeforeSpawn(this.core, tx, task, "denied", detail);
     });
   }
@@ -904,8 +910,9 @@ export class TaskQueue {
         const current = getTask(tx, task.id);
         if (current?.status !== "running") return;
         const error = `engine error: ${errorMessage(err)}`;
-        failTaskNow(core, tx, current, error);
-        if (!isRetryableTask(task.botName, task.kind)) {
+        const failed = failTaskNow(core, tx, current, error);
+        if (isRetryableTask(task.botName, task.kind)) noticeTaskFailed(core, tx, failed, error);
+        else {
           // After the spawn it may have submitted; before it, nothing ran and the token is untouched.
           if (entry.spawned) onApplyFailedAfterSpawn(core, tx, current, error);
           else applyStoppedBeforeSpawn(core, tx, current, "not_started", error);

@@ -204,7 +204,7 @@ describe("bridge waits (§4.4, §6.2, §10.3, UC-17)", () => {
     expect(t.tasks("cv.tailor")[0]).toMatchObject({ status: "failed", error: expect.stringMatching(/changed while this CV task waited/) });
     expect(t.runner.callsFor("cv.tailor")).toHaveLength(1);
     expect(t.events("safety.denied")).toEqual([expect.objectContaining({ reason: "protected_page_changed" })]);
-    expect(t.events("message.created").at(-1)).toMatchObject({ message: { text: expect.stringMatching(/I stopped a CV task/) } });
+    expect(t.events("message.created").map((e) => e.message.text)).toContainEqual(expect.stringMatching(/I stopped a CV task/));
   });
 });
 
@@ -314,7 +314,9 @@ describe("the CV task's Figma flow (§6.2, coordinator B)", () => {
     expect(t.events("safety.denied")).toEqual([expect.objectContaining({ reason: "protected_page_changed", detail: expect.stringMatching(/Professional title/) })]);
     expect(getRun(t.db, run.id)?.status).toBe("failed");
     // Ba is alerted in the Lead chat.
-    expect(t.events("message.created").at(-1)).toMatchObject({ message: { author: { type: "bot", bot: "lead" }, text: expect.stringMatching(/protected Figma page changed/) } });
+    expect(t.events("message.created").map((e) => e.message)).toContainEqual(
+      expect.objectContaining({ author: { type: "bot", bot: "lead" }, text: expect.stringMatching(/protected Figma page changed/) }),
+    );
   });
 
   it("an export that is not one A4 page fails the attempt (UC-06 a)", async () => {

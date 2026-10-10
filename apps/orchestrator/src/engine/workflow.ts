@@ -30,6 +30,7 @@ import {
   getStepByKey,
   getSubmissionRecord,
   getTask,
+  listEvents,
   listTasks,
   updateRunStatus,
   type Conn,
@@ -55,6 +56,7 @@ import type {
   MapStepOutput,
   TaskStepRunning,
 } from "./state.js";
+import { NOTICE_EVENT, jobLabel, postNotice } from "./notices.js";
 import { isTerminalStep, openStep, setStep } from "./steps.js";
 import { failTaskNow } from "./task-events.js";
 import { createWorkflowTask, ensureStepRow } from "./task-factory.js";
@@ -473,11 +475,70 @@ function summaryOf(core: EngineCore, ctx: RunCtx, branches: BranchOutcome[]): st
   return parts.filter(Boolean).join(", ");
 }
 
+/** "No strong matches" with the best three below the threshold and their gaps, for Lead's message (UC-04 a). */
+function endSummaryText(core: EngineCore, ctx: RunCtx, summary: string | null): string {
+  const top = ctx.def.steps.find((s) => s.type === "filter" && s.fn === "top");
+  const out = top ? (getStepByKey(core.db, ctx.run.id, top.key, "")?.output as FilterStepOutput | null | undefined) : undefined;
+  const below = (out?.belowThreshold as { jobId: number; fitScore: number; gaps?: string[] }[] | undefined) ?? [];
+  if (summary?.startsWith("No strong matches") && below.length > 0) {
+    const best = below.map((b) => `${jobLabel(core.db, b.jobId) ?? `job ${b.jobId}`} (fit ${b.fitScore})${b.gaps?.length ? `, gaps: ${b.gaps.join(", ")}` : ""}`);
+    return `No strong matches. Best below the threshold: ${best.join("; ")}`;
+  }
+  return summary ?? "done";
+}
+
 function finishRun(core: EngineCore, ctx: RunCtx, status: "done" | "failed", summary: string | null, error: string | null): void {
   core.db.transaction((tx) => {
     updateRunStatus(tx, ctx.run.id, status, { now: core.now(), error });
     core.bus.emit(tx, { type: "run.finished", runId: String(ctx.run.id), status, summary });
+    // S1 (UC-02, UC-04 a): the run's summary, unless its cards-ready message already was it; a
+    // failure is always reported.
+    const what = ctx.def.name === "job-scan" ? "scan" : "run";
+    if (status === "failed") {
+      postNotice(core, tx, { text: `The ${what} failed: ${error ?? summary ?? "see the run"}.`, runId: ctx.run.id, once: "run-end" });
+    } else if (!cardsNoticePosted(tx, ctx.run.id)) {
+      postNotice(core, tx, { text: `${what === "scan" ? "Scan" : "Run"} finished: ${endSummaryText(core, ctx, summary)}.`, runId: ctx.run.id, once: "run-end" });
+    }
   });
+}
+
+// ---------------------------------------------------------------- review cards ready (S1, UC-02)
+
+const CARDS_NOTICE_PREFIX = "cards:";
+
+function cardsNoticePosted(conn: Conn, runId: number): boolean {
+  return listEvents(conn, { runId, types: [NOTICE_EVENT] }).some((e) => String((e.payload as { key?: unknown } | null)?.key ?? "").startsWith(CARDS_NOTICE_PREFIX));
+}
+
+/**
+ * S1 / UC-02: "a summary when review cards are ready": once per pass (the run, or a follow-up pass
+ * after a late source), when every branch of the pass reached its review card or ended, and at
+ * least one card exists.
+ */
+function noticeCardsReady(core: EngineCore, ctx: RunCtx, passKey: string, branches: readonly BranchOutcome[]): void {
+  const human = ctx.def.steps.find((s): s is HumanStep => s.type === "human");
+  if (!human || branches.length === 0) return;
+  const cards = branches.filter((b) => {
+    const row = getStepByKey(core.db, ctx.run.id, human.key, String(b.item.jobId));
+    return row !== undefined && row.status !== "pending";
+  });
+  if (cards.length === 0 || !branches.every((b) => cards.includes(b) || b.state !== "active")) return;
+  const parts = cards.map((b) => {
+    const job = getJob(core.db, b.item.jobId);
+    const out = getStepByKey(core.db, ctx.run.id, human.key, String(b.item.jobId))?.output as HumanStepOutput | null | undefined;
+    const name = b.item.company || job?.title || `job ${b.item.jobId}`;
+    return `${name}${job?.fitScore !== null && job?.fitScore !== undefined ? ` ${job.fitScore}` : ""}${out?.escalated ? " (QA not passed: needs your decision)" : ""}`;
+  });
+  const n = cards.length;
+  const more = passKey === "" ? "" : " more";
+  core.db.transaction((tx) =>
+    postNotice(core, tx, {
+      text: `🎯 ${n}${more} job${n === 1 ? "" : "s"} ready for review: ${parts.join(" · ")}.`,
+      runId: ctx.run.id,
+      cards: [{ type: "review_link", count: n }],
+      once: `${CARDS_NOTICE_PREFIX}${passKey || "run"}`,
+    }),
+  );
 }
 
 // ---------------------------------------------------------------- late items (PM2 M5)
@@ -624,11 +685,13 @@ export function advanceRun(core: EngineCore, runId: number): void {
     endWaitingSources(core, ctx);
     return finishRun(core, ctx, "failed", null, main.failure);
   }
+  noticeCardsReady(core, ctx, "", main.branches);
   let active = main.active;
   const branches = [...main.branches];
   for (const pass of latePasses(core.db, ctx)) {
     // A follow-up pass that fails ends only itself (its failed tasks are reported); the run goes on.
     const r = advancePass(core, ctx, pass.key, pass.from + 1);
+    noticeCardsReady(core, ctx, pass.key, r.branches);
     if (r.active) active = true;
     branches.push(...r.branches);
   }

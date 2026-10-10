@@ -49,6 +49,7 @@ import {
   type Task,
 } from "../db/index.js";
 import { formDefaultsOf, loadRunCtx, type RunCtx, type Scope } from "./context.js";
+import { noticeApplyNotStarted, noticeNeedsCheck } from "./notices.js";
 import { siteKey } from "./sites.js";
 import type { EngineCore } from "./core.js";
 import { errorMessage, invalidInput, invalidState, notFound } from "./errors.js";
@@ -104,12 +105,23 @@ function emitApplication(core: EngineCore, conn: Conn, app: Application): void {
   });
 }
 
-/** System change of an application in the apply flow, if the shared status machine allows it. */
-export function moveApplication(core: EngineCore, conn: Conn, applicationId: number, to: Application["status"], note: string): Application | null {
+/**
+ * System change of an application in the apply flow, if the shared status machine allows it. A move
+ * to needs_check is reported to Ba in the same transaction (S1).
+ */
+export function moveApplication(
+  core: EngineCore,
+  conn: Conn,
+  applicationId: number,
+  to: Application["status"],
+  note: string,
+  opts: { runId?: number | null } = {},
+): Application | null {
   const app = getApplication(conn, applicationId);
   if (!app || app.status === to || !canTransitionApplicationStatus(app.status, to, "system", { dryRun: app.dryRun })) return null;
   const moved = transitionApplication(conn, app.id, to, { now: core.now(), note });
   emitApplication(core, conn, moved);
+  if (to === "needs_check") noticeNeedsCheck(core, conn, app.id, note, opts);
   return moved;
 }
 
@@ -182,12 +194,14 @@ export function applyStoppedBeforeSpawn(core: EngineCore, conn: Conn, task: Task
   if (isApplyPause(task.output) && Number.isInteger(appId)) {
     const latest = latestApprovalForApplication(conn, appId);
     if (latest && latest.usedAt !== null && latest.expiresAt > core.now().toISOString()) {
-      moveApplication(core, conn, appId, "needs_check", `Apply could not continue: ${error}`);
+      moveApplication(core, conn, appId, "needs_check", `Apply could not continue: ${error}`, { runId: task.runId });
       if (row) updateAction(core, conn, row, { outcome: "needs_check", error });
       return;
     }
   }
   if (row) updateAction(core, conn, row, { outcome, error });
+  // S1: the card waits for Ba to approve again (a new token) or skip.
+  noticeApplyNotStarted(core, conn, task, error);
 }
 
 /** Refused by the trust guard before anything ran (inside `conn`'s transaction). */
@@ -211,6 +225,7 @@ function refuse(core: EngineCore, task: Task, app: Application, detail: string):
       { now: core.now() },
     );
     emitApplication(core, tx, application);
+    noticeNeedsCheck(core, tx, application.id, detail, { runId: task.runId });
     failTaskNow(core, tx, task, `refused: ${detail}`);
     const row = actionRowOf(tx, task);
     if (row) updateAction(core, tx, row, { outcome: "refused", error: detail });
@@ -323,7 +338,7 @@ export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: Ap
 export function onApplyFailedAfterSpawn(core: EngineCore, conn: Conn, task: Task, error: string): void {
   const row = actionRowOf(conn, task);
   const appId = Number((task.input as Partial<ApplyPromptInput> | null)?.applicationId);
-  if (Number.isInteger(appId)) moveApplication(core, conn, appId, "needs_check", `Apply did not finish cleanly: ${error}`);
+  if (Number.isInteger(appId)) moveApplication(core, conn, appId, "needs_check", `Apply did not finish cleanly: ${error}`, { runId: task.runId });
   if (row) updateAction(core, conn, row, { outcome: "needs_check", error });
 }
 
@@ -618,15 +633,27 @@ export function writeSubmissionRecord(
     // recordSubmission runs in its own savepoint: a refusal writes nothing.
     const rec = recordSubmission(conn, { applicationId: appId, status, dryRun: app.dryRun, submission, snapshot, note }, { now: core.now() });
     emitApplication(core, conn, rec.application);
+    if (rec.application.status === "needs_check") {
+      // S1: why the record needs Ba's check (a dry run reports its own way).
+      const why =
+        note ??
+        (!sameFile
+          ? `Apply reported uploading ${output.uploadedFile!.filename}, not the approved copy`
+          : output.status === "submitted"
+            ? "it needs a look before it counts as submitted"
+            : "Apply could not confirm the submission");
+      noticeNeedsCheck(core, conn, appId, why, { runId: task.runId });
+    }
     return { applicationId: appId, recorded: true, status: rec.application.status, refused: null, error: sameFile ? null : `Apply reported uploading ${output.uploadedFile!.filename}` };
   } catch (err) {
     if (err instanceof SubmissionRefusedError) {
       const { application } = markSubmissionRefused(conn, { error: err, taskId: task.id, botName: task.botName }, { now: core.now() });
       emitApplication(core, conn, application);
+      noticeNeedsCheck(core, conn, appId, `the submission record was refused (${err.reason})`, { runId: task.runId });
       return { applicationId: appId, recorded: false, status: application.status, refused: err.reason, error: err.message };
     }
     // UC-11 step 9: if writing fails, needs_check; the raw ApplyResult stays on the task.
-    moveApplication(core, conn, appId, "needs_check", `the submission record could not be written: ${errorMessage(err)}`);
+    moveApplication(core, conn, appId, "needs_check", `the submission record could not be written: ${errorMessage(err)}`, { runId: task.runId });
     return { applicationId: appId, recorded: false, status: getApplication(conn, appId)?.status ?? null, refused: null, error: errorMessage(err) };
   }
 }

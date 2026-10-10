@@ -38,8 +38,9 @@ describe("the bots table follows bot.json at start-up", () => {
     createSchedule(db, { name: "Weekday scan", cron: "0 9 * * 1-5", workflowName: "job-scan", searchProfileId: null, timezone: "Asia/Ho_Chi_Minh", nextRunAt: T0.toISOString() });
     expect(t.engine.scheduler.tick()).toMatchObject({ fired: [expect.objectContaining({ runId: 1 })], skipped: [] });
     await t.idle();
-    // UC-02: Lead's "Scheduled scan started" message (the Lead room references the lead bot).
-    expect(listMessages(db, getOrCreateLeadRoom(db).id).map((m) => m.text)).toEqual([expect.stringMatching(/^Scheduled scan started/)]);
+    // UC-02: Lead's "Scheduled scan started" message, then the summary when the card is ready (the
+    // Lead room references the lead bot).
+    expect(listMessages(db, getOrCreateLeadRoom(db).id).map((m) => m.text)).toEqual([expect.stringMatching(/^Scheduled scan started/), expect.stringMatching(/^🎯 1 job ready for review/)]);
     // Rule 2: memory_changes reference the bot too (the production smoke test runs the writer).
     appendMemoryChange(db, { botName: "research", note: "TopCV upload limit is 5MB" });
     expect(listMemoryChanges(db, "research")).toHaveLength(1);
