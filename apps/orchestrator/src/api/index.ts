@@ -12,6 +12,7 @@ import { fileRoutes } from "./routes/files.js";
 import { healthRoutes } from "./routes/health.js";
 import { masterCvRoutes } from "./routes/master-cv.js";
 import { reviewRoutes } from "./routes/review.js";
+import { roomRoutes } from "./routes/rooms.js";
 import { runRoutes } from "./routes/runs.js";
 import { scheduleRoutes } from "./routes/schedules.js";
 import { uploadRoutes } from "./routes/uploads.js";
@@ -34,6 +35,7 @@ export function registerRoutes(app: FastifyInstance, ctx: ApiContext, _opts: Rou
   botRoutes(app, ctx);
   engineRoutes(app, ctx);
   masterCvRoutes(app, ctx);
+  roomRoutes(app, ctx);
 }
 
 export type { ApiConfig, ApiContext, EventHub, OrchestratorState, Recovered } from "./context.js";
