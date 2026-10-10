@@ -1,4 +1,13 @@
-// Labels and colour tones for statuses shown in StatusPill (spec §9).
+// Labels and colour tones for statuses shown in StatusPill (spec §9). The status
+// literals come from @bs-job-agents/shared; status.test.ts checks every shared
+// application, run, step and task status has a label here.
+import {
+  RUN_STATUSES,
+  TASK_STATUSES,
+  type ApplicationStatus,
+  type RunStatus,
+  type TaskStatus,
+} from "@bs-job-agents/shared";
 
 export type Tone = "neutral" | "brand" | "accent" | "ok" | "warn" | "danger";
 
@@ -9,6 +18,7 @@ export interface StatusMeta {
   live?: boolean;
 }
 
+/** Statuses the Applications table shows and Ba sets by hand (UC-13), plus needs_check. */
 export const APPLICATION_STATUSES = [
   "submitted",
   "interviewing",
@@ -17,17 +27,14 @@ export const APPLICATION_STATUSES = [
   "withdrawn",
   "no_response",
   "needs_check",
-] as const;
-export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
+] as const satisfies readonly ApplicationStatus[];
+export type { ApplicationStatus, RunStatus, TaskStatus };
 
-export const TASK_STATUSES = ["queued", "running", "waiting_limit", "paused", "done", "failed", "interrupted"] as const;
-export type TaskStatus = (typeof TASK_STATUSES)[number];
-
-export const RUN_STATUSES = ["running", "waiting", "paused", "done", "failed", "cancelled"] as const;
-export type RunStatus = (typeof RUN_STATUSES)[number];
+export { RUN_STATUSES, TASK_STATUSES };
 
 const META: Record<string, StatusMeta> = {
-  // applications (UC-13)
+  // applications (UC-08, UC-11, UC-13)
+  approved: { label: "Approved", tone: "accent" },
   submitted: { label: "Submitted", tone: "brand" },
   interviewing: { label: "Interviewing", tone: "accent" },
   offer: { label: "Offer", tone: "ok" },
@@ -46,6 +53,10 @@ const META: Record<string, StatusMeta> = {
   // runs
   waiting: { label: "Waiting", tone: "warn" },
   cancelled: { label: "Cancelled", tone: "neutral" },
+  // steps (Flow canvas nodes, §11)
+  pending: { label: "Pending", tone: "neutral" },
+  locked: { label: "Locked", tone: "neutral" },
+  skipped: { label: "Skipped", tone: "neutral" },
 };
 
 function humanise(status: string): string {
@@ -55,4 +66,9 @@ function humanise(status: string): string {
 
 export function statusMeta(status: string): StatusMeta {
   return META[status] ?? { label: humanise(status), tone: "neutral" };
+}
+
+/** True when `status` has its own label and tone (not the humanised fallback). */
+export function hasStatusMeta(status: string): boolean {
+  return Object.prototype.hasOwnProperty.call(META, status);
 }
