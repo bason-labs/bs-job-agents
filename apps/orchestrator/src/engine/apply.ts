@@ -8,11 +8,12 @@
 // - on the result: pauses Apply reports itself wait for Ba (UC-11 a/b/e, UC-12, UC-17); anything
 //   else after a spawn that is not a clean result goes to needs_check, never retried (PM FYI c);
 // - the record step writes the §9.1 record with the ORCHESTRATOR's hash of the uploaded copy.
+import { basename } from "node:path";
 import {
-  ApplyOutputSchema,
   ApplyPromptInputSchema,
   BOT_TASK_INPUT_SCHEMAS,
   canTransitionApplicationStatus,
+  normalizeAnswerKey,
   parsePauseReason,
   splitApplySubmitInput,
   type ApplyOutput,
@@ -138,7 +139,10 @@ export function buildApplyPromptInput(
     pdfPath: core.paths.abs(`${core.paths.applicationDir(app.id)}/${file}`),
     pdfSha256: cv.pdfSha256,
     introText: args.introText,
-    savedAnswers: listSavedAnswers(conn).map((s) => ({ key: s.key, label: s.label, answer: s.answer })),
+    // A bad row (empty key or label) must never make every Apply input invalid.
+    savedAnswers: listSavedAnswers(conn)
+      .filter((s) => s.key.trim() !== "" && s.label.trim() !== "")
+      .map((s) => ({ key: s.key, label: s.label, answer: s.answer })),
     answers: args.answers,
     formDefaults: { salaryPolicy: defaults.salaryPolicy, salaryAmount: defaults.salaryAmount, currency: defaults.currency },
     dryRun: app.dryRun,
@@ -147,16 +151,53 @@ export function buildApplyPromptInput(
 
 // ---------------------------------------------------------------- before the spawn
 
-export type ApplyPrep = { kind: "ready"; input: ApplyPromptInput; readDir: string; allowedSites: string[] } | { kind: "stopped" };
+export type ApplyPrep =
+  | {
+      kind: "ready";
+      /** The prompt input, already validated (no token). */
+      input: ApplyPromptInput;
+      readDir: string;
+      allowedSites: string[];
+      /**
+       * The last step before runner.run, with nothing fallible after it: consume the token (first
+       * spawn) or re-validate it (resume), store the prompt input and the uploaded copy, in one
+       * transaction. Null = denied (the task failed with a safety event; nothing may spawn).
+       */
+      authorize(): ApplyPromptInput | null;
+    }
+  | { kind: "stopped" };
 
-/** Refused before anything ran (trust guard): the task fails, the application stays as it was. */
-function deny(core: EngineCore, task: Task, reason: Parameters<typeof emitSafetyDenied>[2]["reason"], detail: string): ApplyPrep {
-  core.db.transaction((tx) => {
-    failTaskNow(core, tx, task, `denied: ${detail}`);
-    emitSafetyDenied(core, tx, { botName: task.botName, taskId: task.id, action: "apply.submit", reason, detail });
-    const row = actionRowOf(tx, task);
-    if (row) updateAction(core, tx, row, { outcome: "denied", error: detail });
-  });
+type SafetyReason = Parameters<typeof emitSafetyDenied>[2]["reason"];
+
+/**
+ * Apply stopped before it spawned (token denied, bot refused, an engine error), so nothing ran in
+ * this attempt and the task has failed. The card waits for Ba to approve again — unless an
+ * earlier spawn already used a token that is still valid (a resume): no new token can be issued
+ * then, and that spawn may have filled part of the form, so the application needs a check.
+ */
+export function applyStoppedBeforeSpawn(core: EngineCore, conn: Conn, task: Task, outcome: "denied" | "not_started", error: string): void {
+  const row = actionRowOf(conn, task);
+  const appId = Number((task.input as Partial<ApplyPromptInput> | null)?.applicationId);
+  if (isApplyPause(task.output) && Number.isInteger(appId)) {
+    const latest = latestApprovalForApplication(conn, appId);
+    if (latest && latest.usedAt !== null && latest.expiresAt > core.now().toISOString()) {
+      moveApplication(core, conn, appId, "needs_check", `Apply could not continue: ${error}`);
+      if (row) updateAction(core, conn, row, { outcome: "needs_check", error });
+      return;
+    }
+  }
+  if (row) updateAction(core, conn, row, { outcome, error });
+}
+
+/** Refused by the trust guard before anything ran (inside `conn`'s transaction). */
+function denyIn(core: EngineCore, conn: Conn, task: Task, reason: SafetyReason, detail: string): void {
+  failTaskNow(core, conn, task, `denied: ${detail}`);
+  emitSafetyDenied(core, conn, { botName: task.botName, taskId: task.id, action: "apply.submit", reason, detail });
+  applyStoppedBeforeSpawn(core, conn, task, "denied", detail);
+}
+
+function deny(core: EngineCore, task: Task, reason: SafetyReason, detail: string): ApplyPrep {
+  core.db.transaction((tx) => denyIn(core, tx, task, reason, detail));
   return { kind: "stopped" };
 }
 
@@ -209,31 +250,57 @@ export async function prepareApply(core: EngineCore, task: Task): Promise<ApplyP
   }
   if (!stillRunning(db, task.id)) return { kind: "stopped" };
 
-  const auth = authorizeApplyToken(db, { ...req, now: core.now() });
-  if (!auth.ok) return deny(core, task, auth.reason, auth.detail);
-
-  return db.transaction((tx) => {
-    const ctx = task.runId === null ? null : loadRunCtx(core, task.runId, tx);
-    const row = actionRowOf(tx, task);
-    const prompt = buildApplyPromptInput(core, tx, ctx, {
-      application: app,
-      approval: auth.approval,
-      introText: stored.introText ?? null,
-      answers: (row?.output as ActionStepOutput | null)?.answers ?? [],
+  // Build and check the prompt input before the token is touched.
+  let prompt: ApplyPromptInput;
+  try {
+    prompt = db.transaction((tx) =>
+      buildApplyPromptInput(core, tx, task.runId === null ? null : loadRunCtx(core, task.runId, tx), {
+        application: app,
+        approval: pre.approval,
+        introText: stored.introText ?? null,
+        answers: (actionRowOf(tx, task)?.output as ActionStepOutput | null)?.answers ?? [],
+      }),
+    );
+  } catch (err) {
+    const error = `could not build Apply's input: ${errorMessage(err)}`;
+    db.transaction((tx) => {
+      failTaskNow(core, tx, task, error);
+      applyStoppedBeforeSpawn(core, tx, task, "not_started", error);
     });
-    // Validate the full input (with the token), then keep only the prompt part (PM S5).
-    const full = BOT_TASK_INPUT_SCHEMAS["apply.submit"].parse({ ...prompt, approvalToken: auth.approval.token });
-    const input = splitApplySubmitInput(full).prompt;
-    updateTaskInput(tx, task.id, input);
-    if (row) updateAction(core, tx, row, { uploaded: { filename: fileRel.split("/").at(-1)!, path: fileRel, sha256 } }, auth.mode === "resume" ? "resuming" : "applying");
-    moveApplication(core, tx, app.id, "approved", "Apply resumed");
-    return { kind: "ready" as const, input, readDir: core.paths.abs(dirRel), allowedSites: auth.approval.allowedDomains };
-  });
+    return { kind: "stopped" };
+  }
+  const uploaded = { filename: basename(fileRel), path: fileRel, sha256 };
+  return {
+    kind: "ready",
+    input: prompt,
+    readDir: core.paths.abs(dirRel),
+    allowedSites: pre.approval.allowedDomains,
+    authorize: () =>
+      db.transaction((tx) => {
+        const auth = authorizeApplyToken(tx, { ...req, now: core.now() });
+        if (!auth.ok) {
+          denyIn(core, tx, task, auth.reason, auth.detail);
+          return null;
+        }
+        // Validate the full input (with the token), then keep only the prompt part (PM S5).
+        const full = BOT_TASK_INPUT_SCHEMAS["apply.submit"].parse({ ...prompt, allowedDomains: auth.approval.allowedDomains, approvalToken: auth.approval.token });
+        const input = splitApplySubmitInput(full).prompt;
+        updateTaskInput(tx, task.id, input);
+        const row = actionRowOf(tx, task);
+        if (row) updateAction(core, tx, row, { uploaded }, auth.mode === "resume" ? "resuming" : "applying");
+        moveApplication(core, tx, app.id, "approved", "Apply resumed");
+        return input;
+      }),
+  };
 }
 
 // ---------------------------------------------------------------- after the spawn
 
-/** Apply reported submitted or needs_check. A dry run that says submitted is a safety event (PM §7). */
+/**
+ * Apply reported submitted or needs_check. The §9.1 record is written right here, in the same
+ * transaction as the task's result, whatever the run's state (a paused or cancelled run must not
+ * lose a submission). A dry run that says submitted is a safety event (PM §7).
+ */
 export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: ApplyOutput): void {
   const row = actionRowOf(conn, task);
   const out = row?.output as ActionStepOutput | undefined;
@@ -246,7 +313,9 @@ export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: Ap
       detail: "a dry run reported submitted; it may really have submitted, so it needs a check",
     });
   }
-  if (row) updateAction(core, conn, row, { outcome: output.status === "submitted" && !out?.dryRun ? "submitted" : "needs_check" });
+  if (!row || !out || out.applicationId === null) return;
+  const record = writeSubmissionRecord(core, conn, task, output, out);
+  updateAction(core, conn, row, { outcome: record.status === "submitted" ? "submitted" : "needs_check", record });
 }
 
 /** After a spawn, anything but a clean result or a pause: needs_check, never retried (UC-11 c, PM FYI c). */
@@ -301,28 +370,56 @@ function postQuestion(core: EngineCore, conn: Conn, task: Task, applicationId: n
   core.bus.emit(conn, { type: "message.created", roomId: String(room.id), message: mappers.toMessage(message, room.kind, []) });
 }
 
+/** Apply may resume without Ba at most this often per task (each time with new automatic answers). */
+export const MAX_AUTO_RESUMES = 3;
+
 /**
- * Apply paused itself (UC-11 a/b/e, UC-12, UC-17): the application waits as `paused`. Pending
- * questions are answered from saved answers and the form defaults where they decide; Lead asks
- * Ba the rest, one at a time. When nothing is left to ask, Apply resumes at once.
+ * Apply paused itself (UC-11 a/b/e, UC-12, UC-17): the application waits as `paused`.
+ * - Pending questions are answered from saved answers and the form defaults where they decide;
+ *   Lead asks Ba the rest, one at a time.
+ * - Apply resumes without Ba only for questions (needs_answer), only when this pause produced new
+ *   automatic answers and nothing is left for Ba, and at most MAX_AUTO_RESUMES times. A login, a
+ *   CAPTCHA or a domain to confirm always waits for Ba (PM FYI c).
+ * - A question Apply asks again although it has an answer (the form rejected it) goes to Ba.
  */
 export function onApplyPaused(core: EngineCore, conn: Conn, task: Task, output: ApplyOutput): void {
   const row = actionRowOf(conn, task);
   const out = (row?.output as ActionStepOutput | undefined) ?? null;
   const appId = Number((task.input as Partial<ApplyPromptInput> | null)?.applicationId);
   moveApplication(core, conn, appId, "paused", output.pauseReason?.detail ?? output.pauseReason?.reason ?? "pending questions");
-  if (!row || !out || output.pendingQuestions.length === 0) return;
+  if (!row || !out) return;
+  const reason = output.pauseReason?.reason ?? "needs_answer";
+  if (reason === "needs_answer" && output.pendingQuestions.length === 0) {
+    // Nothing to answer and nothing Ba can do in the app: Ba checks the form by hand.
+    const error = "Apply paused for answers but listed no question";
+    failTaskNow(core, conn, getTask(conn, task.id)!, error);
+    onApplyFailedAfterSpawn(core, conn, task, error);
+    return;
+  }
+  const reAsked = new Set(output.pendingQuestions.filter((q) => out.answers.some((a) => a.field === q.field)).map((q) => q.field));
+  const kept = out.answers.filter((a) => !reAsked.has(a.field));
+  const asked = out.asked.filter((f) => !reAsked.has(f));
   const app = getApplication(conn, appId);
-  const { auto, ask } = questionsForBa(core, conn, task, output, out, app?.jobId ?? 0);
-  const answers = [...out.answers, ...auto];
-  if (ask.length === 0 && output.pauseReason?.reason !== "needs_login" && output.pauseReason?.reason !== "captcha") {
-    updateAction(core, conn, row, { answers });
+  const qctx = questionContext(core, conn, task, app?.jobId ?? 0);
+  const autoResumes = out.autoResumes ?? 0;
+  const capped = autoResumes >= MAX_AUTO_RESUMES;
+  const auto: QuestionAnswer[] = [];
+  const ask: PendingQuestion[] = [];
+  for (const q of output.pendingQuestions) {
+    // Re-asked questions, and every question once the automatic resumes are used up, go to Ba.
+    const r = reAsked.has(q.field) || capped ? null : resolvePendingQuestion(q, qctx);
+    if (r && r.kind !== "ask") auto.push(r.answer);
+    else ask.push(q);
+  }
+  const answers = [...kept, ...auto];
+  if (reason === "needs_answer" && ask.length === 0 && auto.length > 0) {
+    updateAction(core, conn, row, { answers, asked, autoResumes: autoResumes + 1 });
     resumeTaskNow(core, conn, getTask(conn, task.id)!);
     return;
   }
-  const next = ask.find((q) => !out.asked.includes(q.field));
+  const next = ask.find((q) => !asked.includes(q.field));
   if (next) postQuestion(core, conn, task, appId, next);
-  updateAction(core, conn, row, { answers, asked: next ? [...out.asked, next.field] : out.asked }, "waiting for Ba");
+  updateAction(core, conn, row, { answers, asked: next ? [...asked, next.field] : asked }, "waiting for Ba");
 }
 
 // ---------------------------------------------------------------- Ba acts on a pause
@@ -353,7 +450,10 @@ export function answerQuestion(core: EngineCore, taskId: number, input: AnswerIn
     const app = getApplication(tx, appId);
     const v = validateBaAnswer(q, input, { formLanguage: formLanguage(tx, app?.jobId ?? 0) });
     if (!v.ok) throw invalidInput(v.error);
-    if (input.remember && v.answer.value !== null) saveAnswer(tx, { label: q.label, answer: v.answer.value }, { now: core.now() });
+    // "Remember this answer": only under a label that means something once normalised.
+    if (input.remember && v.answer.value !== null && normalizeAnswerKey(q.label) !== "") {
+      saveAnswer(tx, { label: q.label, answer: v.answer.value }, { now: core.now() });
+    }
     const answered = { ...out, answers: [...out.answers, v.answer] };
     const { auto, ask } = questionsForBa(core, tx, task, output, answered, app?.jobId ?? 0);
     const answers = [...answered.answers, ...auto];
@@ -414,31 +514,22 @@ function relPath(core: EngineCore, path: string | null): string | null {
 }
 
 /**
- * The record step: the §9.1 record from Apply's result, with the orchestrator's hash of the copy
- * Apply uploaded and the token the spawn used. A refusal (SubmissionRefusedError) moves the
- * application to needs_check with a safety.denied event; the raw result stays on the task.
+ * §9.1 / UC-11 step 9: the record from Apply's result, written right after Apply reported it,
+ * with the orchestrator's hash of the copy Apply uploaded and the token the spawn used. When
+ * Apply reports another file than that copy, the record keeps the copy and the application needs
+ * a check (the raw report stays on the task). A refusal (SubmissionRefusedError) moves the
+ * application to needs_check with a safety.denied event; any other failure to write: needs_check.
  */
-export function writeRecordStep(core: EngineCore, conn: Conn, ctx: RunCtx, key: string, scope: Scope, actionRow: Step): "done" {
-  const out = actionRow.output as ActionStepOutput;
-  const task = out.taskId === null ? undefined : getTask(conn, out.taskId);
-  const parsed = task?.status === "done" ? ApplyOutputSchema.safeParse(task.output) : null;
-  const appId = out.applicationId;
-  if (appId === null || !parsed?.success || (out.outcome !== "submitted" && out.outcome !== "needs_check")) {
-    openStep(core, conn, ctx, key, scope, "skipped", {
-      output: { applicationId: appId ?? 0, recorded: false, status: null, refused: null, error: out.error ?? "no Apply result to record" } satisfies RecordStepOutput,
-    });
-    return "done";
-  }
+export function writeSubmissionRecord(core: EngineCore, conn: Conn, task: Task, output: ApplyOutput, out: ActionStepOutput): RecordStepOutput {
+  const appId = out.applicationId!;
   if (getSubmissionRecord(conn, appId)?.submission) {
-    // Written before a restart (UC-18): the record is immutable; just finish the step.
-    openStep(core, conn, ctx, key, scope, "done", { output: { applicationId: appId, recorded: true, status: getApplication(conn, appId)?.status ?? null, refused: null, error: null } });
-    return "done";
+    return { applicationId: appId, recorded: true, status: getApplication(conn, appId)?.status ?? null, refused: null, error: null };
   }
-  const output = parsed.data;
   const app = getApplication(conn, appId)!;
   const job = getJob(conn, app.jobId)!;
   const company = getCompany(conn, job.companyId);
   const uploaded = output.uploadedFile && out.uploaded ? out.uploaded : null;
+  const sameFile = !output.uploadedFile || !uploaded || (output.uploadedFile.filename === uploaded.filename && output.uploadedFile.sha256 === uploaded.sha256);
   const submission = {
     finalUrl: output.finalUrl,
     fields: output.fieldsFilled.map(({ label, name, value, source }) => ({ label, name, value, source })),
@@ -468,32 +559,42 @@ export function writeRecordStep(core: EngineCore, conn: Conn, ctx: RunCtx, key: 
       }
     : // Apply captured no snapshot: freeze what Research stored (UC-11 step 5 fallback).
       { url: job.url ?? "", title: job.title, company: company?.name ?? "", salaryText: job.salaryText, jdText: job.jdText ?? "", pageScreenshotPath: null };
-  const status = output.status === "submitted" && !app.dryRun ? "submitted" : "needs_check";
+  const status = output.status === "submitted" && !app.dryRun && sameFile ? "submitted" : "needs_check";
   try {
     // recordSubmission runs in its own savepoint: a refusal writes nothing.
     const rec = recordSubmission(conn, { applicationId: appId, status, dryRun: app.dryRun, submission, snapshot }, { now: core.now() });
     emitApplication(core, conn, rec.application);
-    openStep(core, conn, ctx, key, scope, "done", {
-      output: { applicationId: appId, recorded: true, status: rec.application.status, refused: null, error: null } satisfies RecordStepOutput,
-      preview: rec.application.status === "submitted" ? "record saved" : "record saved · needs check",
-    });
+    return { applicationId: appId, recorded: true, status: rec.application.status, refused: null, error: sameFile ? null : `Apply reported uploading ${output.uploadedFile!.filename}` };
   } catch (err) {
     if (err instanceof SubmissionRefusedError) {
-      const { application } = markSubmissionRefused(conn, { error: err, taskId: task!.id, botName: task!.botName }, { now: core.now() });
+      const { application } = markSubmissionRefused(conn, { error: err, taskId: task.id, botName: task.botName }, { now: core.now() });
       emitApplication(core, conn, application);
-      openStep(core, conn, ctx, key, scope, "done", {
-        output: { applicationId: appId, recorded: false, status: application.status, refused: err.reason, error: err.message } satisfies RecordStepOutput,
-        preview: `record refused (${err.reason}) · needs check`,
-      });
-    } else {
-      // UC-11 step 9: if writing fails, needs_check; the raw ApplyResult stays on the task.
-      moveApplication(core, conn, appId, "needs_check", `the submission record could not be written: ${errorMessage(err)}`);
-      openStep(core, conn, ctx, key, scope, "done", {
-        output: { applicationId: appId, recorded: false, status: getApplication(conn, appId)?.status ?? null, refused: null, error: errorMessage(err) } satisfies RecordStepOutput,
-        preview: "record not written · needs check",
-      });
+      return { applicationId: appId, recorded: false, status: application.status, refused: err.reason, error: err.message };
     }
+    // UC-11 step 9: if writing fails, needs_check; the raw ApplyResult stays on the task.
+    moveApplication(core, conn, appId, "needs_check", `the submission record could not be written: ${errorMessage(err)}`);
+    return { applicationId: appId, recorded: false, status: getApplication(conn, appId)?.status ?? null, refused: null, error: errorMessage(err) };
   }
+}
+
+/** The record step (§7.2 step 10): reports the record written when Apply's result came in. */
+export function writeRecordStep(core: EngineCore, conn: Conn, ctx: RunCtx, key: string, scope: Scope, actionRow: Step): "done" {
+  const out = actionRow.output as ActionStepOutput;
+  const record = out.record ?? null;
+  if (!record) {
+    openStep(core, conn, ctx, key, scope, "skipped", {
+      output: { applicationId: out.applicationId ?? 0, recorded: false, status: null, refused: null, error: out.error ?? "no Apply result to record" } satisfies RecordStepOutput,
+    });
+    return "done";
+  }
+  const preview = record.recorded
+    ? record.status === "submitted"
+      ? "record saved"
+      : "record saved · needs check"
+    : record.refused
+      ? `record refused (${record.refused}) · needs check`
+      : "record not written · needs check";
+  openStep(core, conn, ctx, key, scope, "done", { output: record, preview });
   return "done";
 }
 

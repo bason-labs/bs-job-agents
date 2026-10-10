@@ -122,6 +122,8 @@ export type ApplyOutcome =
   | "denied"
   /** The approved PDF's SHA-256 did not match before spawning (decision 2b); nothing ran. */
   | "refused"
+  /** Stopped before it spawned for another reason (bot disabled, an engine error); the token is unused. */
+  | "not_started"
   /** §7.3b: an uploaded JD with no apply link; Approve only produced the PDF. */
   | "no_apply_link"
   | "cancelled";
@@ -138,6 +140,10 @@ export interface ActionStepOutput {
   answers: QuestionAnswer[];
   /** Fields Lead has already asked Ba about. */
   asked: string[];
+  /** Times Apply resumed without Ba (its questions all answered themselves); capped. */
+  autoResumes?: number;
+  /** The §9.1 record, written when Apply reported its result (whatever the run's state). */
+  record?: RecordStepOutput | null;
 }
 
 export interface RecordStepOutput {

@@ -43,6 +43,41 @@ describe("pause, cancel and re-run (UC-23)", () => {
     expect(t.events("run.finished")).toEqual([expect.objectContaining({ status: "cancelled" })]);
   });
 
+  it("a failure or usage limit reported after a cancel ends the task instead of re-queueing it", async () => {
+    // A retryable failure: no second attempt is queued in the cancelled run.
+    const t = await createTestEngine();
+    let run = 0;
+    t.runner.script({
+      bot: "research",
+      kind: "scan",
+      times: 1,
+      result: () => {
+        t.engine.cancelRun(run);
+        return fake.failed("site down");
+      },
+    });
+    run = (await startScan(t)).id;
+    await t.idle();
+    expect(t.tasks("research.scan")).toEqual([expect.objectContaining({ status: "failed", error: "cancelled", attempt: 1 })]);
+    expect(t.runner.callsFor("research.scan")).toHaveLength(1);
+
+    // A usage limit: the task is not re-queued, but the limit is real and the engine still pauses.
+    const u = await createTestEngine();
+    u.runner.script({
+      bot: "research",
+      kind: "scan",
+      times: 1,
+      result: () => {
+        u.engine.cancelRun(run);
+        return fake.usageLimit("claude", null);
+      },
+    });
+    run = (await startScan(u)).id;
+    await u.idle();
+    expect(u.tasks("research.scan")).toEqual([expect.objectContaining({ status: "failed", error: "cancelled" })]);
+    expect(u.events("engine.paused")).toEqual([expect.objectContaining({ engine: "claude", reason: "usage_limit" })]);
+  });
+
   it("cancel while Apply runs: it may have submitted → needs_check; a queued Apply's application → failed", async () => {
     const t = await createTestEngine();
     const run = await startScan(t);

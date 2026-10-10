@@ -306,13 +306,14 @@ function advanceActionStep(core: EngineCore, ctx: RunCtx, step: ActionStep, scop
         const outcome = out.outcome ?? "needs_check";
         // Denied before anything ran (e.g. the token expired while Apply waited for Ba): the
         // card waits for Ba to approve again, which issues a new token (PM M2).
-        if (outcome === "denied" && out.applicationId !== null && canApproveAgain(tx, out.applicationId)) {
+        const beforeSpawn = outcome === "denied" || outcome === "not_started";
+        if (beforeSpawn && out.applicationId !== null && canApproveAgain(tx, out.applicationId)) {
           setStep(core, tx, row, "locked", { output: { ...out, outcome }, error: out.error ?? task.error, preview: "approve again" });
           return "active";
         }
-        // Refused (SHA-256) or denied for good: red, Ba acts. Otherwise it may have submitted:
+        // Refused (SHA-256) or stopped for good: red, Ba acts. Otherwise it may have submitted:
         // needs_check, never retried (UC-11 c, UC-18, PM FYI c).
-        if (outcome === "denied" || outcome === "refused") {
+        if (beforeSpawn || outcome === "refused") {
           setStep(core, tx, row, "failed", { output: { ...out, outcome }, error: out.error ?? task.error });
           return "failed";
         }

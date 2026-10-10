@@ -118,7 +118,13 @@ export function rerunStep(core: EngineCore, stepId: number): void {
     }
     const rows = listSteps(tx, row.runId);
     const later = invalidated(ctx, rows, row);
-    const applyStarted = later.find((r) => stepDef(ctx, r.stepKey)?.type === "action" && !["locked", "pending", "skipped"].includes(r.status));
+    // Started = Ba approved (an application or a task exists), even if the step is locked again
+    // waiting for a re-approval after a denied resume.
+    const applyStarted = later.find((r) => {
+      if (stepDef(ctx, r.stepKey)?.type !== "action") return false;
+      const out = r.output as ActionStepOutput | null;
+      return (out?.applicationId ?? null) !== null || (out?.taskId ?? null) !== null || !["locked", "pending", "skipped"].includes(r.status);
+    });
     if (applyStarted) throw forbidden(`Apply already started for job ${applyStarted.branchKey}; that branch cannot be re-run`);
     for (const r of [row, ...later]) {
       for (const task of listTasks(tx, { stepId: r.id })) {

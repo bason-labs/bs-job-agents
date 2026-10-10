@@ -30,8 +30,14 @@ const answer = (q: PendingQuestion, value: string | null): QuestionAnswer => ({ 
 
 /** Decide one pending question (UC-12; salary per §7.5). */
 export function resolvePendingQuestion(q: PendingQuestion, ctx: QuestionContext): QuestionResolution {
-  const saved = ctx.savedAnswers.find((s) => s.key === normalizeAnswerKey(q.label));
-  if (saved) return { kind: "answer", answer: answer(q, saved.answer), source: "saved_answer" };
+  const key = normalizeAnswerKey(q.label);
+  const saved = key === "" ? undefined : ctx.savedAnswers.find((s) => s.key === key);
+  if (saved) {
+    // A choice takes a saved answer only when it is one of the options.
+    const options = q.options ?? [];
+    const option = options.length === 0 ? saved.answer : options.find((o) => o.trim().toLowerCase() === saved.answer.trim().toLowerCase());
+    if (option !== undefined) return { kind: "answer", answer: answer(q, option), source: "saved_answer" };
+  }
   const negotiable = NEGOTIABLE_TEXT[ctx.formLanguage];
   if (q.kind === "salary") {
     switch (ctx.salaryPolicy) {

@@ -8,9 +8,10 @@ import type { SavedAnswer } from "../types.js";
 /** UC-12: key = normalised label (the shared implementation, so the API and the DB agree). */
 export { normalizeAnswerKey };
 
-/** "Remember this answer". */
+/** "Remember this answer". A label that normalises to nothing (e.g. "*") is refused: it would match nothing and break Apply's input. */
 export function saveAnswer(db: Conn, input: { label: string; answer: string }, opts?: ClockOpts): SavedAnswer {
   const key = normalizeAnswerKey(input.label);
+  if (key === "") throw new Error(`cannot save an answer for "${input.label}": the label is empty once normalised`);
   const updatedAt = nowIso(opts);
   return db
     .insert(savedAnswers)

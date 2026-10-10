@@ -14,6 +14,7 @@ import {
   resolveOutputSchemaName,
   taskKey,
   type ApplyOutput,
+  type ApplyPromptInput,
   type CvOutput,
   type Engine,
   type PauseReason,
@@ -31,6 +32,7 @@ import {
   completeTask,
   ensureCompany,
   findCvVersionByPdfPath,
+  getRun,
   getTask,
   holdEngineTasks,
   pauseTask,
@@ -43,7 +45,16 @@ import {
   type Task,
 } from "../db/index.js";
 import type { PermissionDenial, RunnerEvent, RunnerResult, RunnerTask } from "../runner/types.js";
-import { moveApplication, onApplyDone, onApplyFailedAfterSpawn, onApplyPaused, prepareApply, registrableHost } from "./apply.js";
+import {
+  applyStoppedBeforeSpawn,
+  isApplyPause,
+  moveApplication,
+  onApplyDone,
+  onApplyFailedAfterSpawn,
+  onApplyPaused,
+  prepareApply,
+  registrableHost,
+} from "./apply.js";
 import { MASTER_CV_TASK_KEYS, effectiveBot, type EffectiveBot } from "./bots.js";
 import { loadRunCtx, type RunCtx } from "./context.js";
 import type { EngineCore } from "./core.js";
@@ -79,6 +90,8 @@ interface Prepared {
   bot: EffectiveBot;
   /** CV tasks: the protected pages before the bot ran. */
   figmaBefore?: ProtectedPagesFingerprint;
+  /** apply.submit: the trust guard's last step, run right before the spawn (consumes or re-validates the token). */
+  authorize?: () => ApplyPromptInput | null;
   /** apply.submit passed the trust guard (a token was consumed or re-validated). */
   apply: boolean;
   /** Absolute JSONL log the guard hooks write their decisions to. */
@@ -224,15 +237,25 @@ export class TaskQueue {
     const prepared = await this.prepare(task, entry.controller);
     if (!prepared) return;
     if (entry.controller.signal.aborted) {
-      // Cancelled during the checks: nothing ran, so even an Apply did not submit anything.
+      // Cancelled during the checks: nothing ran in this attempt (the token was not touched).
       core.db.transaction((tx) => {
         const current = getTask(tx, task.id);
         if (current?.status !== "running") return;
         failTaskNow(core, tx, current, "cancelled before it started");
         const appId = Number((task.input as { applicationId?: unknown } | null)?.applicationId);
-        if (prepared.apply && Number.isInteger(appId)) moveApplication(core, tx, appId, "failed", "cancelled before Apply started");
+        if (prepared.apply && Number.isInteger(appId)) {
+          // A resumed Apply already filled part of the form in an earlier spawn: Ba checks it.
+          const resumed = isApplyPause(task.output);
+          moveApplication(core, tx, appId, resumed ? "needs_check" : "failed", resumed ? "cancelled before Apply could continue" : "cancelled before Apply started");
+        }
       });
       return;
+    }
+    // apply.submit: the token is consumed (or re-validated) as the very last step before the spawn.
+    if (prepared.authorize) {
+      const input = prepared.authorize();
+      if (input === null) return;
+      prepared.runnerTask.input = input;
     }
     const { runnerTask, bot } = prepared;
     core.db.transaction((tx) => {
@@ -337,12 +360,14 @@ export class TaskQueue {
       this.failBeforeSpawn(task, `could not prepare the task's read folder: ${errorMessage(err)}`);
       return null;
     }
+    let authorize: (() => ApplyPromptInput | null) | undefined;
     if (trust.needsApproval) {
       const prep = await prepareApply(core, task);
       if (prep.kind === "stopped") return null;
       input = prep.input;
       readDirs = [prep.readDir];
       allowedSites = prep.allowedSites;
+      authorize = prep.authorize;
     } else if (bot.def.browser && !bot.def.browser.sitesFromApproval) {
       allowedSites = bot.def.browser.allowedSites;
     }
@@ -382,6 +407,7 @@ export class TaskQueue {
       apply: trust.needsApproval,
       guardLog,
       ...(figmaBefore ? { figmaBefore } : {}),
+      ...(authorize ? { authorize } : {}),
       runnerTask: {
         taskId: task.id,
         runId: task.runId,
@@ -631,6 +657,15 @@ export class TaskQueue {
         if (!retryable && prepared.apply) onApplyFailedAfterSpawn(core, tx, current ?? task, "cancelled while it ran");
         return;
       }
+      if (outcome.kind !== "ok" && task.runId !== null && getRun(tx, task.runId)?.status === "cancelled") {
+        // Ba cancelled the run as the CLI exited: a pause, a retry or a wait would never be
+        // claimed again, so the task ends now. A clean result is still kept (Apply may have
+        // submitted), and a usage limit still pauses its engine.
+        if (outcome.kind === "usage_limit") core.pauseEngineForLimit(tx, outcome.engine, outcome.resetsAt);
+        failTaskNow(core, tx, task, "cancelled");
+        if (!retryable && prepared.apply) onApplyFailedAfterSpawn(core, tx, task, "cancelled while it ran");
+        return;
+      }
       switch (outcome.kind) {
         case "ok": {
           const done = completeTask(tx, task.id, { output: outcome.output, now: core.now() });
@@ -725,6 +760,7 @@ export class TaskQueue {
       failTaskNow(this.core, tx, task, `denied: ${detail}`);
       emitSafetyDenied(this.core, tx, { botName: task.botName, taskId: task.id, action: taskKey(task.botName, task.kind), reason, detail });
       if (reason === "protected_page_changed") postLeadMessage(this.core, tx, `I stopped a CV task: ${detail}.`, { runId: task.runId });
+      if (!isRetryableTask(task.botName, task.kind)) applyStoppedBeforeSpawn(this.core, tx, task, "denied", detail);
     });
   }
 
@@ -748,7 +784,11 @@ export class TaskQueue {
         if (current?.status !== "running") return;
         const error = `engine error: ${errorMessage(err)}`;
         failTaskNow(core, tx, current, error);
-        if (entry.spawned && !isRetryableTask(task.botName, task.kind)) onApplyFailedAfterSpawn(core, tx, current, error);
+        if (!isRetryableTask(task.botName, task.kind)) {
+          // After the spawn it may have submitted; before it, nothing ran and the token is untouched.
+          if (entry.spawned) onApplyFailedAfterSpawn(core, tx, current, error);
+          else applyStoppedBeforeSpawn(core, tx, current, "not_started", error);
+        }
       });
     } catch (inner) {
       core.log.error(`could not record the engine error for task ${task.id}: ${errorMessage(inner)}`);

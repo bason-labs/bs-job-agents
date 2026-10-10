@@ -139,7 +139,12 @@ function findReview(core: EngineCore, conn: Conn, jobId: number): ReviewRef {
 /** Apply was denied before it ran and the card waits for Ba to approve again (or skip). */
 function awaitingReapproval(ref: ReviewRef): boolean {
   const out = ref.action?.output as ActionStepOutput | null | undefined;
-  return ref.human.status === "done" && ref.action?.status === "locked" && out?.outcome === "denied" && out.applicationId !== null;
+  return (
+    ref.human.status === "done" &&
+    ref.action?.status === "locked" &&
+    (out?.outcome === "denied" || out?.outcome === "not_started") &&
+    out.applicationId !== null
+  );
 }
 
 function decision(core: EngineCore, d: Partial<ReviewDecision> & Pick<ReviewDecision, "decision">): ReviewDecision {
