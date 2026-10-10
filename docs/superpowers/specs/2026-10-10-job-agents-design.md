@@ -645,6 +645,21 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | **Master CV** | Facts editor (EN/VI text, tags, org, dates), version history | |
 | **Rooms** | Group chat with @mentions; bots answer in discussion mode | |
 
+**Own components rule (no native browser controls):** never render the browser's default `<select>`, `<input type="range">`, checkbox, radio, date/time or number spinners.
+- **Shared component set** (`apps/web/components/ui/`), styled with the bs-kara tokens:
+  - **Select:** themed trigger + floating list, ✓ on the chosen option, selected option scrolled into view.
+  - **Slider:** gradient fill, glowing thumb, value badge, min/max labels, pointer drag.
+  - **Checkbox** and **Switch**.
+  - **TimePicker:** a Select of 30-minute slots.
+  - **NumberInput:** thousands separators (25,000,000), numeric keyboard, no spinners.
+  - **Dialog**, **Popover**, **Menu**, **Toast**.
+- **Behaviour:**
+  - Keyboard: ↑/↓/Enter/Esc for Select; ←/→ for Slider; Space for Checkbox/Switch.
+  - Focus ring, ARIA roles.
+  - Menus render in a portal so tables and cards never clip them.
+- **Implementation:** visuals and API are ours. Keyboard, focus and ARIA behaviour come from **Radix UI primitives** (unstyled), so accessibility isn't hand-rolled. Icons use `lucide-react`, as in bs-kara.
+- The prototype implements the same set in Alpine to show the look.
+
 **Layout rule:** pages whose content is narrower than the screen (Search criteria, Schedules, Master CV, Review, Applications, Bots) center their content column (`mx-auto` with a max width). Content never sticks to the left with empty space on the right.
 
 **File viewer rule:** clicking any file (CV PDF, confirmation screenshot, exported JD) **opens it in an in-app viewer**; it never downloads straight away.
@@ -668,7 +683,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | Output formats | Vitest + Zod | Every bot schema accepts valid and rejects invalid fixtures; repair-prompt path |
 | Integration | Vitest + real SQLite + **FakeRunner** | Full `job-scan` from trigger to review to submit to record; crash mid-run → restart → continue; interrupted apply → `needs_check`; usage-limit mid-run → auto-continue |
 | Source adapters | Vitest + saved HTML fixtures (TopCV, ITviec, LinkedIn, sample career page) | Field extraction; layout-change detection |
-| UI end-to-end | Playwright + FakeRunner | Chat → run card; Flow nodes update over SSE; approve → Apply unlocks; request changes → new round; skip with reason; light/dark screenshot checks |
+| UI end-to-end | Playwright + FakeRunner | Own components: Select keyboard (↑/↓/Enter/Esc) and click-outside, Slider drag + arrow keys, Checkbox/Switch with Space, NumberInput formatting, menus not clipped inside tables; Chat → run card; Flow nodes update over SSE; approve → Apply unlocks; request changes → new round; skip with reason; light/dark screenshot checks |
 | Safety | Vitest + fixtures | JD with hidden instructions is not obeyed and gets flagged; Apply off-domain is blocked; double submission is impossible |
 | Bot quality evals (on demand; uses the subscription) | Script | Golden set of 10 real JDs + master CV: QA score consistency (±5 across 3 runs), a CV seeded with invented facts must hard-fail, CV output one page; results stored per prompt version |
 | Dry-run acceptance | Real pipeline, Apply in `dryRun` | Fills the form and screenshots, never clicks submit; required before the first live submission |
@@ -706,6 +721,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | 2026-10-10 | Promotion: system suggests, Ba approves |
 | 2026-10-10 | UI: chat-first (Grok Bot style), bs-kara theme, Tailwind v4, React Flow canvas (ElevenLabs Flows style) |
 | 2026-10-10 | Direct consult-mode chat with any bot; work requests auto-handed to Lead |
+| 2026-10-10 | Own UI components only (no native selects/sliders/checkboxes/time/number inputs); Radix primitives for behaviour, bs-kara styling |
 | 2026-10-10 | File upload in chat (picker + drag-and-drop) → `apply-to-file`; schedules edited in a modal; constrained pages centered; files open in a viewer first |
 
 ## 15. Confirmed defaults (2026-10-10)
