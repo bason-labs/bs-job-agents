@@ -92,8 +92,11 @@ export interface TestEngine {
 export const DATA_DIR = "/data";
 export const BOTS_DIR = "/bots";
 
-/** Rows the engine writes for the audit log only; never streamed (UC-18: the spawned CLI's pid). */
-export const AUDIT_ONLY_EVENT_TYPES = ["runner.spawned"] as const;
+/**
+ * Rows the engine writes for the audit log only; never streamed (UC-18: the spawned CLI's pid;
+ * PM2 S4: a CV spawn's protected-pages hash).
+ */
+export const AUDIT_ONLY_EVENT_TYPES = ["runner.spawned", "figma.before"] as const;
 
 export async function createTestEngine(opts: TestEngineOptions = {}): Promise<TestEngine> {
   const fresh = opts.db === undefined;

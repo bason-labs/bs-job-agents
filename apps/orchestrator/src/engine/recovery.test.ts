@@ -69,6 +69,60 @@ describe("crash recovery (UC-18)", () => {
     expect(getRun(second.db, run.id)?.status).toBe("done");
   });
 
+  it("probe P5: a crash after a CV attempt changed a protected page is caught at start-up: safety event, Lead alert, no new attempt (PM2 S4)", async () => {
+    const first = await createTestEngine({ clock: new FakeClock(T0) });
+    first.runner.script({ bot: "cv", kind: "tailor", delayMs: 3600_000 });
+    first.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await settleSomeWork();
+    const cv = first.tasks("cv.tailor")[0]!;
+    expect(cv.status).toBe("running");
+    // The bot changed a template, then the orchestrator died before its after-check.
+    first.figma.changeProtectedText("Hacked title");
+
+    const second = await createTestEngine({ db: first.db, files: first.files, clock: new FakeClock(new Date(T0.getTime() + 60_000)), start: false });
+    second.figma.pages = structuredClone(first.figma.pages); // Figma itself kept the change
+    await second.engine.start();
+    await second.idle();
+    expect(second.runner.callsFor("cv.tailor")).toEqual([]);
+    expect(getTask(second.db, cv.id)).toMatchObject({ status: "failed", error: expect.stringMatching(/protected Figma pages changed/) });
+    expect(second.events("safety.denied")).toEqual([expect.objectContaining({ taskId: String(cv.id), reason: "protected_page_changed" })]);
+    expect(second.events("message.created").map((e) => e.message.text)).toContainEqual(expect.stringMatching(/protected Figma page/));
+  });
+
+  it("an unchanged Figma file after a crash lets the CV task run again as attempt 2 (PM2 S4)", async () => {
+    const first = await createTestEngine({ clock: new FakeClock(T0) });
+    first.runner.script({ bot: "cv", kind: "tailor", delayMs: 3600_000 });
+    first.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await settleSomeWork();
+    const cv = first.tasks("cv.tailor")[0]!;
+    const second = await createTestEngine({ db: first.db, files: first.files, clock: new FakeClock(new Date(T0.getTime() + 60_000)) });
+    await second.idle();
+    expect(getTask(second.db, cv.id)).toMatchObject({ status: "done", attempt: 2 });
+    expect(second.events("safety.denied")).toEqual([]);
+  });
+
+  it("with Figma closed at start-up, the CV task's next spawn compares against the persisted before-hash (PM2 S4)", async () => {
+    const first = await createTestEngine({ clock: new FakeClock(T0) });
+    first.runner.script({ bot: "cv", kind: "tailor", delayMs: 3600_000 });
+    first.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await settleSomeWork();
+    const cv = first.tasks("cv.tailor")[0]!;
+    first.figma.changeProtectedText("Hacked title");
+
+    const second = await createTestEngine({ db: first.db, files: first.files, clock: new FakeClock(new Date(T0.getTime() + 60_000)), start: false });
+    second.figma.pages = structuredClone(first.figma.pages);
+    second.figma.connected = false;
+    await second.engine.start();
+    await second.idle();
+    expect(getTask(second.db, cv.id)?.status).toBe("paused");
+    second.figma.connected = true;
+    second.clock.advance(15_000);
+    await second.idle();
+    expect(second.runner.callsFor("cv.tailor")).toEqual([]);
+    expect(getTask(second.db, cv.id)).toMatchObject({ status: "failed" });
+    expect(second.events("safety.denied")).toEqual([expect.objectContaining({ reason: "protected_page_changed" })]);
+  });
+
   it("the CLI sessions a crash left behind are removed: the runners kept them only for a repair (UC-18)", async () => {
     const first = await createTestEngine({ clock: new FakeClock(T0) });
     first.runner.script({ bot: "cv", kind: "tailor", delayMs: 3600_000 });

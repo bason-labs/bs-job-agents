@@ -37,6 +37,7 @@ import {
   getRun,
   getTask,
   holdEngineTasks,
+  listEvents,
   pauseTask,
   requeueTask,
   saveCompanyProfile,
@@ -128,6 +129,22 @@ export function uploadCopyName(file: { uploadId: string; filename: string; mime:
   const allowed: readonly string[] = (ALLOWED_UPLOAD_TYPES as Record<string, readonly string[]>)[file.mime] ?? [];
   const fromName = /\.[A-Za-z0-9]{1,5}$/.exec(file.filename)?.[0]?.toLowerCase();
   return `upload-${id}${fromName && allowed.includes(fromName) ? fromName : (allowed[0] ?? "")}`;
+}
+
+/** The audit row a CV spawn writes with the protected pages' "before" hash (PM2 S4). */
+export const FIGMA_BEFORE_EVENT = "figma.before";
+
+/**
+ * PM2 S4: the "before" hash of the protected Figma pages that this CV task last spawned with (its
+ * after-check may never have run: a crash, Figma gone, a failed attempt), or null. The next spawn
+ * and the start-up after a crash compare the pages with it.
+ */
+export function lastFigmaBeforeHash(conn: Conn, task: Pick<Task, "id" | "output">): string | null {
+  const row = listEvents(conn, { taskId: task.id, types: [FIGMA_BEFORE_EVENT] }).at(-1);
+  const fromAudit = (row?.payload as { hash?: unknown } | undefined)?.hash;
+  if (typeof fromAudit === "string" && fromAudit !== "") return fromAudit;
+  const fromWait = (task.output as { figmaBeforeHash?: unknown } | null)?.figmaBeforeHash;
+  return typeof fromWait === "string" && fromWait !== "" ? fromWait : null;
 }
 
 /** UC-11 d: Apply's own check that the page shows the approved company and title failed. */
@@ -281,6 +298,8 @@ export class TaskQueue {
     const { runnerTask, bot } = prepared;
     core.db.transaction((tx) => {
       setTaskTranscriptPath(tx, task.id, core.paths.transcript(task.id, task.attempt));
+      // PM2 S4: persisted before the spawn, so a crash cannot lose what the pages looked like.
+      if (prepared.figmaBefore) core.bus.audit(tx, FIGMA_BEFORE_EVENT, { hash: prepared.figmaBefore.hash, attempt: task.attempt }, { runId: task.runId, taskId: task.id });
       core.bus.emit(tx, {
         type: "task.started",
         taskId: String(task.id),
@@ -415,10 +434,15 @@ export class TaskQueue {
       try {
         const drafts = await core.deps.figma.ensureDraftsPage();
         figmaBefore = await core.deps.figma.fingerprintProtectedPages();
-        const verified = (task.output as { figmaBeforeHash?: string } | null)?.figmaBeforeHash;
+        // PM2 S4: compare with the hash this task last spawned with (persisted before every spawn):
+        // an earlier spawn's after-check may never have run, so what changed since is unverified.
+        const verified = lastFigmaBeforeHash(core.db, task);
         if (verified && verified !== figmaBefore.hash) {
-          // An earlier spawn's after-check never ran (Figma went away): what changed since is unverified.
-          this.refuse(task, "protected_page_changed", "the protected Figma pages changed while this CV task waited for Figma; check them before continuing");
+          this.refuse(
+            task,
+            "protected_page_changed",
+            "the protected Figma pages changed while this CV task waited (for Figma, after a restart or between attempts); check them before continuing",
+          );
           return null;
         }
         if (key === "cv.tailor") {

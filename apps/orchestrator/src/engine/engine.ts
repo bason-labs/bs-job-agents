@@ -14,6 +14,7 @@ import {
   createRun,
   getPromptVersion,
   getRun,
+  getTask,
   listActiveRuns,
   listEvents,
   recordPromptVersion,
@@ -36,10 +37,11 @@ import { EngineError, invalidInput, notFound } from "./errors.js";
 import { EventBus, type EventListener } from "./events.js";
 import { LeadTools } from "./lead-tools.js";
 import { silentLogger, type Clock, type Logger } from "./ports.js";
-import { TaskQueue } from "./queue.js";
+import { TaskQueue, lastFigmaBeforeHash } from "./queue.js";
 import { approve, requestChanges, skip, type ApproveInput, type ApproveResult } from "./review.js";
 import { Scheduler } from "./scheduler.js";
 import { systemClock } from "./system.js";
+import { emitSafetyDenied, failTaskNow, postLeadMessage } from "./task-events.js";
 import { UsageWatcher } from "./usage.js";
 import { advanceRun } from "./workflow.js";
 
@@ -156,6 +158,7 @@ export class Engine implements EngineCore {
     const interrupted = [...r.requeued, ...r.exhausted, ...r.needsCheck];
     const orphanPids = this.killOrphans(interrupted);
     const orphanSessions = await this.removeOrphanSessions(interrupted);
+    await this.checkFigmaAfterCrash([...r.requeued, ...r.exhausted]);
     this.bus.flush();
     this.running = true;
     this.queue.resume();
@@ -277,6 +280,43 @@ export class Engine implements EngineCore {
       }
     }
     return removed;
+  }
+
+  /**
+   * PM2 S4: a CV task a crash interrupted may have changed a protected Figma page before its
+   * after-check. Its spawn persisted the "before" hash; when Figma is reachable now, compare: a
+   * change is a safety event and a Lead alert, and the task does not run again. When Figma is
+   * not reachable, the task's next spawn compares instead (TaskQueue.prepare).
+   */
+  private async checkFigmaAfterCrash(tasks: readonly Task[]): Promise<void> {
+    const cv = tasks
+      .filter((t) => t.usesFigma)
+      .map((t) => ({ task: t, hash: lastFigmaBeforeHash(this.db, t) }))
+      .filter((x): x is { task: Task; hash: string } => x.hash !== null);
+    if (cv.length === 0) return;
+    let now: string;
+    try {
+      if (!(await this.deps.figma.status()).connected) return;
+      now = (await this.deps.figma.fingerprintProtectedPages()).hash;
+    } catch (err) {
+      this.log.warn(`could not check the protected Figma pages after the restart: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    this.db.transaction((tx) => {
+      for (const { task, hash } of cv) {
+        if (hash === now) continue;
+        const detail = "the protected Figma pages changed during a CV task that a restart interrupted, before the orchestrator could check them";
+        emitSafetyDenied(this, tx, { botName: task.botName, taskId: task.id, action: "figma_execute", reason: "protected_page_changed", detail });
+        postLeadMessage(
+          this,
+          tx,
+          "A protected Figma page changed during a CV task that a restart interrupted, so I stopped it. Please check the file and restore the page from Figma's version history.",
+          { runId: task.runId },
+        );
+        const current = getTask(tx, task.id);
+        if (current?.status === "queued") failTaskNow(this, tx, current, `denied: ${detail}`);
+      }
+    });
   }
 
   /** SSE (W3a): committed shared events in order, including the ones repositories append. */

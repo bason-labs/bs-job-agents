@@ -175,6 +175,24 @@ describe("bridge waits (§4.4, §6.2, §10.3, UC-17)", () => {
     expect(t.runner.callsFor("cv.tailor")).toHaveLength(2);
   });
 
+  it("every CV spawn persists its before-hash; a change between two attempts refuses the retry (PM2 S4)", async () => {
+    const t = await createTestEngine();
+    t.runner.script({ bot: "cv", kind: "tailor", times: 1, result: fake.invalidOutput() });
+    const fingerprint = t.figma.fingerprintProtectedPages.bind(t.figma);
+    let calls = 0;
+    t.figma.fingerprintProtectedPages = async () => {
+      const fp = await fingerprint();
+      // After attempt 1's before and after fingerprints, someone edits a template.
+      if (++calls === 2) t.figma.changeProtectedText("Edited between attempts");
+      return fp;
+    };
+    t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await t.idle();
+    expect(t.runner.callsFor("cv.tailor")).toHaveLength(1);
+    expect(t.tasks("cv.tailor")[0]).toMatchObject({ status: "failed", attempt: 2, error: expect.stringMatching(/protected Figma pages changed/) });
+    expect(t.events("safety.denied")).toEqual([expect.objectContaining({ reason: "protected_page_changed" })]);
+  });
+
   it("if the protected pages changed while that CV task waited, its next spawn is refused and Ba is alerted", async () => {
     const t = await createTestEngine();
     t.figma.unavailableOnce = "export";
