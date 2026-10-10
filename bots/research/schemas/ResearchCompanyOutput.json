@@ -1,0 +1,150 @@
+{
+  "title": "ResearchCompanyOutput",
+  "type": "object",
+  "properties": {
+    "company": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "website": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "industry": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "e.g. '~250 people'"
+        },
+        "productOrOutsource": {
+          "type": "string",
+          "enum": [
+            "product",
+            "outsource",
+            "mixed",
+            "unknown"
+          ]
+        },
+        "culture": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "benefits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reviewsSummary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "url"
+            ],
+            "additionalProperties": false
+          },
+          "description": "At least 2 independent sources unless low_confidence"
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "normal",
+            "low_confidence"
+          ],
+          "description": "low_confidence when little public information exists (UC-05 b)"
+        },
+        "researchedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "name",
+        "website",
+        "industry",
+        "size",
+        "productOrOutsource",
+        "culture",
+        "benefits",
+        "reviewsSummary",
+        "sources",
+        "confidence",
+        "researchedAt"
+      ],
+      "additionalProperties": false
+    },
+    "selfCheck": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "The checklist item, copied from bot.json selfCheck"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it passed or failed; null when nothing to add"
+          }
+        },
+        "required": [
+          "item",
+          "passed",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "One entry per selfCheck item in bot.json. Any failed item fails the attempt."
+    },
+    "memoryNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "description": "Up to 3 short lessons for this bot's memory, e.g. 'TopCV upload limit is 5MB'. Empty if none."
+    }
+  },
+  "required": [
+    "company",
+    "selfCheck",
+    "memoryNotes"
+  ],
+  "additionalProperties": false
+}

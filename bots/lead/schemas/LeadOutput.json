@@ -1,0 +1,203 @@
+{
+  "title": "LeadOutput",
+  "type": "object",
+  "properties": {
+    "reply": {
+      "type": "string"
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "start_workflow"
+                ]
+              },
+              "workflow": {
+                "type": "string",
+                "enum": [
+                  "job-scan",
+                  "apply-to-link",
+                  "apply-to-file"
+                ]
+              },
+              "runId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Run id returned by start_workflow"
+              },
+              "summary": {
+                "type": "string",
+                "description": "One line for the delegation trace"
+              }
+            },
+            "required": [
+              "type",
+              "workflow",
+              "runId",
+              "summary"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "create_task"
+                ]
+              },
+              "bot": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "bot",
+              "kind",
+              "taskId",
+              "summary"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "ask_user"
+                ]
+              },
+              "question": {
+                "type": "string",
+                "description": "One clarifying question (UC-01 a)"
+              },
+              "choices": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Suggested answers shown as chips; empty for free text"
+              }
+            },
+            "required": [
+              "type",
+              "question",
+              "choices"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "propose_workflow"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "description"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "answer_from_data"
+                ]
+              },
+              "source": {
+                "type": "string",
+                "description": "What stored data answered the question, e.g. 'applications'"
+              }
+            },
+            "required": [
+              "type",
+              "source"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "selfCheck": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "The checklist item, copied from bot.json selfCheck"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it passed or failed; null when nothing to add"
+          }
+        },
+        "required": [
+          "item",
+          "passed",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "One entry per selfCheck item in bot.json. Any failed item fails the attempt."
+    },
+    "memoryNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "description": "Up to 3 short lessons for this bot's memory, e.g. 'TopCV upload limit is 5MB'. Empty if none."
+    }
+  },
+  "required": [
+    "reply",
+    "actions",
+    "selfCheck",
+    "memoryNotes"
+  ],
+  "additionalProperties": false
+}

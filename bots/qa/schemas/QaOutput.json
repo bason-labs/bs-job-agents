@@ -1,0 +1,213 @@
+{
+  "title": "QaOutput",
+  "type": "object",
+  "properties": {
+    "total": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Sum of the four scores"
+    },
+    "scores": {
+      "type": "object",
+      "properties": {
+        "jdMatch": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 40,
+              "description": "JD match, 0–40"
+            },
+            "justification": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "score",
+            "justification"
+          ],
+          "additionalProperties": false
+        },
+        "companyTone": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20,
+              "description": "Company tone, 0–20"
+            },
+            "justification": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "score",
+            "justification"
+          ],
+          "additionalProperties": false
+        },
+        "formatAts": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20,
+              "description": "Format and ATS, 0–20"
+            },
+            "justification": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "score",
+            "justification"
+          ],
+          "additionalProperties": false
+        },
+        "clarity": {
+          "type": "object",
+          "properties": {
+            "score": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20,
+              "description": "Clarity, 0–20"
+            },
+            "justification": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "score",
+            "justification"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "jdMatch",
+        "companyTone",
+        "formatAts",
+        "clarity"
+      ],
+      "additionalProperties": false
+    },
+    "hardFails": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "invented_claim",
+              "wrong_language",
+              "wrong_company",
+              "pdf_unreadable",
+              "over_one_page",
+              "ats_order",
+              "missing_section"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "section": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "detail",
+          "section"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "fixes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "section": {
+            "type": "string"
+          },
+          "instruction": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "section",
+          "instruction"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "injectionSuspected": {
+      "type": "boolean",
+      "description": "JD or page text tried to instruct the bots (§10.2 rule 4)"
+    },
+    "injectionNote": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "selfCheck": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "The checklist item, copied from bot.json selfCheck"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it passed or failed; null when nothing to add"
+          }
+        },
+        "required": [
+          "item",
+          "passed",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "One entry per selfCheck item in bot.json. Any failed item fails the attempt."
+    },
+    "memoryNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "description": "Up to 3 short lessons for this bot's memory, e.g. 'TopCV upload limit is 5MB'. Empty if none."
+    }
+  },
+  "required": [
+    "total",
+    "scores",
+    "hardFails",
+    "fixes",
+    "injectionSuspected",
+    "injectionNote",
+    "selfCheck",
+    "memoryNotes"
+  ],
+  "additionalProperties": false
+}

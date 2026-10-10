@@ -1,0 +1,183 @@
+{
+  "title": "ResearchScanOutput",
+  "type": "object",
+  "properties": {
+    "jobs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "topcv | itviec | linkedin | career_site | link | file"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Job posting / apply URL. Null only for an uploaded JD with no posting found (§7.3b)."
+          },
+          "title": {
+            "type": "string"
+          },
+          "company": {
+            "type": "string"
+          },
+          "companyWebsite": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "location": {
+            "type": "string"
+          },
+          "workMode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "onsite",
+                  "hybrid",
+                  "remote"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "salaryText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Salary as shown, e.g. '25–35 triệu' or '2,000–2,800 USD'; null if not listed"
+          },
+          "postedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "language": {
+            "type": "string",
+            "description": "Detected JD language, ISO 639-1 (vi, en, …)"
+          },
+          "jdText": {
+            "type": "string",
+            "description": "Full JD text, not a snippet"
+          }
+        },
+        "required": [
+          "source",
+          "url",
+          "title",
+          "company",
+          "companyWebsite",
+          "location",
+          "workMode",
+          "salaryText",
+          "postedAt",
+          "language",
+          "jdText"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Empty when the source has no results (UC-03 d)"
+    },
+    "pageViews": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Pages opened in Chrome (LinkedIn ≤ 40, UC-03 c)"
+    },
+    "blocked": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string",
+              "enum": [
+                "needs_login",
+                "captcha"
+              ]
+            },
+            "site": {
+              "type": "string",
+              "description": "Host that needs Ba, e.g. topcv.vn"
+            },
+            "detail": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "reason",
+            "site",
+            "detail"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Set when login or a CAPTCHA stopped the scan"
+    },
+    "selfCheck": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "The checklist item, copied from bot.json selfCheck"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it passed or failed; null when nothing to add"
+          }
+        },
+        "required": [
+          "item",
+          "passed",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "One entry per selfCheck item in bot.json. Any failed item fails the attempt."
+    },
+    "memoryNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "description": "Up to 3 short lessons for this bot's memory, e.g. 'TopCV upload limit is 5MB'. Empty if none."
+    }
+  },
+  "required": [
+    "jobs",
+    "pageViews",
+    "blocked",
+    "selfCheck",
+    "memoryNotes"
+  ],
+  "additionalProperties": false
+}

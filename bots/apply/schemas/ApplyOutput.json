@@ -1,0 +1,339 @@
+{
+  "title": "ApplyOutput",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "submitted",
+        "needs_check",
+        "paused"
+      ]
+    },
+    "fieldsFilled": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Label as shown on the form"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Field name/id attribute if known"
+          },
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Value entered; null only when skipped"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "master_cv",
+              "saved_answer",
+              "ba_answer",
+              "search_profile",
+              "form_defaults",
+              "generated",
+              "skipped"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "label",
+          "name",
+          "value",
+          "source",
+          "required"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "introText": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "consent": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "ticked": {
+              "type": "boolean"
+            },
+            "text": {
+              "type": "string",
+              "description": "The consent wording on the form"
+            }
+          },
+          "required": [
+            "ticked",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "uploadedFile": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "filename": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "filename",
+            "sha256"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "preSubmitScreenshot": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Path of the filled-form screenshot"
+    },
+    "confirmationScreenshot": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "confirmationText": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "finalUrl": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "pendingQuestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Field name/id, or the label if no name"
+          },
+          "label": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "salary",
+              "text",
+              "choice",
+              "date",
+              "number",
+              "other"
+            ],
+            "description": "salary questions also offer Negotiable / Thỏa thuận"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Choices for select/radio fields"
+          }
+        },
+        "required": [
+          "field",
+          "label",
+          "required",
+          "kind",
+          "options"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "pauseReason": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "type": "string",
+              "enum": [
+                "needs_answer",
+                "needs_login",
+                "captcha",
+                "domain_confirm"
+              ]
+            },
+            "site": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Host involved, e.g. the ATS domain for domain_confirm (UC-11 e)"
+            },
+            "detail": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "reason",
+            "site",
+            "detail"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "jdSnapshot": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "company": {
+              "type": "string"
+            },
+            "salaryText": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "jdText": {
+              "type": "string"
+            },
+            "pageScreenshot": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Path of the full-page screenshot"
+            },
+            "capturedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "url",
+            "title",
+            "company",
+            "salaryText",
+            "jdText",
+            "pageScreenshot",
+            "capturedAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "selfCheck": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "The checklist item, copied from bot.json selfCheck"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it passed or failed; null when nothing to add"
+          }
+        },
+        "required": [
+          "item",
+          "passed",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "One entry per selfCheck item in bot.json. Any failed item fails the attempt."
+    },
+    "memoryNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "description": "Up to 3 short lessons for this bot's memory, e.g. 'TopCV upload limit is 5MB'. Empty if none."
+    }
+  },
+  "required": [
+    "status",
+    "fieldsFilled",
+    "introText",
+    "consent",
+    "uploadedFile",
+    "preSubmitScreenshot",
+    "confirmationScreenshot",
+    "confirmationText",
+    "finalUrl",
+    "pendingQuestions",
+    "pauseReason",
+    "jdSnapshot",
+    "selfCheck",
+    "memoryNotes"
+  ],
+  "additionalProperties": false
+}

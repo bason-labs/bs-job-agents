@@ -1,0 +1,18 @@
+{
+  "name": "qa",
+  "displayName": "QA",
+  "role": "Scores the CV against the JD and the company; hard-fails invented facts.",
+  "engine": "codex",
+  "model": null,
+  "trustLevel": 2,
+  "allowedTools": ["read"],
+  "browser": null,
+  "mcpServers": [],
+  "timeoutSec": 600,
+  "outputSchema": "QaOutput",
+  "selfCheck": [
+    "Every score has a justification",
+    "Every fix is actionable and refers to a section"
+  ],
+  "promptVersion": 1
+}
