@@ -152,6 +152,20 @@ describe("bridge waits (§4.4, §6.2, §10.3, UC-17)", () => {
     expect(getTask(t.db, cv.id)).toMatchObject({ status: "done", attempt: 1 });
     expect(t.runner.callsFor("cv.tailor")).toHaveLength(2);
   });
+
+  it("if the protected pages changed while that CV task waited, its next spawn is refused and Ba is alerted", async () => {
+    const t = await createTestEngine();
+    t.figma.unavailableOnce = "export";
+    t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await t.idle();
+    t.figma.changeProtectedText("Edited while unverified");
+    t.clock.advance(15_000);
+    await t.idle();
+    expect(t.tasks("cv.tailor")[0]).toMatchObject({ status: "failed", error: expect.stringMatching(/changed while this CV task waited/) });
+    expect(t.runner.callsFor("cv.tailor")).toHaveLength(1);
+    expect(t.events("safety.denied")).toEqual([expect.objectContaining({ reason: "protected_page_changed" })]);
+    expect(t.events("message.created").at(-1)).toMatchObject({ message: { text: expect.stringMatching(/I stopped a CV task/) } });
+  });
 });
 
 describe("attempts (§5.5 step 6, §10.1)", () => {

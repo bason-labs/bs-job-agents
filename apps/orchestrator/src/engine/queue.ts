@@ -723,6 +723,7 @@ export class TaskQueue {
     this.core.db.transaction((tx) => {
       failTaskNow(this.core, tx, task, `denied: ${detail}`);
       emitSafetyDenied(this.core, tx, { botName: task.botName, taskId: task.id, action: taskKey(task.botName, task.kind), reason, detail });
+      if (reason === "protected_page_changed") postLeadMessage(this.core, tx, `I stopped a CV task: ${detail}.`, { runId: task.runId });
     });
   }
 
