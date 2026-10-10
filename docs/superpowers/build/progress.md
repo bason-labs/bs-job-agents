@@ -17,6 +17,12 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | W2a engine | ✅ merged (5b965eb); develop 1486 tests green + build; reports/phase2-w2a-engine.md |
 | 2026-10-11 | Phase 2 QA/QC attempt 1 | ⚠️ stopped by usage limit before committing anything; worktree auto-removed |
 | 2026-10-11 | Phase 2 QA/QC | ✅ merged (d237c99); qa-phase-2.md; 1533 tests green; 10 seam/defect fixes; live Claude + Codex runs ok |
-| 2026-10-11 | Phase 2 PM review (worktree) | 🔄 running |
+| 2026-10-11 | Phase 2 PM review | ✅ merged (ef140a6); pm-phase-2.md: ready after F2 (M1–M5 + S1–S6); F3 (S7–S16) runs in parallel with Phase 3; owner escalation E1 in owner-decisions.md |
+| 2026-10-11 | F2 fixer, W3a API part 1, W3b UI chat/flows/review + lib/api, W3c UI other screens (worktrees) | 🔄 running |
 
-**Next action:** when the Phase 2 PM reports, merge it, run a fixer for its MUST-FIX items, merge that, then start Phase 3 (W3a API/MCP/workflows, W3b chat/flows/review + lib/api, W3c other screens) with the should-fix items folded in.
+**Next action:**
+1. Merge each of F2, W3a part 1, W3b and W3c as it reports. Re-run `pnpm install` on lockfile conflicts.
+2. After F2 merges:
+   - start F3 (PM2 S7–S16) in a worktree;
+   - resume W3a by SendMessage for part 2 (chat/consult/handoff flows, Lead MCP server S17, S20, approve dryRun). If its worktree is gone, start a new W3a-part-2 agent.
+3. When W3a, W3b, W3c and F3 have all merged: Phase 3 QA, then PM, then must-fix, then Phase 4.
