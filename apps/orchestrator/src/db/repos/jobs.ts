@@ -1,10 +1,10 @@
 import type { JobCandidate } from "@bs-job-agents/shared";
-import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { canonicalizeUrl, jobDedupeHash } from "../dedupe.js";
-import type { JobStatus, SkipReason } from "../enums.js";
+import { ACTIVE_RUN_STATUSES, type JobStatus, type SkipReason } from "../enums.js";
 import { InvalidTransitionError, NotFoundError } from "../errors.js";
-import { jobs } from "../schema.js";
+import { jobs, runs, steps, tasks } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
 import type { Job } from "../types.js";
 import { ensureCompany } from "./companies.js";
@@ -81,27 +81,67 @@ export function upsertJobCandidate(db: Conn, c: JobCandidateInput, opts?: ClockO
 }
 
 export interface DedupeResult {
-  /** Jobs to score: newly inserted (and previously skipped ones with `includeSkipped`). */
+  /**
+   * Jobs to score: newly inserted, jobs a failed or cancelled run left `new` (PM S3), and
+   * previously skipped ones with `includeSkipped`.
+   */
   fresh: Job[];
   duplicates: { candidate: JobCandidateInput; job: Job; matchedBy: DuplicateMatch }[];
+}
+
+/** Leading job id of a branch key: `42` or `42:vi` → 42 (0 when not numeric). */
+const branchJobId = sql<number>`CAST(${steps.branchKey} AS INTEGER)`;
+const inputJobId = sql<number>`CAST(json_extract(${tasks.input}, '$.jobId') AS INTEGER)`;
+
+/**
+ * Jobs an active run (running, waiting or paused) is working on: a task input names the job
+ * (`jobId`), or a per-job branch step is keyed by it. `excludeRunId` leaves one run out, e.g. a
+ * run re-running its own dedupe step (UC-23).
+ */
+export function jobIdsInActiveRuns(db: Conn, opts: { excludeRunId?: number } = {}): Set<number> {
+  const activeRun = and(
+    inArray(runs.status, [...ACTIVE_RUN_STATUSES]),
+    opts.excludeRunId !== undefined ? ne(runs.id, opts.excludeRunId) : undefined,
+  );
+  const fromTasks = db
+    .select({ id: inputJobId })
+    .from(tasks)
+    .innerJoin(runs, eq(runs.id, tasks.runId))
+    .where(and(activeRun, sql`json_extract(${tasks.input}, '$.jobId') IS NOT NULL`))
+    .all();
+  const fromSteps = db
+    .select({ id: branchJobId })
+    .from(steps)
+    .innerJoin(runs, eq(runs.id, steps.runId))
+    .where(and(activeRun, ne(steps.branchKey, "")))
+    .all();
+  return new Set([...fromTasks, ...fromSteps].map((r) => Number(r.id)).filter((id) => Number.isInteger(id) && id > 0));
 }
 
 /**
  * The `filter dedupe` step (§7.2 step 3): stores new candidates and drops
  * duplicates, including duplicates within the same batch. A job seen before but
  * skipped stays excluded unless `includeSkipped` ("show skipped", UC-04b).
+ *
+ * PM S3: a job still `new` (never scored) that no active run is working on was left by a run
+ * that failed or was cancelled; it is offered again rather than dropped forever. Ownership is
+ * `ownedJobIds` when given, else jobIdsInActiveRuns (minus `excludeRunId`).
  */
 export function dedupeCandidates(
   db: Conn,
   candidates: readonly JobCandidateInput[],
-  opts: ClockOpts & { includeSkipped?: boolean } = {},
+  opts: ClockOpts & { includeSkipped?: boolean; excludeRunId?: number; ownedJobIds?: ReadonlySet<number> } = {},
 ): DedupeResult {
   return db.transaction((tx) => {
     const result: DedupeResult = { fresh: [], duplicates: [] };
+    const owned = opts.ownedJobIds ?? jobIdsInActiveRuns(tx, { excludeRunId: opts.excludeRunId });
     const seen = new Set<number>();
     for (const candidate of candidates) {
       const r = upsertJobCandidate(tx, candidate, opts);
-      const resurfaced = !r.created && opts.includeSkipped && r.job.status === "skipped" && !seen.has(r.job.id);
+      const resurfaced =
+        !r.created &&
+        !seen.has(r.job.id) &&
+        ((opts.includeSkipped === true && r.job.status === "skipped") || (r.job.status === "new" && !owned.has(r.job.id)));
       if (r.created || resurfaced) result.fresh.push(r.job);
       else result.duplicates.push({ candidate, job: r.job, matchedBy: r.matchedBy ?? "canonical_url" });
       seen.add(r.job.id);

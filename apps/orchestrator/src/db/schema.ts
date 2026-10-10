@@ -153,6 +153,9 @@ export const runs = sqliteTable(
     error: text("error"),
     createdAt: createdAt(),
     finishedAt: text("finished_at"),
+    // Extra (not in §9, Phase 2): the Search Profile version row the run started with, so it
+    // keeps that version after later edits (UC-21b). Added with ADD COLUMN (0006).
+    searchProfileId: integer("search_profile_id").references((): AnySQLiteColumn => searchProfiles.id),
   },
   (t) => [
     oneOf("runs_trigger_check", "trigger", RUN_TRIGGERS),

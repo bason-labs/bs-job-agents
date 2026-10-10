@@ -252,6 +252,23 @@ describe("upgrading a populated database from every earlier migration to head (P
   });
 });
 
+describe("migration 0006 on a database with data", () => {
+  it("adds runs.search_profile_id as NULL for older runs (ADD COLUMN, no rebuild)", () => {
+    const base = tempDir();
+    const path = join(base, "app.db");
+    const old = openAt(base, path, countAt("0005"));
+    populate(old, countAt("0005"));
+    old.close();
+
+    const db = openDb(path);
+    const c = db.$client;
+    expect(c.prepare("SELECT id, search_profile_id AS p FROM runs").all()).toEqual([{ id: 1, p: null }]);
+    expect(() => c.prepare("UPDATE runs SET search_profile_id = 99 WHERE id = 1").run()).toThrow(/FOREIGN KEY/);
+    expect(missingGuardedObjects(c)).toEqual([]);
+    c.close();
+  });
+});
+
 describe("migration 0002 on a database with data", () => {
   it("maps legacy literals and gives new columns their defaults", () => {
     const base = tempDir();

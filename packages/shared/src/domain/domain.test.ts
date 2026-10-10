@@ -26,6 +26,7 @@ import {
   canTransitionApplicationStatus,
 } from "./application.js";
 import { ApprovalTokenSchema } from "./approval.js";
+import { isTrustLevelAllowed, maxTrustLevel } from "./bot-record.js";
 import { MessageSchema, RoomSchema, parseMentions } from "./chat.js";
 import { EngineStateSchema } from "./engine-state.js";
 import { ExportSchema } from "./export.js";
@@ -401,6 +402,15 @@ describe("other domain records", () => {
     const { applicationId: _applicationId, ...older } = approvalTokenFixture;
     expect(ApprovalTokenSchema.parse(older).applicationId).toBeNull();
     expect(ApprovalTokenSchema.safeParse({ ...approvalTokenFixture, applicationId: "" }).success).toBe(false);
+  });
+
+  it("Phase 1 caps Apply at L1: submit always needs Ba's approval (UC-19, PM S1)", () => {
+    expect(maxTrustLevel("apply")).toBe(1);
+    expect(maxTrustLevel("research")).toBe(2);
+    expect(maxTrustLevel("translator")).toBe(2);
+    expect(isTrustLevelAllowed("apply", 2)).toBe(false);
+    expect(isTrustLevelAllowed("apply", 1)).toBe(true);
+    expect(isTrustLevelAllowed("cv", 2)).toBe(true);
   });
 
   it("engine state", () => {

@@ -48,6 +48,7 @@ export * from "./domain/bot-record.js";
 
 // workflows (§7)
 export * from "./workflow/params.js";
+export * from "./workflow/tasks.js";
 export * from "./workflow/definition.js";
 
 // events (§11)

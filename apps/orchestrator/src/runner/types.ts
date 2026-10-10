@@ -25,6 +25,11 @@ export interface RunnerTask {
   readDirs?: string[];
   /** Sites the browser may navigate to for this task (bot allowlist, or the approval's domains for Apply). */
   allowedSites?: string[];
+  /**
+   * Additive (W2a, coordinator decision): Claude --settings hook config built by the engine from
+   * the bridges' builders; merged by the runner into its base settings.
+   */
+  hookSettings?: Record<string, unknown>;
   timeoutMs: number;
   signal?: AbortSignal;
 }

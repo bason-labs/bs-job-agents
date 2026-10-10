@@ -13,6 +13,12 @@
 //   markSubmissionRefused(db, { error, taskId })  // on SubmissionRefusedError: needs_check + safety.denied
 //   transitionApplication(db, id, to, { by: "system" | "manual" })               // shared status machine
 //
+// Phase 2 (W2a) additions the engine uses: recoverInterruptedTasks marks an interrupted Apply's
+// application needs_check in the same transaction (PM S2); dedupeCandidates offers again jobs a
+// failed run left `new` (jobIdsInActiveRuns, PM S3); upsertBot/updateBot refuse Apply at L2
+// (TrustLevelRefusedError, PM S1); latestApprovalForApplication (tokens never sit in task inputs,
+// PM S5); pauseTask keeps the bot's output; updateTaskInput; runs.search_profile_id (0006).
+//
 // Every repository function takes the Drizzle handle or a transaction
 // (`db.transaction(tx => …)`), so several calls can be composed atomically.
 export * from "./client.js";

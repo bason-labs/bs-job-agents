@@ -6,9 +6,11 @@
 // Values in `input` / `options` are templates the engine resolves, e.g. "$params.sources",
 // "$item", "$steps.top.output", "$profile".
 import { z } from "zod";
+import { BOT_TASK_KINDS } from "../bots/definition.js";
 import { BotNameSchema, LIMITS } from "../common/primitives.js";
 import { RunTriggerSchema } from "../domain/run.js";
 import { WorkflowSlugSchema } from "./params.js";
+import { isKnownTaskKind, isOutwardFacingTask, taskKey } from "./tasks.js";
 
 export const STEP_TYPES = ["task", "map", "join", "filter", "gate", "human", "action", "record"] as const;
 export type StepType = (typeof STEP_TYPES)[number];
@@ -136,6 +138,34 @@ export const WorkflowDefinitionSchema = z
     const seen = new Map<string, WorkflowStep>();
     const issue = (i: number, field: string, message: string) =>
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["steps", i, field], message });
+    // PM S4: a kind must be one of its bot's kinds (typos fail at load time), and an
+    // outward-facing task (apply.submit) runs only in an approval-gated action step.
+    const checkTask = (i: number, field: string, ref: TaskRef, stepType: StepType) => {
+      const path = ["steps", i, field, "kind"];
+      if (isKnownTaskKind(ref.bot, ref.kind) === false) {
+        const kinds = (BOT_TASK_KINDS as Record<string, readonly string[]>)[ref.bot]!.join(", ");
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path,
+          message: `task kind "${ref.kind}" is not one of ${ref.bot}'s kinds (${kinds})`,
+        });
+      }
+      const outward = isOutwardFacingTask(ref.bot, ref.kind);
+      if (outward && stepType !== "action") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path,
+          message: `${taskKey(ref.bot, ref.kind)} is outward-facing and may only run in an action step`,
+        });
+      }
+      if (!outward && stepType === "action") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path,
+          message: `an action step runs an outward-facing task (apply.submit), not ${taskKey(ref.bot, ref.kind)}`,
+        });
+      }
+    };
     const earlier = (i: number, field: string, ref: string | undefined, types?: readonly StepType[]) => {
       if (ref === undefined) return;
       const target = seen.get(ref);
@@ -147,6 +177,19 @@ export const WorkflowDefinitionSchema = z
     wf.steps.forEach((step, i) => {
       if (seen.has(step.key)) issue(i, "key", `duplicate step key "${step.key}"`);
       earlier(i, "branch", step.branch);
+      switch (step.type) {
+        case "task":
+        case "map":
+        case "action":
+          checkTask(i, "task", step.task, step.type);
+          break;
+        case "gate":
+          checkTask(i, "producer", step.producer, step.type);
+          checkTask(i, "checker", step.checker, step.type);
+          break;
+        default:
+          break;
+      }
       switch (step.type) {
         case "join":
           earlier(i, "of", step.of, ["map"]);

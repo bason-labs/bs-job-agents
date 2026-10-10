@@ -122,6 +122,10 @@ describe("safety.denied for a refused submission record (PM M1)", () => {
     });
   });
 
+  it("a dry run that reports submitted is a safety event (PM §7 W2a)", () => {
+    expect(AppEventSchema.safeParse({ ...denied, action: "apply.submit", reason: "dry_run_submitted" }).success).toBe(true);
+  });
+
   it("the trust guard's binding denials have reasons too (PM M2)", () => {
     for (const reason of ["wrong_application", "wrong_cv", "injection_flagged", "application_closed"]) {
       expect(AppEventSchema.safeParse({ ...denied, reason }).success, reason).toBe(true);

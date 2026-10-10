@@ -7,7 +7,7 @@ import {
   isApplyBlockedByInjection,
   type SafetyDenialReason,
 } from "@bs-job-agents/shared";
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { ApprovalRefusedError, InvalidTransitionError, NotFoundError } from "../errors.js";
 import { applications, approvals, cvVersions, jobSnapshots, jobs, submissions } from "../schema.js";
@@ -137,6 +137,26 @@ export function createApproval(db: Conn, input: CreateApprovalInput, opts?: Cloc
 
 export function getApproval(db: Conn, token: string): Approval | undefined {
   return db.select().from(approvals).where(eq(approvals.token, token)).get();
+}
+
+/**
+ * The newest token issued for an application (UC-08, or Ba's re-approval after expiry). The
+ * engine keeps tokens out of task inputs (PM S5) and finds the one to check here. `usedOnly`:
+ * the newest token an Apply spawn used, which the submission record cites (a re-approval issued
+ * while Apply ran stays unused).
+ */
+export function latestApprovalForApplication(
+  db: Conn,
+  applicationId: number,
+  opts: { usedOnly?: boolean } = {},
+): Approval | undefined {
+  return db
+    .select()
+    .from(approvals)
+    .where(and(eq(approvals.applicationId, applicationId), opts.usedOnly ? isNotNull(approvals.usedAt) : undefined))
+    .orderBy(desc(approvals.createdAt), desc(sql`rowid`))
+    .limit(1)
+    .get();
 }
 
 /**
