@@ -1,12 +1,13 @@
 "use client";
 
-import type { SearchProfile } from "@bs-job-agents/shared";
+import type { SavedAnswer, SearchProfile } from "@bs-job-agents/shared";
 import Link from "next/link";
 import { useId, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/components/schedules/datetime";
 import { Button, Field, NumberInput, Select, Slider, useToast } from "@/components/ui";
 import { ChipInput, ToggleChips } from "./ChipInput";
+import { SavedAnswers } from "./SavedAnswers";
 import { criteriaData, type CriteriaData, type CriteriaVersions } from "./data";
 import {
   CHIP_FIELDS,
@@ -28,6 +29,8 @@ import {
 export interface CriteriaScreenProps {
   initial: SearchProfile;
   initialVersions: CriteriaVersions["versions"];
+  /** UC-12 remembered answers, shown next to the form defaults. */
+  initialAnswers?: SavedAnswer[];
   /** Defaults to the app's data source; tests pass their own. */
   data?: CriteriaData;
 }
@@ -64,7 +67,7 @@ const SALARY_RULE_NOTES: Record<CriteriaForm["salaryPolicy"], ReactNode> = {
 };
 
 /** UC-21b: edit the active Search Profile (§7.5); saving creates a new version. */
-export function CriteriaScreen({ initial, initialVersions, data = criteriaData }: CriteriaScreenProps) {
+export function CriteriaScreen({ initial, initialVersions, initialAnswers = [], data = criteriaData }: CriteriaScreenProps) {
   const [profile, setProfile] = useState(initial);
   const [form, setForm] = useState<CriteriaForm>(() => profileToForm(initial));
   const [versions, setVersions] = useState(initialVersions);
@@ -240,6 +243,8 @@ export function CriteriaScreen({ initial, initialVersions, data = criteriaData }
           {SALARY_RULE_NOTES[form.salaryPolicy]}
         </p>
       </Card>
+
+      <SavedAnswers initial={initialAnswers} data={data} />
 
       <p className="text-xs text-muted">CV languages: English for English JDs; Vietnamese + English for Vietnamese JDs.</p>
 

@@ -5,12 +5,12 @@ import { Page } from "@/components/shell/Page";
 
 export const metadata: Metadata = { title: "Search criteria" };
 
-/** UC-21b: the active Search Profile (centered, max-w-3xl as in the prototype). */
+/** UC-21b: the active Search Profile (centered, max-w-3xl as in the prototype), plus UC-12 saved answers. */
 export default async function CriteriaPage() {
-  const [profile, versions] = await Promise.all([criteriaData.get(), criteriaData.versions()]);
+  const [profile, versions, answers] = await Promise.all([criteriaData.get(), criteriaData.versions(), criteriaData.savedAnswers()]);
   return (
     <Page width="narrow">
-      <CriteriaScreen initial={profile} initialVersions={versions.versions} />
+      <CriteriaScreen initial={profile} initialVersions={versions.versions} initialAnswers={answers} />
     </Page>
   );
 }

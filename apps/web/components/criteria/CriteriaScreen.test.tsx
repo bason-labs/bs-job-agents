@@ -7,11 +7,11 @@ import { createFixtureCriteriaData } from "./data";
 
 async function setup() {
   const data = createFixtureCriteriaData(undefined, () => new Date("2026-10-11T03:00:00Z"));
-  const [profile, versions] = await Promise.all([data.get(), data.versions()]);
+  const [profile, versions, answers] = await Promise.all([data.get(), data.versions(), data.savedAnswers()]);
   const user = userEvent.setup();
   render(
     <ToastProvider>
-      <CriteriaScreen initial={profile} initialVersions={versions.versions} data={data} />
+      <CriteriaScreen initial={profile} initialVersions={versions.versions} initialAnswers={answers} data={data} />
     </ToastProvider>,
   );
   return { user, data };
@@ -46,6 +46,27 @@ describe("CriteriaScreen (UC-21b)", () => {
     expect(await screen.findByText("Need at least one role, location and source")).toBeInTheDocument();
     expect(screen.getByText("Add at least one role")).toBeInTheDocument();
     expect((await data.get()).version).toBe(3);
+  });
+
+  it("shows, edits and forgets saved answers, with Undo (UC-12)", async () => {
+    const { user, data } = await setup();
+    const list = screen.getByTestId("saved-answers");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(3);
+    expect(list).toHaveTextContent("Notice period2 weeks");
+
+    await user.click(screen.getByRole("button", { name: "Edit the answer for Notice period" }));
+    const input = screen.getByRole("textbox", { name: "Answer for Notice period" });
+    await user.clear(input);
+    await user.type(input, "1 month{Enter}");
+    expect(await screen.findByText("Updated the answer for “Notice period”")).toBeInTheDocument();
+    expect(list).toHaveTextContent("Notice period1 month");
+    expect((await data.savedAnswers()).find((a) => a.key === "notice period")!.answer).toBe("1 month");
+
+    await user.click(screen.getByRole("button", { name: "Delete the answer for Work permit" }));
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(within(screen.getByTestId("saved-answers")).getAllByRole("listitem")).toHaveLength(3));
+    expect((await data.savedAnswers()).map((a) => a.label)).toContain("Work permit");
   });
 
   it("needs an amount for the fixed salary rule, then saves a new version", async () => {
