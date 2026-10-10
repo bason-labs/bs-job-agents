@@ -24,6 +24,9 @@
   --glow: #0d98ba;          /* Blue-Green */
   --accent: #15a3c7;        /* Cyan Blue */
   --danger: #c92d3a;
+  --ok: #1a7f37;
+  --warn: #b7791f;
+  --grid: rgba(15, 23, 42, 0.08);
 
   /* Derived effects */
   --gradient-brand: linear-gradient(135deg, #008b8b 0%, #006d6f 60%, #0d98ba 100%);
@@ -49,6 +52,9 @@
   --glow: #7df9ff;          /* Electric Blue */
   --accent: #40e0d0;        /* Turquoise */
   --danger: #ff5f6d;
+  --ok: #3fd68a;
+  --warn: #f2c14e;
+  --grid: rgba(125, 249, 255, 0.07);
 
   --gradient-brand: linear-gradient(135deg, #008b8b 0%, #006d6f 60%, #0d98ba 100%);
   --shadow-glow: 0 0 24px -4px rgba(125, 249, 255, 0.55);
@@ -70,6 +76,8 @@
   --color-glow: var(--glow);
   --color-accent: var(--accent);
   --color-danger: var(--danger);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
 
   --font-sans: var(--font-sans), "Segoe UI", Arial, sans-serif;
   --font-display: var(--font-display), var(--font-sans), sans-serif;
@@ -112,6 +120,10 @@ summary,
 [role="option"]:not([aria-disabled="true"]),
 [role="menuitem"]:not([aria-disabled="true"]),
 [role="slider"]:not([aria-disabled="true"]),
+[role="combobox"]:not([aria-disabled="true"]),
+[role="menuitemcheckbox"]:not([aria-disabled="true"]),
+[role="menuitemradio"]:not([aria-disabled="true"]),
+[data-clickable]:not([aria-disabled="true"]),
 input[type="checkbox"]:not(:disabled),
 input[type="radio"]:not(:disabled),
 input[type="range"]:not(:disabled),
@@ -127,6 +139,19 @@ button:disabled,
 [data-disabled],
 input:disabled {
   cursor: not-allowed;
+}
+
+/* Focus ring for keyboard users on every interactive element. */
+:where(button, a[href], [role="button"], [role="tab"], [role="switch"], [role="checkbox"],
+  [role="combobox"], [role="slider"], [role="menuitem"], [role="option"], [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+/* Dotted grid for canvas backgrounds (flows). */
+.bg-grid {
+  background-image: radial-gradient(var(--grid) 1.2px, transparent 1.2px);
+  background-size: 18px 18px;
 }
 
 /* Tabular numerics for counters, scores and money. */
