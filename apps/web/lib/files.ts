@@ -1,8 +1,14 @@
-// File rules shared by FileDropzone, chat attachments (UC-24) and FileViewer.
+// File rules shared by FileDropzone, chat attachments (UC-24) and FileViewer. The
+// allowed types and the size limit come from @bs-job-agents/shared, so the browser
+// check and the API's checkUploadFile agree.
+import { ALLOWED_UPLOAD_TYPES, LIMITS } from "@bs-job-agents/shared";
 
-export const MAX_FILE_BYTES = 10 * 1024 * 1024;
-export const ACCEPTED_EXTENSIONS = ["pdf", "doc", "docx", "txt", "png", "jpg", "jpeg"] as const;
-export const ACCEPT_ATTR = ".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg";
+export const MAX_FILE_BYTES = LIMITS.uploadMaxBytes;
+/** Without the dot: pdf, doc, docx, txt, png, jpg, jpeg. */
+export const ACCEPTED_EXTENSIONS: readonly string[] = Object.values(ALLOWED_UPLOAD_TYPES)
+  .flat()
+  .map((ext) => ext.slice(1));
+export const ACCEPT_ATTR = Object.values(ALLOWED_UPLOAD_TYPES).flat().join(",");
 export const ACCEPTED_LABEL = "PDF, DOC, DOCX, TXT, PNG or JPG";
 
 export type FileKind = "pdf" | "image" | "text" | "other";

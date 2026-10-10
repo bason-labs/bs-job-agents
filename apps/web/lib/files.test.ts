@@ -1,5 +1,28 @@
+import { ALLOWED_UPLOAD_TYPES, LIMITS, checkUploadFile } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
-import { MAX_FILE_BYTES, formatBytes, kindForFile, validateFile } from "./files";
+import { ACCEPTED_EXTENSIONS, ACCEPT_ATTR, MAX_FILE_BYTES, formatBytes, kindForFile, validateFile } from "./files";
+
+describe("upload rules come from @bs-job-agents/shared (UC-24)", () => {
+  it("uses the shared size limit and extensions, so the picker and the API agree", () => {
+    expect(MAX_FILE_BYTES).toBe(LIMITS.uploadMaxBytes);
+    const sharedExts = Object.values(ALLOWED_UPLOAD_TYPES).flat().map((e) => e.slice(1));
+    expect([...ACCEPTED_EXTENSIONS]).toEqual(sharedExts);
+    expect(ACCEPT_ATTR).toBe(".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg");
+  });
+
+  it("accepts in the browser exactly what the API accepts", () => {
+    const mimeFor: Record<string, string> = Object.fromEntries(
+      Object.entries(ALLOWED_UPLOAD_TYPES).flatMap(([mime, exts]) => exts.map((e) => [e.slice(1), mime])),
+    );
+    for (const ext of ACCEPTED_EXTENSIONS) {
+      const name = `file.${ext}`;
+      expect(validateFile({ name, size: 1024 }).ok, ext).toBe(true);
+      expect(checkUploadFile({ filename: name, mime: mimeFor[ext]!, size: 1024 }), ext).toBeNull();
+    }
+    expect(validateFile({ name: "big.pdf", size: LIMITS.uploadMaxBytes + 1 }).ok).toBe(false);
+    expect(checkUploadFile({ filename: "big.pdf", mime: "application/pdf", size: LIMITS.uploadMaxBytes + 1 })).not.toBeNull();
+  });
+});
 
 function file(name: string, size: number, type = "") {
   const f = new File(["x"], name, { type });
