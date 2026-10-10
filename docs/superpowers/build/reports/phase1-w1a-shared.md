@@ -1,0 +1,42 @@
+# W1a shared schemas report (Phase 1)
+
+- **Branch:** worktree-agent-afee5bb257ae61fca, 7 commits. Merged as f122b9d.
+- **Checks:** 248 shared tests; typecheck, lint, test and build pass. Only `packages/shared/**` was touched.
+- **Modules** (`packages/shared/src/`):
+  - **common:** primitives (Id, IsoDateTime, Url, Sha256, Domain, BotName, Engine, CvLanguage, Currency, …); TrustLevel 0/1/2 with labels; `cvLanguagesForJd` (§6.3); `LIMITS` (every threshold in the spec).
+  - **json-schema:**
+    - `toStrictJsonSchema(zod, {name})`: all properties required, optional becomes nullable, `additionalProperties:false`, no `$ref`. Throws `StrictSchemaError` on types strict mode can't express.
+    - `checkStrictJsonSchema` / `assertStrictJsonSchema`, `validateJsonSchemaSubset`, `findOptionalPaths`.
+  - **bots:**
+    - `BotDefinitionSchema` (bot.json), `resolveOutputSchemaName`, `BOT_TASK_KINDS`, `isOutwardFacingBrowser`.
+    - Outputs: LeadOutput (reply + actions), ResearchScan/Fit/CompanyOutput, CvOutput (CvDraft; every bullet has `factIds`; `factRequests`), QaOutput (`{score, justification}`, total = sum, hard fails, `injectionSuspected`, `qaPassed()`), ApplyOutput (field sources incl. form_defaults/skipped, `pendingQuestions` with required/kind, `pauseReason`, `jdSnapshot`), ConsultOutput (`handoffToLead`), SelfCheckItem.
+    - Registry: `BOT_OUTPUT_SCHEMAS`, `getBotOutputJsonSchema`, `parseBotOutput`, `BOT_TASK_INPUT_SCHEMAS` (`apply.submit`: token, domains, `pdfSha256`, `formDefaults`, `dryRun`).
+  - **domain:**
+    - SearchProfile (salary rules, defaults, overrides), Job (SkipDecision), Company, CvVersion, QaReviewRecord.
+    - Application (statuses, `MANUAL_STATUS_TRANSITIONS`), SubmissionRecord (§9.1), JobSnapshot.
+    - ApprovalToken, Run, Step, Task.
+    - PauseReason (needs_browser, needs_figma, needs_login(site), captcha(site), usage_limit, needs_answer, domain_confirm) with format/parse.
+    - Schedule (`isValidCron`), Upload (`checkUploadFile`), Export, EngineState, Room/Message (`parseMentions`; modes work/consult/discussion), MasterCv, SavedAnswer, BotRecord, PromptVersion, MemoryChange.
+  - **workflow:** `WorkflowDefinitionSchema` (8 step types, per-job branch, reference checks), `stepsInBranch`, `StartWorkflowInputSchema`.
+  - **events:** `AppEventSchema`, discriminated on `type`. Covers run.*, step.*, task.*, engine.paused/resumed/usage, review.ready, application.updated, message.*, bot.updated, schedule.*, bridge.status, safety.denied and export.ready. Plus SSE encode/decode and pattern matching.
+  - **api:** chat, review actions, criteria, schedules (`repeatToCron`), applications, export, uploads, runs, bots (`canPromote`: Apply is never promoted), master CV, `API_ROUTES`, `ApiError`, `fileUrl`.
+  - **fixtures:** realistic prototype data, exported as `@bs-job-agents/shared/fixtures`.
+- **Deviations from the spec:**
+  - `outputSchema` can be a map per task kind.
+  - Bot outputs use nullable fields, never optional.
+  - Only structural keywords go into the JSON Schema; ranges and patterns are checked by Zod afterwards.
+  - QA scores are objects (score + justification).
+  - Apply uses `sitesFromApproval`; the CV bot has `browser: null`.
+  - The application status list was inferred (no single list in the spec).
+  - Extra fields: Job `injectionFlagged`/`workMode`; CvVersion `pdfSha256`/`figmaFrameName`/`changeNotes`/`factRequests`; Run `searchProfileVersion`/`scheduleId`; Step `round`/`error`; Task `error`; Schedule `timezone`; SubmissionRecord `approval`.
+  - One currency per SearchProfile.
+- **Open questions:**
+  - Dry-run Apply reports `needs_check`. Coordinator decision: keep that, and add `dryRun: true` to the record meta.
+  - Strict-mode support for `minimum`/`maxItems` was not tested live; these are left out of the generated schema.
+- **Handoffs:**
+  - DB (QA phase): align the DB enums and extra columns with the shared schemas.
+  - W2a: `WorkflowDefinitionSchema`, `LIMITS`, `qaPassed`, `AppEventSchema`, fixtures for the FakeRunner.
+  - W2b: validate bot.json; generate `bots/<name>/schema.json` with `getBotOutputJsonSchema` for both engines; `assertStrictJsonSchema` at startup; `parseBotOutput` on every result.
+  - W2c: `Sha256Schema`, `checkUploadFile`.
+  - W3a: `API_ROUTES`, `StartWorkflowInputSchema`, fixtures/workflows.ts (mirrors workflows/*.yaml).
+  - W1c and W3: label maps, `NEGOTIABLE_TEXT`, `repeatToCron`, `parseMentions`, `decodeSseData`, fixtures.
