@@ -1,6 +1,7 @@
 // Chat, rooms and question answers (UC-01, UC-12, UC-15, UC-24, UC-25).
 import { z } from "zod";
 import { BotNameSchema, IdSchema } from "../common/primitives.js";
+import { PendingQuestionSchema } from "../bots/apply.js";
 import { MessageSchema, RoomSchema } from "../domain/chat.js";
 
 export const ChatSendRequestSchema = z
@@ -42,6 +43,11 @@ export type CreateRoomRequest = z.infer<typeof CreateRoomRequestSchema>;
  */
 export const AnswerQuestionRequestSchema = z
   .object({
+    /**
+     * The question card's `question.field` (W3a, additive). When omitted, the server answers the
+     * question Lead asked Ba last that has no answer yet.
+     */
+    field: z.string().min(1).optional(),
     mode: z.enum(["answer", "skip", "negotiable"]),
     value: z.string().trim().min(1).nullable(),
     /** "remember this answer" → saved_answers. */
@@ -53,6 +59,10 @@ export const AnswerQuestionRequestSchema = z
     }
   });
 export type AnswerQuestionRequest = z.infer<typeof AnswerQuestionRequestSchema>;
+
+/** Apply resumed (every question answered), or the next question Lead now asks (one at a time, UC-12). */
+export const AnswerQuestionResponseSchema = z.object({ resumed: z.boolean(), next: PendingQuestionSchema.nullable() });
+export type AnswerQuestionResponse = z.infer<typeof AnswerQuestionResponseSchema>;
 
 /** A chip choice on a message card, e.g. "Just this run" / "Save to my criteria" (UC-21b a). */
 export const ChoiceRequestSchema = z.object({ messageId: IdSchema, key: z.string().min(1), optionId: z.string().min(1) });

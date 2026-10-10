@@ -35,6 +35,8 @@ export type ApplicationListItem = z.infer<typeof ApplicationListItemSchema>;
 export const ApplicationsResponseSchema = z.object({
   applications: z.array(ApplicationListItemSchema),
   lastExportAt: IsoDateTimeSchema.nullable(),
+  /** The data folder the header shows (UC-13b). W3a, additive. */
+  dataDir: z.string().min(1).optional(),
 });
 
 /** Submission record side panel (UC-13). */
@@ -54,6 +56,12 @@ export const ApplicationStatusChangeRequestSchema = z.object({
   note: z.string().nullable(),
 });
 export type ApplicationStatusChangeRequest = z.infer<typeof ApplicationStatusChangeRequestSchema>;
+
+/** The application after Ba's change (its history ends with the new status). */
+export const ApplicationStatusChangeResponseSchema = z.object({ application: ApplicationSchema });
+
+/** GET /exports, newest first. */
+export const ExportsResponseSchema = z.object({ exports: z.array(ExportSchema) });
 
 /** ⬇ Export all (ZIP). */
 export const ExportRequestSchema = z.object({}).strict();

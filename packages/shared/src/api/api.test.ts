@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applicationFixture,
   jobFixture,
+  runFixture,
   scheduleFixture,
   searchProfileFixture,
   submissionRecordFixture,
@@ -11,14 +12,26 @@ import { reviewCardFixture } from "../fixtures/api.js";
 import {
   ApplicationDetailSchema,
   ApplicationStatusChangeRequestSchema,
+  ApplicationStatusChangeResponseSchema,
+  ApplicationsResponseSchema,
   ExportResponseSchema,
+  ExportsResponseSchema,
 } from "./applications.js";
 import { BotUpdateRequestSchema, canPromote, type CanPromoteResult } from "./bots.js";
-import { AnswerQuestionRequestSchema, ChatSendRequestSchema, CreateRoomRequestSchema } from "./chat.js";
-import { ApiErrorSchema, API_ROUTES, fileUrl } from "./common.js";
+import { AnswerQuestionRequestSchema, AnswerQuestionResponseSchema, ChatSendRequestSchema, CreateRoomRequestSchema } from "./chat.js";
+import {
+  ApiErrorSchema,
+  API_ROUTES,
+  CSRF_HEADER,
+  CSRF_HEADER_VALUE,
+  DEGRADED_REASONS,
+  HealthStatusSchema,
+  OrchestratorStatusSchema,
+  fileUrl,
+} from "./common.js";
 import { CriteriaUpdateRequestSchema } from "./criteria.js";
 import { ApproveRequestSchema, RequestChangesRequestSchema, ReviewCardSchema, SkipRequestSchema } from "./review.js";
-import { RunControlRequestSchema } from "./runs.js";
+import { RunControlRequestSchema, RunControlResponseSchema, RunsQuerySchema } from "./runs.js";
 import {
   ScheduleCreateRequestSchema,
   ScheduleUpdateRequestSchema,
@@ -171,5 +184,83 @@ describe("common", () => {
     expect(fileUrl("file_1")).toBe("/files/file_1");
     expect(fileUrl("file 1", { download: true })).toBe("/files/file%201?download=1");
     expect(API_ROUTES.events).toBe("/events");
+  });
+});
+
+describe("W3a additions (additive)", () => {
+  it("every state-changing request carries the CSRF header (S18)", () => {
+    expect(CSRF_HEADER).toBe("x-bsja-csrf");
+    expect(CSRF_HEADER_VALUE).toBe("1");
+  });
+
+  it("health is ok, or degraded with a reason and a detail (S19)", () => {
+    expect(HealthStatusSchema.safeParse({ ok: true }).success).toBe(true);
+    expect(
+      HealthStatusSchema.safeParse({ ok: false, reason: "prompt_version_stale", detail: "bots/cv/ROLE.md changed without a version bump" }).success,
+    ).toBe(true);
+    expect(HealthStatusSchema.safeParse({ ok: false, reason: "boom", detail: "x" }).success).toBe(false);
+    expect(DEGRADED_REASONS).toContain("schema_guard");
+    expect(DEGRADED_REASONS).toContain("data_dir_invalid");
+  });
+
+  it("status says whether the engine runs, why not, and what start-up recovered", () => {
+    expect(
+      OrchestratorStatusSchema.safeParse({
+        state: "degraded",
+        reason: "schema_guard",
+        detail: "trigger missing",
+        startedAt: "2026-10-11T08:00:00.000Z",
+        dataDir: "/Users/bason/bs-job-agents/data",
+        recovered: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      OrchestratorStatusSchema.safeParse({
+        state: "running",
+        reason: null,
+        detail: null,
+        startedAt: "2026-10-11T08:00:00.000Z",
+        dataDir: "/data",
+        recovered: { requeued: 1, exhausted: 0, needsCheck: 1 },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("new routes keep the old ones", () => {
+    expect(API_ROUTES.status).toBe("/status");
+    expect(API_ROUTES.step).toBe("/steps/:id");
+    expect(API_ROUTES.savedAnswer).toBe("/saved-answers/:key");
+    expect(API_ROUTES.reviewApprove).toBe("/review/:jobId/approve");
+  });
+
+  it("answer may name the question's field; the response says whether Apply resumed", () => {
+    expect(AnswerQuestionRequestSchema.safeParse({ field: "notice", mode: "answer", value: "2 weeks", remember: false }).success).toBe(true);
+    expect(AnswerQuestionRequestSchema.safeParse({ mode: "skip", value: null, remember: false }).success).toBe(true);
+    expect(AnswerQuestionResponseSchema.safeParse({ resumed: true, next: null }).success).toBe(true);
+    expect(
+      AnswerQuestionResponseSchema.safeParse({
+        resumed: false,
+        next: { field: "visa", label: "Visa status", required: true, kind: "text", options: null },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("run control answers with the run and the aborted tasks; runs can be filtered", () => {
+    expect(RunControlResponseSchema.safeParse({ run: runFixture, abortedTaskIds: ["7"] }).success).toBe(true);
+    expect(RunsQuerySchema.parse({})).toEqual({ limit: 50 });
+    expect(RunsQuerySchema.parse({ status: "waiting", limit: "10" })).toEqual({ status: "waiting", limit: 10 });
+    expect(RunsQuerySchema.safeParse({ limit: "500" }).success).toBe(false);
+  });
+
+  it("applications list may carry the data folder; status change answers with the application", () => {
+    expect(ApplicationsResponseSchema.safeParse({ applications: [], lastExportAt: null, dataDir: "/Users/bason/data" }).success).toBe(true);
+    expect(ApplicationsResponseSchema.safeParse({ applications: [], lastExportAt: null }).success).toBe(true);
+    expect(ApplicationStatusChangeResponseSchema.safeParse({ application: applicationFixture }).success).toBe(true);
+    expect(ExportsResponseSchema.safeParse({ exports: [] }).success).toBe(true);
+  });
+
+  it("a review card may say Apply waits for Ba to approve again", () => {
+    expect(ReviewCardSchema.safeParse({ ...reviewCardFixture, flags: { ...reviewCardFixture.flags, approveAgain: true } }).success).toBe(true);
+    expect(ReviewCardSchema.safeParse(reviewCardFixture).success).toBe(true);
   });
 });
