@@ -130,6 +130,21 @@ describe("ClaudeRunner: repair in the same session (§5.5 step 4)", () => {
     expect(repairNote).toMatchObject({ errors: ["reply: String must contain at least 1 character(s)"] });
   });
 
+  it("a turn that ends without any structured output gets the 'missing output' repair, not a failure", async () => {
+    const noOutput = claudeLines("structuredOk").filter((l) => !l.includes('"StructuredOutput"') && !l.includes('"tool_use_id"'));
+    const result = noOutput.map((l) => {
+      const e = JSON.parse(l) as Record<string, unknown>;
+      if (e.type !== "result") return l;
+      delete e.structured_output;
+      return JSON.stringify({ ...e, result: "Here is my answer in prose." });
+    });
+    const { r, calls } = runner([play(result), play(claudeLines("repairOk"))]);
+    const outcome = await r.run(consultTask(), () => {});
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.args[1]).toMatch(/ended without the structured output/);
+    expect(outcome.status).toBe("ok");
+  });
+
   it("still invalid after the repair → invalid_output with the errors and the raw output", async () => {
     const { r } = runner([play(claudeLines("invalidOutput")), play(claudeLines("invalidOutput"))]);
     const result = await r.run(consultTask(), () => {});
@@ -284,6 +299,7 @@ describe("ClaudeRunner: refuses before spawning (fail closed)", () => {
     ],
     ["a relative read dir", () => consultTask({ readDirs: ["data/x"] }), /absolute/],
     ["a read dir with a space", () => consultTask({ readDirs: ["/tmp/my dir"] }), /space/],
+    ["a read dir that would break the Read(...) rule", () => consultTask({ readDirs: ["/tmp/a)/**) Read(//"] }), /parenthesis/],
     ["an input that does not match the task schema", () => {
       const { def, cwd } = kit.realBot("cv");
       return kit.task(def, cwd, { kind: "tailor", input: { jobId: 1 } });

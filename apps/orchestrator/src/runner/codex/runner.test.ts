@@ -124,6 +124,19 @@ describe("CodexRunner: repair in the same thread (§5.5 step 4)", () => {
     expect(work()[1]!.args.at(-1)).toMatch(/not valid JSON/);
   });
 
+  it("a completed turn with no final message gets the 'missing output' repair", async () => {
+    const lines = [
+      '{"type":"thread.started","thread_id":"01a126dc-0000-7000-8000-00000000000a"}',
+      '{"type":"turn.started"}',
+      '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}',
+    ];
+    const { r, work } = runner([play(lines), play(codexLines("repairOk"))]);
+    const result = await r.run(qaConsult(), () => {});
+    expect(work()).toHaveLength(2);
+    expect(work()[1]!.args.at(-1)).toMatch(/ended without the structured output/);
+    expect(result.status).toBe("ok");
+  });
+
   it("still invalid → invalid_output with the raw final message", async () => {
     const { r } = runner([play(codexLines("invalidOutput")), play(codexLines("invalidOutput"))]);
     const result = await r.run(qaConsult(), () => {});

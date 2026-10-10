@@ -267,7 +267,8 @@ export abstract class CliRunner implements Runner {
   /**
    * Results that end the attempt after a CLI call, in priority order: cancel, timeout, a CLI
    * that would not start, a usage limit with no output, real denials (a safety signal even when
-   * the run also failed), then any other failure with no output.
+   * the run also failed), then a failure the CLI reported with no output. A run that simply
+   * ended without output is not a failure: it gets the repair prompt (§5.5 step 4).
    */
   private outcome(p: PreparedTask, exit: CliExit, r: AttemptReport, durationMs: () => number): RunnerResult | null {
     if (exit.cancelled) return { status: "cancelled", durationMs: durationMs() };
@@ -278,8 +279,8 @@ export abstract class CliRunner implements Runner {
       const c = this.check(p, r);
       return { status: "denied", denials: r.denials, output: c.ok ? c.output : null, durationMs: durationMs() };
     }
-    if (r.value === undefined && r.parseError === null) {
-      return { status: "failed", error: r.failure ?? "the CLI produced no output", exitCode: exit.exitCode, durationMs: durationMs() };
+    if (r.value === undefined && r.parseError === null && r.failure) {
+      return { status: "failed", error: r.failure, exitCode: exit.exitCode, durationMs: durationMs() };
     }
     return null;
   }
@@ -345,11 +346,11 @@ export abstract class CliRunner implements Runner {
 
 // ------------------------------------------------------------------ task checks
 
-/** Read dirs: absolute, and no whitespace or comma (they become CLI permission rules). */
+/** Read dirs: absolute, and no whitespace, comma or parenthesis (they become `Read(//dir/**)` rules). */
 function checkReadDirs(dirs: readonly string[]): string[] {
   for (const dir of dirs) {
     if (!isAbsolute(dir)) throw new TaskSetupError(`read dir ${dir} must be an absolute path`);
-    if (/[\s,]/.test(dir)) throw new TaskSetupError(`read dir ${dir} must not contain a space or a comma`);
+    if (/[\s,()]/.test(dir)) throw new TaskSetupError(`read dir ${dir} must not contain a space, a comma or a parenthesis`);
   }
   return [...dirs];
 }
