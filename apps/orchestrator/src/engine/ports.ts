@@ -116,6 +116,11 @@ export interface WorkflowSource {
 /** Rule 2 (§5.4): append a task's memoryNotes to the bot's memory.md, one at a time (W2b's appendMemoryNotes). */
 export interface MemoryWriter {
   append(input: { botName: string; notes: readonly string[]; runId: number | null; taskId: number }): Promise<void>;
+  /**
+   * PM2 S5: bots/<name>/memory.md is runtime state and gitignored (like data/), so a fresh clone has
+   * none. Start-up creates each missing file from the template; existing notes are never touched.
+   */
+  seed?(botNames: readonly string[]): Promise<void>;
 }
 
 /**

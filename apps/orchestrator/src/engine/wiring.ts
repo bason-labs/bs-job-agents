@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { FigmaBridge, browserReadyFor, buildSiteGuardSettings, checkBrowserBridge, extractText, prepareFigmaGuard } from "../bridges/index.js";
 import { appendMemoryChange, type Db } from "../db/index.js";
-import { appendMemoryNotes, loadBots, readBotPromptFiles } from "../runner/index.js";
+import { appendMemoryNotes, loadBots, readBotPromptFiles, seedMemoryFiles } from "../runner/index.js";
 import type { Runner } from "../runner/types.js";
 import { EnginePaths, type EngineConfig } from "./config.js";
 import { Engine } from "./engine.js";
@@ -78,6 +78,9 @@ export function memoryWriter(db: Db, botsDir: string): MemoryWriter {
           appendMemoryChange(db, { botName, note, runId, taskId });
         },
       });
+    },
+    seed: async (botNames) => {
+      await seedMemoryFiles(botsDir, botNames);
     },
   };
 }

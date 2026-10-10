@@ -81,6 +81,9 @@ describe("production adapters on W2c's bridges", () => {
     const ctx = seedRun(db);
     const task = seedTask(db, ctx);
     mkdirSync(join(d, "research"));
+    // PM2 S5: memory.md is gitignored; start-up seeds it from the (empty) template.
+    await memoryWriter(db, d).seed!(["research"]);
+    expect(readFileSync(join(d, "research", "memory.md"), "utf8")).toBe("");
     await memoryWriter(db, d).append({ botName: "research", notes: ["TopCV upload limit is 5MB"], runId: ctx.run.id, taskId: task.id });
     expect(readFileSync(join(d, "research", "memory.md"), "utf8")).toMatch(/TopCV upload limit is 5MB/);
     expect(listMemoryChanges(db, "research").map((m) => [m.note, m.taskId])).toEqual([["TopCV upload limit is 5MB", task.id]]);

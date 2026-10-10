@@ -84,3 +84,17 @@ describe("prompt versions (§9 prompt_versions, PM brief W2b)", () => {
     expect(getPromptVersion(db, "qa", 2)?.roleMdText).toBe("You are a stricter qa.\n");
   });
 });
+
+describe("bot memory files (PM2 S5)", () => {
+  it("start-up asks the memory writer to seed every bot's memory.md (it is gitignored, so a fresh clone has none)", async () => {
+    const seeded: string[][] = [];
+    const memory = { append: async () => undefined, seed: async (names: readonly string[]) => void seeded.push([...names]) };
+    await createTestEngine({ db: openTestDb(), clock: new FakeClock(T0), memory });
+    expect(seeded).toEqual([["apply", "cv", "lead", "qa", "research"]]);
+  });
+
+  it("a failing seed never stops the start-up", async () => {
+    const memory = { append: async () => undefined, seed: async () => Promise.reject(new Error("read-only disk")) };
+    await expect(createTestEngine({ db: openTestDb(), clock: new FakeClock(T0), memory })).resolves.toBeDefined();
+  });
+});

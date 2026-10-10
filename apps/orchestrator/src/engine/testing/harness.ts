@@ -18,7 +18,7 @@ import {
 import { seedBots, T0 } from "../../db/test-helpers.js";
 import { EnginePaths, type EngineConfig } from "../config.js";
 import { Engine } from "../engine.js";
-import type { OrphanKiller, RolePromptSource } from "../ports.js";
+import type { MemoryWriter, OrphanKiller, RolePromptSource } from "../ports.js";
 import type { ActionStepOutput, HumanStepOutput } from "../state.js";
 import { FakeClock } from "./fake-clock.js";
 import { FakeRunner } from "./fake-runner.js";
@@ -51,6 +51,8 @@ export interface TestEngineOptions {
   processes?: OrphanKiller;
   /** ROLE.md per bot: start-up records prompt_versions (and refuses a stale version). */
   prompts?: RolePromptSource;
+  /** Rule 2 memory writer (default none); start-up seeds through it (PM2 S5). */
+  memory?: MemoryWriter;
 }
 
 export interface TestEngine {
@@ -136,6 +138,7 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
     config: opts.config,
     ...(opts.processes ? { processes: opts.processes } : {}),
     ...(opts.prompts ? { prompts: opts.prompts } : {}),
+    ...(opts.memory ? { memory: opts.memory } : {}),
   });
   const delivered: AppEvent[] = [];
   engine.subscribe((event) => delivered.push(event));

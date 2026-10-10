@@ -151,6 +151,7 @@ export class Engine implements EngineCore {
     // Recovery marks every running task interrupted: never while this engine runs tasks itself.
     if (this.running) throw new EngineError("conflict", "the engine is already started");
     this.syncBots();
+    await this.seedMemory();
     const r = recoverInterruptedTasks(this.db, { now: this.now(), maxAttempts: this.config.maxAttempts });
     const interrupted = [...r.requeued, ...r.exhausted, ...r.needsCheck];
     const orphanPids = this.killOrphans(interrupted);
@@ -206,6 +207,17 @@ export class Engine implements EngineCore {
         if (!stored) recordPromptVersion(tx, { botName: def.name, version: def.promptVersion, roleMdHash: hash, roleMdText: text }, { now });
       }
     });
+  }
+
+  /** PM2 S5: memory.md is gitignored; create each bot's missing file. Best effort: notes are appended later anyway. */
+  private async seedMemory(): Promise<void> {
+    const memory = this.deps.memory;
+    if (!memory?.seed) return;
+    try {
+      await memory.seed(this.deps.bots.list().map((b) => b.name).sort());
+    } catch (err) {
+      this.log.warn(`could not seed the bots' memory files: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** Stop claiming and stop the timers. Running tasks are left to finish (or to recovery). */

@@ -22,7 +22,7 @@ export {
 export { BotDefinitionError, assertRunnableBot, botTaskKinds, loadBotDefinition, loadBots, readBotPromptFiles, rolePromptHash } from "./bots.js";
 export { staleBotSchemas, writeBotSchemas } from "./schemas.js";
 export { PromptSecurityError, UNTRUSTED_INPUT_FIELDS, buildPrompt } from "./prompt.js";
-export { appendMemoryNotes, type AppendMemoryInput, type AppendMemoryResult } from "./memory.js";
+export { MEMORY_TEMPLATE, appendMemoryNotes, seedMemoryFiles, type AppendMemoryInput, type AppendMemoryResult } from "./memory.js";
 export { RunnerConfigError, TaskSetupError } from "./errors.js";
 export { killProcessGroup, nodeSpawn, type KillTreeFn, type SpawnFn } from "./process.js";
 
