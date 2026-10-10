@@ -14,7 +14,7 @@ const RELATIVE_HOST = "relative.site-guard.invalid";
 /** What the WHATWG parser strips before parsing: ASCII tab/newline anywhere, C0 controls and spaces around. */
 function preprocess(raw: string): string {
   // eslint-disable-next-line no-control-regex
-  return raw.replace(/[\t\n\r]/g, "").replace(/^[\u0000- ]+|[\u0000- ]+$/g, "");
+  return raw.replace(/[\t\n\r]/g, "").replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, "");
 }
 
 export function describeAllowlist(allowlist: readonly string[]): string {
