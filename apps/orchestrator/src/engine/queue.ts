@@ -210,9 +210,10 @@ export class TaskQueue {
         this.inflight.delete(task.id);
         if (this.browserLock === task.id) this.browserLock = null;
         if (this.figmaLock === task.id) this.figmaLock = null;
+        // Both never throw (Engine.advance / Engine.dispatch log instead): this promise must
+        // never reject, or Node would treat it as an unhandled rejection.
         this.core.advance(task.runId);
-        this.dispatch();
-        this.core.bus.flush();
+        this.core.dispatch();
       });
   }
 

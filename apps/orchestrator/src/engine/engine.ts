@@ -97,15 +97,27 @@ export class Engine implements EngineCore {
     return this.clock.now();
   }
 
+  /** Never throws: the state change that triggered it is already committed; a bug is logged, not fatal. */
   advance(runId: number | null): void {
-    if (runId !== null) advanceRun(this, runId);
-    this.bus.flush();
+    try {
+      if (runId !== null) advanceRun(this, runId);
+    } catch (err) {
+      this.log.error(`could not advance run ${runId}: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
+    } finally {
+      this.bus.flush();
+    }
   }
 
+  /** Never throws (see advance); a failed claim is retried on the next dispatch. */
   dispatch(): void {
     if (!this.running) return;
-    this.queue.dispatch();
-    this.bus.flush();
+    try {
+      this.queue.dispatch();
+    } catch (err) {
+      this.log.error(`could not dispatch tasks: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      this.bus.flush();
+    }
   }
 
   pauseEngineForLimit(conn: Conn, engine: EngineName, resetsAt: string | null): void {

@@ -159,9 +159,9 @@ function advanceMapStep(core: EngineCore, ctx: RunCtx, step: MapStep, scope: Sco
       }
       const stepRow = ensureStepRow(tx, ctx, step.key, scope);
       const states: MapItemState[] = items.map((item) => {
-        // One item whose input cannot be built fails alone; the others still run.
+        // One item whose input cannot be built fails alone (its savepoint rolls back); the others still run.
         try {
-          const { task, jobId } = createWorkflowTask(core, tx, ctx, stepRow, step.task, { ...scope, item: item as JobRef }, { item });
+          const { task, jobId } = tx.transaction((sp) => createWorkflowTask(core, sp, ctx, stepRow, step.task, { ...scope, item: item as JobRef }, { item }));
           return jobId === undefined ? { item, taskId: task.id } : { item, taskId: task.id, jobId };
         } catch (err) {
           if (!(err instanceof EngineError)) throw err;

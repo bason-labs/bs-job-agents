@@ -168,6 +168,30 @@ describe("the event sink (§10.2 rule 8, §11)", () => {
   });
 });
 
+describe("robustness", () => {
+  it("an unexpected error while advancing a run is logged, never an unhandled rejection", async () => {
+    const t = await createTestEngine({ start: false });
+    const errors: string[] = [];
+    const { Engine } = await import("./engine.js");
+    let broken = false;
+    const workflows = t.engine.deps.workflows;
+    const engine = new Engine({
+      ...t.engine.deps,
+      workflows: { get: (name, version) => (broken ? (() => { throw new Error("workflow store unavailable"); })() : workflows.get(name, version)) },
+      logger: { info: () => undefined, warn: () => undefined, error: (m) => void errors.push(m) },
+    });
+    await engine.start();
+    engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    broken = true;
+    // The scan settles while the store is broken: the task fails with the engine error, the
+    // follow-up advance logs instead of throwing, and nothing rejects.
+    await expect(engine.idle()).resolves.toBeUndefined();
+    expect(() => engine.advance(1)).not.toThrow();
+    expect(errors.filter((e) => e.includes("workflow store unavailable")).length).toBeGreaterThanOrEqual(2);
+    expect(t.tasks("research.scan")[0]).toMatchObject({ status: "failed", error: "engine error: workflow store unavailable" });
+  });
+});
+
 describe("bot memory (rule 2, §5.4)", () => {
   it("memory notes of a successful task go to the memory writer, with run and task", async () => {
     const notes: unknown[] = [];
