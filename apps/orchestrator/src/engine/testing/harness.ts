@@ -72,6 +72,8 @@ export interface TestEngine {
   review(runId: number, jobId: number): HumanStepOutput | undefined;
   action(runId: number, jobId: number): ActionStepOutput | undefined;
   idle(): Promise<void>;
+  /** Let started tasks reach their runner (e.g. before advancing the clock past a FakeRunner delay). */
+  flush(): Promise<void>;
 }
 
 export const DATA_DIR = "/data";
@@ -139,5 +141,8 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
     review: (runId, jobId) => getStepByKey(db, runId, "review", String(jobId))?.output as HumanStepOutput | undefined,
     action: (runId, jobId) => getStepByKey(db, runId, "apply", String(jobId))?.output as ActionStepOutput | undefined,
     idle: () => engine.idle(),
+    flush: async () => {
+      for (let i = 0; i < 20; i++) await new Promise((resolve) => setImmediate(resolve));
+    },
   };
 }
