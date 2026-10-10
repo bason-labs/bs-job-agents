@@ -54,9 +54,11 @@ describe("schedules (UC-21, §7.4, S23)", () => {
     expect(edited.nextRunAt).toBe(computeNextRunAt("30 18 * * *", "Asia/Ho_Chi_Minh", h.t.clock.now()));
     const off = ScheduleViewSchema.parse((await h.patch(`/schedules/${s.id}`, { enabled: false })).json());
     expect(off.nextRunAt).toBeNull();
-    h.t.clock.advance(3 * 24 * 3600_000);
+    // Past today's 18:30 (Ho Chi Minh) slot; the scheduler ticks every 30 s of fake time meanwhile.
+    h.t.clock.advance(4 * 3600_000);
     const on = ScheduleViewSchema.parse((await h.patch(`/schedules/${s.id}`, { enabled: true })).json());
     expect(on.nextRunAt).toBe(computeNextRunAt("30 18 * * *", "Asia/Ho_Chi_Minh", h.t.clock.now()));
+    expect(on.nextRunAt).not.toBe(edited.nextRunAt);
     expect((await h.patch(`/schedules/${s.id}`, { deletedAt: null })).statusCode).toBe(400);
     expect((await h.patch(`/schedules/${s.id}`, { cron: "bad" })).statusCode).toBe(400);
     expect((await h.patch("/schedules/999", { enabled: false })).statusCode).toBe(404);
