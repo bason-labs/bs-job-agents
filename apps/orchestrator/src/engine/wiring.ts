@@ -104,6 +104,8 @@ export interface ProductionEngineOptions {
   workflows: WorkflowSource;
   /** Default: W2c's FigmaBridge on the CV file (it satisfies FigmaPort as is). */
   figma?: FigmaPort;
+  /** Default: chromeBrowserProbe (Chrome running with the engine's extension). */
+  browser?: BrowserStatusProbe;
   config?: Partial<EngineConfig>;
   logger?: Logger;
 }
@@ -116,7 +118,7 @@ export function createProductionEngine(opts: ProductionEngineOptions): Engine {
     workflows: opts.workflows,
     paths: new EnginePaths(opts.dataDir, opts.botsDir),
     files: nodeFileStore,
-    browser: chromeBrowserProbe,
+    browser: opts.browser ?? chromeBrowserProbe,
     figma: opts.figma ?? new FigmaBridge(),
     guards: bridgeGuardHooks,
     pdf: pdfTextExtractor,
