@@ -76,7 +76,7 @@ describe("Lead's tools (rule 5)", () => {
     expect(() => t.engine.lead.getStatus(lead, { runId: 999 })).toThrow(/not found/);
   });
 
-  it("answer routing: Ba's answer in the Lead chat reaches Apply's waiting question (UC-12)", async () => {
+  it("Lead has no tool that answers or resumes Apply: only Ba's own answer reaches a waiting Apply (UC-12)", async () => {
     const t = await createTestEngine();
     const run = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
     await t.idle();
@@ -88,9 +88,12 @@ describe("Lead's tools (rule 5)", () => {
     });
     const { taskId } = t.engine.approve(1, { cvVersionId: t.review(run.id, 1)!.cvVersions[0]!.cvVersionId, introText: null });
     await t.idle();
-    expect(() => t.engine.lead.answerQuestion({ botName: "cv", mode: "consult" }, { taskId, field: "notice", mode: "answer", value: "1 month" })).toThrow(/only Lead/);
-    expect(() => t.engine.lead.answerQuestion(lead, { taskId, field: "notice", mode: "skip" })).toThrow(/required/);
-    expect(t.engine.lead.answerQuestion(lead, { taskId, field: "notice", mode: "answer", value: "1 month" })).toEqual({ resumed: true, next: null });
+    expect(Object.getOwnPropertyNames(Object.getPrototypeOf(t.engine.lead))).toEqual(
+      expect.not.arrayContaining(["answerQuestion", "resumeTask"]),
+    );
+    expect(getTask(t.db, taskId!)?.status).toBe("paused");
+    // Ba's answer through the question card (the API) resumes it.
+    expect(t.engine.answerQuestion(taskId!, { field: "notice", mode: "answer", value: "1 month", remember: false })).toEqual({ resumed: true, next: null });
     await t.idle();
     expect(getTask(t.db, taskId!)?.status).toBe("done");
   });
