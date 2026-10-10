@@ -12,7 +12,8 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | Phase 1 PM review | ✅ merged (7e55cb6); pm-phase-1.md: verdict ready after M1–M5; port → 4100 |
 | 2026-10-11 | M5 + S13 (phases.md ownership) | ✅ coordinator |
 | 2026-10-11 | F1 fixer (M1–M4, S11, S12) | ✅ merged (13082b2); 621 tests green; reports/phase2-f1-fixer.md; spec §9 columns updated |
-| 2026-10-11 | W2b runner, W2c bridges (worktrees) | 🔄 running |
+| 2026-10-11 | W2b runner | ✅ merged (94ab4ed); 833 tests green; reports/phase2-w2b-runner.md; handoffs relayed to W2a |
+| 2026-10-11 | W2c bridges (worktree) | 🔄 running |
 | 2026-10-11 | W2a engine (worktree) | 🔄 running |
 
 **Next action:** merge W2a, W2b and W2c as each reports (re-run `pnpm install` on lockfile conflicts; the engine/runner contract is `src/runner/types.ts`). When all three are merged, run the Phase 2 QA agent, then the PM agent, then the must-fix fixer, then Phase 3.

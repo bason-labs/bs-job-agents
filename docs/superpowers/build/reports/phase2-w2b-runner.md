@@ -1,0 +1,33 @@
+# W2b runner report (Phase 2)
+
+- **Merged** as 94ab4ed. develop: 833 tests (shared 302, orchestrator 444, web 87).
+- **Shared bots additions:**
+  - `ApplyPromptInputSchema` / `splitApplySubmitInput` / `BOT_TASK_PROMPT_INPUT_SCHEMAS` / `promptInputSchemaFor` / `findForbiddenPromptKeys` (S5: the token never reaches the model).
+  - `selfCheckByKind`, `resolveSelfCheckItems`, `CONSULT_SELF_CHECK`.
+  - `checkBotSafety` / `SafeBotDefinitionSchema` (S6).
+  - `COMMON_OUTPUT_RULES` / `BOT_OUTPUT_RULES`.
+- **Runner** (`src/runner/`):
+  - prompt builder (snapshots), tool mapping per engine, config (CLI paths, MCP servers, guard hooks), process control (own process group, SIGTERM→SIGKILL, stdin closed), transcript writer, stream parsers for both CLIs, usage-limit detection, output checks plus one repair prompt
+  - ClaudeRunner and CodexRunner, bot loader, schema generator, memory appender, `createRunners()`
+- **Bots** (`bots/<name>/`): `bot.json` (lead claude L1, research codex L2, cv claude L2, qa codex L2, apply claude L1), first-draft ROLE.md, empty memory.md, `schemas/*.json` (`pnpm --filter @bs-job-agents/orchestrator bots:schemas`; a test fails if they are stale).
+- **Repair:** in the same session, verified live on both CLIs.
+  - The first call persists its session (Claude `--session-id`; Codex without `--ephemeral`).
+  - The repair resumes it with all tools off.
+  - Afterwards the session is deleted (Claude session file; `codex delete --force`).
+- **Extra flags, all verified live:**
+  - Claude `--settings {"autoMemoryEnabled":false}`: prevents a hidden second memory (rule 2).
+  - Claude `--disallowedTools` for the Chrome tools a bot may not use (Apply has no `javascript_tool` / `browser_batch`).
+  - Codex `--disable apps` for non-browser bots: a ChatGPT connector searched the web otherwise.
+  - Codex `enabled_tools` as the MCP allowlist.
+- **Fixtures:** about 25 real, redacted CLI captures (haiku; gpt-6-luna) plus `.synthetic` usage-limit cases.
+- **Contract:** `PermissionDenial.source` ("permission" | "hook") and `reason` (additive).
+- **Residual risks:**
+  - Codex's read-only sandbox can read the whole disk; its read boundary is the prompt only.
+  - Codex sandbox blocks are invisible in its JSON output.
+  - `--disable apps` is untested with Chrome (Research).
+  - A crash mid-task leaves the persisted session behind.
+- **Handoffs:**
+  - **W2a:** relayed by message (Apply readDir `data/applications/<id>/`, `splitApplySubmitInput`, usage `limited` events, `createRunners()`, upkeep hooks).
+  - **W2c:** the site-guard hook CLI is `<cmd> <args> --sites a,b`, reading PreToolUse JSON on stdin, with a verified deny format. Build the Figma guard and a `knownTools` list (122). Tab-group cleanup and screenshots-to-file need a live Chrome check.
+  - **W3a:** the MCP server is named `orchestrator` (tools appear as `mcp__orchestrator__<tool>`); reuse `checkBotSafety` for S10.
+  - **W4c:** refine ROLE.md and bump `promptVersion` with each change; tests require the self-check items verbatim, the schema names and the word "untrusted".
