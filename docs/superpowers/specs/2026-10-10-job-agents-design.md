@@ -222,7 +222,9 @@ bs-job-agents/
 - **Input:** approved application (job URL, PDF path, cover/intro text, saved answers) **plus an approval token**.
 - **Tools:** Ba's Chrome through the extension with full interaction (uses Ba's existing logins), restricted to the approved job's domain(s); file upload of the approved PDF only.
 - **Does:** opens the form, fills fields, uploads the PDF, ticks the employer consent box (covered by Ba's approval, §8 UC-08), submits, captures a confirmation screenshot and confirmation text.
-- **Pauses:** on any required field with no saved answer (salary expectation, notice period, visa…), on a CAPTCHA, or on login.
+- **Pauses:** only on a **required** field it cannot fill (no saved answer and no form default, e.g. notice period, visa), on a CAPTCHA, or on login.
+- **Optional fields never block a submission:** with no saved answer or form default they are left blank and recorded as `skipped` ("left blank — optional").
+- **Expected salary** always follows the salary rule in Application form defaults (§7.5).
 - **Self-check before submit:**
   - the correct PDF filename is attached and visible, and its SHA-256 matches the approved CV version
   - all required fields are filled
@@ -232,7 +234,7 @@ bs-job-agents/
   ```
   ApplyResult {
     status: "submitted" | "needs_check" | "paused",
-    fieldsFilled[{ label, name, value, source: "master_cv" | "saved_answer" | "ba_answer" | "search_profile" | "generated" }],
+    fieldsFilled[{ label, name, value, source: "master_cv" | "saved_answer" | "ba_answer" | "search_profile" | "form_defaults" | "generated" | "skipped" }],
     introText?, consent?: { ticked, text },
     uploadedFile?: { filename, sha256 },
     preSubmitScreenshot?, confirmationScreenshot?, confirmationText?,
@@ -363,6 +365,8 @@ One active, versioned profile is shared by scheduled scans and chat requests. A 
 | CV languages | EN; VI+EN for Vietnamese JDs | as §6.3 |
 | max jobs per scan | 5 | 5 |
 | fit threshold | 60 | 60 |
+| **Application form defaults:** expected salary rule | Leave blank when optional / Negotiable (Thỏa thuận) / Fixed amount / Ask me each time | Leave blank when optional |
+| expected salary amount (only for Fixed amount) | 30,000,000 VND | none |
 
 ---
 
@@ -489,9 +493,15 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 - **End state:** application `submitted` / `needs_check` / `paused`.
 
 ### UC-12: Unknown form question
-- **Main flow:** Apply returns `pendingQuestions[{field, label, options?}]`. Lead asks Ba in chat. Ba answers, and Apply resumes on the same form when possible, or restarts the fill.
+- **Main flow:** Apply returns `pendingQuestions[{field, label, required, options?}]` for **required** fields it cannot fill. Lead asks Ba in chat, one question at a time. Ba answers, and Apply resumes on the same form when possible, or restarts the fill.
+- **Optional fields:** only asked when Ba's form defaults say "ask me" (e.g. salary rule = Ask me each time). The question card then shows **Skip — leave blank**, and for salary also **Negotiable / Thỏa thuận**. Skipped fields are recorded as `skipped`.
+- **Expected salary, by rule (§7.5):**
+  - **Leave blank when optional** (default): optional → blank. Required → write "Negotiable / Thỏa thuận" if the field accepts text, otherwise ask Ba.
+  - **Negotiable:** write "Negotiable" (EN forms) / "Thỏa thuận" (VI forms).
+  - **Fixed amount:** use the saved amount.
+  - **Ask me each time:** ask, with Skip and Negotiable available.
 - **Saving:** Ba can tick "remember this answer", which stores it in `saved_answers` (key = normalised label) for future forms.
-- **End state:** apply continues.
+- **End state:** apply continues; the submission record shows each field's value or "left blank — optional".
 
 ### UC-13: Track application status
 - **Main flow:** the Applications screen lists every application (company, role, link, CV version + PDF, submitted at, confirmation screenshot, status). Ba updates the status manually: `submitted → interviewing → offer | rejected | withdrawn | no_response`.
@@ -632,7 +642,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | `exports` | id, created_at, path, application_count |
 | `saved_answers` | key PK, label, answer, updated_at |
 | `uploads` | id, filename, mime, size, path, sha256, uploaded_at, message_id |
-| `search_profiles` | id, name, version, active, roles_json, locations_json, work_modes_json, min_salary, currency, seniority_json, sources_json, include_keywords_json, exclude_keywords_json, exclude_companies_json, company_types_json, languages_json, max_jobs, fit_threshold, updated_at |
+| `search_profiles` | id, name, version, active, roles_json, locations_json, work_modes_json, min_salary, currency, seniority_json, sources_json, include_keywords_json, exclude_keywords_json, exclude_companies_json, company_types_json, languages_json, max_jobs, fit_threshold, salary_policy, salary_amount, updated_at |
 | `schedules` | id, name, cron, workflow_name, search_profile_id, params_json (overrides), enabled, last_run_id, next_run_at, deleted_at |
 | `rooms` / `room_members` / `messages` | chat rooms (Lead chat is a room), members, messages (author = ba or bot, mentions, run refs) |
 | `engine_state` | engine PK, paused_until, reason |
@@ -737,6 +747,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | Integration | Vitest + real SQLite + **FakeRunner** | Full `job-scan` from trigger to review to submit to record; submission record completeness (all fields, consent, both screenshots, JD snapshot, files copied); SHA-256 mismatch aborts the submit; record immutable after write; export ZIP contains CSV + one folder per application; crash mid-run → restart → continue; interrupted apply → `needs_check`; usage-limit mid-run → auto-continue |
 | Source adapters | Vitest + saved HTML fixtures (TopCV, ITviec, LinkedIn, sample career page) | Field extraction; layout-change detection |
 | UI end-to-end | Playwright + FakeRunner | Own components: Select keyboard (↑/↓/Enter/Esc) and click-outside, Slider drag + arrow keys, Checkbox/Switch with Space, NumberInput formatting, menus not clipped inside tables; Chat → run card; Flow nodes update over SSE; approve → Apply unlocks; request changes → new round; skip with reason; light/dark screenshot checks |
+| Form filling | Vitest + FakeRunner + HTML form fixtures | Optional salary left blank under the default rule and recorded `skipped`; required salary gets "Negotiable/Thỏa thuận"; Fixed and Negotiable rules; Ask rule offers Skip; unknown required field pauses; unknown optional field never pauses |
 | Safety | Vitest + fixtures | JD with hidden instructions is not obeyed and gets flagged; Apply off-domain is blocked; double submission is impossible |
 | Bot quality evals (on demand; uses the subscription) | Script | Golden set of 10 real JDs + master CV: QA score consistency (±5 across 3 runs), a CV seeded with invented facts must hard-fail, CV output one page; results stored per prompt version |
 | Dry-run acceptance | Real pipeline, Apply in `dryRun` | Fills the form and screenshots, never clicks submit; required before the first live submission |
@@ -774,6 +785,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | 2026-10-10 | Promotion: system suggests, Ba approves |
 | 2026-10-10 | UI: chat-first (Grok Bot style), bs-kara theme, Tailwind v4, React Flow canvas (ElevenLabs Flows style) |
 | 2026-10-10 | Direct consult-mode chat with any bot; work requests auto-handed to Lead |
+| 2026-10-10 | Expected salary optional: form-defaults salary rule (default leave blank when optional); Apply pauses only on required unknown fields |
 | 2026-10-10 | Full submission record (fields, consent, uploaded file + SHA-256, pre/post screenshots, frozen JD snapshot), record side panel, ZIP export, optional weekly auto-export |
 | 2026-10-10 | Own UI components only (no native selects/sliders/checkboxes/time/number inputs); Radix primitives for behaviour, bs-kara styling |
 | 2026-10-10 | File upload in chat (picker + drag-and-drop) → `apply-to-file`; schedules edited in a modal; constrained pages centered; files open in a viewer first |

@@ -154,6 +154,7 @@ function app() {
       modes: { onsite: true, hybrid: true, remote: true }, minSalary: 25000000, currency: 'VND', seniority: { junior: false, mid: true, senior: true },
       sources: { TopCV: true, ITviec: true, LinkedIn: true }, include: ['React', 'Next.js', 'TypeScript'], exclude: ['PHP', 'WordPress'],
       excludedCompanies: [], companyTypes: ['product', 'AI'], maxJobs: 5, fit: 60, dirty: false,
+      salaryPolicy: 'blank_if_optional', salaryAmount: 30000000,
     },
     newChip: { roles: '', locations: '', include: '', exclude: '', excludedCompanies: '', companyTypes: '' },
     schedules: [ { name: 'Weekday morning scan', cron: 'Weekdays 09:00', profile: 'Default (v3)', enabled: true, next: 'Mon 13 Oct, 09:00', last: 'Fri 10 Oct · 3 to review', form: { name: 'Weekday morning scan', freq: 'weekdays', time: '09:00', day: 'Mon', cron: '0 9 * * 1-5', profile: 'Default (v3)', enabled: true } } ],
@@ -347,20 +348,31 @@ function app() {
       job.status = 'applying'; const ap = this.step('apply'); ap.status = 'running'; ap.detail = `${job.company}: filling form`; this.bot('apply').status = 'working';
       this.lead(`Approval token created for <b>${job.company}</b>. Apply is filling the form in your Chrome (tab group "Apply").`);
       await this.gate('Claude'); await wait(2200);
-      if (job.needsAnswer) {
-        ap.status = 'paused'; ap.detail = 'waiting for your answer';
-        this.lead(`❓ ${job.company}'s form asks a question I have no saved answer for:`, { question: true, job });
-        return;
-      }
+      const vi = (job.cvLang || job.lang) === 'VI';
+      job.answers = {}; job.queue = [];
+      if (this.criteria.salaryPolicy === 'ask') job.queue.push({ key: 'salary', label: vi ? 'Mức lương mong muốn (VND)' : 'Expected salary (VND)', required: false, placeholder: 'e.g. 32,000,000' });
+      if (job.needsAnswer) job.queue.push({ key: 'start', label: vi ? 'Thời gian có thể bắt đầu làm việc' : 'Earliest start date', required: true, placeholder: 'e.g. 2 weeks after offer' });
+      if (job.queue.length) { ap.status = 'paused'; ap.detail = 'waiting for your answer'; this.askNext(job); return; }
       this.finishApply(job);
     },
-    async answerQuestion(msg) {
-      if (!this.answer.trim()) return;
-      const job = msg.job; msg.answered = this.answer; msg.remembered = this.rememberAnswer;
-      this.chat.push({ from: 'ba', text: this.answer }); this.answer = '';
-      job.needsAnswer = false; job.salaryAnswer = msg.answered; this.step('apply').status = 'running';
-      this.lead(this.rememberAnswer ? 'Thanks — saved as a remembered answer for future forms. Continuing.' : 'Thanks — continuing (not saved).');
-      await wait(1800); this.finishApply(job);
+    askNext(job) {
+      const q = job.queue.shift();
+      this.lead(`❓ ${job.company}'s form has ${q.required ? 'a <b>required</b>' : 'an <b>optional</b>'} field I have no saved answer for:`, { question: true, job, q });
+    },
+    async answerQuestion(msg, mode = 'answer') {
+      const q = msg.q, job = msg.job, vi = (job.cvLang || job.lang) === 'VI';
+      let val;
+      if (mode === 'skip') { if (q.required) return; val = null; }
+      else if (mode === 'negotiable') val = vi ? 'Thỏa thuận' : 'Negotiable';
+      else { if (!this.answer.trim()) return; val = this.answer.trim(); }
+      msg.answered = val ?? '(left blank)';
+      this.chat.push({ from: 'ba', text: val ?? 'Skip — leave it blank' }); this.answer = '';
+      job.answers[q.key] = { label: q.label, value: val, source: val === null ? 'skipped' : 'ba_answer' };
+      if (val === null) this.lead('OK — I\'ll leave it blank. It\'s optional, so the form can still be submitted.');
+      else this.lead(this.rememberAnswer ? 'Thanks — saved as a remembered answer for future forms.' : 'Thanks — using it for this form only.');
+      if (job.queue.length) { await wait(600); this.askNext(job); return; }
+      job.needsAnswer = false; this.step('apply').status = 'running';
+      await wait(1500); this.finishApply(job);
     },
     async sha256(text) { const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)); return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join(''); },
     nowStr() { const d = new Date(); return d.toISOString().slice(0, 10) + ' ' + d.toTimeString().slice(0, 5); },
@@ -377,7 +389,15 @@ function app() {
         { label: vi ? 'Địa điểm mong muốn' : 'Preferred location', value: 'Ho Chi Minh City', source: 'search_profile' },
         { label: 'CV', value: fileName, source: 'generated' },
       ];
-      if (job.salaryAnswer) fields.push({ label: vi ? 'Mức lương mong muốn (VND)' : 'Expected salary (VND)', value: job.salaryAnswer, source: 'ba_answer' });
+      const A = job.answers || {}, pol = this.criteria.salaryPolicy;
+      const salLabel = vi ? 'Mức lương mong muốn (VND) · không bắt buộc' : 'Expected salary (VND) · optional';
+      let sal;
+      if (A.salary) sal = { value: A.salary.value ?? '— left blank (optional)', source: A.salary.source };
+      else if (pol === 'negotiable') sal = { value: vi ? 'Thỏa thuận' : 'Negotiable', source: 'form_defaults' };
+      else if (pol === 'fixed') sal = { value: Number(this.criteria.salaryAmount).toLocaleString('en-US'), source: 'form_defaults' };
+      else sal = { value: '— left blank (optional)', source: 'skipped' };
+      fields.push({ label: salLabel, ...sal });
+      if (A.start) fields.push({ label: A.start.label, value: A.start.value, source: A.start.source });
       const intro = vi ? `Tôi có hơn 4 năm kinh nghiệm ReactJS/Next.js, từng phụ trách ứng dụng nội bộ cho ~300 nhân viên. Rất mong được đóng góp cho ${job.company}.`
                        : `I have 4+ years building React/Next.js products and owned internal apps used by ~300 employees. I'd love to bring that ownership to ${job.company}.`;
       const sha = await this.sha256(this.makePdf('Prototype placeholder for ' + fileName));
@@ -437,7 +457,7 @@ function app() {
 
     // ---------- applications: record panel, status history, export ----------
     statusChanged(a, value) { a.history.push({ status: value, at: this.nowStr() }); },
-    sourceLabel(src) { return { master_cv: 'master CV', saved_answer: 'saved answer', ba_answer: 'your answer', search_profile: 'search criteria', generated: 'generated' }[src] || src; },
+    sourceLabel(src) { return { master_cv: 'master CV', saved_answer: 'saved answer', ba_answer: 'your answer', search_profile: 'search criteria', generated: 'generated', form_defaults: 'form defaults', skipped: 'left blank — optional' }[src] || src; },
     makePng(lines) {
       const c = document.createElement('canvas'); c.width = 900; c.height = 120 + lines.length * 34; const g = c.getContext('2d');
       g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height); g.fillStyle = '#0f172a';
@@ -688,10 +708,14 @@ function app() {
                   </div>
                   <!-- unknown question (UC-12) -->
                   <template x-if="m.question && !m.answered">
-                  <div class="rounded-2xl border border-warn/40 bg-warn/5 p-3 space-y-2">
-                    <p class="text-xs text-muted">Form field (required)</p>
-                    <p class="font-medium">Mức lương mong muốn / Expected salary (VND)</p>
-                    <div class="flex gap-2"><input x-model="answer" @keydown.enter="answerQuestion(m)" placeholder="e.g. 32,000,000" class="flex-1"><button @click="answerQuestion(m)" class="rounded-xl bg-gradient-brand text-white px-4 shadow-glow">Send</button></div>
+                  <div class="rounded-2xl border p-3 space-y-2" :class="m.q.required ? 'border-warn/40 bg-warn/5' : 'border-border bg-surface-2/40'">
+                    <p class="text-xs"><span :class="m.q.required ? 'text-warn' : 'text-muted'" x-text="m.q.required ? 'Required field' : 'Optional field — you can skip it'"></span></p>
+                    <p class="font-medium" x-text="m.q.label"></p>
+                    <div class="flex gap-2"><input x-model="answer" @keydown.enter="answerQuestion(m)" :placeholder="m.q.placeholder" class="flex-1"><button @click="answerQuestion(m)" class="rounded-xl bg-gradient-brand text-white px-4 shadow-glow">Send</button></div>
+                    <div class="flex flex-wrap gap-2 text-xs">
+                      <button x-show="m.q.key==='salary'" @click="answerQuestion(m, 'negotiable')" class="rounded-full border border-border px-3 py-1 hover:border-accent">Negotiable / Thỏa thuận</button>
+                      <button x-show="!m.q.required" @click="answerQuestion(m, 'skip')" class="rounded-full border border-border px-3 py-1 hover:border-accent">Skip — leave blank</button>
+                    </div>
                     <button type="button" role="checkbox" :aria-checked="rememberAnswer" @click="rememberAnswer = !rememberAnswer" class="flex items-center gap-2 text-xs text-muted"><span :class="rememberAnswer ? 'bg-gradient-brand border-transparent shadow-glow' : 'border-border bg-surface'" class="size-4 rounded-md border grid place-items-center transition"><svg x-show="rememberAnswer" class="size-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg></span><span>Remember this answer for future forms</span></button>
                   </div>
                   </template>
@@ -905,6 +929,14 @@ function app() {
           <div class="rounded-2xl border border-border bg-surface/60 p-4 space-y-2">
             <div x-data="uiSlider(40,90,5)" x-modelable="value" x-model.number="criteria.fit" @change="criteria.dirty=true" class="space-y-2"><div class="flex items-center justify-between"><p class="text-xs font-medium">Fit threshold</p><span class="rounded-full bg-gradient-brand text-white text-xs font-semibold px-2.5 py-0.5 shadow-glow" x-text="value"></span></div><div x-ref="track" @pointerdown="start($event)" class="relative h-2 rounded-full bg-surface-3 cursor-pointer touch-none select-none mt-3"><div class="absolute inset-y-0 left-0 rounded-full bg-gradient-brand" :style="`width:${pct}%`"></div><div role="slider" tabindex="0" :aria-valuenow="value" aria-valuemin="40" aria-valuemax="90" @keydown.arrow-right.prevent="nudge(1)" @keydown.arrow-up.prevent="nudge(1)" @keydown.arrow-left.prevent="nudge(-1)" @keydown.arrow-down.prevent="nudge(-1)" :class="dragging ? 'scale-110' : ''" class="absolute top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white border-2 border-accent shadow-glow transition-transform focus:outline-none focus:ring-4 focus:ring-accent/30" :style="`left:${pct}%`"></div></div><div class="flex justify-between text-[10px] text-muted"><span>40</span><span>90</span></div></div>
           </div>
+        </div>
+        <div class="rounded-2xl border border-border bg-surface/60 p-4 space-y-3">
+          <div><p class="text-xs font-medium">Application form defaults</p><p class="text-[11px] text-muted mt-0.5">How Apply fills fields you haven't answered before. Optional fields never block a submission — they're left blank and recorded.</p></div>
+          <div class="grid grid-cols-2 gap-3 items-end">
+            <div class="text-xs text-muted">Expected salary<div class="mt-1"><div x-data="uiSelect([['blank_if_optional','Leave blank when optional'],['negotiable','Write “Negotiable / Thỏa thuận”'],['fixed','Use a fixed amount'],['ask','Ask me each time']])" x-modelable="value" x-model="criteria.salaryPolicy" @change="criteria.dirty=true" class="relative w-full" @click.outside="open=false" @keydown.escape.stop="open=false"><button type="button" @click="toggle()" @keydown.arrow-down.prevent="move(1)" @keydown.arrow-up.prevent="move(-1)" @keydown.enter.prevent="open ? choose(active) : toggle()" :class="open ? 'border-accent shadow-glow' : 'border-border hover:border-accent'" class="w-full flex items-center justify-between gap-2 rounded-xl border bg-surface px-3 py-2 text-fg text-left transition"><span class="truncate" x-text="label(value)"></span><svg class="size-4 text-muted transition-transform" :class="open ? 'rotate-180' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button><div x-show="open" x-transition.origin.top class="absolute z-50 mt-1 min-w-full w-max max-h-60 overflow-auto rounded-xl border border-border bg-surface p-1 shadow-2xl"><template x-for="(o, i) in opts" :key="o.value"><button type="button" data-opt @click="choose(i)" @mouseenter="active=i" :class="i===active ? 'bg-surface-2' : ''" class="w-full flex items-center justify-between gap-4 rounded-lg px-3 py-1.5 text-left text-sm"><span x-text="o.label"></span><span x-show="o.value===value" class="text-accent">✓</span></button></template></div></div></div></div>
+            <div x-show="criteria.salaryPolicy==='fixed'" class="text-xs text-muted">Amount (VND)<input inputmode="numeric" :value="Number(criteria.salaryAmount).toLocaleString('en-US')" @input="criteria.salaryAmount = Number($event.target.value.replace(/\D/g, '')) || 0; criteria.dirty = true; $event.target.value = criteria.salaryAmount.toLocaleString('en-US')" class="w-full mt-1"></div>
+          </div>
+          <p class="text-[11px] text-muted" x-show="criteria.salaryPolicy==='blank_if_optional'">If a form makes salary <b>required</b>, Apply writes “Negotiable / Thỏa thuận” when the field accepts text; otherwise it asks you.</p>
         </div>
         <p class="text-xs text-muted">CV languages: English for English JDs; Vietnamese + English for Vietnamese JDs (spec §6.3).</p>
       </div>
