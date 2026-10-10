@@ -302,7 +302,8 @@ bs-job-agents/
 
 ### 7.2 `job-scan` (scheduled or from chat)
 ```
-params: roles[], locations[], minSalary?, sources[], maxJobs=5, fitThreshold=60
+params: searchProfileId (defaults to the active Search Profile, §7.5), optional per-run overrides of any field
+        (roles[], locations[], minSalary?, sources[], maxJobs=5, fitThreshold=60, …)
 1  map   research.scan        over sources            → JobCandidate[]
 2  join                       (partial ok; failed sources reported)
 3  filter dedupe              vs jobs table (canonical URL; company+title+location hash) and applications
@@ -324,6 +325,25 @@ Same as `job-scan` steps 6–10, preceded by `research.scan` on the single URL (
 - Schedules are stored with a cron expression, workflow name and params; they can be edited in the Schedules screen or via Lead ("scan every weekday at 9").
 - **Missed runs** (Mac asleep or off): on wake or start, at most one catch-up run per schedule, if missed within the last 12 hours.
 - **No overlap:** a schedule never starts while its previous run is still active.
+
+### 7.5 Search Profile (search criteria)
+One active, versioned profile is shared by scheduled scans and chat requests. A chat request can override fields for one run.
+
+| Field | Example | Default |
+|---|---|---|
+| roles | Frontend Engineer, Software Engineer (React/Node) | from first chat request |
+| locations | Ho Chi Minh City, Remote (VN) | from first chat request |
+| work modes | onsite / hybrid / remote | all |
+| minimum salary + currency | 25,000,000 VND or 1,000 USD | none |
+| seniority | mid, senior | mid, senior |
+| sources | TopCV, ITviec, LinkedIn (toggles) | these three |
+| include keywords | React, Next.js, TypeScript | none |
+| exclude keywords | PHP, WordPress | none |
+| excluded companies | (list) | none |
+| preferred company types | product, AI | none (no filter) |
+| CV languages | EN; VI+EN for Vietnamese JDs | as §6.3 |
+| max jobs per scan | 5 | 5 |
+| fit threshold | 60 | 60 |
 
 ---
 
@@ -497,7 +517,15 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 - **Main flow:** a structured editor on the Master CV screen (facts list with EN/VI text and tags). Saving bumps the master version. Open review cards built on an older master version show "master data changed; regenerate?".
 
 ### UC-21: Manage schedules
-- **Main flow:** create, edit, enable/disable and delete schedules in the Schedules screen, or by telling Lead. Each shows its next run time and last result.
+- **Main flow:** create, edit, enable/disable and delete schedules in the Schedules screen, or by telling Lead. Each shows its next run time and last result. Each schedule uses a Search Profile (default: the active one).
+
+### UC-21b: Edit search criteria on the dashboard
+- **Trigger:** Ba opens **Search criteria** from the sidebar, or the "Edit criteria" button on a run card or schedule.
+- **Main flow:** Ba edits the profile fields (§7.5) in a form; saving creates a new profile version. The next scheduled or chat-started scan uses it. A run already in progress keeps the version it started with.
+- **Alternate flows:**
+  - (a) In chat Ba says "also include Đà Nẵng" → Lead asks: "just this run, or save to your criteria?" Saving updates the profile (new version).
+  - (b) Validation: at least one role, one location and one source are required; minimum salary must be a number with a currency (VND/USD).
+- **End state:** a new active profile version, visible on the dashboard with the date it changed.
 
 ### UC-22: Inspect a step
 - **Main flow:** clicking a Flow canvas node opens a side drawer with the input, output, self-check results, transcript (streamed live if running), duration, attempts, engine, and the prompt version used.
@@ -526,7 +554,8 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | `approvals` | token PK, job_id, cv_version_id, allowed_domains_json, expires_at, used_at |
 | `applications` | id, job_id, cv_version_id, submitted_at, status, confirmation_text, screenshot_paths_json, status_history_json |
 | `saved_answers` | key PK, label, answer, updated_at |
-| `schedules` | id, name, cron, workflow_name, params_json, enabled, last_run_id, next_run_at |
+| `search_profiles` | id, name, version, active, roles_json, locations_json, work_modes_json, min_salary, currency, seniority_json, sources_json, include_keywords_json, exclude_keywords_json, exclude_companies_json, company_types_json, languages_json, max_jobs, fit_threshold, updated_at |
+| `schedules` | id, name, cron, workflow_name, search_profile_id, params_json (overrides), enabled, last_run_id, next_run_at |
 | `rooms` / `room_members` / `messages` | chat rooms (Lead chat is a room), members, messages (author = ba or bot, mentions, run refs) |
 | `engine_state` | engine PK, paused_until, reason |
 | `events` | id, type, payload_json, created_at (audit log + SSE replay) |
@@ -577,7 +606,8 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | **Flow canvas** | React Flow: nodes per step with live output preview, animated edges for running, red dashed QA loop edge, stacked nodes for `map` (×N, running/queued counts), locked Apply node; Pause / Re-run step; zoom, minimap; node click → drawer (UC-22) | running, paused, failed node (red), waiting_limit (clock) |
 | **Review queue** | Cards: job header + fit score, why it fits / gaps, company profile, QA breakdown + truth check, CV preview (VI/EN toggle when both), editable intro text; Approve & submit / Request changes / Skip with reason | QA not passed (escalated), needs your input, injection flagged |
 | **Applications** | Table: company, role, link, CV version (PDF), submitted at, status (editable), screenshot | needs_check highlighted |
-| **Schedules** | List + editor (cron presets: weekdays 9:00, daily, custom), params, next run, last result | |
+| **Search criteria** | Form for the active Search Profile (§7.5): roles, locations, work mode, salary floor + currency, seniority, sources (toggles), include/exclude keywords, excluded companies, preferred company types, CV languages, max jobs per scan, fit threshold; version history | unsaved changes, validation errors |
+| **Schedules** | List + editor (cron presets: weekdays 9:00, daily, custom), Search Profile used, next run, last result | |
 | **Bots** | Per bot: role, engine switch, trust level, track record, promotion suggestion, prompt version, memory view | |
 | **Master CV** | Facts editor (EN/VI text, tags, org, dates), version history | |
 | **Rooms** | Group chat with @mentions; bots answer in discussion mode | |
@@ -632,8 +662,8 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | 2026-10-10 | Promotion: system suggests, Ba approves |
 | 2026-10-10 | UI: chat-first (Grok Bot style), bs-kara theme, Tailwind v4, React Flow canvas (ElevenLabs Flows style) |
 
-## 15. Assumptions to confirm during review
+## 15. Confirmed defaults (2026-10-10)
 1. Default sources for scheduled scans are TopCV + ITviec + LinkedIn; career sites only via links or on request.
-2. The default schedule is weekdays 09:00 Asia/Ho_Chi_Minh (Ba can change it).
-3. Default search criteria come from Ba's first chat request and are then editable in Schedules.
-4. Status updates for applications are manual in Phase 1.
+2. The default schedule is weekdays 09:00 Asia/Ho_Chi_Minh (editable).
+3. Ba's first chat request seeds the Search Profile; after that, criteria are **edited on the dashboard** (Search criteria screen, UC-21b) or via Lead.
+4. Application statuses are updated manually by Ba in Phase 1.
