@@ -47,6 +47,22 @@ export const ResearchCompanyInputSchema = z.object({
   website: UrlSchema.nullable(),
 });
 
+/**
+ * A CV template frame on a protected Figma page (§6.2 Templates), as the orchestrator lists it
+ * from its "before" fingerprint of the CV task: the CV bot duplicates one into Drafts.
+ */
+export const CvTemplateSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  pageId: z.string().min(1),
+  pageName: z.string(),
+  /** The section the template sits in, if any (e.g. "EN"). */
+  sectionName: z.string().nullable(),
+  width: z.number().nonnegative(),
+  height: z.number().nonnegative(),
+});
+export type CvTemplate = z.infer<typeof CvTemplateSchema>;
+
 /** cv.tailor (UC-06, UC-07 fix rounds, UC-09 Ba's comment). */
 export const CvTailorInputSchema = z.object({
   jobId: IdSchema,
@@ -58,6 +74,8 @@ export const CvTailorInputSchema = z.object({
   comment: z.string().nullable().describe("Ba's request-changes comment"),
   previousCvVersionId: IdSchema.nullable(),
   masterCvVersion: z.number().int().positive(),
+  /** Added by the engine right before the spawn, under the Figma lock (W2a, coordinator B). */
+  templates: z.array(CvTemplateSchema).optional(),
 });
 
 /** qa.review (§5.2 QA). */
@@ -145,15 +163,26 @@ export function splitApplySubmitInput(input: ApplySubmitInput): { prompt: ApplyP
 /**
  * Task inputs as the runner puts them in the prompt (§5.5 step 1): `BOT_TASK_INPUT_SCHEMAS`
  * without guard-only fields. The engine validates the full input, then hands the runner this part.
+ * Strict (QA Phase 2): a key the schema does not know is an error at the runner, never something
+ * silently sent to a model (the engine-side task schemas keep stripping unknown keys).
  */
 export const BOT_TASK_PROMPT_INPUT_SCHEMAS = {
-  ...BOT_TASK_INPUT_SCHEMAS,
+  "research.scan": ResearchScanInputSchema.strict(),
+  "research.single": ResearchSingleInputSchema.strict(),
+  "research.file": ResearchFileInputSchema.strict(),
+  "research.fit": ResearchFitInputSchema.strict(),
+  "research.company": ResearchCompanyInputSchema.strict(),
+  "cv.tailor": CvTailorInputSchema.strict(),
+  "qa.review": QaReviewInputSchema.strict(),
   "apply.submit": ApplyPromptInputSchema,
 } as const satisfies Record<BotTaskKey, z.ZodTypeAny>;
 
+/** Consult (UC-25) / discussion (UC-15) input as the bot sees it: strict, like the task prompt inputs. */
+export const ConversationPromptInputSchema = ConversationInputSchema.strict();
+
 /** Schema for the prompt input of `bot.kind`: consult/discussion use ConversationInput; null when none is defined (Lead chat). */
 export function promptInputSchemaFor(bot: string, kind: string): z.ZodTypeAny | null {
-  if ((CONVERSATION_TASK_KINDS as readonly string[]).includes(kind)) return ConversationInputSchema;
+  if ((CONVERSATION_TASK_KINDS as readonly string[]).includes(kind)) return ConversationPromptInputSchema;
   const key = `${bot}.${kind}`;
   return Object.prototype.hasOwnProperty.call(BOT_TASK_PROMPT_INPUT_SCHEMAS, key)
     ? BOT_TASK_PROMPT_INPUT_SCHEMAS[key as BotTaskKey]
