@@ -62,7 +62,11 @@ export type FactRequest = z.infer<typeof FactRequestSchema>;
 export const CvDraftSchema = z.strictObject({
   language: CvLanguageSchema,
   tailored: TailoredCvSchema,
-  figmaFrameName: z.string().regex(/^.+_.+_(EN|VI)_v\d+$/, "frame name <COMPANY>_<ROLE>_<LANG>_v<n>"),
+  figmaFrameName: z
+    .string()
+    .regex(/^.+_.+_(EN|VI)_v\d+$/, "frame name <COMPANY>_<ROLE>_<LANG>_v<n>")
+    // The pattern is checked by Zod only (patterns stay out of the JSON Schema), so say it here.
+    .describe("Drafts frame name <COMPANY>_<ROLE>_<LANG>_v<n>, LANG is EN or VI, e.g. NOVAPAY_SENIOR-FE_EN_v1"),
   figmaFrameUrl: UrlSchema,
   pdfPath: z.string().min(1).nullable(),
   changeNotes: z.array(z.string().min(1)),

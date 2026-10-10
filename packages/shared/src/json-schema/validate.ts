@@ -1,11 +1,16 @@
 // Minimal validator for the JSON Schema subset `toStrictJsonSchema` emits
-// (type, properties, required, additionalProperties:false, items, enum, anyOf).
+// (type, properties, required, additionalProperties:false, items, enum, anyOf,
+// minimum/maximum/exclusiveMinimum/exclusiveMaximum, minItems/maxItems,
+// format date-time).
 // Used in tests (and by fakes) to prove a value an engine would accept under the
 // generated schema also passes the Zod schema, and vice versa.
 import type { JsonSchema } from "./strict.js";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** RFC 3339 date-time (JSON Schema `format: "date-time"`): offset or Z required. */
+const RFC3339_DATE_TIME = /^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$/;
 
 function matchesType(t: string, v: unknown): boolean {
   switch (t) {
@@ -46,6 +51,28 @@ function check(schema: JsonSchema, value: unknown, path: string, out: string[]):
   if (Array.isArray(schema.enum) && value !== null && !schema.enum.includes(value)) {
     out.push(`${path}: not in enum`);
     return;
+  }
+  if (typeof value === "number") {
+    const n = (k: string) => (typeof schema[k] === "number" ? (schema[k] as number) : undefined);
+    const min = n("minimum");
+    const max = n("maximum");
+    const xmin = n("exclusiveMinimum");
+    const xmax = n("exclusiveMaximum");
+    if (min !== undefined && value < min) out.push(`${path}: below minimum ${min}`);
+    if (max !== undefined && value > max) out.push(`${path}: above maximum ${max}`);
+    if (xmin !== undefined && value <= xmin) out.push(`${path}: not above exclusiveMinimum ${xmin}`);
+    if (xmax !== undefined && value >= xmax) out.push(`${path}: not below exclusiveMaximum ${xmax}`);
+  }
+  if (typeof value === "string" && schema.format === "date-time" && !RFC3339_DATE_TIME.test(value)) {
+    out.push(`${path}: not a date-time`);
+  }
+  if (Array.isArray(value)) {
+    if (typeof schema.minItems === "number" && value.length < schema.minItems) {
+      out.push(`${path}: fewer than ${schema.minItems} items`);
+    }
+    if (typeof schema.maxItems === "number" && value.length > schema.maxItems) {
+      out.push(`${path}: more than ${schema.maxItems} items`);
+    }
   }
   if (Array.isArray(value) && isObj(schema.items)) {
     value.forEach((item, i) => check(schema.items as JsonSchema, item, `${path}[${i}]`, out));
