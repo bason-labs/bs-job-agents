@@ -21,6 +21,7 @@ export {
 } from "./config.js";
 export { BotDefinitionError, assertRunnableBot, botTaskKinds, loadBotDefinition, loadBots, readBotPromptFiles, rolePromptHash } from "./bots.js";
 export { staleBotSchemas, writeBotSchemas } from "./schemas.js";
+export { PROMPT_LOCK_FILE, PromptLockError, checkPromptLock, currentPromptVersions, readPromptLock, updatePromptLock, type PromptLock } from "./prompt-lock.js";
 export { PromptSecurityError, UNTRUSTED_INPUT_FIELDS, buildPrompt } from "./prompt.js";
 export { MEMORY_TEMPLATE, appendMemoryNotes, seedMemoryFiles, type AppendMemoryInput, type AppendMemoryResult } from "./memory.js";
 export { RunnerConfigError, TaskSetupError } from "./errors.js";
