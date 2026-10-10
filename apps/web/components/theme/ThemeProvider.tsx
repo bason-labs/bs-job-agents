@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 
 // The no-flash inline script in app/layout.tsx reads the same key before paint.
 export const THEME_STORAGE_KEY = "bsja_theme";
@@ -49,7 +49,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const os = useSyncExternalStore(subscribeOS, readOS, () => "light" as const);
   const resolved: ResolvedTheme = preference === "system" ? os : preference;
 
-  useEffect(() => {
+  // Layout effect: applies before paint, and re-applies after React's dev
+  // Strict Mode remount resets the <html> attributes the inline script set.
+  useLayoutEffect(() => {
     document.documentElement.setAttribute("data-theme", resolved);
     document.documentElement.style.colorScheme = resolved;
   }, [resolved]);
