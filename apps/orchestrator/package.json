@@ -12,6 +12,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bridges:live-check": "tsx src/bridges/live-check.ts",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

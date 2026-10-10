@@ -56,6 +56,3 @@ export {
   type McpToolResult,
 } from "./mcp.js";
 export type { FigmaConnectedFile, FigmaConnectionState, FigmaStatus } from "./replies.js";
-// Test support for engine tests (W2a): scripted or document-backed fake bridge.
-export { FakeFigmaMcp, type FakeExecuteHandler, type FakeFigmaFile, type FakeFigmaMcpOptions } from "./fake-bridge.js";
-export { FakeFigmaApi, runPluginCode, type FakeFigmaApiInit, type FakeNodeInit } from "./fake-figma-api.js";
