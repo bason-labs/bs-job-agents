@@ -1,0 +1,26 @@
+# W2c bridges report (Phase 2)
+
+- **Merged** as 8754dd6 (package.json conflict with W2b resolved). develop: 1,304 tests (shared 302, orchestrator 915, web 87).
+- **PDF** (`src/bridges/pdf`):
+  - `sha256File`, `sha256Bytes`; `pdfInfo` / `pdfInfoFromBytes` (`onePageA4`)
+  - `extractText` (pdfjs legacy; split words come out intact)
+  - `pdfFileNameForFrame`
+  - `copyFileVerified` (throws `Sha256MismatchError` and deletes the copy)
+- **Figma** (`src/bridges/figma`):
+  - `FigmaBridge` (pinned figma-console-mcp 1.40.9 over stdio): `start`/`stop`, `status()` (connected / not_connected / wrong_file / server_unavailable), `waitForConnection`, `execute` (≤ 30 s, always with the CV file key), `ensureDraftsPage`, `findDraftFrame`, `duplicateTemplate`, `listTemplates`, `exportFramePdf` (Drafts only, atomic write, hashed), `fingerprintProtectedPages` + `diffFingerprints` (ids, names, text, structure, geometry, styles, variables).
+  - `isFigmaUnavailable(err)` means pause as `needs_figma`.
+- **Figma guard:** `checkFigmaCode`, `evaluateFigmaToolCall`, `prepareFigmaGuard({ fingerprint, dir })` → `{ policy, configPath, settings }`.
+  - Hook: `dist/bridges/figma/guard-hook.js --config <json> [--log <jsonl>]`.
+  - Catches references to other pages and page operations, writes to protected nodes, traced template ids, nodes created off Drafts, escapes (globalThis, eval, network), the wrong file key and other Figma tools.
+  - Misses run-time-assembled ids, unplaceable `.parent` climbs and similar; the fingerprint is the backstop.
+  - An adversarial review found 3 bypasses and 2 false positives; all fixed.
+- **Chrome site guard:** `buildSiteGuardSettings({ allowedSites, logFile? })`, `evaluateChromeToolCall`, `checkNavigateUrl`, `checkPageJavascript`.
+  - Hook: `dist/bridges/chrome/site-guard/hook.js --allow <domain>... [--log]`.
+  - Also covers `browser_batch`, `shortcuts_execute` and `switch_browser`/`select_browser`. The JS check also blocks network requests, cookie reads and dynamic code.
+- **Browser check:** `checkBrowserBridge()`, `browserReadyFor(status, engine)`.
+- **Hooks:** `runPreToolUseHook`, `buildHookCommand`, `mergeHookSettings`. They fail closed: `|| exit 2`, and bad input, errors and a 10 s watchdog all block.
+- **Test fakes:** `FakeFigmaMcp`, `FakeFigmaApi`, `makePdf` (`src/bridges/testing.ts`).
+- **Live check** (`bridges:live-check`): Chrome is running with both native hosts. Figma was not connected (plugin closed), so export and fingerprint were not run against the real file.
+- **Decisions:**
+  - **Hook settings:** the engine builds guard settings per task with these builders and passes `RunnerTask.hookSettings`; the runner merges them. The runner-side change is a Phase 2 QA item (W2b's runner currently builds its own `--sites` hook, while W2c's hook takes `--allow`).
+  - **MCP SDK:** raise the orchestrator's pin from 1.26.0 to ≥ 1.29 to remove the figma-console-mcp peer warning (Phase 2 QA, if tests stay green).
