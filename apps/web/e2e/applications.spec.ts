@@ -8,6 +8,19 @@ const row = (page: Page, company: string) => page.getByTestId("application-row")
 const panel = (page: Page) => page.getByTestId("record-panel");
 const viewer = (page: Page) => page.getByTestId("file-viewer");
 
+/**
+ * Esc closes the top dialog. Radix moves focus into a new dialog a moment (under one frame)
+ * before it registers it as the top layer; an Esc in that gap reaches the dialog below (the
+ * record panel). The top layer is the one whose content Radix gives `pointer-events: auto`,
+ * so wait for that, as a person's key press always would.
+ */
+async function pressEscapeIn(page: Page, testId: string) {
+  const dialog = page.getByTestId(testId);
+  await expect(dialog).toHaveCSS("pointer-events", "auto");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+}
+
 test.beforeEach(async ({ page }) => {
   await open(page, "/applications");
 });
@@ -38,7 +51,9 @@ test("changes a status in the table and records it in the history (UC-13)", asyn
   await expect(select).toHaveText("Interviewing");
   await expect(panel(page)).toBeHidden();
 
-  // Keyboard too: ↓ opens on the current option, ↓ moves, Enter chooses.
+  // Keyboard too: ↓ opens on the current option, ↓ moves, Enter chooses. (Move the pointer off
+  // the list first: an option under a resting pointer becomes active when the list reopens.)
+  await page.mouse.move(0, 0);
   await select.focus();
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
@@ -88,8 +103,7 @@ test("the record panel shows exactly what was sent, and files open in the viewer
   await expect(viewer(page).getByTestId("pdf-page").first()).toHaveAttribute("data-rendered", "true");
   await expect(viewer(page).getByRole("link", { name: "Download" })).toHaveAttribute("download", "BA_HUYNH_NovaPay_EN_v1.pdf");
   await expect(viewer(page).getByRole("link", { name: /Open in Figma/ })).toHaveAttribute("href", /figma\.com/);
-  await page.keyboard.press("Escape");
-  await expect(viewer(page)).toBeHidden();
+  await pressEscapeIn(page, "file-viewer");
   await expect(p).toBeVisible();
 
   // Image: the confirmation screenshot.
@@ -97,21 +111,24 @@ test("the record panel shows exactly what was sent, and files open in the viewer
   await expect(viewer(page).getByRole("img", { name: "NovaPay_confirmation.png" })).toBeVisible();
   await expect(viewer(page).getByTestId("file-viewer-subtitle")).toHaveText("· confirmation screenshot");
   await viewer(page).getByRole("button", { name: "Close" }).click();
+  await expect(viewer(page)).toBeHidden();
 
   // Text: the frozen JD snapshot.
   await p.getByRole("button", { name: /JD snapshot/ }).click();
   await expect(viewer(page).getByTestId("file-viewer-text")).toContainText("Build product features with React/Next.js");
   await expect(viewer(page).getByTestId("file-viewer-subtitle")).toHaveText("· Frozen JD snapshot · captured 2026-10-10 15:39");
-  await page.keyboard.press("Escape");
+  await pressEscapeIn(page, "file-viewer");
 
   // Form: the fields as recorded.
   await p.getByRole("button", { name: "View as form" }).click();
   await expect(viewer(page).getByTestId("file-viewer-form")).toContainText("Form as recorded — the values Apply filled in");
   await expect(viewer(page).getByTestId("file-viewer-form")).toContainText("2 weeks");
-  await page.keyboard.press("Escape");
+  await pressEscapeIn(page, "file-viewer");
 
-  await page.keyboard.press("Escape");
-  await expect(p).toBeHidden();
+  await expect(p).toBeVisible();
+  await pressEscapeIn(page, "record-panel");
+  // Focus goes back to the row that opened the record.
+  await expect(page.getByRole("button", { name: "Open NovaPay's submission record" })).toBeFocused();
 });
 
 test("an imported record shows its missing parts as “not captured” (UC-13)", async ({ page }) => {
@@ -129,7 +146,7 @@ test("the table's CV and screenshot links open the viewer, never a download (§1
   await row(page, "SMARTBIT").getByRole("button", { name: "BA_HUYNH_SMARTBIT_Figma_EN.pdf" }).click();
   await expect(viewer(page).getByRole("heading", { name: "BA_HUYNH_SMARTBIT_Figma_EN.pdf" })).toBeVisible();
   await expect(panel(page)).toBeHidden();
-  await page.keyboard.press("Escape");
+  await pressEscapeIn(page, "file-viewer");
   await row(page, "SMARTBIT").getByRole("button", { name: "screenshot" }).click();
   await expect(viewer(page).getByRole("img", { name: "SMARTBIT_confirmation.png" })).toBeVisible();
 });

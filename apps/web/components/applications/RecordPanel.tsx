@@ -3,7 +3,7 @@
 import type { ApplicationDetail } from "@bs-job-agents/shared";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { CheckCircle2, ClipboardList, FileText, Image as ImageIcon, Pin, X } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Button, Skeleton, StatusPill, useFileViewer } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { statusMeta } from "@/lib/status";
@@ -77,6 +77,11 @@ export function RecordPanel({ row, detail, fileUrl, onClose, onApplyAgain }: Rec
   const submission = detail?.submission ?? null;
   const files = detail ? recordFiles(detail) : null;
   const company = job?.company ?? "";
+  // The row that opened the panel; it keeps focus after the panel closes (row is null by then).
+  const openerId = useRef<string | null>(null);
+  useEffect(() => {
+    if (row) openerId.current = row.application.id;
+  }, [row]);
 
   return (
     <RadixDialog.Root open={row !== null} onOpenChange={(open) => !open && onClose()}>
@@ -85,6 +90,13 @@ export function RecordPanel({ row, detail, fileUrl, onClose, onApplyAgain }: Rec
         <RadixDialog.Content
           data-testid="record-panel"
           aria-describedby={undefined}
+          // Opened from a row, not a Dialog.Trigger: hand focus back to that row's button.
+          onCloseAutoFocus={(e) => {
+            const id = openerId.current;
+            if (!id) return;
+            e.preventDefault();
+            document.querySelector<HTMLElement>(`[data-record-opener="${CSS.escape(id)}"]`)?.focus();
+          }}
           className="fixed inset-y-0 right-0 z-40 w-[480px] max-w-full overflow-y-auto border-l border-border bg-surface shadow-2xl outline-none"
         >
           {app && job ? (

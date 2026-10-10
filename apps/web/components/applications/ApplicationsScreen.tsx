@@ -169,6 +169,7 @@ export function ApplicationsScreen({ initial, data = applicationsData }: Applica
                             void openRecord(row);
                           }}
                           aria-label={`Open ${row.job.company}'s submission record`}
+                          data-record-opener={app.id}
                           className="text-left font-medium hover:underline"
                         >
                           {row.job.company}
