@@ -602,7 +602,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | Screen | Content | Key states |
 |---|---|---|
 | **Chat (Lead)** | Centered conversation; Lead replies with delegation trace (Lead → @Bot: task · status); run progress cards; job cards with fit/QA; suggestion chips; composer with `/` commands, `@` mentions (rooms), attach JD, engine chip | empty (first-run guide), streaming, error message from Lead |
-| **Sidebar** | Chat, Flows, Review (badge), Applications, Schedules; Team list with live status dots and trust badge; Rooms; subscription usage / pause status per engine | engine paused banner |
+| **Sidebar** | Chat, Flows, Review (badge), Applications, Search criteria, Schedules; Team list with live status dots and trust badge; Rooms; subscription usage / pause status per engine | engine paused banner |
 | **Flow canvas** | React Flow: nodes per step with live output preview, animated edges for running, red dashed QA loop edge, stacked nodes for `map` (×N, running/queued counts), locked Apply node; Pause / Re-run step; zoom, minimap; node click → drawer (UC-22) | running, paused, failed node (red), waiting_limit (clock) |
 | **Review queue** | Cards: job header + fit score, why it fits / gaps, company profile, QA breakdown + truth check, CV preview (VI/EN toggle when both), editable intro text; Approve & submit / Request changes / Skip with reason | QA not passed (escalated), needs your input, injection flagged |
 | **Applications** | Table: company, role, link, CV version (PDF), submitted at, status (editable), screenshot | needs_check highlighted |
