@@ -18,7 +18,7 @@ data.example/        example user data (copy to data/, which is gitignored)
 
 ## Prerequisites
 
-- **Node 22** (`nvm use` reads `.nvmrc`) and **pnpm 10.11.0** (`corepack enable` picks it up from `package.json`).
+- **Node 22.13 or newer** (`nvm use` reads `.nvmrc`, which resolves to the latest 22.x) and **pnpm 10.11.0** (`corepack enable` picks it up from `package.json`). `.npmrc` sets `engine-strict=true`, so `pnpm install` refuses an older Node. drizzle-kit (`db:generate`) loads the shared package through `require(esm)`, which needs Node ≥ 22.12; ESLint's dependencies need ≥ 22.13.
 - **Claude Code CLI**, logged in with your claude.ai account: `~/.local/bin/claude` (2.1.x). Check with `claude --version`.
 - **Codex CLI**, bundled with the ChatGPT desktop app and logged in through ChatGPT. It is not on `PATH`; the orchestrator calls it at:
   ```
