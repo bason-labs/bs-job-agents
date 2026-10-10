@@ -1,7 +1,6 @@
 // Runs, steps and tasks (UC-01 start, UC-22 inspect, UC-23 pause/cancel/re-run, UC-17 resume).
 // Reads come from the db; every command goes through the engine, so its events and audit rows
 // are written.
-import { isAbsolute } from "node:path";
 import {
   API_ROUTES,
   OkResponseSchema,
@@ -22,15 +21,10 @@ import type { FastifyInstance } from "fastify";
 import { getRun, getStep, listRuns, listSteps, listTasks, mappers, type Task } from "../../db/index.js";
 import { requireDb, requireEngine, type ApiContext } from "../context.js";
 import { notFound } from "../errors.js";
+import { safeDataPath } from "../files.js";
 import { idParam, keepValid, parseWith, respond } from "../http.js";
 
 type IdParams = { Params: { id: string } };
-
-/** A stored data/-relative path, or null for one that is absolute or climbs out of data/ (S18). */
-export function safeDataPath(path: string | null | undefined): string | null {
-  if (!path || isAbsolute(path) || path.includes("\0")) return null;
-  return path.split(/[\\/]/).some((seg) => seg === "..") ? null : path;
-}
 
 /** A task as the UI sees it: the transcript path only when it stays inside data/. */
 export function toApiTask(row: Task): SharedTask {

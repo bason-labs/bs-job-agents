@@ -2,11 +2,14 @@
 // SQLite, FakeRunner, fake bridges) and a real temporary data/ folder for files. Requests go
 // through `inject` with the headers the web app's proxy sends (loopback Host, the web origin and
 // the CSRF header on mutations), so every route test also passes the S18 checks.
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { CSRF_HEADER, CSRF_HEADER_VALUE } from "@bs-job-agents/shared";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
+import { cvOutputFixture } from "@bs-job-agents/shared/fixtures";
+import { createCvVersion, recordSubmission, type Application, type Approval, type CvVersion, type Db, type Job } from "../db/index.js";
+import { NOVAPAY, T0, seedApprovedApplication, seedJob } from "../db/test-helpers.js";
 import { silentLogger } from "../engine/ports.js";
 import { createTestEngine, type TestEngine, type TestEngineOptions } from "../engine/testing/index.js";
 import { buildServer, type ServerOptions } from "../server.js";
@@ -44,6 +47,101 @@ export interface ApiHarness {
   patch(url: string, body?: unknown, headers?: Headers): Promise<LightMyRequestResponse>;
   del(url: string, headers?: Headers): Promise<LightMyRequestResponse>;
   close(): Promise<void>;
+}
+
+/** File contents with the right magic bytes. */
+export const FILE_BYTES = {
+  pdf: Buffer.from("%PDF-1.7\n% fake one-page CV\n%%EOF\n"),
+  png: Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("fake png body")]),
+  jpeg: Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("fake jpeg body")]),
+  zip: Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from("fake zip body")]),
+} as const;
+
+/** Write `bytes` at a data/-relative path. */
+export function writeDataFile(dataDir: string, rel: string, bytes: Buffer | string): void {
+  const abs = join(dataDir, rel);
+  mkdirSync(dirname(abs), { recursive: true });
+  writeFileSync(abs, bytes);
+}
+
+/** A CV version as the engine stores it: the PDF at data/pdf/<frame>.pdf, path relative to data/. */
+export function seedCvVersion(db: Db, job: Job, opts: { language?: "en" | "vi"; now?: Date; frame?: string; masterVersion?: number } = {}): CvVersion {
+  const language = opts.language ?? "en";
+  const frame = opts.frame ?? `NOVAPAY_SENIOR-FE_${language.toUpperCase()}_v1`;
+  return createCvVersion(
+    db,
+    {
+      jobId: job.id,
+      language,
+      tailored: cvOutputFixture.tailored,
+      figmaFrameName: frame,
+      figmaFrameUrl: "https://www.figma.com/design/kJFoXNrTfFOtkQ515c0jHk?node-id=1-2",
+      pdfPath: `pdf/${frame}.pdf`,
+      pdfSha256: "a".repeat(64),
+      changeNotes: ["Led with Next.js and payments work"],
+      masterVersion: opts.masterVersion ?? 3,
+      promptVersion: 1,
+    },
+    { now: opts.now ?? T0 },
+  );
+}
+
+export interface SeededRecord {
+  job: Job;
+  cv: CvVersion;
+  application: Application;
+  approval: Approval;
+}
+
+/**
+ * A submitted application with its §9.1 record (UC-11 step 9) and the record's files in data/:
+ * the CV version's PDF (pdf/…), the uploaded copy, both screenshots and the JD page screenshot
+ * (applications/<id>/…). `files: false` writes the rows only.
+ */
+export function seedRecordedApplication(db: Db, dataDir: string, opts: { files?: boolean; now?: Date } = {}): SeededRecord {
+  const now = opts.now ?? T0;
+  const job = seedJob(db, NOVAPAY, now);
+  const cv = seedCvVersion(db, job, { now });
+  const { application, approval } = seedApprovedApplication(db, job, cv, { now });
+  const dir = `applications/${application.id}`;
+  const rec = recordSubmission(
+    db,
+    {
+      applicationId: application.id,
+      submission: {
+        finalUrl: "https://itviec.com/it-jobs/thanks",
+        fields: [{ label: "Full name", name: "name", value: "Ba Huynh", source: "master_cv" }],
+        introText: "I build React/Next.js products.",
+        consentTicked: true,
+        consentText: "I agree to the processing of my personal data.",
+        uploadedFilename: "BA_HUYNH_NOVAPAY_EN.pdf",
+        uploadedSha256: cv.pdfSha256,
+        uploadedPath: `${dir}/BA_HUYNH_NOVAPAY_EN.pdf`,
+        preSubmitScreenshotPath: `${dir}/pre-submit.png`,
+        confirmationScreenshotPath: `${dir}/confirmation.png`,
+        confirmationText: "Thank you for applying",
+        approvalToken: approval.token,
+        submittedAt: now.toISOString(),
+      },
+      snapshot: {
+        url: NOVAPAY.url!,
+        title: NOVAPAY.title,
+        company: NOVAPAY.company,
+        salaryText: NOVAPAY.salaryText ?? null,
+        jdText: "We are looking for a Senior Frontend Engineer to own our React/Next.js apps.",
+        pageScreenshotPath: `${dir}/jd.png`,
+      },
+    },
+    { now },
+  );
+  if (opts.files !== false) {
+    writeDataFile(dataDir, "pdf/NOVAPAY_SENIOR-FE_EN_v1.pdf", FILE_BYTES.pdf);
+    writeDataFile(dataDir, `${dir}/BA_HUYNH_NOVAPAY_EN.pdf`, FILE_BYTES.pdf);
+    writeDataFile(dataDir, `${dir}/pre-submit.png`, FILE_BYTES.png);
+    writeDataFile(dataDir, `${dir}/confirmation.png`, FILE_BYTES.png);
+    writeDataFile(dataDir, `${dir}/jd.png`, FILE_BYTES.jpeg);
+  }
+  return { job, cv: { ...cv }, application: rec.application, approval };
 }
 
 /** Headers the web app's same-origin proxy sends for `method`. */
