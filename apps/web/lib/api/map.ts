@@ -45,6 +45,35 @@ export interface ShellSources {
   chromeConnected: boolean;
 }
 
+/**
+ * The sidebar while the orchestrator is unreachable: the five Phase 1 bots as in the spec (§5.2),
+ * shown offline, and nothing else. Never sample data in live mode.
+ */
+export function offlineShellData(): ShellData {
+  const bot = (name: string, displayName: string, engine: Engine, trustLevel: 0 | 1 | 2, role: string): BotSummary => ({
+    name,
+    displayName,
+    engine,
+    trustLevel,
+    role,
+    status: "offline",
+  });
+  return {
+    bots: [
+      bot("lead", "Lead", "claude", 1, "Receives every request; only divides work."),
+      bot("research", "Research", "codex", 2, "Finds jobs, scores fit, profiles companies (read-only browser)."),
+      bot("cv", "CV", "claude", 2, "Tailors CV in Figma from master facts; never invents."),
+      bot("qa", "QA", "codex", 2, "Scores CV vs JD + company; hard-fails invented facts."),
+      bot("apply", "Apply", "claude", 1, "Fills & submits forms in your Chrome after your approval."),
+    ],
+    rooms: [],
+    usage: (["claude", "codex"] as const).map((engine) => ({ engine, label: ENGINE_LABELS[engine], utilization: 0, pausedUntil: null })),
+    reviewCount: 0,
+    activeRunId: null,
+    chromeConnected: true,
+  };
+}
+
 /** GET /bots, /rooms, /engines, /review and /runs → the sidebar's ShellData. */
 export function toShellData(src: ShellSources): ShellData {
   return {

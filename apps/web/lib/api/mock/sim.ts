@@ -14,7 +14,6 @@ import {
   type Job,
   type MessageCard,
   type PauseReason,
-  type PendingQuestion,
   type QaReviewRecord,
   type ReviewCard,
   type Room,
@@ -24,7 +23,7 @@ import {
 } from "@bs-job-agents/shared";
 import type { ApproveInput, ApproveResult } from "../contract";
 import type { MockBackend, SimulationKind } from "./backend";
-import { LEAD_ROOM_ID, cvVersion, directRoomId, pdfFileId, qaRecord, selfCheckFor } from "./seed";
+import { LEAD_ROOM_ID, cvVersion, pdfFileId, qaRecord, selfCheckFor } from "./seed";
 import type { LaneInfo, MockPause, RunState } from "./state";
 
 type Core = MockBackend;

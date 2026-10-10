@@ -87,7 +87,8 @@ export function Sidebar({ data, onNavigate, className }: SidebarProps) {
                 </span>
                 <span className="flex items-center gap-1.5">
                   {bot.status === "working" ? <span className="text-[10px] text-accent">working</span> : null}
-                  <TrustBadge level={bot.trustLevel} />
+                  {/* Prototype + spec §11: the trust badge marks Apply, the bot that acts outward (PM S9). */}
+                  {bot.name === "apply" ? <TrustBadge level={bot.trustLevel} /> : null}
                 </span>
               </Link>
               <Link

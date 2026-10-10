@@ -1,0 +1,63 @@
+import { describe, expect, it, vi } from "vitest";
+import { BROWSER_API_BASE, apiModeSetting, mockSpeed, orchestratorUrl, probeOrchestrator, resolveApiMode } from "./config";
+
+describe("orchestratorUrl (server side)", () => {
+  it("defaults to the spec's 127.0.0.1:4100", () => {
+    expect(orchestratorUrl({})).toBe("http://127.0.0.1:4100");
+  });
+  it("follows ORCH_PORT, and ORCH_URL wins", () => {
+    expect(orchestratorUrl({ ORCH_PORT: "5000" })).toBe("http://127.0.0.1:5000");
+    expect(orchestratorUrl({ ORCH_PORT: "5000", ORCH_URL: "http://localhost:4200/" })).toBe("http://localhost:4200");
+  });
+  it("ignores a broken ORCH_PORT", () => {
+    expect(orchestratorUrl({ ORCH_PORT: "abc" })).toBe("http://127.0.0.1:4100");
+  });
+  it("browser calls go through the same-origin proxy", () => {
+    expect(BROWSER_API_BASE).toBe("/api/orch");
+  });
+});
+
+describe("API mode", () => {
+  it("reads BSJA_API_MODE (live | mock | auto, default auto)", () => {
+    expect(apiModeSetting({})).toBe("auto");
+    expect(apiModeSetting({ BSJA_API_MODE: "mock" })).toBe("mock");
+    expect(apiModeSetting({ BSJA_API_MODE: "LIVE" })).toBe("live");
+    expect(apiModeSetting({ BSJA_API_MODE: "nonsense" })).toBe("auto");
+  });
+
+  it("auto: production is always live (never sample data)", async () => {
+    const probe = vi.fn(async () => false);
+    expect(await resolveApiMode({ NODE_ENV: "production" }, probe)).toBe("live");
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+  it("auto in development: live when the orchestrator answers, mock otherwise", async () => {
+    expect(await resolveApiMode({ NODE_ENV: "development" }, async () => true)).toBe("live");
+    expect(await resolveApiMode({ NODE_ENV: "development" }, async () => false)).toBe("mock");
+  });
+
+  it("an explicit mode wins over the probe", async () => {
+    expect(await resolveApiMode({ NODE_ENV: "development", BSJA_API_MODE: "live" }, async () => false)).toBe("live");
+    expect(await resolveApiMode({ NODE_ENV: "production", BSJA_API_MODE: "mock" }, async () => true)).toBe("mock");
+  });
+
+  it("the mock's speed comes from BSJA_MOCK_SPEED (default 1)", () => {
+    expect(mockSpeed({})).toBe(1);
+    expect(mockSpeed({ BSJA_MOCK_SPEED: "4" })).toBe(4);
+    expect(mockSpeed({ BSJA_MOCK_SPEED: "-1" })).toBe(1);
+  });
+});
+
+describe("probeOrchestrator", () => {
+  it("any HTTP answer counts as running (a degraded /health is still the orchestrator)", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ ok: false }), { status: 503 })) as unknown as typeof fetch;
+    expect(await probeOrchestrator("http://127.0.0.1:4100", fetchImpl)).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledWith("http://127.0.0.1:4100/health", expect.objectContaining({ cache: "no-store" }));
+  });
+  it("a refused connection is not running", async () => {
+    const fetchImpl = (async () => {
+      throw new TypeError("fetch failed");
+    }) as typeof fetch;
+    expect(await probeOrchestrator("http://127.0.0.1:4100", fetchImpl)).toBe(false);
+  });
+});
