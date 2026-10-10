@@ -110,9 +110,14 @@ export function resolveSelfCheckItems(
 /** The only tools Lead may have (§3 rule 5): orchestrator MCP tools. */
 export const LEAD_TOOL_PREFIX = "mcp:orchestrator:";
 
+/** The MCP server name of the local Figma bridge (figma-console-mcp) in bot.json `mcpServers`. */
+export const FIGMA_MCP_SERVER_NAME = "figma";
+
 /**
  * Phase 1 safety rules for a bot definition (PM S6). Empty = safe.
  * - §4.4: a browser bot that writes runs on Claude, where the site allowlist is a hook.
+ * - §6.2 (QA Phase 2): a bot with the Figma bridge runs on Claude, where a PreToolUse hook rejects
+ *   figma_execute code that reaches outside the Drafts page (Codex has no hooks).
  * - UC-19: Apply stays at L1 (every submit needs Ba's approval token).
  * - §3 rule 5: Lead has only orchestrator MCP tools: no browser, Figma, shell or file tools.
  */
@@ -122,6 +127,9 @@ export function checkBotSafety(
   const issues: string[] = [];
   if (def.browser?.mode === "write" && def.engine !== "claude") {
     issues.push(`${def.name}: a browser bot that writes must run on Claude, where the site allowlist is enforced by a hook (§4.4)`);
+  }
+  if (def.mcpServers.includes(FIGMA_MCP_SERVER_NAME) && def.engine !== "claude") {
+    issues.push(`${def.name}: a bot with the Figma bridge must run on Claude, where the Drafts-only guard is a hook (§6.2)`);
   }
   if (def.name === "apply" && def.trustLevel !== 1) {
     issues.push("apply: Apply stays at trust level L1 in Phase 1, so every submit needs Ba's approval (UC-19)");

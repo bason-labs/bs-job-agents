@@ -155,6 +155,13 @@ describe("S6: Phase 1 bot safety rules", () => {
     expect(SafeBotDefinitionSchema.safeParse({ ...scout, engine: "claude" }).success).toBe(true);
   });
 
+  it("a bot with the Figma bridge must run on Claude, where the Drafts-only guard is a hook (§6.2, QA Phase 2)", () => {
+    const cv = botDefinitionFixtures.find((d) => d.name === "cv")!;
+    expect(checkBotSafety(BotDefinitionSchema.parse(cv))).toEqual([]);
+    expect(checkBotSafety(BotDefinitionSchema.parse({ ...cv, engine: "codex" })).join()).toMatch(/Figma bridge must run on Claude/);
+    expect(SafeBotDefinitionSchema.safeParse({ ...cv, engine: "codex" }).success).toBe(false);
+  });
+
   it("Apply stays at trust level L1", () => {
     const apply = botDefinitionFixtures.find((d) => d.name === "apply")!;
     for (const trustLevel of [0, 2] as const) {
