@@ -2,10 +2,11 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { getBotOutputJsonSchema, resolveOutputSchemaName, type BotDefinition } from "@bs-job-agents/shared";
+import type { ClaudeHookSettings } from "../bridges/hooks/settings.js";
 import { loadBotDefinition } from "./bots.js";
-import { buildClaudeInvocation, buildClaudeRepairInvocation, claudeSettings } from "./claude/argv.js";
+import { buildClaudeInvocation, buildClaudeRepairInvocation, claudeSettings, hookMatcherCovers } from "./claude/argv.js";
 import { buildCodexInvocation, buildCodexRepairInvocation } from "./codex/argv.js";
-import { RunnerConfigError } from "./errors.js";
+import { RunnerConfigError, TaskSetupError } from "./errors.js";
 import { defaultBotsDir, resolveRunnerConfig, type RunnerConfig } from "./config.js";
 import { planTools } from "./tools.js";
 
@@ -19,15 +20,31 @@ const CONFIG: RunnerConfig = resolveRunnerConfig(
     claudeBin: "/Users/ba/.local/bin/claude",
     codexBin: "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
     mcpServers: { orchestrator: { url: "http://127.0.0.1:4100/mcp" } },
-    hooks: {
-      siteGuard: { command: "node", args: ["/repo/apps/orchestrator/dist/bridges/site-guard-hook.js"] },
-      figmaGuard: { command: "node", args: ["/repo/apps/orchestrator/dist/bridges/figma-guard-hook.js"] },
-    },
   },
   { HOME: "/Users/ba" },
 );
 
-function claude(name: string, kind: string, extra: { readDirs?: string[]; allowedSites?: string[] } = {}) {
+/** What the engine builds per task with W2c's builders (coordinator decision): one matcher per guarded tool. */
+const SITE_HOOKS: ClaudeHookSettings = {
+  hooks: {
+    PreToolUse: ["navigate", "javascript_tool", "browser_batch"].map((t) => ({
+      matcher: `mcp__claude-in-chrome__${t}`,
+      hooks: [{ type: "command" as const, command: "'/n/node' '/repo/dist/bridges/chrome/site-guard/hook.js' '--allow' 'itviec.com' || exit 2", timeout: 15 }],
+    })),
+  },
+};
+const FIGMA_HOOKS: ClaudeHookSettings = {
+  hooks: {
+    PreToolUse: [
+      {
+        matcher: "mcp__figma__.*",
+        hooks: [{ type: "command", command: "'/n/node' '/repo/dist/bridges/figma/guard-hook.js' '--config' '/repo/data/tasks/9/figma-guard.json' || exit 2", timeout: 15 }],
+      },
+    ],
+  },
+};
+
+function claude(name: string, kind: string, extra: { readDirs?: string[]; hookSettings?: ClaudeHookSettings } = {}) {
   const def = bot(name);
   return buildClaudeInvocation({
     bot: def,
@@ -37,7 +54,7 @@ function claude(name: string, kind: string, extra: { readDirs?: string[]; allowe
     sessionId: SID,
     workDir: W,
     readDirs: extra.readDirs ?? [],
-    allowedSites: extra.allowedSites ?? [],
+    hookSettings: extra.hookSettings,
     config: CONFIG,
   });
 }
@@ -86,7 +103,7 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
   });
 
   it("cv", () => {
-    const inv = claude("cv", "tailor", { readDirs: ["/repo/data/master"] });
+    const inv = claude("cv", "tailor", { readDirs: ["/repo/data/master"], hookSettings: FIGMA_HOOKS });
     expect(inv.display).toEqual([
       "-p", "<prompt: 6 chars>",
       "--output-format", "stream-json", "--verbose",
@@ -101,7 +118,7 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
       "--mcp-config", `${W}/mcp.json`,
       "--strict-mcp-config",
       "--settings",
-      '{"autoMemoryEnabled":false,"hooks":{"PreToolUse":[{"matcher":"mcp__figma__figma_execute","hooks":[{"type":"command","command":"node /repo/apps/orchestrator/dist/bridges/figma-guard-hook.js"}]}]}}',
+      JSON.stringify({ autoMemoryEnabled: false, ...FIGMA_HOOKS }),
       "--json-schema", "<schema: CvOutput>",
       "--session-id", SID,
       "--permission-prompts", "none",
@@ -113,7 +130,7 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
   });
 
   it("apply", () => {
-    const inv = claude("apply", "submit", { readDirs: ["/repo/data/applications/7"], allowedSites: ["itviec.com"] });
+    const inv = claude("apply", "submit", { readDirs: ["/repo/data/applications/7"], hookSettings: SITE_HOOKS });
     const hidden = [
       "browser_batch", "gif_creator", "javascript_tool", "list_connected_browsers", "read_console_messages", "read_network_requests",
       "resize_window", "select_browser", "shortcuts_execute", "shortcuts_list", "switch_browser", "upload_image",
@@ -131,7 +148,7 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
       ...hidden,
       "--strict-mcp-config",
       "--settings",
-      '{"autoMemoryEnabled":false,"hooks":{"PreToolUse":[{"matcher":"mcp__claude-in-chrome__navigate|mcp__claude-in-chrome__javascript_tool","hooks":[{"type":"command","command":"node /repo/apps/orchestrator/dist/bridges/site-guard-hook.js --sites itviec.com"}]}]}}',
+      JSON.stringify({ autoMemoryEnabled: false, ...SITE_HOOKS }),
       "--json-schema", "<schema: ApplyOutput>",
       "--session-id", SID,
       "--permission-prompts", "none",
@@ -142,7 +159,7 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
   });
 
   it("passes the prompt and the strict schema verbatim", () => {
-    const inv = claude("cv", "tailor");
+    const inv = claude("cv", "tailor", { hookSettings: FIGMA_HOOKS });
     expect(inv.args[1]).toBe("PROMPT");
     expect(JSON.parse(inv.args[inv.args.indexOf("--json-schema") + 1]!)).toEqual(getBotOutputJsonSchema("CvOutput"));
   });
@@ -151,14 +168,14 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
     const def = { ...bot("qa"), engine: "claude" as const, model: "haiku" };
     const inv = buildClaudeInvocation({
       bot: def, plan: planTools(def), prompt: "P", schema: getBotOutputJsonSchema("QaOutput"),
-      sessionId: SID, workDir: W, readDirs: [], allowedSites: [], config: CONFIG,
+      sessionId: SID, workDir: W, readDirs: [], config: CONFIG,
     });
     expect(inv.args.slice(inv.args.indexOf("--model"), inv.args.indexOf("--model") + 2)).toEqual(["--model", "haiku"]);
   });
 
   it("never uses the flags the spike ruled out", () => {
     for (const [name, kind] of [["lead", "chat"], ["cv", "tailor"], ["apply", "submit"]] as const) {
-      const args = claude(name, kind, { allowedSites: ["itviec.com"] }).args;
+      const args = claude(name, kind, { hookSettings: name === "cv" ? FIGMA_HOOKS : SITE_HOOKS }).args;
       for (const banned of ["--bare", "--safe-mode", "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions"]) {
         expect(args, `${name} ${banned}`).not.toContain(banned);
       }
@@ -166,19 +183,64 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
     }
   });
 
-  it("refuses a browser bot without the site guard, a Figma bot without the Figma guard, or an unknown MCP server", () => {
-    const noHooks = resolveRunnerConfig({ hooks: {} }, { HOME: "/Users/ba" });
-    const apply = bot("apply");
-    expect(() => claudeSettings({ plan: planTools(apply), allowedSites: ["itviec.com"], config: noHooks })).toThrow(/site guard/);
+  it("merges the engine's hook settings into the base settings and keeps nothing else from them", () => {
+    const sneaky = { ...SITE_HOOKS, permissions: { allow: ["Bash"] }, env: { X: "1" } } as unknown as ClaudeHookSettings;
+    expect(claudeSettings({ plan: planTools(bot("apply")), hookSettings: sneaky })).toEqual({
+      autoMemoryEnabled: false,
+      hooks: { PreToolUse: SITE_HOOKS.hooks.PreToolUse },
+    });
+    // Both guards at once (a Claude bot with Chrome and Figma) keep every matcher, in order.
+    const both: ClaudeHookSettings = { hooks: { PreToolUse: [...SITE_HOOKS.hooks.PreToolUse, ...FIGMA_HOOKS.hooks.PreToolUse] } };
     const cv = bot("cv");
-    expect(() => claudeSettings({ plan: planTools(cv), allowedSites: [], config: noHooks })).toThrow(/Figma guard/);
+    const browsingCv = { ...cv, allowedTools: [...cv.allowedTools, "chrome:read"], browser: { mode: "read" as const, allowedSites: ["figma.com"], sitesFromApproval: false } };
+    const merged = claudeSettings({ plan: planTools(browsingCv), hookSettings: both }) as unknown as ClaudeHookSettings;
+    expect(merged.hooks.PreToolUse.map((m) => m.matcher)).toEqual([...SITE_HOOKS.hooks.PreToolUse.map((m) => m.matcher), "mcp__figma__.*"]);
+    // Bots without Chrome or Figma run with the base settings only.
+    expect(claudeSettings({ plan: planTools(bot("lead")), hookSettings: undefined })).toEqual({ autoMemoryEnabled: false });
+  });
+
+  it("never builds a site guard of its own: the config has no hooks and no --sites flag appears", () => {
+    expect(CONFIG).not.toHaveProperty("hooks");
+    const args = claude("apply", "submit", { readDirs: ["/repo/data/applications/7"], hookSettings: SITE_HOOKS }).args;
+    expect(args.join(" ")).not.toContain("--sites");
+  });
+
+  it("refuses a browser task without the site guard, a Figma task without the Figma guard, or an unknown MCP server", () => {
+    const apply = planTools(bot("apply"));
+    const cv = planTools(bot("cv"));
+    expect(() => claudeSettings({ plan: apply, hookSettings: undefined })).toThrow(TaskSetupError);
+    expect(() => claudeSettings({ plan: apply, hookSettings: undefined })).toThrow(/site guard/);
+    expect(() => claudeSettings({ plan: apply, hookSettings: FIGMA_HOOKS })).toThrow(/site guard/);
+    // A guard on javascript_tool alone leaves navigate unguarded.
+    const jsOnly: ClaudeHookSettings = { hooks: { PreToolUse: [SITE_HOOKS.hooks.PreToolUse[1]!] } };
+    expect(() => claudeSettings({ plan: apply, hookSettings: jsOnly })).toThrow(/site guard/);
+    // A matcher with no command guards nothing.
+    const empty: ClaudeHookSettings = { hooks: { PreToolUse: [{ matcher: "mcp__claude-in-chrome__navigate", hooks: [] }] } };
+    expect(() => claudeSettings({ plan: apply, hookSettings: empty })).toThrow(/site guard/);
+    expect(() => claudeSettings({ plan: cv, hookSettings: undefined })).toThrow(/Figma guard/);
+    expect(() => claudeSettings({ plan: cv, hookSettings: SITE_HOOKS })).toThrow(/Figma guard/);
     const lead = bot("lead");
     expect(() =>
       buildClaudeInvocation({
         bot: lead, plan: planTools(lead), prompt: "P", schema: getBotOutputJsonSchema("LeadOutput"),
-        sessionId: SID, workDir: W, readDirs: [], allowedSites: [], config: noHooks,
+        sessionId: SID, workDir: W, readDirs: [], config: resolveRunnerConfig({}, { HOME: "/Users/ba" }),
       }),
     ).toThrow(RunnerConfigError);
+  });
+
+  it("matches tool names the way Claude Code does: exact names, |-lists, regular expressions, * and empty", () => {
+    const nav = chrome("navigate");
+    expect(hookMatcherCovers(nav, nav)).toBe(true);
+    expect(hookMatcherCovers("mcp__claude-in-chrome__.*", nav)).toBe(true);
+    expect(hookMatcherCovers(`${nav}|${chrome("javascript_tool")}`, nav)).toBe(true);
+    expect(hookMatcherCovers("*", nav)).toBe(true);
+    expect(hookMatcherCovers("", nav)).toBe(true);
+    expect(hookMatcherCovers("navigate", nav)).toBe(false);
+    expect(hookMatcherCovers("Read|Write", "Read")).toBe(true);
+    expect(hookMatcherCovers("Read|Write", "ReadX")).toBe(false);
+    expect(hookMatcherCovers("mcp__figma__.*", "mcp__figma__figma_execute")).toBe(true);
+    expect(hookMatcherCovers("mcp__other__.*", "mcp__figma__figma_execute")).toBe(false);
+    expect(hookMatcherCovers("(", nav)).toBe(false);
   });
 
   it("repair: same session via --resume, no persistence, every tool off", () => {

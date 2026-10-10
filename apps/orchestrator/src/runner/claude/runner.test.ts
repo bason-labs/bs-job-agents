@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { splitApplySubmitInput } from "@bs-job-agents/shared";
-import { applyInputFixture } from "@bs-job-agents/shared/fixtures";
+import { applyInputFixture, cvTailorInputFixture } from "@bs-job-agents/shared/fixtures";
+import { buildSiteGuardSettings } from "../../bridges/chrome/site-guard/settings.js";
 import { claudeLines, STDERR } from "../__fixtures__/index.js";
 import { argValue, fakeSpawn, type FakeScript } from "../__fixtures__/fake-cli.js";
 import { CONSULT_INPUT, eventLog, makeKit, type Kit } from "../__fixtures__/runner-kit.js";
@@ -317,15 +318,44 @@ describe("ClaudeRunner: refuses before spawning (fail closed)", () => {
     expect(kit.workDirsLeft()).toEqual([]);
   });
 
-  it("a browser bot without the site guard hook configured", async () => {
+  it("a browser task without the engine's site guard hook (coordinator decision: RunnerTask.hookSettings)", async () => {
     const { def, cwd } = kit.realBot("apply");
-    const { r, calls } = runner([play(claudeLines("structuredOk"))], { hooks: {} });
+    const { r, calls } = runner([play(claudeLines("structuredOk"))]);
     const result = await r.run(
       kit.task(def, cwd, { kind: "submit", input: splitApplySubmitInput(applyInputFixture).prompt, allowedSites: ["itviec.com"], readDirs: [kit.dir("app7")] }),
       () => {},
     );
     expect(result).toMatchObject({ status: "failed", error: expect.stringMatching(/site guard/) });
     expect(calls).toHaveLength(0);
+    expect(kit.workDirsLeft()).toEqual([]);
+  });
+
+  it("a Figma task without the engine's Figma guard hook", async () => {
+    const { def, cwd } = kit.realBot("cv");
+    const { r, calls } = runner([play(claudeLines("structuredOk"))]);
+    const siteOnly = buildSiteGuardSettings({ allowedSites: ["itviec.com"] });
+    const result = await r.run(kit.task(def, cwd, { kind: "tailor", input: cvTailorInputFixture, readDirs: [kit.dir("task9")], hookSettings: siteOnly }), () => {});
+    expect(result).toMatchObject({ status: "failed", error: expect.stringMatching(/Figma guard/) });
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("guard hooks come from the engine (coordinator decision)", () => {
+  it("the task's hook settings, built with W2c's builders, are merged into --settings as they are", async () => {
+    const { def, cwd } = kit.realBot("apply");
+    const hookSettings = buildSiteGuardSettings({ allowedSites: ["itviec.com", "novapay.breezy.hr"], logFile: join(kit.root, "g.jsonl") });
+    const { r, calls } = runner([play(claudeLines("structuredOk"))]);
+    await r.run(
+      kit.task(def, cwd, { kind: "submit", input: splitApplySubmitInput(applyInputFixture).prompt, allowedSites: ["itviec.com", "novapay.breezy.hr"], readDirs: [kit.dir("app7")], hookSettings }),
+      () => {},
+    );
+    // The fixture answers ConsultOutput, so a repair follows; only the first call has tools and hooks.
+    expect(calls).toHaveLength(2);
+    const settings = JSON.parse(argValue(calls[0]!.args, "--settings")!) as Record<string, unknown>;
+    expect(settings).toEqual({ autoMemoryEnabled: false, hooks: hookSettings.hooks });
+    expect(argValue(calls[0]!.args, "--settings")).not.toContain("--sites");
+    expect(argValue(calls[1]!.args, "--settings")).toBe('{"autoMemoryEnabled":false}');
+    expect(argValue(calls[1]!.args, "--tools")).toBe("");
   });
 });
 
@@ -334,8 +364,9 @@ describe("S5: the approval token never reaches the CLI", () => {
     const { def, cwd } = kit.realBot("apply");
     const appDir = kit.dir("applications/7");
     const { r, calls } = runner([play(claudeLines("structuredOk"))]);
+    const hookSettings = buildSiteGuardSettings({ allowedSites: ["itviec.com"] });
     const result = await r.run(
-      kit.task(def, cwd, { kind: "submit", input: splitApplySubmitInput(applyInputFixture).prompt, allowedSites: ["itviec.com"], readDirs: [appDir] }),
+      kit.task(def, cwd, { kind: "submit", input: splitApplySubmitInput(applyInputFixture).prompt, allowedSites: ["itviec.com"], readDirs: [appDir], hookSettings }),
       () => {},
     );
     // The fixture answers ConsultOutput, so the Apply output is invalid; what matters is what was sent.
@@ -347,6 +378,6 @@ describe("S5: the approval token never reaches the CLI", () => {
     const args = calls[0]!.args;
     expect(args).toContain("--chrome");
     expect(argValue(args, "--add-dir")).toBe(appDir);
-    expect(argValue(args, "--settings")).toContain("--sites itviec.com");
+    expect(argValue(args, "--settings")).toContain("'--allow' 'itviec.com'");
   });
 });

@@ -1,6 +1,7 @@
 // Runner contract (spec §5.5). Shared by the engine (W2a: calls runners, owns FakeRunner)
 // and the runner (W2b: ClaudeRunner, CodexRunner). Changing this file needs the coordinator.
 import type { BotDefinition, Engine, EngineUsage } from "@bs-job-agents/shared";
+import type { ClaudeHookSettings } from "../bridges/hooks/settings.js";
 
 /** Everything one attempt of one task needs. Built by the engine; the runner never reads the DB. */
 export interface RunnerTask {
@@ -26,10 +27,13 @@ export interface RunnerTask {
   /** Sites the browser may navigate to for this task (bot allowlist, or the approval's domains for Apply). */
   allowedSites?: string[];
   /**
-   * Additive (W2a, coordinator decision): Claude --settings hook config built by the engine from
-   * the bridges' builders; merged by the runner into its base settings.
+   * Additive (W2a, coordinator decision): the Claude `--settings` PreToolUse hooks for this task,
+   * built by the engine with the bridges' builders (site guard: the task's sites; Figma guard: the
+   * task's protected pages). The runner merges them into its base settings and refuses to spawn a
+   * Claude task with Chrome tools whose hooks do not guard `navigate`, or with the Figma bridge
+   * whose hooks do not guard `figma_execute`. Codex has no hooks and ignores them.
    */
-  hookSettings?: Record<string, unknown>;
+  hookSettings?: ClaudeHookSettings;
   timeoutMs: number;
   signal?: AbortSignal;
 }

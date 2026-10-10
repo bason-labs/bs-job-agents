@@ -47,7 +47,6 @@ export function makeKit(): Kit {
           codexUserConfigPath: join(root, "codex-config.toml"),
           killGraceMs: 20,
           mcpServers: { orchestrator: { url: "http://127.0.0.1:4100/mcp" } },
-          hooks: { siteGuard: { command: "node", args: ["/fake/site-guard.js"] }, figmaGuard: { command: "node", args: ["/fake/figma-guard.js"] } },
           ...over,
         },
         { HOME: root, PATH: "/usr/bin" },

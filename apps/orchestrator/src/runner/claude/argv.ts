@@ -1,47 +1,68 @@
 // `claude -p` command lines (spike S1/S2, spec §5.5 step 2), verified live with Claude Code 2.1.296:
 // - `--setting-sources ""` isolates the bot from Ba's plugins, hooks and CLAUDE.md; never --bare / --safe-mode.
 // - `--settings` turns auto memory off (otherwise the CLI keeps a second, hidden memory per bot folder,
-//   against rule 2) and adds the PreToolUse guards.
+//   against rule 2) and adds the PreToolUse guards the engine built for this task (coordinator
+//   decision: RunnerTask.hookSettings, from W2c's site guard and Figma guard builders).
 // - `--strict-mcp-config` drops Ba's own MCP servers and claude.ai connectors; --chrome still works.
 // - `--session-id` + session persistence on the first call, so the one repair prompt can `--resume`
 //   the same session; the repair runs with every tool off and `--no-session-persistence`.
 import { join } from "node:path";
 import type { BotDefinition, JsonSchema } from "@bs-job-agents/shared";
-import { FIGMA_MCP_SERVER, hookCommandLine, type RunnerConfig } from "../config.js";
-import { RunnerConfigError } from "../errors.js";
+import type { ClaudeHookMatcher, ClaudeHookSettings } from "../../bridges/hooks/settings.js";
+import { FIGMA_MCP_SERVER, type RunnerConfig } from "../config.js";
+import { RunnerConfigError, TaskSetupError } from "../errors.js";
 import { displayArgs, promptLabel, schemaLabel, type Invocation } from "../invocation.js";
 import { chromeToolName, claudeToolFlags, mcpToolName, type ToolPlan } from "../tools.js";
 
-/** Navigation tools the site guard checks (§4.4). tabs_create_mcp is not matched: it opens a blank tab. */
-export const SITE_GUARD_MATCHER = `${chromeToolName("navigate")}|${chromeToolName("javascript_tool")}`;
-/** figma_execute runs arbitrary plugin code; the guard rejects code touching pages other than Drafts (§6.2). */
-export const FIGMA_GUARD_MATCHER = mcpToolName(FIGMA_MCP_SERVER, "figma_execute");
+/** The navigation tool a Claude browser task's site guard must cover (§4.4, §10.2 rule 7). */
+export const SITE_GUARDED_TOOL = chromeToolName("navigate");
+/** figma_execute runs arbitrary plugin code; a Figma task's Drafts-only guard must cover it (§6.2). */
+export const FIGMA_GUARDED_TOOL = mcpToolName(FIGMA_MCP_SERVER, "figma_execute");
 
 const BASE_SETTINGS = { autoMemoryEnabled: false };
 
-export interface ClaudeSettingsInput {
-  plan: ToolPlan;
-  allowedSites: readonly string[];
-  config: Pick<RunnerConfig, "hooks">;
+/**
+ * Whether a PreToolUse `matcher` applies to `tool`, by Claude Code's rules: "" or "*" match every
+ * tool; a plain name (letters, digits, `_`, `|`) matches exactly, `|` separating alternatives;
+ * anything else is a regular expression. An invalid expression matches nothing.
+ */
+export function hookMatcherCovers(matcher: string, tool: string): boolean {
+  if (matcher === "" || matcher === "*") return true;
+  if (/^[A-Za-z0-9_|]+$/.test(matcher)) return matcher.split("|").some((name) => name.trim() === tool);
+  try {
+    return new RegExp(matcher).test(tool);
+  } catch {
+    return false;
+  }
 }
 
-export function claudeSettings({ plan, allowedSites, config }: ClaudeSettingsInput): Record<string, unknown> {
-  const preToolUse: unknown[] = [];
-  if (plan.chrome) {
-    const guard = config.hooks.siteGuard;
-    if (!guard) throw new RunnerConfigError("the site guard hook is not configured; a Claude browser bot never runs without it (§4.4)");
-    if (allowedSites.length === 0) throw new RunnerConfigError("a browser task needs at least one allowed site");
-    preToolUse.push({
-      matcher: SITE_GUARD_MATCHER,
-      hooks: [{ type: "command", command: hookCommandLine(guard, ["--sites", allowedSites.join(",")]) }],
-    });
+/** Some matcher with a non-empty command applies to `tool`. */
+function guards(matchers: readonly ClaudeHookMatcher[], tool: string): boolean {
+  return matchers.some((m) => hookMatcherCovers(m.matcher, tool) && m.hooks.some((h) => h.type === "command" && h.command.trim() !== ""));
+}
+
+export interface ClaudeSettingsInput {
+  plan: ToolPlan;
+  /** RunnerTask.hookSettings: the task's guards, built by the engine. */
+  hookSettings: ClaudeHookSettings | undefined;
+}
+
+/**
+ * Base settings plus the engine's PreToolUse hooks (only `hooks` is taken from them). Fails closed:
+ * a task with Chrome tools needs a guard on navigate, a task with the Figma bridge one on
+ * figma_execute; the runner never builds a guard of its own.
+ */
+export function claudeSettings({ plan, hookSettings }: ClaudeSettingsInput): Record<string, unknown> {
+  const preToolUse = hookSettings?.hooks?.PreToolUse ?? [];
+  if (plan.chrome && !guards(preToolUse, SITE_GUARDED_TOOL)) {
+    throw new TaskSetupError(
+      `a Claude browser task never runs without the site guard hook (§4.4): its hook settings must guard ${SITE_GUARDED_TOOL}`,
+    );
   }
-  if (plan.mcp.some((m) => m.server === FIGMA_MCP_SERVER)) {
-    const guard = config.hooks.figmaGuard;
-    if (!guard) throw new RunnerConfigError("the Figma guard hook is not configured; a Figma bot never runs without it (§6.2)");
-    preToolUse.push({ matcher: FIGMA_GUARD_MATCHER, hooks: [{ type: "command", command: hookCommandLine(guard) }] });
+  if (plan.mcp.some((m) => m.server === FIGMA_MCP_SERVER) && !guards(preToolUse, FIGMA_GUARDED_TOOL)) {
+    throw new TaskSetupError(`a Figma task never runs without the Figma guard hook (§6.2): its hook settings must guard ${FIGMA_GUARDED_TOOL}`);
   }
-  return preToolUse.length > 0 ? { ...BASE_SETTINGS, hooks: { PreToolUse: preToolUse } } : { ...BASE_SETTINGS };
+  return preToolUse.length > 0 ? { ...BASE_SETTINGS, hooks: { PreToolUse: [...preToolUse] } } : { ...BASE_SETTINGS };
 }
 
 /** The per-task mcp.json: only the bot's own servers, from the runner config. */
@@ -67,7 +88,8 @@ export interface ClaudeInvocationInput {
   sessionId: string;
   workDir: string;
   readDirs: readonly string[];
-  allowedSites: readonly string[];
+  /** RunnerTask.hookSettings (the site guard carries the task's allowed sites). */
+  hookSettings?: ClaudeHookSettings | undefined;
   config: RunnerConfig;
 }
 
@@ -78,7 +100,7 @@ export function buildClaudeInvocation(i: ClaudeInvocationInput): Invocation {
   const flags = claudeToolFlags(i.plan, { readDirs: i.readDirs, mcpKnownTools: knownTools });
   const mcp = claudeMcpConfig(i.plan, i.config);
   const mcpPath = join(i.workDir, "mcp.json");
-  const settings = claudeSettings({ plan: i.plan, allowedSites: i.allowedSites, config: i.config });
+  const settings = claudeSettings({ plan: i.plan, hookSettings: i.hookSettings });
   const args = [
     "-p",
     i.prompt,

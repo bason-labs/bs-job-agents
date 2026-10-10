@@ -1,5 +1,7 @@
-// Runner configuration: where the CLIs are, the MCP servers bots can name, the guard hooks.
+// Runner configuration: where the CLIs are and the MCP servers bots can name.
 // Nothing machine-specific is hardcoded in bot.json; it all comes from here (env-overridable).
+// Guard hooks are not runner config: the engine builds them per task with the bridges' builders
+// and passes RunnerTask.hookSettings (coordinator decision).
 import { existsSync, readFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -22,12 +24,6 @@ export interface McpHttpServerConfig {
 
 export type McpServerConfig = McpStdioServerConfig | McpHttpServerConfig;
 
-/** A PreToolUse hook command (built by W2c in src/bridges); the runner only references it. */
-export interface HookCommandConfig {
-  command: string;
-  args?: string[];
-}
-
 export interface RunnerConfig {
   /** Claude Code CLI (spec §1.4: ~/.local/bin/claude). Env: CLAUDE_BIN. */
   claudeBin: string;
@@ -35,12 +31,6 @@ export interface RunnerConfig {
   codexBin: string;
   /** MCP servers by the name bot.json uses in mcpServers. */
   mcpServers: Record<string, McpServerConfig>;
-  hooks: {
-    /** Site allowlist for Claude browser bots (§4.4); called with `--sites a,b`. Required for Claude browser bots. */
-    siteGuard?: HookCommandConfig;
-    /** Drafts-only guard for figma_execute (§6.2). Required for bots with the figma server on Claude. */
-    figmaGuard?: HookCommandConfig;
-  };
   /** Claude's config dir; persisted bot sessions are deleted from <dir>/projects after each task. Env: CLAUDE_CONFIG_DIR. */
   claudeConfigDir: string;
   /** Codex user config, read only to list the plugins a browser bot must disable (§4.4). Env: CODEX_HOME. */
@@ -85,7 +75,6 @@ export function resolveRunnerConfig(over: Partial<RunnerConfig> = {}, env: NodeJ
     env,
     ...over,
     mcpServers: { ...DEFAULT_MCP_SERVERS, ...over.mcpServers },
-    hooks: { ...over.hooks },
   };
 }
 
@@ -100,15 +89,6 @@ export function listCodexPlugins(configToml: string): string[] {
 export function codexPluginsToDisable(config: Pick<RunnerConfig, "codexUserConfigPath" | "codexChromePlugin">): string[] {
   if (!existsSync(config.codexUserConfigPath)) return [];
   return listCodexPlugins(readFileSync(config.codexUserConfigPath, "utf8")).filter((id) => id !== config.codexChromePlugin);
-}
-
-/** POSIX shell quoting for hook command lines. */
-export function shellQuote(arg: string): string {
-  return /^[A-Za-z0-9_./:=,@+-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
-}
-
-export function hookCommandLine(hook: HookCommandConfig, extra: readonly string[] = []): string {
-  return [hook.command, ...(hook.args ?? []), ...extra].map(shellQuote).join(" ");
 }
 
 /** The repo's bots/ folder: walk up from this file to the folder that holds pnpm-workspace.yaml. */

@@ -2,15 +2,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_CODEX_BIN,
-  codexPluginsToDisable,
-  defaultBotsDir,
-  hookCommandLine,
-  listCodexPlugins,
-  resolveRunnerConfig,
-  shellQuote,
-} from "./config.js";
+import { DEFAULT_CODEX_BIN, codexPluginsToDisable, defaultBotsDir, listCodexPlugins, resolveRunnerConfig } from "./config.js";
 
 const CONFIG_TOML = `model = "gpt-6-sol"
 
@@ -42,12 +34,13 @@ describe("runner config", () => {
 
   it("env and explicit overrides win; MCP servers merge with the defaults", () => {
     const c = resolveRunnerConfig(
-      { mcpServers: { orchestrator: { url: "http://127.0.0.1:4100/mcp" } }, hooks: { siteGuard: { command: "node", args: ["/g.js"] } } },
+      { mcpServers: { orchestrator: { url: "http://127.0.0.1:4100/mcp" } } },
       { HOME: "/h", CLAUDE_BIN: "/opt/claude", CODEX_BIN: "/opt/codex", CLAUDE_CONFIG_DIR: "/cfg", CODEX_HOME: "/ch" },
     );
     expect([c.claudeBin, c.codexBin, c.claudeConfigDir, c.codexUserConfigPath]).toEqual(["/opt/claude", "/opt/codex", "/cfg", "/ch/config.toml"]);
     expect(Object.keys(c.mcpServers).sort()).toEqual(["figma", "orchestrator"]);
-    expect(c.hooks.siteGuard).toEqual({ command: "node", args: ["/g.js"] });
+    // Guard hooks are per task (RunnerTask.hookSettings, coordinator decision), never runner config.
+    expect(c).not.toHaveProperty("hooks");
   });
 
   it("lists Codex plugins and keeps only Chrome enabled for browser bots (§4.4)", () => {
@@ -67,15 +60,6 @@ describe("runner config", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
-
-  it("quotes hook command lines for the shell", () => {
-    expect(shellQuote("topcv.vn,itviec.com")).toBe("topcv.vn,itviec.com");
-    expect(shellQuote("/Users/ba/My Apps/guard.js")).toBe("'/Users/ba/My Apps/guard.js'");
-    expect(shellQuote("it's")).toBe("'it'\\''s'");
-    expect(hookCommandLine({ command: "node", args: ["/g dir/site-guard.js"] }, ["--sites", "topcv.vn"])).toBe(
-      "node '/g dir/site-guard.js' --sites topcv.vn",
-    );
   });
 
   it("finds the repo's bots folder", () => {

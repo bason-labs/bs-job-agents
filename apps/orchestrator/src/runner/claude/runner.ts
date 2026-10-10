@@ -26,7 +26,7 @@ export class ClaudeRunner extends CliRunner {
       sessionId: p.sessionId ?? this.uuid(),
       workDir: p.workDir,
       readDirs: p.readDirs,
-      allowedSites: p.allowedSites,
+      hookSettings: p.task.hookSettings,
       config: this.config,
     });
   }

@@ -419,7 +419,7 @@ export class TaskQueue {
         transcriptPath: core.paths.abs(core.paths.transcript(task.id, task.attempt)),
         ...(readDirs ? { readDirs } : {}),
         ...(allowedSites ? { allowedSites } : {}),
-        ...(hooks.length > 0 ? { hookSettings: mergeHookSettings(...hooks) as unknown as Record<string, unknown> } : {}),
+        ...(hooks.length > 0 ? { hookSettings: mergeHookSettings(...hooks) } : {}),
         timeoutMs: bot.def.timeoutSec * 1000,
         signal: controller.signal,
       },
