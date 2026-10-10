@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BotDefinitionSchema, type BotDefinitionInput } from "@bs-job-agents/shared";
-import { CLAUDE_CHROME_TOOLS, ToolConfigError, claudeToolFlags, codexToolConfig, planTools } from "./tools.js";
+import { CLAUDE_CHROME_TOOLS, ToolConfigError, claudeToolFlags, codexToolConfig, conversationPlan, planTools } from "./tools.js";
 
 const bot = (over: Partial<BotDefinitionInput>) =>
   BotDefinitionSchema.parse({
@@ -51,6 +51,19 @@ describe("planTools: the abstract tool vocabulary in bot.json", () => {
   ])("rejects %s", (_label, over, message) => {
     expect(() => planTools(bot(over as Partial<BotDefinitionInput>))).toThrow(ToolConfigError);
     expect(() => planTools(bot(over as Partial<BotDefinitionInput>))).toThrow(message);
+  });
+});
+
+describe("conversationPlan (UC-25 consult, UC-15 discussion)", () => {
+  it("keeps only reading: no browser, MCP (Figma, orchestrator) or web search", () => {
+    const plan = planTools(
+      bot({
+        allowedTools: ["read", "web_search", "skill:source-*", "chrome:write", "mcp:figma:figma_execute"],
+        browser: { mode: "write", allowedSites: ["itviec.com"] },
+        mcpServers: ["figma"],
+      }),
+    );
+    expect(conversationPlan(plan)).toEqual({ read: true, webSearch: false, skills: ["source-*"], chrome: null, mcp: [] });
   });
 });
 

@@ -116,6 +116,14 @@ export function planTools(def: Pick<BotDefinition, "name" | "allowedTools" | "br
   return plan;
 }
 
+/**
+ * Consult (UC-25) and discussion (UC-15) answers run with read-only tools: no browser, no MCP
+ * (no Figma edits, no orchestrator tools, so no tasks or workflows) and no web search.
+ */
+export function conversationPlan(plan: ToolPlan): ToolPlan {
+  return { read: plan.read, webSearch: false, skills: [...plan.skills], chrome: null, mcp: [] };
+}
+
 export interface ClaudeToolFlags {
   /** --tools: built-in tools ("" when empty). StructuredOutput is added by the CLI. */
   tools: string[];
