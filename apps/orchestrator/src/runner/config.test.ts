@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -26,7 +26,14 @@ describe("runner config", () => {
     expect(c.codexBin).toBe(DEFAULT_CODEX_BIN);
     expect(c.claudeConfigDir).toBe("/Users/ba/.claude");
     expect(c.codexUserConfigPath).toBe("/Users/ba/.codex/config.toml");
-    expect(c.mcpServers.figma).toEqual({ command: "npx", args: ["-y", "figma-console-mcp@1.40.9"] });
+    // The pinned bridge the orchestrator already installs, started by this node: no npx, no PATH
+    // lookup (a launchd service has a minimal PATH) and no download when a CV task starts.
+    const figma = c.mcpServers.figma as { command: string; args: string[] };
+    expect(figma.command).toBe(process.execPath);
+    expect(figma.args).toHaveLength(1);
+    expect(figma.args[0]).toMatch(/figma-console-mcp\/dist\/local\.js$/);
+    expect(existsSync(figma.args[0]!)).toBe(true);
+    expect(JSON.parse(readFileSync(join(figma.args[0]!, "..", "..", "package.json"), "utf8")).version).toBe("1.40.9");
     expect(c.mcpServers.orchestrator).toBeUndefined();
     expect(c.cleanupSessions).toBe(true);
     expect(c.usagePauseUtilization).toBe(0.95);

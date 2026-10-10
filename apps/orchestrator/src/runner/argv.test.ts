@@ -7,7 +7,7 @@ import { loadBotDefinition } from "./bots.js";
 import { buildClaudeInvocation, buildClaudeRepairInvocation, claudeSettings, hookMatcherCovers } from "./claude/argv.js";
 import { buildCodexInvocation, buildCodexRepairInvocation } from "./codex/argv.js";
 import { RunnerConfigError, TaskSetupError } from "./errors.js";
-import { defaultBotsDir, resolveRunnerConfig, type RunnerConfig } from "./config.js";
+import { DEFAULT_MCP_SERVERS, defaultBotsDir, resolveRunnerConfig, type RunnerConfig } from "./config.js";
 import { planTools } from "./tools.js";
 
 const BOTS = defaultBotsDir();
@@ -124,9 +124,11 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
       "--permission-prompts", "none",
       "--add-dir", "/repo/data/master",
     ]);
+    const figma = DEFAULT_MCP_SERVERS.figma as { command: string; args: string[] };
     expect(JSON.parse(inv.files[`${W}/mcp.json`]!)).toEqual({
-      mcpServers: { figma: { type: "stdio", command: "npx", args: ["-y", "figma-console-mcp@1.40.9"] } },
+      mcpServers: { figma: { type: "stdio", command: process.execPath, args: figma.args } },
     });
+    expect(figma.args[0]).toMatch(/figma-console-mcp\/dist\/local\.js$/);
   });
 
   it("apply", () => {

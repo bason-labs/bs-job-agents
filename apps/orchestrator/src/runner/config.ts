@@ -7,6 +7,8 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { LIMITS } from "@bs-job-agents/shared";
+import { FIGMA_CONSOLE_MCP_VERSION } from "../bridges/figma/constants.js";
+import { resolveFigmaConsoleMcp } from "../bridges/figma/mcp.js";
 
 export interface McpStdioServerConfig {
   command: string;
@@ -52,9 +54,22 @@ export interface RunnerConfig {
 export const FIGMA_MCP_SERVER = "figma";
 export const ORCHESTRATOR_MCP_SERVER = "orchestrator";
 
-/** figma-console-mcp, pinned (spec §6.2, spike S3b). The orchestrator MCP server is added by W3a. */
+/**
+ * figma-console-mcp, pinned (spec §6.2, spike S3b): the copy the orchestrator installs (the same
+ * one its own FigmaBridge runs), started by this node binary. No npx: no PATH lookup (a launchd
+ * service has a minimal PATH) and no download when a CV task starts. npx only if it is missing.
+ */
+function figmaConsoleMcpServer(): McpStdioServerConfig {
+  try {
+    return { command: process.execPath, args: [resolveFigmaConsoleMcp().serverPath] };
+  } catch {
+    return { command: "npx", args: ["-y", `figma-console-mcp@${FIGMA_CONSOLE_MCP_VERSION}`] };
+  }
+}
+
+/** The orchestrator MCP server is added by W3a. */
 export const DEFAULT_MCP_SERVERS: Record<string, McpServerConfig> = {
-  [FIGMA_MCP_SERVER]: { command: "npx", args: ["-y", "figma-console-mcp@1.40.9"] },
+  [FIGMA_MCP_SERVER]: figmaConsoleMcpServer(),
 };
 
 export const DEFAULT_CODEX_BIN = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex";
