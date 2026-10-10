@@ -12,16 +12,21 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bridges:live-check": "tsx src/bridges/live-check.ts",
     "db:generate": "drizzle-kit generate",
     "bots:schemas": "tsx src/runner/scripts/write-bot-schemas.ts"
   },
   "dependencies": {
     "@bs-job-agents/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "1.26.0",
+    "acorn": "^8.19.0",
+    "acorn-walk": "^8.3.5",
     "better-sqlite3": "~12.11.1",
     "croner": "^10.0.1",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.5",
+    "figma-console-mcp": "1.40.9",
+    "pdfjs-dist": "^4.10.38",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -29,6 +34,7 @@
     "@types/node": "^22.19.0",
     "drizzle-kit": "^0.31.11",
     "eslint": "^9.39.5",
+    "pdf-lib": "^1.17.1",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^4.1.11"
