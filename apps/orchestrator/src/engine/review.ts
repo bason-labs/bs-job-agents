@@ -11,6 +11,7 @@ import {
   RequestChangesRequestSchema,
   SkipDecisionSchema,
   isApplyBlockedByInjection,
+  publicHostProblem,
   type ActionStepSchema,
   type GateStepSchema,
   type HumanStepSchema,
@@ -263,6 +264,9 @@ export function approve(core: EngineCore, jobId: number, input: ApproveInput): A
       return { applicationId: null, taskId: null, approval: null, reapproval: false };
     }
     if (!ref.actionDef) throw invalidState("this workflow has no apply step");
+    // PM2 M2: Apply is sent only to a public web site, never to Ba's Mac, his LAN or a bare suffix.
+    const problem = publicHostProblem(registrableHost(job.url));
+    if (problem) throw invalidState(`the job link's site is not a public web site, so Apply cannot be sent there: ${problem}`, { reason: "invalid_domain" });
     // §10.2 rule 5: one application per job unless the run says "apply again" (UC-14 a).
     const existing = getApplicationByJob(tx, jobId);
     const reapply = existing !== undefined && !dryRun && ref.ctx.params.applyAgain === true;

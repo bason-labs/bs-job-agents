@@ -49,6 +49,7 @@ import {
   type Task,
 } from "../db/index.js";
 import { formDefaultsOf, loadRunCtx, type RunCtx, type Scope } from "./context.js";
+import { siteKey } from "./sites.js";
 import type { EngineCore } from "./core.js";
 import { errorMessage, invalidInput, invalidState, notFound } from "./errors.js";
 import { resolvePendingQuestion, validateBaAnswer, type BaAnswerMode, type QuestionContext } from "./questions.js";
@@ -488,8 +489,9 @@ export function resumePausedTask(core: EngineCore, taskId: number, opts: { confi
         resumeTaskNow(core, tx, task);
         return;
       case "domain_confirm": {
-        const site = (opts.confirmDomain ?? "").trim().toLowerCase();
-        if (!site || site !== reason.site) throw invalidInput(`confirm the domain ${reason.site ?? "(unknown)"} to continue`);
+        // PM2 M2: the pause names the host the site guard blocked; compare the way hosts are compared.
+        const site = siteKey(opts.confirmDomain ?? "");
+        if (!site || !reason.site || site !== siteKey(reason.site)) throw invalidInput(`confirm the domain ${reason.site ?? "(unknown)"} to continue`);
         const appId = Number((task.input as Partial<ApplyPromptInput> | null)?.applicationId);
         const approval = latestApprovalForApplication(tx, appId);
         if (!approval) throw invalidState(`application ${appId} has no approval`);

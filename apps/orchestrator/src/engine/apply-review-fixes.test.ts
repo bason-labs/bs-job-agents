@@ -121,7 +121,15 @@ describe("Apply resumes on its own only with new automatic answers (UC-12, PM FY
     const portfolio: PendingQuestion = { field: "portfolio", label: "Portfolio URL", required: false, kind: "text", options: null };
     const paused = fake.applyPaused({ reason: "domain_confirm", site: "novapay.breezy.hr" });
     if (paused.status === "ok") (paused.output as { pendingQuestions: PendingQuestion[] }).pendingQuestions = [portfolio];
-    t.runner.script({ bot: "apply", kind: "submit", result: paused });
+    t.runner.script({
+      bot: "apply",
+      kind: "submit",
+      result: (task) => {
+        // PM2 M2: the site guard really blocked that host in this attempt.
+        t.guards.logBlock(`/data/transcripts/${task.taskId}-${task.attempt}.guard.jsonl`, { guard: "site", tool: "mcp__claude-in-chrome__navigate", rule: "navigate_host", reason: "blocked", target: "novapay.breezy.hr" });
+        return paused;
+      },
+    });
     const { taskId } = t.engine.approve(1, { cvVersionId, introText: null });
     await t.idle();
     expect(t.runner.callsFor("apply.submit")).toHaveLength(1);
