@@ -134,7 +134,7 @@ beforeAll(async () => {
       claudeConfigDir: join(root, "claude-config"),
       mcpServers: { orchestrator: { url: "http://127.0.0.1:4100/mcp" } },
     },
-    { spawn: spawn.spawn, codexPluginsToDisable: () => [] },
+    { spawn: spawn.spawn, codexPluginsToDisable: () => [], codexMcpServersToDisable: () => [] },
   );
   engine = createProductionEngine({
     db,

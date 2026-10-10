@@ -1,6 +1,6 @@
 // CodexRunner: `codex exec --json` for Codex bots (spec §5.5, spikes S1/S2/S4).
 import { readFile } from "node:fs/promises";
-import { codexPluginsToDisable, type RunnerConfig } from "../config.js";
+import { codexPluginsToDisable, codexUserMcpServers, type RunnerConfig } from "../config.js";
 import { CliRunner, stderrTail, type AttemptReport, type EngineSession, type Phase, type PreparedTask, type RunnerDeps } from "../cli-runner.js";
 import type { Invocation } from "../invocation.js";
 import { runCli } from "../process.js";
@@ -27,6 +27,7 @@ export class CodexRunner extends CliRunner {
   protected initialInvocation(p: PreparedTask): Invocation {
     const browser = codexToolConfig(p.plan).browser;
     const listPlugins = this.deps.codexPluginsToDisable ?? (() => codexPluginsToDisable(this.config));
+    const listServers = this.deps.codexMcpServersToDisable ?? (() => codexUserMcpServers(this.config));
     return buildCodexInvocation({
       bot: p.task.bot,
       plan: p.plan,
@@ -35,6 +36,7 @@ export class CodexRunner extends CliRunner {
       workDir: p.workDir,
       config: this.config,
       pluginsToDisable: browser ? listPlugins() : [],
+      mcpServersToDisable: browser ? listServers() : [],
     });
   }
 

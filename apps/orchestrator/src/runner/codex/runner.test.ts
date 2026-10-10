@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
 import { codexLastMessage, codexLines, STDERR } from "../__fixtures__/index.js";
@@ -30,10 +30,15 @@ const play = (lines: string[], over: Partial<FakeScript> = {}): FakeScript => {
 };
 const deleteOk: FakeScript = { stdout: [], stderr: [], exitCode: 0 };
 
-function runner(scripts: FakeScript[], plugins: string[] = []) {
+function runner(scripts: FakeScript[], plugins: string[] = [], mcpServers: string[] = []) {
   const queue = [...scripts];
   const fake = fakeSpawn((_command, args) => (args[0] === "delete" ? deleteOk : queue.shift() ?? deleteOk));
-  const r = new CodexRunner(kit.config(), { spawn: fake.spawn, now: () => NOW.getTime(), codexPluginsToDisable: () => plugins });
+  const r = new CodexRunner(kit.config(), {
+    spawn: fake.spawn,
+    now: () => NOW.getTime(),
+    codexPluginsToDisable: () => plugins,
+    codexMcpServersToDisable: () => mcpServers,
+  });
   return { r, calls: fake.calls, work: () => fake.calls.filter((c) => c.args[0] === "exec") };
 }
 
@@ -90,15 +95,31 @@ describe("CodexRunner: a successful run", () => {
 
   it("Research scan (browser): Ba's config with the other plugins off, host skills skipped, live search", async () => {
     const { def, cwd } = kit.realBot("research");
-    const { r, work } = runner([play(codexLines("structuredOk"))], ["browser@openai-bundled"]);
+    const { r, work } = runner([play(codexLines("structuredOk"))], ["browser@openai-bundled"], ["node_repl", "computer-use"]);
     await r.run(kit.task(def, cwd, { kind: "scan", input: researchScanInputFixture }), () => {});
     const args = work()[0]!.args;
     expect(args).not.toContain("--ignore-user-config");
     expect(args).toContain('plugins."browser@openai-bundled".enabled=false');
+    // PM2 M3: nothing of Ba's setup but the Chrome plugin: his MCP servers, connectors and notify are off.
+    expect(args).toContain("mcp_servers.node_repl.enabled=false");
+    expect(args).toContain("mcp_servers.computer-use.enabled=false");
+    expect(args).toContain("notify=[]");
+    expect(args.join(" ")).toContain("--disable apps");
     expect(args).toContain("skip_host_skill_discovery");
     expect(args).toContain('web_search="live"');
     // The prompt names the allowed sites (Codex has no hook: prompt-only, §4.4).
     expect(args.at(-1)).toContain("topcv.vn, itviec.com, linkedin.com");
+  });
+
+  it("by default reads Ba's MCP servers from his Codex config (PM2 M3)", async () => {
+    const { def, cwd } = kit.realBot("research");
+    writeFileSync(kit.config().codexUserConfigPath, '[plugins."chrome@openai-bundled"]\nenabled = true\n\n[mcp_servers.node_repl]\ncommand = "/x"\n');
+    const fake = fakeSpawn((_c, args) => (args[0] === "delete" ? deleteOk : play(codexLines("structuredOk"))));
+    const r = new CodexRunner(kit.config(), { spawn: fake.spawn, now: () => NOW.getTime() });
+    await r.run(kit.task(def, cwd, { kind: "scan", input: researchScanInputFixture }), () => {});
+    const args = fake.calls.find((c) => c.args[0] === "exec")!.args;
+    expect(args).toContain("mcp_servers.node_repl.enabled=false");
+    expect(args).not.toContain('plugins."chrome@openai-bundled".enabled=false');
   });
 
   it("a Research task that does not hold the browser lock gets no Chrome (§10.3): fit, company and file are search-only", async () => {

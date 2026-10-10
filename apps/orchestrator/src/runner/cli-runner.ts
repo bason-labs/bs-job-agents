@@ -36,6 +36,8 @@ export interface RunnerDeps {
   randomUUID?: () => string;
   /** Codex browser bots: Ba's plugins to disable (default: read from his Codex config). */
   codexPluginsToDisable?: () => string[];
+  /** Codex browser bots: Ba's MCP servers to switch off (default: read from his Codex config, PM2 M3). */
+  codexMcpServersToDisable?: () => string[];
 }
 
 /** Everything a run needs once the checks passed. */

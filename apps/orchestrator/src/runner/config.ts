@@ -35,7 +35,10 @@ export interface RunnerConfig {
   mcpServers: Record<string, McpServerConfig>;
   /** Claude's config dir; persisted bot sessions are deleted from <dir>/projects after each task. Env: CLAUDE_CONFIG_DIR. */
   claudeConfigDir: string;
-  /** Codex user config, read only to list the plugins a browser bot must disable (§4.4). Env: CODEX_HOME. */
+  /**
+   * Codex user config, read only to list what a browser bot must switch off: every plugin but
+   * Chrome (§4.4) and every MCP server Ba defined (PM2 M3). Env: CODEX_HOME.
+   */
   codexUserConfigPath: string;
   /** The plugin Codex browser bots keep (spike S2). */
   codexChromePlugin: string;
@@ -104,6 +107,96 @@ export function listCodexPlugins(configToml: string): string[] {
 export function codexPluginsToDisable(config: Pick<RunnerConfig, "codexUserConfigPath" | "codexChromePlugin">): string[] {
   if (!existsSync(config.codexUserConfigPath)) return [];
   return listCodexPlugins(readFileSync(config.codexUserConfigPath, "utf8")).filter((id) => id !== config.codexChromePlugin);
+}
+
+/** One TOML key path, e.g. `mcp_servers."computer-use".env` → ["mcp_servers", "computer-use", "env"]; null if it is not one. */
+function parseKeyPath(text: string): { path: string[]; rest: string } | null {
+  const path: string[] = [];
+  let i = 0;
+  const skip = () => {
+    while (i < text.length && (text[i] === " " || text[i] === "\t")) i++;
+  };
+  for (;;) {
+    skip();
+    const ch = text[i];
+    if (ch === '"') {
+      // A basic string key; JSON reads the escapes TOML shares with it.
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
+      if (j >= text.length) return null;
+      try {
+        path.push(JSON.parse(text.slice(i, j + 1)) as string);
+      } catch {
+        return null;
+      }
+      i = j + 1;
+    } else if (ch === "'") {
+      const j = text.indexOf("'", i + 1);
+      if (j < 0) return null;
+      path.push(text.slice(i + 1, j));
+      i = j + 1;
+    } else {
+      const m = /^[A-Za-z0-9_-]+/.exec(text.slice(i));
+      if (!m) return null;
+      path.push(m[0]);
+      i += m[0].length;
+    }
+    skip();
+    if (text[i] !== ".") return { path, rest: text.slice(i) };
+    i++;
+  }
+}
+
+/** Multi-line string delimiters a line opens or closes (an odd count toggles). */
+function multilineDelimiter(line: string, open: string | null): string | null {
+  let state = open;
+  for (const delim of ['"""', "'''"]) {
+    if (state !== null && state !== delim) continue;
+    const count = line.split(delim).length - 1;
+    if (count % 2 === 1) state = state === null ? delim : null;
+  }
+  return state;
+}
+
+/**
+ * Every MCP server a Codex config.toml defines (PM2 M3), in order: `[mcp_servers.<id>]` tables and
+ * their sub-tables, `[[mcp_servers.<id>]]`, keys of an `[mcp_servers]` table, and dotted keys such
+ * as `mcp_servers.<id>.command = …`. Bare, "quoted" and 'literal' keys; comments and multi-line
+ * strings are skipped. Line-based on purpose: anything unusual it cannot read leaves a server ON,
+ * so the live tool check (runbook) stays the backstop.
+ */
+export function listCodexMcpServers(configToml: string): string[] {
+  const ids: string[] = [];
+  const add = (path: readonly string[]) => {
+    if (path[0] === "mcp_servers" && path.length >= 2 && !ids.includes(path[1]!)) ids.push(path[1]!);
+  };
+  let table: string[] = [];
+  let multiline: string | null = null;
+  for (const raw of configToml.split(/\r?\n/)) {
+    if (multiline !== null) {
+      multiline = multilineDelimiter(raw, multiline);
+      continue;
+    }
+    const line = raw.trim();
+    if (line === "" || line.startsWith("#")) continue;
+    const header = /^\[\[?(.*?)\]\]?\s*(#.*)?$/.exec(line);
+    if (header) {
+      const parsed = parseKeyPath(header[1]!);
+      table = parsed && parsed.rest.trim() === "" ? parsed.path : [];
+      add(table);
+      continue;
+    }
+    const kv = parseKeyPath(line);
+    if (kv && kv.rest.trimStart().startsWith("=")) add([...table, ...kv.path]);
+    multiline = multilineDelimiter(line, null);
+  }
+  return ids;
+}
+
+/** MCP servers a Codex browser bot switches off: every one in Ba's config (PM2 M3). */
+export function codexUserMcpServers(config: Pick<RunnerConfig, "codexUserConfigPath">): string[] {
+  if (!existsSync(config.codexUserConfigPath)) return [];
+  return listCodexMcpServers(readFileSync(config.codexUserConfigPath, "utf8"));
 }
 
 /** The repo's bots/ folder: walk up from this file to the folder that holds pnpm-workspace.yaml. */

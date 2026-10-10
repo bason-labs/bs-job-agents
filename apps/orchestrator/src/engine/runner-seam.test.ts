@@ -106,7 +106,7 @@ function throughRealRunner(engine: EngineName, config: RunnerConfig, log: Record
       const runner =
         engine === "claude"
           ? new ClaudeRunner(config, { spawn: fake.spawn, randomUUID: () => sessionId })
-          : new CodexRunner(config, { spawn: fake.spawn, codexPluginsToDisable: () => ["browser@openai-bundled"] });
+          : new CodexRunner(config, { spawn: fake.spawn, codexPluginsToDisable: () => ["browser@openai-bundled"], codexMcpServersToDisable: () => ["node_repl"] });
       const result = await runner.run(task, onEvent);
       const transcript = existsSync(task.transcriptPath) ? readFileSync(task.transcriptPath, "utf8") : "";
       log.push({ task, key: `${task.bot.name}.${task.kind}`, spawns, result, transcript });
