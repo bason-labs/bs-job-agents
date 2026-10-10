@@ -28,7 +28,7 @@ function siteBlock(t: TestEngine, task: RunnerTask, host: string): void {
 }
 
 describe("approve refuses a job link that is not a public web site (PM2 M2)", () => {
-  it.each(["https://com.vn/viec-lam/1", "http://192.168.1.1/jobs/1", "http://localhost:3000/jobs/1", "https://github.io/jobs", "http://127.0.0.1/x", "http://printer.local/x"])(
+  it.each(["https://com/jobs/1", "https://vn/viec-lam/1", "https://com.vn/viec-lam/1", "http://192.168.1.1/jobs/1", "http://localhost:3000/jobs/1", "https://github.io/jobs", "http://127.0.0.1/x", "http://printer.local/x"])(
     "%s",
     async (url) => {
       const { t, cvVersionId } = await review();
@@ -47,7 +47,30 @@ describe("approve refuses a job link that is not a public web site (PM2 M2)", ()
   );
 });
 
+describe("approve accepts a job link on a public site (PM2 M2)", () => {
+  it.each([
+    ["https://www.topcv.vn/viec-lam/1", "topcv.vn"],
+    ["https://itviec.com/it-jobs/2", "itviec.com"],
+    ["https://acme.wd3.myworkdayjobs.com/en-US/careers/job/3", "acme.wd3.myworkdayjobs.com"],
+  ])("%s → token domain %s", async (url, domain) => {
+    const { t, cvVersionId } = await review();
+    t.db.$client.prepare("UPDATE jobs SET url = ? WHERE id = 1").run(url);
+    expect(t.engine.approve(1, { cvVersionId, introText: null }).approval?.allowedDomains).toEqual([domain]);
+  });
+});
+
 describe("domain_confirm is offered only for a host the site guard blocked in that attempt (PM2 M2, UC-11 e)", () => {
+  it.each(["com", "google.com"])("Apply naming %s with no block at all goes to needs_check", async (site) => {
+    const { t, cvVersionId } = await review();
+    t.runner.script({ bot: "apply", kind: "submit", times: 1, result: fake.applyPaused({ reason: "domain_confirm", site }) });
+    const { applicationId, taskId } = t.engine.approve(1, { cvVersionId, introText: null });
+    await t.idle();
+    expect(getTask(t.db, taskId!)?.status).toBe("failed");
+    expect(getApplication(t.db, applicationId!)?.status).toBe("needs_check");
+    expect(t.events("safety.denied")).toEqual([expect.objectContaining({ reason: "off_allowlist", action: "apply.domain_confirm" })]);
+    expect(latestApprovalForApplication(t.db, applicationId!)?.allowedDomains).toEqual(["itviec.com"]);
+  });
+
   it("probe P2: Apply asks for `vn` with no block: needs_check and a safety event, never a pause Ba could confirm", async () => {
     const { t, cvVersionId } = await review();
     t.runner.script({ bot: "apply", kind: "submit", times: 1, result: fake.applyPaused({ reason: "domain_confirm", site: "vn" }) });
@@ -163,6 +186,8 @@ describe("a Chrome site-guard block fails the task without a retry (PM2 S3, deci
     expect(t.runner.callsFor("research.scan")).toHaveLength(1);
     expect(t.tasks("research.scan")[0]).toMatchObject({ status: "failed", attempt: 1, error: expect.stringMatching(/site guard blocked mail\.google\.com.*without a retry/) });
     expect(t.events("safety.denied")).toEqual([expect.objectContaining({ botName: "research", reason: "off_allowlist", action: "mcp__claude-in-chrome__navigate" })]);
+    // Logged and reported (S1).
+    expect(t.events("message.created").map((e) => e.message.text)).toContainEqual(expect.stringMatching(/^ITviec scan failed: the site guard blocked mail\.google\.com/));
   });
 
   it("the runner's hook denial counts when the guard log is missing", async () => {

@@ -59,6 +59,9 @@ describe("a source waiting for Ba never stalls the scan (PM2 M5)", () => {
     expect(join.output as JoinStepOutput).toMatchObject({ results: [expect.anything()], failures: [], waiting: [expect.objectContaining({ reason: "needs_login(linkedin.com)" })] });
     expect(t.events("step.finished").find((e) => e.stepKey === "scan-join")?.preview).toBe("1 ok, 1 waiting for Ba");
     expect(getRun(t.db, first.runId)?.status).toBe("waiting");
+    // UC-17: Lead asks Ba for the login with a card (S1).
+    const cards = t.events("message.created").flatMap((e) => e.message.cards);
+    expect(cards).toContainEqual({ type: "pause", taskId: String(linkedInTask(t).id), reason: "needs_login(linkedin.com)" });
 
     // The next slot is not an overlap: the scan phase only waits for Ba.
     t.clock.advance(HOUR);
