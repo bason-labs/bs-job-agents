@@ -20,11 +20,12 @@ export function configureBodyParsing(app: FastifyInstance): void {
   const json = app.getDefaultJsonParser("error", "error");
   app.removeAllContentTypeParsers();
   app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
-    if (typeof body === "string" && body.trim() === "") {
+    const text = typeof body === "string" ? body : body.toString("utf8");
+    if (text.trim() === "") {
       done(null, undefined);
       return;
     }
-    json(req, body, done);
+    json(req, text, done);
   });
 }
 

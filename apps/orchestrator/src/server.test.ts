@@ -1,22 +1,76 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { FastifyInstance } from "fastify";
-import { HealthSchema } from "@bs-job-agents/shared";
-import { buildServer } from "./server.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { ApiErrorSchema, HealthStatusSchema, OrchestratorStatusSchema } from "@bs-job-agents/shared";
+import { approveApplication } from "./db/index.js";
+import { seedCv, seedJob } from "./db/test-helpers.js";
+import { createApiHarness, type ApiHarness } from "./api/testing.js";
 import { resolvePort, DEFAULT_PORT } from "./config.js";
 
-describe("orchestrator server", () => {
-  let app: FastifyInstance;
-  beforeEach(() => {
-    app = buildServer();
-  });
-  afterEach(async () => {
-    await app.close();
+let h: ApiHarness | null = null;
+afterEach(async () => {
+  await h?.close();
+  h = null;
+});
+
+describe("GET /health and /status (S19)", () => {
+  it("health is { ok: true } while the engine runs", async () => {
+    h = await createApiHarness();
+    const res = await h.get("/health");
+    expect(res.statusCode).toBe(200);
+    expect(HealthStatusSchema.parse(res.json())).toEqual({ ok: true });
   });
 
-  it("GET /health returns { ok: true }", async () => {
-    const res = await app.inject({ method: "GET", url: "/health" });
+  it("status says running, with the data folder and what start-up recovered", async () => {
+    h = await createApiHarness({ state: { state: "running", startedAt: "2026-10-10T08:00:00.000Z", recovered: { requeued: 2, exhausted: 0, needsCheck: 1 } } });
+    const res = await h.get("/status");
     expect(res.statusCode).toBe(200);
-    expect(HealthSchema.parse(res.json())).toEqual({ ok: true });
+    expect(OrchestratorStatusSchema.parse(res.json())).toEqual({
+      state: "running",
+      reason: null,
+      detail: null,
+      startedAt: "2026-10-10T08:00:00.000Z",
+      dataDir: h.dataDir,
+      recovered: { requeued: 2, exhausted: 0, needsCheck: 1 },
+    });
+  });
+
+  it("degraded: health is 503 with the reason and detail, status names them, and engine commands answer 503", async () => {
+    const detail = "bots/cv/ROLE.md changed but promptVersion is still 1: bump promptVersion in bots/cv/bot.json";
+    h = await createApiHarness({ state: { state: "degraded", reason: "prompt_version_stale", detail, startedAt: "2026-10-10T08:00:00.000Z" } });
+    const health = await h.get("/health");
+    expect(health.statusCode).toBe(503);
+    expect(HealthStatusSchema.parse(health.json())).toEqual({ ok: false, reason: "prompt_version_stale", detail });
+    const status = OrchestratorStatusSchema.parse((await h.get("/status")).json());
+    expect(status).toMatchObject({ state: "degraded", reason: "prompt_version_stale", detail, recovered: null });
+    const control = await h.post("/runs/1/control", { action: "pause" });
+    expect(control.statusCode).toBe(503);
+    expect(ApiErrorSchema.parse(control.json()).error.message).toContain(detail);
+  });
+
+  it("degraded without a database: health and status still answer; data routes answer 503", async () => {
+    h = await createApiHarness({
+      state: { state: "degraded", reason: "schema_guard", detail: "trigger submissions_no_update is missing", startedAt: "2026-10-10T08:00:00.000Z" },
+      context: { db: null, engine: null, events: null },
+    });
+    expect((await h.get("/health")).statusCode).toBe(503);
+    expect((await h.get("/status")).statusCode).toBe(200);
+    expect((await h.get("/runs")).statusCode).toBe(503);
+  });
+});
+
+describe("approval tokens never leave the API (S18)", () => {
+  it("a JSON response that would carry a token value is refused with 500", async () => {
+    h = await createApiHarness({ beforeReady: (app, ctx) => {
+      app.get("/test/echo", async () => {
+        const job = seedJob(ctx.db!);
+        const cv = seedCv(ctx.db!, job);
+        const { approval } = approveApplication(ctx.db!, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["itviec.com"] });
+        return { note: `leaked ${approval.token}` };
+      });
+    } });
+    const res = await h.get("/test/echo");
+    expect(res.statusCode).toBe(500);
+    expect(res.body).not.toMatch(/[a-f0-9]{64}/);
+    expect(ApiErrorSchema.parse(res.json()).error.code).toBe("internal");
   });
 });
 

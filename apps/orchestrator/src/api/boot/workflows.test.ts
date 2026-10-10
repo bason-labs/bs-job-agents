@@ -94,7 +94,7 @@ describe("versioned WorkflowSource over the workflows table (rule 3)", () => {
   it("runs job-scan from the YAML on the engine to a review card", async () => {
     const t = await createTestEngine({ start: false });
     const source = yamlWorkflowSource({ dir: REPO_WORKFLOWS, db: t.db });
-    (t.engine.deps as { workflows: typeof source }).workflows = source;
+    t.engine.deps.workflows = source;
     await t.engine.start();
     const run = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
     await t.idle();
