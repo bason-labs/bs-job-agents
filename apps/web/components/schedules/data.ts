@@ -7,7 +7,7 @@
 //   POST   /schedules             → body ScheduleCreateRequestSchema → ScheduleView
 //   PATCH  /schedules/:id         → body ScheduleUpdateRequestSchema → ScheduleView
 //   DELETE /schedules/:id         → ScheduleDeleteResponseSchema (soft delete, 6 s Undo)
-//   POST   /schedules/:id/restore → ScheduleView
+//   POST   /schedules/:id/restore → ScheduleView; 409 { reason: "undo_window_passed" } after 6 s
 //   POST   /schedules/:id/run     → ScheduleRunNowResponseSchema (may answer "overlap")
 //   GET    /criteria              → the active profile, for the "Search criteria" options
 import {
@@ -23,6 +23,7 @@ import {
 import { scheduleFixture } from "@bs-job-agents/shared/fixtures";
 import type { z } from "zod";
 import { criteriaData, type CriteriaData } from "@/components/criteria/data";
+import { FixtureApiError } from "./apiError";
 import { cronToRepeat } from "./logic";
 
 export type ScheduleDeleteResponse = z.infer<typeof ScheduleDeleteResponseSchema>;
@@ -81,7 +82,7 @@ export function createFixtureSchedulesData(
 
   const find = (id: string) => {
     const row = rows.find((r) => r.id === id);
-    if (!row) throw new Error(`schedule ${id} not found`);
+    if (!row) throw new FixtureApiError(404, "not_found", `schedule ${id} not found`);
     return row;
   };
 
@@ -121,7 +122,13 @@ export function createFixtureSchedulesData(
     },
     async restore(id) {
       const row = find(id);
+      if (row.deletedAt === null) throw new FixtureApiError(409, "conflict", `schedule ${id} is not deleted`);
+      if (now().getTime() > Date.parse(row.deletedAt) + LIMITS.scheduleUndoMs) {
+        rows.splice(rows.indexOf(row), 1); // purged, like the API
+        throw new FixtureApiError(409, "conflict", `the 6 s undo window for schedule ${id} has passed`, { reason: "undo_window_passed" });
+      }
       row.deletedAt = null;
+      row.nextRunAt = row.enabled ? fixtureNextRun(row.cron, now()) : null;
       return structuredClone(row);
     },
     async runNow(id) {

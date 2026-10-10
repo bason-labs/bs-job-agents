@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createFixtureCriteriaData } from "@/components/criteria/data";
+import { apiErrorInfo } from "./apiError";
 import { createFixtureSchedulesData, fixtureNextRun } from "./data";
 
 // Sunday 11 Oct 2026, 10:00 in Vietnam.
@@ -44,6 +45,16 @@ describe("fixture schedules store", () => {
 
     await data.restore("sch_2");
     expect((await data.list()).map((r) => r.id)).toEqual(["sch_1", "sch_2"]);
+  });
+
+  it("refuses a restore after the 6 s undo window, like the API (409 undo_window_passed)", async () => {
+    let t = NOW.getTime();
+    const data = createFixtureSchedulesData({ now: () => new Date(t), criteria: createFixtureCriteriaData() });
+    await data.remove("sch_1");
+    t += 6_001;
+    const late = await data.restore("sch_1").catch((e: unknown) => e);
+    expect(apiErrorInfo(late)).toMatchObject({ status: 409, code: "conflict", reason: "undo_window_passed" });
+    expect(await data.list()).toEqual([]);
   });
 
   it("rejects invalid requests like the API would", async () => {

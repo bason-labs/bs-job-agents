@@ -87,6 +87,18 @@ describe("SchedulesScreen (UC-21)", () => {
     expect(screen.getByText("Restored “Weekday morning scan”")).toBeInTheDocument();
   });
 
+  it("says so when Undo comes after the API's 6 s window (409 undo_window_passed)", async () => {
+    let t = NOW.getTime();
+    const { user } = await setup(createFixtureSchedulesData({ now: () => new Date(t), criteria: createFixtureCriteriaData() }));
+    await user.click(screen.getByRole("button", { name: "Delete Weekday morning scan" }));
+    await user.click(within(screen.getByTestId("confirm-dialog")).getByRole("button", { name: "Delete schedule" }));
+    await waitFor(() => expect(rows()).toHaveLength(0));
+    t += 7_000;
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("Too late to undo: “Weekday morning scan” is deleted for good.")).toBeInTheDocument();
+    expect(rows()).toHaveLength(0);
+  });
+
   it("Run now opens the new run's flow, and reports an overlap as a toast", async () => {
     const { user } = await setup();
     await user.click(screen.getByRole("button", { name: "Run now" }));

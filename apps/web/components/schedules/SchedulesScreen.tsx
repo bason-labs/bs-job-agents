@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 import { schedulesData, type ProfileOption, type SchedulesData } from "./data";
 import { formToCreateRequest, formToUpdateRequest, newScheduleForm, scheduleSummary, scheduleToForm, type ScheduleForm } from "./logic";
 import { ScheduleEditor } from "./ScheduleEditor";
-import { errorText } from "./apiError";
+import { errorReason, errorText } from "./apiError";
 
 export interface SchedulesScreenProps {
   initial: ScheduleView[];
@@ -88,7 +88,10 @@ export function SchedulesScreen({ initial, profiles, data = schedulesData }: Sch
       });
       toast({ title: `Restored “${row.name}”` });
     } catch (e) {
-      toast({ title: `Couldn't restore “${row.name}”: ${errorText(e)}`, tone: "err" });
+      toast({
+        title: errorReason(e) === "undo_window_passed" ? `Too late to undo: “${row.name}” is deleted for good.` : `Couldn't restore “${row.name}”: ${errorText(e)}`,
+        tone: "err",
+      });
     }
   };
 
