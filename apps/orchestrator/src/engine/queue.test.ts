@@ -2,7 +2,7 @@
 // CV task's Figma flow (§6.2, coordinator B) with its guard hooks (coordinator A, E).
 import { qaFailFixture, researchScanFixture } from "@bs-job-agents/shared/fixtures";
 import { describe, expect, it } from "vitest";
-import { getRun, getTask, listTasks } from "../db/index.js";
+import { getRun, getTask, listTasks, updateBot } from "../db/index.js";
 import { defaultFakeResult, fake, fakeFrameName } from "./testing/fake-runner.js";
 import { createTestEngine, type TestEngineOptions } from "./testing/harness.js";
 
@@ -49,7 +49,7 @@ describe("concurrency (§10.3)", () => {
     t.browser.set("codex", false);
     t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
     await t.idle();
-    (await import("../db/index.js")).updateBot(t.db, "research", { engine: "claude" });
+    updateBot(t.db, "research", { engine: "claude" });
     t.browser.set("codex", true);
     t.clock.advance(15_000);
     await t.idle();

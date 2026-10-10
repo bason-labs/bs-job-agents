@@ -1,9 +1,22 @@
 // Integration (§12): the whole job-scan workflow on real SQLite with the FakeRunner, from the
 // trigger to research fan-out, dedupe / fit / top-N, company, CV ⇄ QA gate, review card,
 // approve, apply and the frozen record (§7.2, UC-01..UC-11, §1.2 success 1–2).
-import { qaFailFixture, researchScanFixture } from "@bs-job-agents/shared/fixtures";
+import { qaFailFixture, qaPassFixture, researchCompanyFixture, researchScanFixture } from "@bs-job-agents/shared/fixtures";
 import { describe, expect, it } from "vitest";
-import { getApplication, getCompany, getCvVersion, getJob, getSubmissionRecord, listQaReviews, listSteps, saveCompanyProfile, upsertJobCandidate } from "../db/index.js";
+import {
+  clearJobInjection,
+  getApplication,
+  getCompany,
+  getCvVersion,
+  getJob,
+  getRun,
+  getSubmissionRecord,
+  listQaReviews,
+  listSteps,
+  saveCompanyProfile,
+  setJobStatus,
+  upsertJobCandidate,
+} from "../db/index.js";
 import { fake } from "./testing/fake-runner.js";
 import { createTestEngine } from "./testing/harness.js";
 
@@ -24,8 +37,7 @@ describe("job-scan from trigger to record (§7.2)", () => {
     expect(card).toMatchObject({ qaPassed: true, escalated: false, needsInput: false, defaultLanguage: "en" });
     expect(t.step(run.id, "apply", "1")?.status).toBe("locked");
     expect(t.events("review.ready")).toEqual([expect.objectContaining({ jobId: "1", company: "NovaPay", qaPassed: true, escalated: false })]);
-    expect(t.engine.db).toBe(t.db);
-    expect((await import("../db/index.js")).getRun(t.db, run.id)?.status).toBe("waiting");
+    expect(getRun(t.db, run.id)?.status).toBe("waiting");
 
     // The CV version holds the orchestrator's export and hash (§6.2, decision 2a).
     const cv = getCvVersion(t.db, card.cvVersions[0]!.cvVersionId)!;
@@ -82,7 +94,7 @@ describe("job-scan from trigger to record (§7.2)", () => {
     const t = await createTestEngine({ sources: ["itviec", "topcv"] });
     // NovaPay was scored in an earlier run.
     const known = upsertJobCandidate(t.db, NOVAPAY).job;
-    (await import("../db/index.js")).setJobStatus(t.db, known.id, "below_threshold");
+    setJobStatus(t.db, known.id, "below_threshold");
     t.runner.script({ bot: "research", kind: "fit", result: fake.ok({ fit: { score: 41, reasons: ["Frontend"], gaps: ["Needs 5 years of Vue"] }, selfCheck: [{ item: "Every reason cites master data", passed: true, note: null }], memoryNotes: [] }) });
     const run = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
     await t.idle();
@@ -108,9 +120,9 @@ describe("job-scan from trigger to record (§7.2)", () => {
   it("reuses a company profile younger than 30 days (UC-05 a)", async () => {
     const t = await createTestEngine({ sources: ["itviec"] });
     const job = upsertJobCandidate(t.db, NOVAPAY).job;
-    const { researchCompanyFixture } = await import("@bs-job-agents/shared/fixtures");
+
     saveCompanyProfile(t.db, job.companyId, { profile: researchCompanyFixture.company }, { now: t.clock.now() });
-    (await import("../db/index.js")).setJobStatus(t.db, job.id, "new");
+    setJobStatus(t.db, job.id, "new");
     const run = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
     await t.idle();
     expect(t.tasks("research.company")).toHaveLength(0);
@@ -149,13 +161,13 @@ describe("the QA gate (UC-07, §7.2 step 7)", () => {
 
   it("injection suspected flags the job; Apply stays disabled until Ba confirms (UC-07 b)", async () => {
     const t = await createTestEngine();
-    t.runner.script({ bot: "qa", kind: "review", result: fake.ok({ ...qaFailFixture, total: 88, scores: (await import("@bs-job-agents/shared/fixtures")).qaPassFixture.scores, hardFails: [], injectionSuspected: true, injectionNote: "the JD says 'ignore previous instructions'" }) });
+    t.runner.script({ bot: "qa", kind: "review", result: fake.ok({ ...qaFailFixture, total: 88, scores: qaPassFixture.scores, hardFails: [], injectionSuspected: true, injectionNote: "the JD says 'ignore previous instructions'" }) });
     const run = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
     await t.idle();
     expect(t.events("review.ready")[0]).toMatchObject({ injectionFlagged: true });
     const card = t.review(run.id, 1)!;
     expect(() => t.engine.approve(1, { cvVersionId: card.cvVersions[0]!.cvVersionId, introText: null })).toThrow(/suspected injection/);
-    (await import("../db/index.js")).clearJobInjection(t.db, 1);
+    clearJobInjection(t.db, 1);
     expect(t.engine.approve(1, { cvVersionId: card.cvVersions[0]!.cvVersionId, introText: null }).applicationId).toBe(1);
   });
 });

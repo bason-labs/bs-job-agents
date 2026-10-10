@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { getApplication, getRun, getSubmissionRecord, getTask, openDb } from "../db/index.js";
+import { createSearchProfile, getApplication, getRun, getSubmissionRecord, getTask, openDb } from "../db/index.js";
 import { seedBots } from "../db/test-helpers.js";
 import { FakeClock } from "./testing/fake-clock.js";
 import { createTestEngine } from "./testing/harness.js";
@@ -77,7 +77,7 @@ describe("crash recovery (UC-18)", () => {
       seedBots(db1);
       const first = await createTestEngine({ db: db1, clock: new FakeClock(T0) });
       // A profile is needed on this fresh file database.
-      (await import("../db/index.js")).createSearchProfile(db1, { roles: ["Frontend Engineer"], locations: ["Ho Chi Minh City"], sources: ["itviec"] });
+      createSearchProfile(db1, { roles: ["Frontend Engineer"], locations: ["Ho Chi Minh City"], sources: ["itviec"] });
       first.runner.script({ bot: "research", kind: "fit", delayMs: 3600_000 });
       const run = first.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
       await settleSomeWork();

@@ -8,6 +8,7 @@ import {
   createTask,
   getApplication,
   getJob,
+  getRun,
   getSavedAnswer,
   getSubmissionRecord,
   getTask,
@@ -254,7 +255,7 @@ describe("Apply's own pauses wait for Ba (UC-11 a/b/e, UC-12, UC-17)", () => {
     expect(getApplication(t.db, applicationId)?.status).toBe("paused");
     // The card waits for Ba to approve again; the run stays open.
     expect(t.step(1, "apply", "1")).toMatchObject({ status: "locked", output: expect.objectContaining({ outcome: "denied" }) });
-    expect((await import("../db/index.js")).getRun(t.db, 1)?.status).toBe("waiting");
+    expect(getRun(t.db, 1)?.status).toBe("waiting");
 
     const again = t.engine.approve(1, { cvVersionId, introText: null });
     expect(again).toMatchObject({ applicationId, reapproval: true });
