@@ -1,0 +1,82 @@
+# apply-to-link (spec §7.3, UC-14): Ba pastes a job URL in chat.
+# research.scan kind `single` on the URL, then job-scan's steps 6–10. No fit threshold and no
+# top-N: fit is still computed and shown. The dedupe filter stops a job already applied to,
+# unless Ba said "apply again" (§10.2 rule 5).
+# Bump `version` with every change: runs keep the version they started with.
+name: apply-to-link
+version: 1
+description: Apply to one pasted job link.
+triggers: [link, chat]
+steps:
+  - key: scan
+    type: task
+    task:
+      bot: research
+      kind: single
+      input:
+        url: $params.url
+  - key: fit
+    type: map
+    over: $steps.scan.output.jobs
+    task:
+      bot: research
+      kind: fit
+      input:
+        job: $item
+  - key: fit-join
+    type: join
+    of: fit
+  - key: selected
+    type: filter
+    fn: dedupe
+    from: fit-join
+    options:
+      applyAgain: $params.applyAgain
+
+  # ── per job (as job-scan steps 6–10) ──
+  - key: company
+    type: task
+    branch: selected
+    task:
+      bot: research
+      kind: company
+      input:
+        name: $item.company
+        website: $item.companyWebsite
+    cacheDays: 30
+  - key: tailor
+    type: gate
+    branch: selected
+    producer:
+      bot: cv
+      kind: tailor
+      input:
+        job: $item
+        company: $steps.company.output
+    checker:
+      bot: qa
+      kind: review
+      input:
+        job: $item
+        draft: $producer.output
+    maxRounds: 3
+    perLanguage: true
+  - key: review
+    type: human
+    branch: selected
+    kind: review
+    decisions: [approve, request_changes, skip]
+    onRequestChanges: tailor
+  - key: apply
+    type: action
+    branch: selected
+    task:
+      bot: apply
+      kind: submit
+      input:
+        approval: $steps.review.output
+    approvalFrom: review
+  - key: record
+    type: record
+    branch: selected
+    fn: submission
