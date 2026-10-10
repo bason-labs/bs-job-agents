@@ -243,6 +243,8 @@ describe("the CV task's Figma flow (§6.2, coordinator B)", () => {
     expect(t.tasks("cv.tailor")[0]).toMatchObject({ status: "failed", error: expect.stringMatching(/change.* on protected pages/) });
     expect(t.events("safety.denied")).toEqual([expect.objectContaining({ reason: "protected_page_changed", detail: expect.stringMatching(/Professional title/) })]);
     expect(getRun(t.db, run.id)?.status).toBe("failed");
+    // Ba is alerted in the Lead chat.
+    expect(t.events("message.created").at(-1)).toMatchObject({ message: { author: { type: "bot", bot: "lead" }, text: expect.stringMatching(/protected Figma page changed/) } });
   });
 
   it("an export that is not one A4 page fails the attempt (UC-06 a)", async () => {

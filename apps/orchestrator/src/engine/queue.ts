@@ -50,7 +50,7 @@ import type { EngineCore } from "./core.js";
 import { errorMessage } from "./errors.js";
 import { onCheckerDone, onProducerDone, type CvExport } from "./gate.js";
 import type { GuardBlock } from "./ports.js";
-import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, stillRunning } from "./task-events.js";
+import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, postLeadMessage, stillRunning } from "./task-events.js";
 import { checkTaskTrust } from "./trust-guard.js";
 
 const ENGINES = EngineSchema.options;
@@ -604,6 +604,12 @@ export class TaskQueue {
       const current = getTask(tx, task.id);
       for (const s of outcome.safety ?? []) {
         emitSafetyDenied(core, tx, { botName: task.botName, taskId: task.id, action: s.action, reason: s.reason, detail: s.detail });
+        if (s.reason === "protected_page_changed") {
+          // §6.2: any change to a protected page alerts Ba; Figma's version history can restore it.
+          postLeadMessage(core, tx, `A protected Figma page changed during a CV task, so I stopped it. ${s.detail ?? ""} Please check the file and restore the page from Figma's version history.`.trim(), {
+            runId: task.runId,
+          });
+        }
       }
       if (!current || current.status !== "running") {
         // Finished elsewhere while it ran (the run was cancelled). An Apply that ran may have submitted.

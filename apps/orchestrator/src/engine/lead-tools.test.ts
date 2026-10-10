@@ -3,6 +3,7 @@ import { researchScanFixture } from "@bs-job-agents/shared/fixtures";
 import { describe, expect, it } from "vitest";
 import { approveApplication, getCompany, getRun, getTask, upsertJobCandidate } from "../db/index.js";
 import { seedCv } from "../db/test-helpers.js";
+import { fake } from "./testing/fake-runner.js";
 import { createTestEngine } from "./testing/harness.js";
 
 const lead = { botName: "lead", mode: "work" as const };
@@ -73,6 +74,25 @@ describe("Lead's tools (rule 5)", () => {
     expect(status.runs[0]!.steps.map((s) => s.stepKey)).toContain("review");
     expect(status.engines.map((e) => e.engine)).toEqual(["claude", "codex"]);
     expect(() => t.engine.lead.getStatus(lead, { runId: 999 })).toThrow(/not found/);
+  });
+
+  it("answer routing: Ba's answer in the Lead chat reaches Apply's waiting question (UC-12)", async () => {
+    const t = await createTestEngine();
+    const run = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await t.idle();
+    t.runner.script({
+      bot: "apply",
+      kind: "submit",
+      times: 1,
+      result: fake.applyPaused({ questions: [{ field: "notice", label: "Notice period", required: true, kind: "text", options: null }] }),
+    });
+    const { taskId } = t.engine.approve(1, { cvVersionId: t.review(run.id, 1)!.cvVersions[0]!.cvVersionId, introText: null });
+    await t.idle();
+    expect(() => t.engine.lead.answerQuestion({ botName: "cv", mode: "consult" }, { taskId, field: "notice", mode: "answer", value: "1 month" })).toThrow(/only Lead/);
+    expect(() => t.engine.lead.answerQuestion(lead, { taskId, field: "notice", mode: "skip" })).toThrow(/required/);
+    expect(t.engine.lead.answerQuestion(lead, { taskId, field: "notice", mode: "answer", value: "1 month" })).toEqual({ resumed: true, next: null });
+    await t.idle();
+    expect(getTask(t.db, taskId!)?.status).toBe("done");
   });
 
   it("the master CV must exist before any work starts (UC-01 c)", async () => {

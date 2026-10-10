@@ -84,7 +84,11 @@ export class Engine implements EngineCore {
     this.usage = new UsageWatcher(this);
     this.bridges = new BridgeWatcher(this);
     this.scheduler = new Scheduler(this, (schedule, input) => this.startWorkflow(input, { trigger: "schedule", scheduleId: schedule.id }));
-    this.lead = new LeadTools(this, (input, opts) => this.startWorkflow(input, opts));
+    this.lead = new LeadTools(
+      this,
+      (input, opts) => this.startWorkflow(input, opts),
+      (taskId, answer) => this.answerQuestion(taskId, answer),
+    );
   }
 
   // ------------------------------------------------------------------ EngineCore

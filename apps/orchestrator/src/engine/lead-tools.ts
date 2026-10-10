@@ -12,8 +12,10 @@ import {
   type BotTaskKey,
   type ChatMode,
   type Engine,
+  type PendingQuestion,
   type StartWorkflowInput,
 } from "@bs-job-agents/shared";
+import type { AnswerInput } from "./apply.js";
 import { z } from "zod";
 import {
   createTask,
@@ -60,12 +62,37 @@ function assertLead(core: EngineCore, caller: LeadCaller, action: string): void 
 }
 
 export type StartWorkflowFn = (input: StartWorkflowInput, opts: { trigger: Run["trigger"] }) => Run;
+export type AnswerFn = (taskId: number, input: AnswerInput) => { resumed: boolean; next: PendingQuestion | null };
+
+const AnswerToolInputSchema = z
+  .object({
+    taskId: z.coerce.number().int().positive(),
+    field: z.string().min(1),
+    mode: z.enum(["answer", "skip", "negotiable"]),
+    value: z.string().nullable().default(null),
+    remember: z.boolean().default(false),
+  })
+  .strict();
 
 export class LeadTools {
   constructor(
     private readonly core: EngineCore,
     private readonly startWorkflowFn: StartWorkflowFn,
+    private readonly answerFn: AnswerFn,
   ) {}
+
+  /**
+   * Answer routing (UC-12): Ba answered Apply's question in the Lead chat, and Lead hands the
+   * answer to the waiting task. Same checks as the question card (skip only for optional
+   * fields, Negotiable only for salary).
+   */
+  answerQuestion(caller: LeadCaller, raw: unknown): { resumed: boolean; next: PendingQuestion | null } {
+    assertLead(this.core, caller, "answer_question");
+    const parsed = AnswerToolInputSchema.safeParse(raw);
+    if (!parsed.success) throw invalidInput("answer_question needs { taskId, field, mode, value?, remember? }", parsed.error.issues);
+    const { taskId, ...answer } = parsed.data;
+    return this.answerFn(taskId, answer);
+  }
 
   /** create_task: a standalone Research task (runs outside a workflow, under the same caps). */
   createTask(caller: LeadCaller, raw: unknown): { taskId: number } {
