@@ -16,6 +16,7 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | W2c bridges | ✅ merged (8754dd6); 1304 tests green; reports/phase2-w2c-bridges.md; hook-settings decision relayed to W2a |
 | 2026-10-11 | W2a engine | ✅ merged (5b965eb); develop 1486 tests green + build; reports/phase2-w2a-engine.md |
 | 2026-10-11 | Phase 2 QA/QC attempt 1 | ⚠️ stopped by usage limit before committing anything; worktree auto-removed |
-| 2026-10-11 | Phase 2 QA/QC attempt 2 (worktree, commits as it goes) | 🔄 running |
+| 2026-10-11 | Phase 2 QA/QC | ✅ merged (d237c99); qa-phase-2.md; 1533 tests green; 10 seam/defect fixes; live Claude + Codex runs ok |
+| 2026-10-11 | Phase 2 PM review (worktree) | 🔄 running |
 
-**Next action:** when Phase 2 QA reports, merge it, then run the Phase 2 PM agent, then the must-fix fixer, then Phase 3 (W3a API/MCP/workflows, W3b chat/flows/review + lib/api, W3c other screens).
+**Next action:** when the Phase 2 PM reports, merge it, run a fixer for its MUST-FIX items, merge that, then start Phase 3 (W3a API/MCP/workflows, W3b chat/flows/review + lib/api, W3c other screens) with the should-fix items folded in.
