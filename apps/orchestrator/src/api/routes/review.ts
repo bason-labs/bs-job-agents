@@ -60,6 +60,11 @@ export function reviewRoutes(app: FastifyInstance, ctx: ApiContext): void {
   app.post<JobParams>(API_ROUTES.reviewApprove, async (req) => {
     const engine = requireEngine(ctx);
     const jobId = idParam(req.params.jobId, "review card for job");
+    // The shared schema would drop an unknown `dryRun`, turning a dry run into a live submit. Until
+    // the dry-run approval lands (W3a part 2, with F2's schema), it is refused instead.
+    if ((req.body as { dryRun?: unknown } | null | undefined)?.dryRun === true) {
+      throw badRequest("dry run approvals are not available yet; nothing was approved");
+    }
     const body = parseWith(ApproveRequestSchema, req.body);
     const r = engine.approve(jobId, { cvVersionId: rowId(body.cvVersionId, "CV version"), introText: body.introText });
     return respond(ApproveResultSchema, {

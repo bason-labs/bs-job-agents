@@ -122,6 +122,31 @@ describe("POST /review/:jobId/approve (UC-08)", () => {
     expect(ApiErrorSchema.parse(rerun.json()).error.code).toBe("forbidden");
   });
 
+  it("a dry-run approval is refused until it is supported, never turned into a live one", async () => {
+    const x = await toReview();
+    const [card] = await queue(x);
+    const res = await x.post(`/review/${card!.job.id}/approve`, { cvVersionId: card!.cvOptions[0]!.cvVersion.id, introText: null, dryRun: true });
+    expect(res.statusCode).toBe(400);
+    expect(ApiErrorSchema.parse(res.json()).error.message).toMatch(/dry run/);
+    expect(getApplication(x.t.db, 1)).toBeUndefined();
+    expect(x.t.tasks("apply.submit")).toEqual([]);
+  });
+
+  it("a cross-site form POST to approve is refused and approves nothing (S18: the human gate)", async () => {
+    const x = await toReview();
+    const [card] = await queue(x);
+    const res = await x.request("POST", `/review/${card!.job.id}/approve`, `cvVersionId=${card!.cvOptions[0]!.cvVersion.id}&introText=`, {
+      origin: "http://evil.example",
+      "sec-fetch-site": "cross-site",
+      "content-type": "application/x-www-form-urlencoded",
+      "x-bsja-csrf": "",
+    });
+    expect(res.statusCode).toBe(403);
+    expect(getApplication(x.t.db, 1)).toBeUndefined();
+    expect(x.t.tasks("apply.submit")).toEqual([]);
+    expect((await queue(x)).map((c) => c.job.id)).toEqual([card!.job.id]);
+  });
+
   it("refuses a CV version that is not on the card (400), a second approval (409) and an unknown job (404)", async () => {
     const x = await toReview();
     const [card] = await queue(x);

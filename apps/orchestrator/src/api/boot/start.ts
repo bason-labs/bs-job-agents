@@ -12,6 +12,7 @@ import { accessSync, constants, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { DegradedReason, Engine as EngineName } from "@bs-job-agents/shared";
 import type { FastifyInstance, FastifyServerOptions } from "fastify";
+import { FigmaBridge } from "../../bridges/index.js";
 import { checkDataDir, type OrchestratorConfig } from "../../config.js";
 import { SchemaGuardError, getOrCreateLeadRoom, openDb, type Db } from "../../db/index.js";
 import {
@@ -100,6 +101,8 @@ export async function startOrchestrator(opts: StartOptions): Promise<Orchestrato
   let workflows: YamlWorkflowSource | null = null;
   let engine: Engine | null = null;
   let bots: BotRegistry | null = null;
+  // Owned here, so its figma-console-mcp child process is stopped at shutdown.
+  const figma: FigmaPort & { stop?: () => Promise<void> } = opts.figma ?? new FigmaBridge();
 
   const dir = checkDataDir(config.dataDir);
   if (!dir.ok) degrade("data_dir_invalid", dir.detail);
@@ -136,7 +139,7 @@ export async function startOrchestrator(opts: StartOptions): Promise<Orchestrato
         // W3a part 2 (S17) adds the orchestrator MCP server for Lead to this config.
         runners: opts.runners ?? createRunners(),
         workflows,
-        ...(opts.figma ? { figma: opts.figma } : {}),
+        figma,
         ...(opts.browser ? { browser: opts.browser } : {}),
         logger: log,
       });
@@ -209,7 +212,7 @@ export async function startOrchestrator(opts: StartOptions): Promise<Orchestrato
           idle = await Promise.race([engine.idle().then(() => true as const), grace]);
           if (!idle) log.warn("tasks were still running at shutdown; the next start recovers them (UC-18)");
         }
-        await opts.figma?.stop?.().catch(() => undefined);
+        await figma.stop?.().catch(() => undefined);
         if (idle) db?.$client.close();
         lock?.release();
       })();

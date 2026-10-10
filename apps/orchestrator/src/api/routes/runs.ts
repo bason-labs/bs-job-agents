@@ -18,9 +18,9 @@ import {
   type Task as SharedTask,
 } from "@bs-job-agents/shared";
 import type { FastifyInstance } from "fastify";
-import { getRun, getStep, listRuns, listSteps, listTasks, mappers, type Task } from "../../db/index.js";
+import { getRun, getStep, getUpload, listRuns, listSteps, listTasks, mappers, type Task } from "../../db/index.js";
 import { requireDb, requireEngine, type ApiContext } from "../context.js";
-import { notFound } from "../errors.js";
+import { badRequest, notFound } from "../errors.js";
 import { safeDataPath } from "../files.js";
 import { idParam, keepValid, parseWith, respond } from "../http.js";
 
@@ -62,6 +62,11 @@ export function runRoutes(app: FastifyInstance, ctx: ApiContext): void {
   app.post(API_ROUTES.runs, async (req, reply) => {
     const engine = requireEngine(ctx);
     const input = parseWith(StartRunRequestSchema, req.body);
+    // The engine would only find out when it builds Research's task, after the run exists.
+    if (input.workflow === "apply-to-file") {
+      const id = Number(input.params.uploadId);
+      if (!Number.isSafeInteger(id) || !getUpload(engine.db, id)) throw badRequest(`params.uploadId: upload ${input.params.uploadId} not found`);
+    }
     // A pasted link starts apply-to-link with the link trigger (UC-14); the rest come from chat.
     const run = engine.startWorkflow(input, { trigger: input.workflow === "apply-to-link" ? "link" : "chat" });
     void reply.code(201);

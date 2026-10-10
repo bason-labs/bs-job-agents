@@ -3,7 +3,8 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HealthStatusSchema, OrchestratorStatusSchema } from "@bs-job-agents/shared";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { FigmaBridge } from "../../bridges/index.js";
 import { findRepoRoot, resolveConfig, type OrchestratorConfig } from "../../config.js";
 import { listRooms, openDb } from "../../db/index.js";
 import { FakeBrowserProbe, FakeFigmaPort, FakeRunner, MemoryFileStore } from "../../engine/testing/index.js";
@@ -132,6 +133,17 @@ describe("startOrchestrator", () => {
     await start(config);
     await expect(start(config)).rejects.toThrow(/another orchestrator/);
     expect(existsSync(join(config.dataDir, "orchestrator.lock"))).toBe(true);
+  });
+
+  it("owns the default Figma bridge and stops it at shutdown (its MCP server is a child process)", async () => {
+    const config = setup();
+    const { figma: _figma, ...noFigma } = fakes();
+    const orch = await startOrchestrator({ config, ...noFigma });
+    const bridge = orch.ctx.engine!.deps.figma as FigmaBridge;
+    expect(bridge).toBeInstanceOf(FigmaBridge);
+    const stop = vi.spyOn(bridge, "stop");
+    await orch.close();
+    expect(stop).toHaveBeenCalledOnce();
   });
 
   it("close() stops the engine, closes the database and releases the data folder", async () => {

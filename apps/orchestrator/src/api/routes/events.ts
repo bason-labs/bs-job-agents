@@ -28,7 +28,7 @@ export function eventRoutes(app: FastifyInstance, ctx: ApiContext, opts: { heart
     for (const end of [...open]) end();
   });
 
-  app.get<{ Querystring: { after?: string } }>(API_ROUTES.events, (req, reply) => {
+  app.get<{ Querystring: { after?: string } }>(API_ROUTES.events, { exposeHeadRoute: false }, (req, reply) => {
     const hub = ctx.events;
     if (!hub) {
       throw new ApiHttpError(503, "internal", `the orchestrator runs in degraded mode: ${ctx.state.state === "degraded" ? ctx.state.detail : "no event log"}`, {

@@ -9,7 +9,7 @@ import {
 } from "@bs-job-agents/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { fake } from "../../engine/testing/index.js";
-import { getRun, getStepByKey, getTask, listSteps, listTasks, setTaskTranscriptPath } from "../../db/index.js";
+import { createUpload, getRun, getStepByKey, getTask, listSteps, listTasks, setTaskTranscriptPath } from "../../db/index.js";
 import { createApiHarness, type ApiHarness } from "../testing.js";
 
 let h: ApiHarness | null = null;
@@ -38,6 +38,17 @@ describe("runs (UC-01, UC-22, UC-23)", () => {
     const res = await h.post("/runs", { workflow: "apply-to-link", params: { url: "https://itviec.com/it-jobs/frontend-1" } });
     expect(res.statusCode).toBe(201);
     expect(getRun(h.t.db, Number(res.json().runId))?.trigger).toBe("link");
+    await h.t.idle();
+  });
+
+  it("apply-to-file needs an upload that exists; nothing starts otherwise", async () => {
+    h = await createApiHarness();
+    const missing = await h.post("/runs", { workflow: "apply-to-file", params: { uploadId: "42" } });
+    expect(missing.statusCode).toBe(400);
+    expect(ApiErrorSchema.parse(missing.json()).error.message).toMatch(/upload 42 not found/);
+    expect(RunsResponseSchema.parse((await h.get("/runs")).json()).runs).toEqual([]);
+    const upload = createUpload(h.t.db, { filename: "jd.txt", mime: "text/plain", size: 3, path: "uploads/x.txt", sha256: "d".repeat(64) });
+    expect((await h.post("/runs", { workflow: "apply-to-file", params: { uploadId: String(upload.id) } })).statusCode).toBe(201);
     await h.t.idle();
   });
 

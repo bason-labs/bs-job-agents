@@ -150,6 +150,11 @@ describe("GET /events (SSE, §11 live updates)", () => {
     await s.waitFor((st) => st.frames.some((f) => f.comment === "ping"));
   });
 
+  it("has no HEAD route (it would hold a subscription open with no body)", async () => {
+    h = await createApiHarness();
+    expect((await h.app.inject({ method: "HEAD", url: "/events", headers: { host: "127.0.0.1:4100" } })).statusCode).toBe(404);
+  });
+
   it("the S18 checks apply: a foreign Host or origin is refused", async () => {
     const { port } = await listen();
     expect((await open(port, "/events", { host: `evil.example:${port}` })).status).toBe(403);
