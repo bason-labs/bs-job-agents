@@ -6,7 +6,7 @@ All spike code was throwaway and lived in the session scratchpad. Nothing was su
 |---|---|
 | S1 CLI flags, tools, MCP, JSON, usage limits | ✅ Works on both engines (details below) |
 | S2 Drive Ba's real Chrome headlessly | ✅ Claude and Codex both work; Claude also uploaded a local PDF (SHA-256 matched) |
-| S3 Figma from a headless session | ❌ **Blocked**: Figma MCP is capped on the Starter plan (decision needed, §S3) |
+| S3 Figma from a headless session | ❌ Figma's hosted MCP is capped on the Starter plan → ✅ **S3b: local bridge works** (owner chose option A) |
 | S4 `codex exec --output-schema` | ✅ Works; the schema must be in OpenAI "strict" form |
 
 ---
@@ -127,6 +127,34 @@ claude -p "<prompt>" \
 
 ---
 
+## S3b: local Figma bridge (option A, chosen by Ba)
+
+**Setup:**
+- Figma desktop
+- `figma-console-mcp@1.40.9` (MIT), run locally over stdio
+- its Desktop Bridge plugin, imported once from `~/.figma-console-mcp/plugin/manifest.json`
+- no Figma token, no cloud pairing
+
+| Check | Result |
+|---|---|
+| Plugin connects | `figma_get_status {probe:true}` succeeded about 3 s after the server started. It reports file name and key. |
+| Read pages/frames | Works. The file has pages `resume` (4 sections + 6 A4 CV frames, 595×842) and `components`. There was no `Drafts` page yet. |
+| Duplicate + edit + export (script, no LLM) | Cloned "BA HUYNH — Software Engineer Resume \| Refreshed" (`459:1767`) to a new `Drafts` page as `SPIKE_TEST_EN_v1`, appended "[SPIKE EDIT]" to the name text, and exported a PDF via `exportAsync({format:'PDF'})` + `figma.base64Encode`. The whole call took **275 ms**. The PDF: 1.06 MB, PDF 1.7, **1 page, 595×842 (A4)**, real text layer, edit present, renders correctly. |
+| Headless bot (`claude -p` + bridge via `--mcp-config`) | Changed the "Professional title" text in the copy via `figma_execute` in **11 s** (5 turns). Only `figma_get_status` and `figma_execute` were allowed. All 122 bridge tools are listed, but only allowed ones run. |
+| PDF text quality | macOS PDFKit showed false word splits ("wit h", "per formance", "huynht hienba4"). Your earlier Figma-UI exports show the same splits, so this is not caused by the bridge. **pdfminer and pypdf extract the same PDF perfectly**, so the splits are a PDFKit quirk, not an ATS problem. Checks must use a pdfminer/PDF.js-style extractor. |
+| Font swap across the whole CV | **Slow:** restyling 29 text nodes repeatedly hit the 30 s per-call cap (about 4 s per node). Fresh single text boxes in Inter, Arial, Be Vietnam Pro and Roboto exported cleanly. **Consequence:** font changes start from a template variant already in that font; long edits are chunked. |
+| Template detail | The profile text has a double space ("engineer  with"). The CV bot's self-check should normalise whitespace. |
+
+**Safety design that follows:**
+- `figma_execute` runs arbitrary plugin code, so "Drafts only" is enforced in three ways:
+  - the prompt
+  - a hook that rejects code referencing other pages
+  - an orchestrator before/after **fingerprint** of the protected pages; any change fails the task and alerts Ba
+- One Figma task at a time (Figma lock).
+- The orchestrator does the PDF export itself, which is deterministic and needs no LLM.
+
+**Left in Ba's file:** page `Drafts` containing `SPIKE_TEST_EN_v1`, for Ba to look at; delete it any time. All other spike copies were removed.
+
 ## Spec changes these findings cause
 
 1. §5.5 Runner: exact flags above, `structured_output`, the denial cross-check, closed stdin.
@@ -137,4 +165,4 @@ claude -p "<prompt>" \
    - Codex needs user config with other plugins disabled
 3. §10/UC-16 Usage limits: proactive pause from Claude's `rate_limit_event` utilization; Codex parses `turn.failed`. The sidebar meter uses real utilization.
 4. §12 Testing: a strict-schema test for every output schema.
-5. §6.2 / CV bot: depends on the S3 decision.
+5. §6.2 / CV bot / §4.2 / UC-17 / §10.3 / §12: local Figma bridge, `needs_figma` wait, Figma lock, orchestrator export, protected-page fingerprint, and the text-extractor rule (done).

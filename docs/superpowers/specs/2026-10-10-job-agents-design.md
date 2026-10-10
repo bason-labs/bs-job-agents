@@ -86,7 +86,7 @@ These six rules come from the owner ("6 nguyên tắc cốt lõi"). Each is enfo
          cwd = bots/<name>/                    files (data/cv, data/pdf,
          allowed tools from bot.json            data/screenshots, data/transcripts)
                       │
-         MCP: Figma · orchestrator
+         MCP: Figma (local bridge) · orchestrator
          Browser: Ba's real Chrome via Claude in Chrome / ChatGPT for Chrome extensions
 ```
 
@@ -108,6 +108,7 @@ These six rules come from the owner ("6 nguyên tắc cốt lõi"). Each is enfo
 | **Task queue** | Persists tasks, picks runnable ones respecting concurrency and pauses | DB, limiter |
 | **Concurrency limiter** | Max sessions per engine (default Claude 2, Codex 2) and **browser lock** (1 task driving Ba's Chrome at a time) | none |
 | **Browser bridge check** | Before a browser task starts, checks that Chrome is running and the engine's extension is connected; otherwise the task waits as `needs_browser` | Chrome extensions |
+| **Figma bridge** | Runs `figma-console-mcp` locally. Before a CV task: `figma_get_status {probe:true}`; if Figma desktop or the bridge plugin is not open, the task waits as `needs_figma`. Exports PDFs itself (no LLM) and verifies the protected pages are unchanged after each CV task | Figma desktop + Desktop Bridge plugin |
 | **Usage-limit watcher** | Reads Claude's `rate_limit_event` (utilization, reset time) and Codex limit errors, pauses an engine until reset, auto-resumes; feeds the sidebar usage meter | Runner output |
 | **Runner** | Builds the CLI command from `bot.json`, spawns it, streams the transcript, parses and validates the final JSON | CLIs, Zod schemas |
 | **Trust guard** | Allows or denies outward-facing actions by trust level and approval tokens | DB |
@@ -203,7 +204,7 @@ bs-job-agents/
 
 #### CV (Claude, L2)
 - **Input:** job (JD), company profile, master CV, optional fix list (from QA or Ba), language.
-- **Tools:** read `data/master-cv.yaml`, Figma MCP (write only to the Drafts page), PDF export, PDF text extraction.
+- **Tools:** read `data/master-cv.yaml`; the local Figma bridge (`figma-console-mcp`), with only `figma_get_status`, `figma_execute` and `figma_capture_screenshot` allowed, writing only to its own frame on the Drafts page; PDF text extraction. PDF export is done by the orchestrator, not the bot (§6.2).
 - **Output:** `CvDraft { language, tailored: TailoredCv, figmaFrameUrl, pdfPath, changeNotes[] }`. Each bullet in `TailoredCv` carries `factIds[]` pointing at master facts.
 - **Self-check:**
   - one A4 page
@@ -294,12 +295,25 @@ bs-job-agents/
 
 ### 6.2 Figma
 - **File:** `kJFoXNrTfFOtkQ515c0jHk` ("Resume (Community) V2").
+- **Access: local bridge, not Figma's hosted MCP** (Spike S3).
+  - Figma's hosted MCP is capped on Ba's Starter plan, so bots use the open-source **`figma-console-mcp`** (MIT, pinned version), which runs on Ba's Mac.
+  - It talks over `localhost` WebSocket to its **Desktop Bridge** plugin inside **Figma desktop**, which runs Figma Plugin API code (`figma_execute`).
+  - No Figma token, no quota, no cloud relay (cloud pairing is never used).
+  - **Availability:** like Chrome, Figma desktop must be open with the CV file and the Desktop Bridge plugin running. Otherwise CV tasks wait as `needs_figma`, Ba is notified, and they start when the bridge reconnects.
 - **Pages:**
-  - `Templates`: 2–4 base templates (master, never modified by bots).
+  - `Templates`: the existing `resume` page's frames and the `components` page. Bots read them and never modify them.
   - `Drafts`: one frame per CV version, named `<COMPANY>_<ROLE>_<LANG>_v<n>`.
+- **Write boundary:** `figma_execute` runs arbitrary plugin code, so "Drafts only" cannot be fully enforced by tool permissions.
+  - The prompt and a `PreToolUse` hook reject code that references any page other than Drafts.
+  - Before and after each CV task, the orchestrator records a fingerprint of every protected page (node ids, names, text content). Any change fails the task and alerts Ba; Figma's version history can restore the page.
+- **Long edits are chunked:** one `figma_execute` call may run at most 30 s. Changing fonts on many text nodes is slow (seconds per node), so a font change starts from a template variant already set in that font, rather than restyling every node.
+- **Figma lock:** one CV task uses Figma at a time (like the browser lock).
 - **Layout freedom:** CV may change section order, emphasis, which projects appear, fonts (from an allowed list: Be Vietnam Pro, Inter, Space Grotesk, Arial), accent colour, single/two-column layout and spacing, to suit the job and company.
 - **Fixed limits:** A4 portrait, one page, minimum body font 9pt, all content as real text (no text in images), one clear reading order, contact line always present.
-- **Export:** PDF to `data/pdf/<frameName>.pdf` (method verified in Spike S3).
+- **Export (verified in Spike S3):**
+  - When the CV bot finishes, the orchestrator calls `figma_execute` with `frame.exportAsync({format:'PDF'})` and `figma.base64Encode`, and writes `data/pdf/<frameName>.pdf`.
+  - About 0.3 s for clone + edit + export. One A4 page with a real text layer.
+- **Text extraction for checks** uses a pdfminer/PDF.js-style extractor. Figma PDFs extract cleanly with pdfminer and pypdf. macOS PDFKit inserts false spaces ("wit h"), so it must not be used for checks.
 
 ### 6.3 Language rule (owner instruction)
 - JD in **Vietnamese** → produce **VI and EN** CVs. The review card shows both, and Ba picks which to submit (default VI).
@@ -561,8 +575,8 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 - **No engine switching** (owner decision).
 - **End state:** work continues after the reset without Ba.
 
-### UC-17: Login expired, CAPTCHA, or Figma auth
-- **Main flow:** the task pauses with reason `needs_login(site)` / `captcha(site)` / `figma_auth`. Lead asks Ba to fix it in Ba's own Chrome (the bot's tab is brought to front) or to re-authenticate Figma. Because bots reuse Ba's Chrome, this should only happen when a site session has actually expired. Ba clicks "Done", and the task resumes.
+### UC-17: Login expired, CAPTCHA, or Figma not reachable
+- **Main flow:** the task pauses with reason `needs_login(site)` / `captcha(site)` / `needs_figma`. Lead asks Ba to fix it in Ba's own Chrome (the bot's tab is brought to front), or to open Figma desktop with the CV file and run the Desktop Bridge plugin. Because bots reuse Ba's Chrome, this should only happen when a site session has actually expired. Ba clicks "Done", and the task resumes.
 - **End state:** task resumed; no credentials stored by the app.
 
 ### UC-18: Crash or restart recovery
@@ -695,6 +709,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 
 ### 10.3 Concurrency
 - Per-engine session caps: default Claude 2, Codex 2 (configurable).
+- **Figma lock:** CV tasks using the Figma bridge run one at a time.
 - **Browser lock:** tasks driving Ba's Chrome run one at a time, so two bots never fight over the same browser, and each works in its own tab group labelled with the bot name. Search-only Research tasks don't need the lock.
 - **Chrome not open** (e.g. a scheduled scan while Chrome is closed): browser tasks wait as `needs_browser`, Ba gets a notification, and they start as soon as the extension reconnects. Non-browser steps keep running.
 - Group room replies obey the same caps.
@@ -759,6 +774,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | UI end-to-end | Playwright + FakeRunner | Own components: Select keyboard (↑/↓/Enter/Esc) and click-outside, Slider drag + arrow keys, Checkbox/Switch with Space, NumberInput formatting, menus not clipped inside tables; Chat → run card; Flow nodes update over SSE; approve → Apply unlocks; request changes → new round; skip with reason; light/dark screenshot checks |
 | Form filling | Vitest + FakeRunner + HTML form fixtures | Optional salary left blank under the default rule and recorded `skipped`; required salary gets "Negotiable/Thỏa thuận"; Fixed and Negotiable rules; Ask rule offers Skip; unknown required field pauses; unknown optional field never pauses |
 | Safety | Vitest + fixtures | JD with hidden instructions is not obeyed and gets flagged; Apply off-domain is blocked; double submission is impossible |
+| Figma bridge | Vitest + fake bridge (scripted `figma_execute` replies) | Protected-page fingerprint change fails the task; hook rejects code that references non-Drafts pages; export writes a valid one-page PDF from base64; bridge not connected → `needs_figma`, then auto-resume; Figma lock; extracted-text check uses the pdfminer-style extractor |
 | Bot quality evals (on demand; uses the subscription) | Script | Golden set of 10 real JDs + master CV: QA score consistency (±5 across 3 runs), a CV seeded with invented facts must hard-fail, CV output one page; results stored per prompt version |
 | Dry-run acceptance | Real pipeline, Apply in `dryRun` | Fills the form and screenshots, never clicks submit; required before the first live submission |
 
@@ -786,6 +802,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
 | 2026-10-10 | Approach 1: slim custom local web app (not a LibreChat / Vibe Kanban fork, not OpenClaw) |
 | 2026-10-10 | Node/TypeScript backend (no Rust/C; bottleneck is model calls) |
 | 2026-10-10 | CV: master data file + Figma templates; CV bot may adapt layout and content per JD/company |
+| 2026-10-10 | Figma hosted MCP capped on Starter plan (Spike S3) → use local `figma-console-mcp` + Desktop Bridge plugin in Figma desktop (owner chose option A); orchestrator exports PDFs |
 | 2026-10-10 | Sources: TopCV, LinkedIn (read-only), ITviec, career sites, any site on request |
 | 2026-10-10 | Scheduled scans + chat-triggered; max 5 jobs per scan; fit ≥ 60; QA ≥ 80; max 3 QA rounds |
 | 2026-10-10 | One approval per job covers submit + consent; Apply pauses on unknown questions |
