@@ -11,6 +11,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./host": {
+      "types": "./dist/common/host.d.ts",
+      "import": "./dist/common/host.js",
+      "default": "./dist/common/host.js"
+    },
     "./fixtures": {
       "types": "./dist/fixtures/index.d.ts",
       "import": "./dist/fixtures/index.js",
@@ -29,6 +34,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "tldts": "7.4.18",
     "zod": "^3.25.76"
   },
   "devDependencies": {

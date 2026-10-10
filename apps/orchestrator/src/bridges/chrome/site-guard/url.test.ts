@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { hostAllowed, InvalidAllowlistError, normalizeAllowlist } from "./allowlist.js";
 import { checkNavigateUrl, checkPageUrlValue } from "./url.js";
 
-const ALLOW = normalizeAllowlist(["topcv.vn", "itviec.com", "127.0.0.1"]);
+const ALLOW = normalizeAllowlist(["topcv.vn", "itviec.com", "jobs.lever.co"]);
 
 describe("normalizeAllowlist", () => {
   it("lowercases, trims, drops wildcards, dots and duplicates", () => {
@@ -14,7 +14,15 @@ describe("normalizeAllowlist", () => {
   });
 
   it("converts international names to their ASCII form", () => {
-    expect(normalizeAllowlist(["bücher.example"])).toEqual(["xn--bcher-kva.example"]);
+    expect(normalizeAllowlist(["bücher.de"])).toEqual(["xn--bcher-kva.de"]);
+  });
+
+  it("refuses public suffixes, IP addresses, localhost and local names: an entry may only widen to its own subdomains (PM2 M2)", () => {
+    for (const bad of ["com", "vn", "com.vn", "github.io", "127.0.0.1", "192.168.1.1", "localhost", "printer.local", "nas.home.arpa", "*.vn", ".com.vn", "2130706433", "bücher.example"]) {
+      expect(() => normalizeAllowlist([bad]), bad).toThrow(InvalidAllowlistError);
+    }
+    expect(() => normalizeAllowlist(["topcv.vn", "vn"])).toThrow(/vn/);
+    expect(normalizeAllowlist(["topcv.vn", "itviec.com", "acme.wd3.myworkdayjobs.com"])).toEqual(["topcv.vn", "itviec.com", "acme.wd3.myworkdayjobs.com"]);
   });
 
   it("rejects entries that are not plain host names", () => {
@@ -35,10 +43,11 @@ describe("hostAllowed", () => {
     expect(hostAllowed("topcv.vn.evil.example", ALLOW)).toBe(false);
   });
 
-  it("matches IP addresses exactly", () => {
-    expect(hostAllowed("127.0.0.1", ALLOW)).toBe(true);
-    expect(hostAllowed("1.127.0.0.1", ALLOW)).toBe(false);
-    expect(hostAllowed("127.0.0.2", ALLOW)).toBe(false);
+  it("never allows an IP address or a parent of a listed site (PM2 M2)", () => {
+    expect(hostAllowed("127.0.0.1", ALLOW)).toBe(false);
+    expect(hostAllowed("192.168.1.1", ALLOW)).toBe(false);
+    expect(hostAllowed("lever.co", ALLOW)).toBe(false);
+    expect(hostAllowed("acme.jobs.lever.co", ALLOW)).toBe(true);
   });
 
   it("allows nothing with an empty list", () => {
@@ -58,7 +67,7 @@ describe("checkNavigateUrl (the navigate tool)", () => {
     "topcv.vn/viec-lam",
     "www.itviec.com",
     "//topcv.vn/x",
-    "http://127.0.0.1:3000/test",
+    "http://jobs.lever.co:3000/test",
     "back",
     "forward",
     " Back ",
@@ -111,7 +120,7 @@ describe("checkNavigateUrl (the navigate tool)", () => {
   it("names the host and the allowed sites in the message", () => {
     const decision = checkNavigateUrl("https://mail.google.com/mail/u/0", ALLOW);
     expect(decision).toMatchObject({ allow: false, target: "mail.google.com" });
-    if (!decision.allow) expect(decision.reason).toContain("topcv.vn, itviec.com, 127.0.0.1");
+    if (!decision.allow) expect(decision.reason).toContain("topcv.vn, itviec.com, jobs.lever.co");
   });
 
   it("blocks everything when the allowlist is empty", () => {

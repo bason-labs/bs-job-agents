@@ -1,5 +1,6 @@
 // Primitive schemas and constants reused across modules.
 import { z } from "zod";
+import { publicHostProblem } from "./host.js";
 
 /** Opaque string id (ULID/UUID/slug; the DB decides). */
 export const IdSchema = z.string().min(1);
@@ -12,14 +13,36 @@ export type IsoDateTime = z.infer<typeof IsoDateTimeSchema>;
 /** Absolute http(s) URL. */
 export const UrlSchema = z.string().url().regex(/^https?:\/\//i, "expected an http(s) URL");
 
+/**
+ * PM2 M2: an http(s) URL on a public web site (the public-host rule): never Ba's Mac, his LAN, an
+ * IP address or a bare public suffix. For URLs the orchestrator sends a bot to in Ba's Chrome.
+ */
+export const PublicUrlSchema = UrlSchema.superRefine((value, ctx) => {
+  let host: string;
+  try {
+    host = new URL(value).hostname;
+  } catch {
+    return; // UrlSchema reported it
+  }
+  const problem = publicHostProblem(host.replace(/^\[|\]$/g, ""));
+  if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `expected a public web site: ${problem}` });
+});
+
 /** Lowercase hex SHA-256 digest (§9.1). */
 export const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/, "expected a lowercase hex SHA-256");
 export type Sha256 = z.infer<typeof Sha256Schema>;
 
-/** Host name without scheme or path, e.g. `topcv.vn`. */
+/**
+ * Host name without scheme or path, e.g. `topcv.vn`. PM2 M2: a public web site (the public-host
+ * rule in ./host.ts): never a public suffix, an IP address, localhost or a local name.
+ */
 export const DomainSchema = z
   .string()
-  .regex(/^(?=.{1,253}$)([a-z0-9-]+\.)*[a-z0-9-]+$/i, "expected a host name such as topcv.vn");
+  .regex(/^(?=.{1,253}$)([a-z0-9-]+\.)*[a-z0-9-]+$/i, "expected a host name such as topcv.vn")
+  .superRefine((value, ctx) => {
+    const problem = publicHostProblem(value);
+    if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `expected a public web site such as topcv.vn: ${problem}` });
+  });
 
 /** Bot name: unique, lowercase (§5.1). */
 export const BotNameSchema = z.string().regex(/^[a-z][a-z0-9-]*$/, "bot names are lowercase slugs");

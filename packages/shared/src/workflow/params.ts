@@ -1,6 +1,6 @@
 // Workflow names and their start parameters (§7.2, §7.3, §7.3b).
 import { z } from "zod";
-import { IdSchema, UrlSchema } from "../common/primitives.js";
+import { IdSchema, PublicUrlSchema } from "../common/primitives.js";
 import { SearchProfileOverridesSchema } from "../domain/search-profile.js";
 
 /** Phase 1 workflows shipped in workflows/*.yaml. */
@@ -22,10 +22,10 @@ export const JobScanParamsSchema = z
   .strict();
 export type JobScanParams = z.infer<typeof JobScanParamsSchema>;
 
-/** §7.3, UC-14: applyAgain overrides the "already applied" stop (§10.2 rule 5). */
+/** §7.3, UC-14: applyAgain overrides the "already applied" stop (§10.2 rule 5). PM2 M2: a public site only. */
 export const ApplyToLinkParamsSchema = z
   .object({
-    url: UrlSchema,
+    url: PublicUrlSchema,
     applyAgain: z.boolean().default(false),
     searchProfileId: IdSchema.nullable().default(null),
   })

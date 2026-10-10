@@ -6,6 +6,7 @@ import {
   DomainSchema,
   IdSchema,
   LIMITS,
+  PublicUrlSchema,
   SearchSourceSchema,
   Sha256Schema,
   UrlSchema,
@@ -23,8 +24,8 @@ export const ResearchScanInputSchema = z.object({
   maxPageViews: z.number().int().positive().nullable(),
 });
 
-/** research.single: one job URL (§7.3). */
-export const ResearchSingleInputSchema = z.object({ url: UrlSchema });
+/** research.single: one job URL (§7.3). PM2 M2: a public site, never Ba's Mac or LAN. */
+export const ResearchSingleInputSchema = z.object({ url: PublicUrlSchema });
 
 /** research.file: an uploaded JD (§7.3b). */
 export const ResearchFileInputSchema = z.object({
@@ -101,7 +102,8 @@ export const ApplySubmitInputSchema = z.object({
   applicationId: IdSchema,
   jobId: IdSchema,
   cvVersionId: IdSchema,
-  jobUrl: UrlSchema,
+  /** PM2 M2: Apply starts here, in Ba's Chrome: a public site only. */
+  jobUrl: PublicUrlSchema,
   expectedCompany: z.string().min(1),
   expectedTitle: z.string().min(1),
   approvalToken: z.string().min(1),
