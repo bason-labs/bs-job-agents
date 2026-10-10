@@ -1,12 +1,14 @@
 // SQLite + Drizzle data layer (spec §9, §9.1). Owned by W1b in Phase 1.
 //
-//   const db = openDb("data/app.db");            // WAL, FKs, busy_timeout, migrations
+//   const db = openDb("data/app.db");            // WAL, FKs, busy_timeout, migrations; throws
+//                                                 // SchemaGuardError if a §9.1 trigger is missing
 //   recoverInterruptedTasks(db);                  // UC-18, once at start-up
 //   const task = claimNextTask(db, { allowBrowser: !browserLock.held });
 //
 // Every repository function takes the Drizzle handle or a transaction
 // (`db.transaction(tx => …)`), so several calls can be composed atomically.
 export * from "./client.js";
+export * from "./schema-guard.js";
 export * as schema from "./schema.js";
 export type { JsonObject, SubmittedField, StatusHistoryEntry } from "./schema.js";
 export * from "./enums.js";

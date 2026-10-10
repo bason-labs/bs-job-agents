@@ -26,3 +26,27 @@ export class ImmutableRecordError extends Error {
     this.name = "ImmutableRecordError";
   }
 }
+
+/** A trigger or index openDb() requires after migrating (schema-guard.ts). */
+export interface GuardedSchemaObject {
+  type: "trigger" | "index";
+  name: string;
+  /** The table it belongs to. */
+  table: string;
+}
+
+/**
+ * openDb() found a guarded trigger or index missing after migrating (PM M4): most likely a
+ * migration rebuilt a table, which drops its triggers. The orchestrator must not start,
+ * because the §9.1 record and the approval rules would no longer be enforced.
+ */
+export class SchemaGuardError extends Error {
+  constructor(readonly missing: readonly GuardedSchemaObject[]) {
+    super(
+      `database schema is missing ${missing.length} guarded object(s): ${missing
+        .map((o) => `${o.type} ${o.name} on ${o.table}`)
+        .join(", ")}. A migration probably rebuilt a table and dropped them; refusing to start (spec §9.1).`,
+    );
+    this.name = "SchemaGuardError";
+  }
+}

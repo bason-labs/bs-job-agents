@@ -6,6 +6,7 @@ import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 import * as schema from "./schema.js";
+import { assertGuardedSchema } from "./schema-guard.js";
 
 export type Schema = typeof schema;
 export type Db = BetterSQLite3Database<Schema> & { $client: Database.Database };
@@ -53,15 +54,27 @@ function runMigrations(client: Database.Database, db: Db, migrationsFolder: stri
   }
 }
 
+/**
+ * Migrate, then check that every guarded trigger and index exists (PM M4). On any failure
+ * the connection is closed and the error is rethrown, so the orchestrator does not start.
+ */
 function wrap(client: Database.Database, options: OpenDbOptions): Db {
-  const db = drizzle(client, { schema }) as Db;
-  runMigrations(client, db, options.migrationsFolder ?? MIGRATIONS_FOLDER);
-  return db;
+  try {
+    const db = drizzle(client, { schema }) as Db;
+    runMigrations(client, db, options.migrationsFolder ?? MIGRATIONS_FOLDER);
+    assertGuardedSchema(client);
+    return db;
+  } catch (err) {
+    client.close();
+    throw err;
+  }
 }
 
 /**
  * Open (creating if needed) the SQLite database at `path` with WAL, foreign keys
  * and a busy timeout, then apply pending migrations. Typically `data/app.db`.
+ * Throws SchemaGuardError (and does not open) if a §9.1 trigger or the
+ * one-application-per-job index is missing after migrating.
  */
 export function openDb(path: string, options: OpenDbOptions = {}): Db {
   mkdirSync(dirname(path), { recursive: true });
