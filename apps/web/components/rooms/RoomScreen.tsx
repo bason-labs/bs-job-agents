@@ -3,6 +3,7 @@
 import type { Message, Room } from "@bs-job-agents/shared";
 import { useEffect, useRef, useState } from "react";
 import { BotAvatar, useToast } from "@/components/ui";
+import { errorText } from "@/components/schedules/apiError";
 import { roomsData, type RoomBot, type RoomsData } from "./data";
 import { roomMentions, splitMentions } from "./mentions";
 import { MentionComposer } from "./MentionComposer";
@@ -82,7 +83,7 @@ export function RoomScreen({ room, initialMessages, bots, data = roomsData }: Ro
     try {
       append(await data.send(room.id, text));
     } catch (e) {
-      toast({ title: `Couldn't send: ${e instanceof Error ? e.message : String(e)}`, tone: "err" });
+      toast({ title: `Couldn't send: ${errorText(e)}`, tone: "err" });
       throw e;
     }
     if (mentioned.length === 0) append(localNote(room.id, NO_MENTION, ++notes.current));

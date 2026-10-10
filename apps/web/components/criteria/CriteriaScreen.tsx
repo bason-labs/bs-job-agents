@@ -4,6 +4,7 @@ import type { SavedAnswer, SearchProfile } from "@bs-job-agents/shared";
 import Link from "next/link";
 import { useId, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { errorText } from "@/components/schedules/apiError";
 import { formatDateTime } from "@/components/schedules/datetime";
 import { Button, Field, NumberInput, Select, Slider, useToast } from "@/components/ui";
 import { ChipInput, ToggleChips } from "./ChipInput";
@@ -108,7 +109,7 @@ export function CriteriaScreen({ initial, initialVersions, initialAnswers = [], 
       toast({ title: `Search criteria saved as v${saved.version}` });
       setVersions((await data.versions()).versions);
     } catch (e) {
-      toast({ title: `Couldn't save the criteria: ${e instanceof Error ? e.message : String(e)}`, tone: "err" });
+      toast({ title: `Couldn't save the criteria: ${errorText(e)}`, tone: "err" });
     } finally {
       setSaving(false);
     }

@@ -4,6 +4,7 @@ import type { Fact, MasterCv } from "@bs-job-agents/shared";
 import { CircleHelp } from "lucide-react";
 import { useId, useState } from "react";
 import { Button, Field, Input, useToast } from "@/components/ui";
+import { errorText } from "@/components/schedules/apiError";
 import { formatDateTime } from "@/components/schedules/datetime";
 import { masterCvData, type FactRequestItem, type MasterCvData, type MasterCvVersion } from "./data";
 import { FactCard } from "./FactCard";
@@ -100,7 +101,7 @@ export function MasterCvScreen({ initial, initialVersions, initialRequests, data
       setRequests(r);
       toast({ title: `Master CV saved as v${result.version} — review cards built on v${saved.version} will offer to regenerate.` });
     } catch (e) {
-      toast({ title: `Couldn't save the master CV: ${e instanceof Error ? e.message : String(e)}`, tone: "err" });
+      toast({ title: `Couldn't save the master CV: ${errorText(e)}`, tone: "err" });
     } finally {
       setSaving(false);
     }
@@ -119,7 +120,7 @@ export function MasterCvScreen({ initial, initialVersions, initialRequests, data
       setRequests((rs) => rs.filter((x) => x.id !== r.id));
       toast({ title: `OK — CV goes on without ${r.topic}; it never invents facts.` });
     } catch (e) {
-      toast({ title: `Couldn't answer CV: ${e instanceof Error ? e.message : String(e)}`, tone: "err" });
+      toast({ title: `Couldn't answer CV: ${errorText(e)}`, tone: "err" });
     }
   };
 

@@ -6,13 +6,12 @@ import { useState } from "react";
 import { Button, IconButton, Input, useToast } from "@/components/ui";
 import { formatDate } from "@/components/schedules/datetime";
 import type { CriteriaData } from "./data";
+import { errorText } from "@/components/schedules/apiError";
 
 export interface SavedAnswersProps {
   initial: SavedAnswer[];
   data: CriteriaData;
 }
-
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
  * Answers Ba told Apply to remember (UC-12). Apply reuses them on every form that asks the

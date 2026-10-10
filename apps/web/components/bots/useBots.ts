@@ -5,8 +5,7 @@ import { useState } from "react";
 import { useToast } from "@/components/ui";
 import type { BotsData } from "./data";
 import { ENGINE_LABELS, type BotScreenView } from "./logic";
-
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+import { errorText } from "@/components/schedules/apiError";
 
 /** State and actions shared by the Bots grid and a bot's settings page. */
 export function useBots(initial: BotScreenView[], data: BotsData) {

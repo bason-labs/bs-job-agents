@@ -12,14 +12,13 @@ import { applicationsHeader, cvLabel, exportFileName, sourceLabel, type Applicat
 import { RecordPanel } from "./RecordPanel";
 import { StatusSelect } from "./StatusSelect";
 import { cvViewerFile, screenshotViewerFile } from "./viewerFiles";
+import { errorText } from "@/components/schedules/apiError";
 
 export interface ApplicationsScreenProps {
   initial: ApplicationsList;
   /** Defaults to the app's data source; tests pass their own. */
   data?: ApplicationsData;
 }
-
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /** Starts a download of `href` (the export ZIP); the browser saves it as `name`. */
 function download(href: string, name: string) {
