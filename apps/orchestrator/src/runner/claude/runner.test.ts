@@ -83,6 +83,20 @@ describe("ClaudeRunner: a successful run", () => {
     expect(kit.workDirsLeft()).toEqual([]);
   });
 
+  it("removeSession: the engine removes a session a crash left behind (UC-18)", async () => {
+    const projects = join(kit.claudeConfigDir, "projects", "-bots-cv");
+    mkdirSync(join(projects, "672a22e9-efad-4750-93c8-0fabbbf6a898"), { recursive: true });
+    const sessionFile = join(projects, "672a22e9-efad-4750-93c8-0fabbbf6a898.jsonl");
+    writeFileSync(sessionFile, "{}\n");
+    const { r, calls } = runner([]);
+    await r.removeSession("672a22e9-efad-4750-93c8-0fabbbf6a898");
+    expect(existsSync(sessionFile)).toBe(false);
+    expect(existsSync(join(projects, "672a22e9-efad-4750-93c8-0fabbbf6a898"))).toBe(false);
+    // Not a session id: nothing is touched.
+    await r.removeSession("../../etc");
+    expect(calls).toHaveLength(0);
+  });
+
   it("keeps the session when cleanup is off", async () => {
     const projects = join(kit.claudeConfigDir, "projects", "-bots-cv");
     mkdirSync(projects, { recursive: true });

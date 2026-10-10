@@ -236,6 +236,13 @@ export class FakeRunner implements Runner {
     return this;
   }
 
+  /** Sessions the engine asked to remove (UC-18 orphan cleanup), in order. */
+  readonly removedSessions: string[] = [];
+
+  async removeSession(sessionId: string): Promise<void> {
+    this.removedSessions.push(sessionId);
+  }
+
   /** Calls of one task key, e.g. "apply.submit". */
   callsFor(key: string): RunnerTask[] {
     return this.calls.filter((c) => `${c.bot.name}.${c.kind}` === key);

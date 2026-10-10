@@ -83,4 +83,10 @@ export type RunnerResult =
 export interface Runner {
   readonly engine: Engine | "fake";
   run(task: RunnerTask, onEvent: (event: RunnerEvent) => void): Promise<RunnerResult>;
+  /**
+   * Additive (QA Phase 2, UC-18): delete a CLI session a crashed orchestrator left behind (the
+   * runner persists each session only for the repair prompt and deletes it after the task; a crash
+   * skips that). The id is the one the `started` event reported. Best effort; ignores non-ids.
+   */
+  removeSession?(sessionId: string): Promise<void>;
 }

@@ -59,6 +59,14 @@ describe("CodexRunner: a successful run", () => {
     expect(kit.workDirsLeft()).toEqual([]);
   });
 
+  it("removeSession: `codex delete --force <thread>` for a thread a crash left behind (UC-18)", async () => {
+    const { r, calls } = runner([]);
+    await r.removeSession("01a126da-c068-79b0-93c3-7cf34d4305ec");
+    expect(calls.map((c) => c.args)).toEqual([["delete", "--force", "01a126da-c068-79b0-93c3-7cf34d4305ec"]]);
+    await r.removeSession("not-a-thread; rm -rf /");
+    expect(calls).toHaveLength(1);
+  });
+
   it("writes the strict schema into the work dir for --output-schema", async () => {
     let schemaSeen: unknown = null;
     const fake = fakeSpawn((_c, args) => {

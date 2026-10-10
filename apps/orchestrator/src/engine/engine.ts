@@ -54,6 +54,8 @@ export interface StartReport {
   needsCheckApplications: number[];
   /** CLI process groups a crash left behind, by the pid their `started` event reported. */
   orphanPids: number[];
+  /** CLI sessions those attempts persisted (kept only for a repair prompt), removed through their runner. */
+  orphanSessions: string[];
 }
 
 export class Engine implements EngineCore {
@@ -145,7 +147,9 @@ export class Engine implements EngineCore {
     // Recovery marks every running task interrupted: never while this engine runs tasks itself.
     if (this.running) throw new EngineError("conflict", "the engine is already started");
     const r = recoverInterruptedTasks(this.db, { now: this.now(), maxAttempts: this.config.maxAttempts });
-    const orphanPids = this.killOrphans([...r.requeued, ...r.exhausted, ...r.needsCheck]);
+    const interrupted = [...r.requeued, ...r.exhausted, ...r.needsCheck];
+    const orphanPids = this.killOrphans(interrupted);
+    const orphanSessions = await this.removeOrphanSessions(interrupted);
     this.bus.flush();
     this.running = true;
     this.queue.resume();
@@ -160,6 +164,7 @@ export class Engine implements EngineCore {
       needsCheck: r.needsCheck.map((t) => t.id),
       needsCheckApplications: r.needsCheckApplicationIds,
       orphanPids,
+      orphanSessions,
     };
   }
 
@@ -196,6 +201,30 @@ export class Engine implements EngineCore {
       }
     }
     return pids;
+  }
+
+  /**
+   * UC-18: each interrupted attempt's CLI session (the runner persists it only for the repair
+   * prompt and deletes it after the task, which a crash skips; it holds the prompt and Ba's data).
+   * The last `runner.spawned` row of the task names the engine and the session. Best effort.
+   */
+  private async removeOrphanSessions(tasks: readonly Task[]): Promise<string[]> {
+    const removed: string[] = [];
+    for (const t of tasks) {
+      const payload = listEvents(this.db, { taskId: t.id, types: ["runner.spawned"] }).at(-1)?.payload as { engine?: unknown; sessionId?: unknown } | undefined;
+      const sessionId = payload?.sessionId;
+      if (typeof sessionId !== "string" || sessionId === "") continue;
+      const engine = payload?.engine === "claude" || payload?.engine === "codex" ? payload.engine : t.engine;
+      const runner = this.deps.runners[engine];
+      if (!runner?.removeSession) continue;
+      try {
+        await runner.removeSession(sessionId);
+        removed.push(sessionId);
+      } catch (err) {
+        this.log.warn(`could not remove the CLI session ${sessionId} of task ${t.id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return removed;
   }
 
   /** SSE (W3a): committed shared events in order, including the ones repositories append. */

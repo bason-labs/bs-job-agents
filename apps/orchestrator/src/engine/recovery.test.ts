@@ -69,6 +69,40 @@ describe("crash recovery (UC-18)", () => {
     expect(getRun(second.db, run.id)?.status).toBe("done");
   });
 
+  it("the CLI sessions a crash left behind are removed: the runners kept them only for a repair (UC-18)", async () => {
+    const first = await createTestEngine({ clock: new FakeClock(T0) });
+    first.runner.script({ bot: "cv", kind: "tailor", delayMs: 3600_000 });
+    first.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await settleSomeWork();
+    const cv = first.tasks("cv.tailor")[0]!;
+    expect(cv.status).toBe("running");
+
+    const second = await createTestEngine({ db: first.db, files: first.files, clock: new FakeClock(new Date(T0.getTime() + 60_000)), start: false });
+    const removing: Array<{ engine: string; sessionId: string }> = [];
+    second.runner.removeSession = async (sessionId) => {
+      removing.push({ engine: "fake", sessionId });
+    };
+    const report = await second.engine.start();
+    await second.idle();
+    // Only the crashed attempt's session: the finished tasks' runners removed theirs themselves.
+    expect(removing).toEqual([{ engine: "fake", sessionId: `fake-${cv.id}-1` }]);
+    expect(report.orphanSessions).toEqual([`fake-${cv.id}-1`]);
+  });
+
+  it("a failing session cleanup never stops the start-up", async () => {
+    const first = await createTestEngine({ clock: new FakeClock(T0) });
+    first.runner.script({ bot: "research", kind: "fit", delayMs: 3600_000 });
+    first.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await settleSomeWork();
+    const second = await createTestEngine({ db: first.db, files: first.files, clock: new FakeClock(new Date(T0.getTime() + 60_000)), start: false });
+    second.runner.removeSession = async () => {
+      throw new Error("disk full");
+    };
+    await expect(second.engine.start()).resolves.toMatchObject({ requeued: [first.tasks("research.fit")[0]!.id] });
+    await second.idle();
+    expect(second.tasks("research.fit")[0]!.status).toBe("done");
+  });
+
   it("works across a real restart of a file database", async () => {
     const dir = mkdtempSync(join(tmpdir(), "bsja-engine-recover-"));
     try {

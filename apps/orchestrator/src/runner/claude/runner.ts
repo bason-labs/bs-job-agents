@@ -62,7 +62,7 @@ export class ClaudeRunner extends CliRunner {
     };
   }
 
-  protected removeSession(_p: PreparedTask, sessionId: string): Promise<void> {
+  protected deleteSession(sessionId: string): Promise<void> {
     return removeClaudeSession(this.config.claudeConfigDir, sessionId);
   }
 }

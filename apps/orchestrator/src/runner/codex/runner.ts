@@ -83,13 +83,13 @@ export class CodexRunner extends CliRunner {
   }
 
   /** `codex delete --force <thread>`: the thread was persisted only for the repair prompt. */
-  protected async removeSession(p: PreparedTask, threadId: string): Promise<void> {
+  protected async deleteSession(threadId: string, cwd: string): Promise<void> {
     if (!isSessionId(threadId)) return;
     const inv = buildCodexDeleteInvocation(threadId, this.config);
     await runCli({
       command: inv.command,
       args: inv.args,
-      cwd: p.task.cwd,
+      cwd,
       env: this.config.env,
       spawn: this.spawn,
       killTree: this.killTree,
