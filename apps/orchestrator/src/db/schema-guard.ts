@@ -6,7 +6,11 @@
 //
 // Migration rules (phases.md rule 4): never rebuild `applications`, `submissions`,
 // `job_snapshots` or `approvals`; use ADD COLUMN. A migration that adds a trigger adds
-// it here too (schema-guard.test.ts fails on an unguarded trigger).
+// it here too (schema-guard.test.ts fails on an unguarded trigger). A trigger body may only
+// name those four tables: SQLite >= 3.26 re-checks every trigger on ALTER TABLE ... RENAME,
+// so a trigger that names another table makes a rebuild of that table fail. A migration
+// that rebuilds another table (e.g. `cv_versions` for a CHECK change) re-creates that
+// table's own triggers afterwards; openDb() refuses to start until it does.
 import type Database from "better-sqlite3";
 import { SchemaGuardError, type GuardedSchemaObject } from "./errors.js";
 
@@ -16,8 +20,8 @@ export const GUARDED_SCHEMA_OBJECTS = [
   // §9.1: the submission record is frozen once written (0001).
   { type: "trigger", name: "submissions_no_update", table: "submissions" },
   { type: "trigger", name: "submissions_no_delete", table: "submissions" },
-  // PM M1: a record cites the consumed token of its own application and the approved PDF; an
-  // approved CV version keeps its PDF (0005).
+  // PM M1: an app record cites its own application's consumed token and dry-run flag; an
+  // approved CV version keeps its PDF, the file recordSubmission compares against (0005).
   { type: "trigger", name: "submissions_match_approval", table: "submissions" },
   { type: "trigger", name: "cv_versions_pdf_frozen_once_approved", table: "cv_versions" },
   { type: "trigger", name: "job_snapshots_no_update", table: "job_snapshots" },

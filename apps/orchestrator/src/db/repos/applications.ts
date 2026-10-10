@@ -231,7 +231,8 @@ function uploadedFileMatches(uploaded: string | null, approved: string | null, s
  * and was issued for this application, job and CV version (`token_mismatch`), and the
  * uploaded file's SHA-256 equals the approved `cv_versions.pdf_sha256` (`sha_mismatch`;
  * required for `submitted`, checked whenever present for `needs_check`). After a refusal
- * the engine calls markSubmissionRefused. A SQL trigger refuses the same records.
+ * the engine calls markSubmissionRefused. A SQL trigger (0005) also refuses a record whose
+ * token is not its application's used token or whose dry-run flag differs.
  *
  * `dryRun` (§12 dry-run acceptance: form filled, submit never clicked) records the
  * attempt with `dry_run = 1` and leaves the application `needs_check`; it can never

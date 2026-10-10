@@ -5,6 +5,14 @@
 //   recoverInterruptedTasks(db);                  // UC-18, once at start-up
 //   const task = claimNextTask(db, { allowBrowser: !browserLock.held });
 //
+// The approve → apply → record path (§9.1, §10.2 rule 1; PM M1–M3):
+//   approveApplication(tx, { jobId, cvVersionId, allowedDomains, dryRun? }) // UC-08: app + bound token
+//   consumeApproval(db, token, { applicationId, jobId, cvVersionId, domain })        // first spawn
+//   checkApprovalForResume(db, token, { applicationId, jobId, cvVersionId, domain }) // resume
+//   recordSubmission(db, { applicationId, submission: { approvalToken, uploadedSha256, … }, … })
+//   markSubmissionRefused(db, { error, taskId })  // on SubmissionRefusedError: needs_check + safety.denied
+//   transitionApplication(db, id, to, { by: "system" | "manual" })               // shared status machine
+//
 // Every repository function takes the Drizzle handle or a transaction
 // (`db.transaction(tx => …)`), so several calls can be composed atomically.
 export * from "./client.js";
