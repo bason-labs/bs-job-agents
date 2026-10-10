@@ -57,6 +57,9 @@ importers:
       fastify:
         specifier: ^5.12.5
         version: 5.12.5
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       figma-console-mcp:
         specifier: 1.40.9
         version: 1.40.9(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -3027,6 +3030,9 @@ packages:
     peerDependenciesMeta:
       picomatch:
         optional: true
+
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   figma-console-mcp@1.40.9:
     resolution: {integrity: sha512-QPS9LOrbui8lgqTA6Ps6RBMCPji9ks9jbMwuD7QIJpCyX3TLTKiZdYHtugxegBXIvpCJzrr1A25me64ZNPvFNQ==}
@@ -7333,6 +7339,8 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
       picomatch: 4.0.7
+
+  fflate@0.8.3: {}
 
   figma-console-mcp@1.40.9(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:

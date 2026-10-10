@@ -25,6 +25,7 @@
     "croner": "^10.0.1",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.5",
+    "fflate": "^0.8.3",
     "figma-console-mcp": "1.40.9",
     "pdfjs-dist": "^4.10.38",
     "yaml": "^2.9.1",
