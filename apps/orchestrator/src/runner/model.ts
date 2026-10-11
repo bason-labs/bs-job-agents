@@ -12,3 +12,8 @@ export function modelForEngine(model: string | null | undefined, engine: Engine)
   if (engine === "claude" && OPENAI_MODEL.test(model)) return null;
   return model;
 }
+
+/** Ba's model choice (Bots screen) is valid for `engine`: never one meant for the other engine. */
+export function modelSuitsEngine(model: string, engine: Engine): boolean {
+  return modelForEngine(model, engine) !== null;
+}

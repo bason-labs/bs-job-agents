@@ -10,8 +10,9 @@ import { API_ROUTES, BotUpdateRequestSchema, BotViewSchema, BotsResponseSchema, 
 import type { FastifyInstance } from "fastify";
 import { appendMemoryChange, getBot, latestBotDemotion, listBots, syncBotFromDefinition, updateBot, type Bot, type Db } from "../../db/index.js";
 import { removeMemoryNote } from "../../runner/index.js";
+import { modelSuitsEngine } from "../../runner/model.js";
 import { emitEvent, requireDb, type ApiContext } from "../context.js";
-import { conflict, forbidden, notFound } from "../errors.js";
+import { badRequest, conflict, forbidden, notFound } from "../errors.js";
 import { keepValid, parseWith, respond } from "../http.js";
 import { updateApiState } from "../state.js";
 import { botMemoryNotes, botView, promotionStreak } from "../views/bots.js";
@@ -62,6 +63,18 @@ export function botRoutes(app: FastifyInstance, ctx: ApiContext): void {
       const issues = checkBotSafety({ ...def, engine: patch.engine });
       if (issues.length > 0) throw forbidden(issues.join("; "));
     }
+    // Live run 1: Ba's model must suit the engine the bot runs on after this change; an engine
+    // switch drops a chosen model that no longer suits it (the runner would ignore it anyway).
+    const engine = patch.engine ?? row?.engine ?? def!.engine;
+    let modelOverride: string | null | undefined;
+    if (patch.model !== undefined) {
+      if (patch.model !== null && !modelSuitsEngine(patch.model, engine)) {
+        throw badRequest(`${patch.model} is not a model for ${engine === "claude" ? "Claude" : "Codex"}, which ${name} runs on`);
+      }
+      modelOverride = patch.model;
+    } else if (patch.engine !== undefined && row?.modelOverride && !modelSuitsEngine(row.modelOverride, patch.engine)) {
+      modelOverride = null;
+    }
     if (patch.trustLevel !== undefined) {
       const refusal = trustRefusal(name, row?.trustLevel ?? def!.trustLevel, patch.trustLevel);
       if (refusal) throw forbidden(refusal);
@@ -71,7 +84,8 @@ export function botRoutes(app: FastifyInstance, ctx: ApiContext): void {
     const demotion = row && patch.trustLevel !== undefined && patch.trustLevel > row.trustLevel ? latestBotDemotion(db, name) : undefined;
     const restore = ctx.engine && demotion && patch.trustLevel === Math.min(demotion.fromLevel, maxTrustLevel(name));
     if (restore) ctx.engine!.restoreBot(name);
-    const rest = restore ? { ...patch, trustLevel: undefined } : patch;
+    const { model: _model, ...settings } = patch;
+    const rest = { ...settings, ...(restore ? { trustLevel: undefined } : {}), ...(modelOverride !== undefined ? { modelOverride } : {}) };
     row = db.transaction((tx) => {
       // A bot.json the engine has not synced yet (degraded start) gets its row first.
       if (!getBot(tx, name) && def) {

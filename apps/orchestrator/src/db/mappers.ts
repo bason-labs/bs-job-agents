@@ -362,7 +362,8 @@ export function toBotRecord(row: Row.Bot): SharedBotRecord {
     name: row.name,
     displayName: row.displayName,
     engine: row.engine,
-    model: row.model,
+    // Live run 1: Ba's choice on the Bots screen wins over bot.json's model.
+    model: row.modelOverride ?? row.model,
     trustLevel: row.trustLevel as SharedBotRecord["trustLevel"],
     promptVersion: row.promptVersion,
     enabled: row.enabled,
