@@ -71,6 +71,43 @@ Fields:
   - variant type = "answer_from_data":
     - type: one of "answer_from_data"
     - source: string — What stored data answered the question, e.g. 'applications'
+  - variant type = "propose_criteria_change":
+    - type: one of "propose_criteria_change"
+    - changes: object
+      - roles: object or null — null leaves this list as it is
+        - add: array of string
+        - remove: array of string
+      - locations: object or null — null leaves this list as it is
+        - add: array of string
+        - remove: array of string
+      - includeKeywords: object or null — null leaves this list as it is
+        - add: array of string
+        - remove: array of string
+      - excludeKeywords: object or null — null leaves this list as it is
+        - add: array of string
+        - remove: array of string
+      - excludeCompanies: object or null — null leaves this list as it is
+        - add: array of string
+        - remove: array of string
+      - companyTypes: object or null — null leaves this list as it is
+        - add: array of string
+        - remove: array of string
+      - workModes: array of one of "onsite", "hybrid", "remote" or null — The new full list; null = unchanged
+      - seniority: array of one of "intern", "junior", "mid", "senior", "lead" or null — The new full list; null = unchanged
+      - sources: array of one of "topcv", "itviec", "linkedin" or null — The new full list; null = unchanged
+      - minSalary: object or null — null = unchanged
+        - amount: integer ≥ 0 or null — null removes the floor
+        - currency: one of "VND", "USD" or null
+      - maxJobs: integer 1–50 or null
+      - fitThreshold: integer 0–100 or null
+  - variant type = "propose_schedule":
+    - type: one of "propose_schedule"
+    - schedule: object
+      - name: string — Short schedule name, e.g. Weekday morning scan
+      - repeat: one of "weekdays", "daily", "weekly"
+      - day: one of "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" or null — Day of the week for weekly; null otherwise
+      - time: string — HH:MM, 24-hour, Asia/Ho_Chi_Minh
+      - searchProfileId: string or null — null = Ba's active search criteria
 - selfCheck: array of object (at least 1) — One entry per selfCheck item in bot.json. Any failed item fails the attempt.
   - item: string — The checklist item, copied from bot.json selfCheck
   - passed: boolean
@@ -82,6 +119,8 @@ Rules checked after you answer (breaking one costs a repair round):
 - URLs are full http(s) URLs you actually saw; never a placeholder such as "x" or "https://example.com".
 - Date-times are ISO 8601 with a time zone, e.g. 2026-10-10T09:00:00+07:00.
 - actions lists what you actually did with your tools, in order; an ask_user action asks exactly one question.
+- propose_criteria_change and propose_schedule are proposals for Ba to confirm with one click, not tool calls; never say the criteria were saved or the schedule created.
+- propose_schedule time is HH:MM (24-hour); day is set only when repeat is weekly.
 - propose_workflow names are lowercase slugs such as weekly-scan.
 
 # Self-check before you hand in (rule 4)

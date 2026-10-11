@@ -32,6 +32,37 @@ export const leadClarifyFixture: LeadOutput = {
   memoryNotes: ["Ask one question max before starting a scan."],
 };
 
+const noCriteriaChange = {
+  roles: null,
+  locations: null,
+  includeKeywords: null,
+  excludeKeywords: null,
+  excludeCompanies: null,
+  companyTypes: null,
+  workModes: null,
+  seniority: null,
+  sources: null,
+  minSalary: null,
+  maxJobs: null,
+  fitThreshold: null,
+} as const;
+
+/** PM3 M3 (UC-21b a): "also include Đà Nẵng" → Lead asks just this run or save, and proposes the change. */
+export const leadCriteriaProposalFixture: LeadOutput = {
+  reply: "Add Đà Nẵng just for this run, or save it to your search criteria?",
+  actions: [{ type: "propose_criteria_change", changes: { ...noCriteriaChange, locations: { add: ["Đà Nẵng"], remove: [] } } }],
+  selfCheck: [pass("The request was turned into a workflow/task or a direct answer from stored data"), pass("No work was done directly")],
+  memoryNotes: [],
+};
+
+/** PM3 S1 (UC-21): "scan every weekday at 9" → a schedule Ba creates with one click. */
+export const leadScheduleProposalFixture: LeadOutput = {
+  reply: "I can scan every weekday at 09:00 with your search criteria. Create the schedule?",
+  actions: [{ type: "propose_schedule", schedule: { name: "Weekday morning scan", repeat: "weekdays", day: null, time: "09:00", searchProfileId: null } }],
+  selfCheck: [pass("The request was turned into a workflow/task or a direct answer from stored data"), pass("No work was done directly")],
+  memoryNotes: [],
+};
+
 export const researchScanFixture: ResearchScanOutput = {
   jobs: [
     {
@@ -296,7 +327,7 @@ export const consultHandoffFixture: ConsultOutput = {
 };
 
 export const validBotOutputFixtures: Record<BotOutputSchemaName, readonly unknown[]> = {
-  LeadOutput: [leadOutputFixture, leadClarifyFixture],
+  LeadOutput: [leadOutputFixture, leadClarifyFixture, leadCriteriaProposalFixture, leadScheduleProposalFixture],
   ResearchScanOutput: [researchScanFixture, researchScanBlockedFixture],
   ResearchFitOutput: [researchFitFixture],
   ResearchCompanyOutput: [researchCompanyFixture],

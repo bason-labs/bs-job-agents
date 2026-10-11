@@ -67,6 +67,8 @@ export const COMMON_OUTPUT_RULES = [
 export const BOT_OUTPUT_RULES: Record<BotOutputSchemaName, readonly string[]> = {
   LeadOutput: [
     "actions lists what you actually did with your tools, in order; an ask_user action asks exactly one question.",
+    "propose_criteria_change and propose_schedule are proposals for Ba to confirm with one click, not tool calls; never say the criteria were saved or the schedule created.",
+    "propose_schedule time is HH:MM (24-hour); day is set only when repeat is weekly.",
     "propose_workflow names are lowercase slugs such as weekly-scan.",
   ],
   ResearchScanOutput: [

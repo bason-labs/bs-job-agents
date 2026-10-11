@@ -22,6 +22,7 @@ export * from "./json-schema/validate.js";
 // bots (§5)
 export * from "./bots/self-check.js";
 export * from "./bots/lead.js";
+export * from "./bots/lead-proposals.js";
 export * from "./bots/research.js";
 export * from "./bots/cv.js";
 export * from "./bots/qa.js";
