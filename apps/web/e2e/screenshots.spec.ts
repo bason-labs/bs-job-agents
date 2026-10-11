@@ -1,14 +1,14 @@
-import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { open, presetTheme } from "./helpers";
+import { FROZEN_NOW, SCREENSHOT_OPTIONS } from "./screenshot-options";
 
-// Light/dark render check (spec §12 "light/dark screenshot checks").
-// Images are only written to e2e/__screenshots__/ (committed for reviewers)
-// when UPDATE_SCREENSHOTS=1, so a normal run never dirties the tree:
+// Light/dark screenshot comparisons (spec §12 "light/dark screenshot checks", PM3 S10): each main
+// screen is compared with its committed baseline in e2e/__screenshots__/<name>-<theme>.png.
+// Deterministic: the mock backend's seeded data, a frozen clock, the self-hosted fonts (wait for
+// document.fonts), animations off, a fixed viewport. After an intended UI change, review the diff
+// in the Playwright report, then refresh the baselines with
 //   pnpm --filter @bs-job-agents/web e2e:screenshots
-
-const OUT = path.join(__dirname, "__screenshots__");
-const WRITE = process.env.UPDATE_SCREENSHOTS === "1";
+// Baselines are taken on macOS (Ba's Mac); another OS renders fonts differently.
 
 const SHOTS: Array<{ name: string; route: string; fullPage: boolean; ready?: string }> = [
   { name: "chat", route: "/chat", fullPage: false, ready: "[data-testid=run-card] li" },
@@ -21,18 +21,14 @@ test.use({ viewport: { width: 1440, height: 900 } });
 
 for (const theme of ["light", "dark"] as const) {
   for (const shot of SHOTS) {
-    test(`${shot.route} renders in ${theme}`, async ({ page }) => {
+    test(`${shot.route} matches its ${theme} baseline`, async ({ page }) => {
+      await page.clock.setFixedTime(FROZEN_NOW);
       await presetTheme(page, theme);
       await open(page, shot.route);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       if (shot.ready) await page.locator(shot.ready).first().waitFor();
       await page.evaluate(() => document.fonts.ready);
-      const image = await page.screenshot({
-        fullPage: shot.fullPage,
-        animations: "disabled",
-        path: WRITE ? path.join(OUT, `${shot.name}-${theme}.png`) : undefined,
-      });
-      expect(image.byteLength).toBeGreaterThan(10_000);
+      await expect(page).toHaveScreenshot(`${shot.name}-${theme}.png`, { ...SCREENSHOT_OPTIONS, fullPage: shot.fullPage });
     });
   }
 }
