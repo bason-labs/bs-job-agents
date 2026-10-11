@@ -246,7 +246,7 @@ describe("createHttpApi: commands", () => {
   });
 
   it("sendMessage posts the shared ChatSendRequest and returns the stored message", async () => {
-    const { api: a, calls } = api({ "POST /chat/messages": () => json({ message: messageFixture }) });
+    const { api: a, calls } = api({ "POST /chat/messages": () => json({ message: messageFixture, taskIds: ["7"] }) });
     await expect(a.sendMessage({ roomId: "room_lead", text: "Find jobs" })).resolves.toEqual(messageFixture);
     expect(calls[0]!.body).toEqual({ roomId: "room_lead", text: "Find jobs", uploadIds: [] });
   });

@@ -475,6 +475,11 @@ export class MockBackend implements WebApi, EventFeed {
   }
 
   async chooseOption(input: ChoiceRequest): Promise<void> {
+    await this.choose(input);
+  }
+
+  /** Like the orchestrator's POST /chat/choices: the card keeps the choice and its label is Ba's answer in the room. */
+  async choose(input: ChoiceRequest): Promise<Message> {
     const message = Object.values(this.state.messages)
       .flat()
       .find((m) => m.id === input.messageId);
@@ -484,7 +489,9 @@ export class MockBackend implements WebApi, EventFeed {
     if (!option) throw fail(400, "validation_failed", `unknown option ${input.optionId}`);
     if (card.chosen) throw fail(409, "conflict", "already chosen");
     card.chosen = option.id;
+    const answer = await this.post(message.roomId, { type: "ba" }, option.label);
     this.background(sim.afterChoice(this, message.roomId, input.key, option.id));
+    return answer;
   }
 
   // ------------------------------------------------------------ WebApi: runs

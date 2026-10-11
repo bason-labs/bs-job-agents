@@ -7,7 +7,7 @@ import {
   ApproveResponseSchema,
   BotsResponseSchema,
   BridgesResponseSchema,
-  ChatSendResponseSchema,
+  ChatSendResultSchema,
   EnginesResponseSchema,
   HealthStatusSchema,
   MessagesResponseSchema,
@@ -160,7 +160,7 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
     },
     async sendMessage(input) {
       const body = { roomId: input.roomId, text: input.text, uploadIds: input.uploadIds ?? [] };
-      return (await request("POST", API_ROUTES.chatSend, { body, schema: ChatSendResponseSchema })).message;
+      return (await request("POST", API_ROUTES.chatSend, { body, schema: ChatSendResultSchema })).message;
     },
     async uploadFiles(files) {
       const form = new FormData();
