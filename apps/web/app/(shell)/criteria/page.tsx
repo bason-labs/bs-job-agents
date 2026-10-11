@@ -1,17 +1,16 @@
-import { SlidersHorizontal } from "lucide-react";
 import type { Metadata } from "next";
-import { PlaceholderPage } from "@/components/shell/Page";
+import { criteriaData } from "@/components/criteria/data";
+import { CriteriaScreen } from "@/components/criteria/CriteriaScreen";
+import { Page } from "@/components/shell/Page";
 
 export const metadata: Metadata = { title: "Search criteria" };
 
-// Phase 1 placeholder; the real screen is built in Phase 3.
-export default function Page() {
+/** UC-21b: the active Search Profile (centered, max-w-3xl as in the prototype), plus UC-12 saved answers. */
+export default async function CriteriaPage() {
+  const [profile, versions, answers] = await Promise.all([criteriaData.get(), criteriaData.versions(), criteriaData.savedAnswers()]);
   return (
-    <PlaceholderPage
-      width="narrow"
-      icon={<SlidersHorizontal aria-hidden />}
-      heading="Search criteria"
-      description="Roles, locations, salary floor, sources and fit threshold for the active Search Profile."
-    />
+    <Page width="narrow">
+      <CriteriaScreen initial={profile} initialVersions={versions.versions} initialAnswers={answers} />
+    </Page>
   );
 }

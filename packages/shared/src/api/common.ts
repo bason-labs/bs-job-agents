@@ -65,7 +65,33 @@ export const API_ROUTES = {
   step: "/steps/:id",
   /** DELETE one saved answer by its normalised key (UC-12). */
   savedAnswer: "/saved-answers/:key",
+  // W3a part 2 (additive)
+  /** A suggestion chip on a Lead card: kept on the card, its label sent as Ba's answer (ChoiceRequest). */
+  chatChoices: "/chat/choices",
+  /** Rule 3: Lead's propose_workflow suggestions; Ba approves (saved, never run) or dismisses. */
+  workflowProposals: "/workflow-proposals",
+  workflowProposalApprove: "/workflow-proposals/:id/approve",
+  workflowProposalDismiss: "/workflow-proposals/:id/dismiss",
+  /** UC-22: a task attempt's redacted transcript. */
+  taskTranscript: "/tasks/:id/transcript",
+  /** §11 sidebar: Chrome extension status per engine (bridge.status events keep it live). */
+  bridges: "/bridges",
+  /** W3c handoffs (additive). */
+  applicationApplyAgain: "/applications/:id/apply-again",
+  botMemoryNote: "/bots/:name/memory/:noteId",
+  botPromotionDismiss: "/bots/:name/promotion/dismiss",
+  masterCvVersions: "/master-cv/versions",
+  masterCvFactRequests: "/master-cv/fact-requests",
+  masterCvFactRequestDismiss: "/master-cv/fact-requests/:id/dismiss",
+  criteriaProfiles: "/criteria/profiles",
 } as const;
+
+/** GET /bridges (W3a, additive): whether each engine's Chrome extension answers; null = unknown (engine stopped). */
+export const BridgesResponseSchema = z.object({
+  chrome: z.array(z.object({ engine: z.enum(["claude", "codex"]), connected: z.boolean().nullable() })),
+  checkedAt: IsoDateTimeSchema,
+});
+export type BridgesResponse = z.infer<typeof BridgesResponseSchema>;
 
 /**
  * PM S18 (CSRF): every state-changing request (POST, PUT, PATCH, DELETE) carries this header, or the

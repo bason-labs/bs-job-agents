@@ -20,7 +20,9 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | Phase 2 PM review | ✅ merged (ef140a6); pm-phase-2.md: ready after F2 (M1–M5 + S1–S6); F3 (S7–S16) runs in parallel with Phase 3; owner escalation E1 in owner-decisions.md |
 | 2026-10-11 | W3a API part 1 | ✅ merged (87becd3); 1679 tests green; reports/phase3-w3a-api-part1.md; API facts relayed to W3b/W3c |
 | 2026-10-11 | F2 fixer | ✅ merged (6d8ad74); 1845 tests green; reports/phase3-f2-fixer.md |
-| 2026-10-11 | W3b, W3c (worktrees; resumed twice after usage limits) | 🔄 running |
-| 2026-10-11 | W3a part 2, F3 fixer (worktrees) | 🔄 running |
+| 2026-10-11 | W3c UI | ✅ merged; 2003 tests green; reports/phase3-w3c-ui.md; requests relayed to W3a/W3b |
+| 2026-10-11 | W3b UI + lib/api | ✅ merged; 2166 tests green; reports/phase3-w3b-ui.md; API gaps relayed to W3a part 2 |
+| 2026-10-11 | W3a API part 2 | ✅ merged; 2225 tests green; reports/phase3-w3a-api-part2.md; engine requests relayed to F3 |
+| 2026-10-11 | F3 fixer, W3d (wire W3c screens to live API) (worktrees) | 🔄 running |
 
-**Next action:** merge W3b, W3c, W3a part 2 and F3 as each reports. After W3b's `lib/api` lands, swap W3c's data interfaces to it (small follow-up, or part of Phase 3 QA). When all four are merged: Phase 3 QA, then PM, then must-fix, then Phase 4. If an agent stops on a usage limit, resume it with SendMessage (its worktree keeps its work).
+**Next action:** merge F3 and W3d when they report, then Phase 3 QA (whole app incl. live web+API smoke), then PM, then must-fix, then Phase 4. Resume any agent stopped by a usage limit with SendMessage.

@@ -2,14 +2,42 @@
 // reads and writes it for the Master CV screen. The engine reads the same file (its top-level
 // `version:` line) to pin a run's master version and to refuse a run when it is missing (UC-01 c).
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { rename, rm, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { MasterCvSchema, type MasterCv } from "@bs-job-agents/shared";
 import { parse, stringify } from "yaml";
 import { zodMessage } from "./errors.js";
 
 export const MASTER_CV_FILE = "master-cv.yaml";
+/** UC-20 history: data/master-cv-history/v<version>.yaml, one per save. */
+export const MASTER_CV_HISTORY_DIR = "master-cv-history";
+
+/** Keep a copy of a saved version for the history list. */
+export async function keepMasterCvVersion(dataDir: string, cv: MasterCv): Promise<void> {
+  const dir = join(dataDir, MASTER_CV_HISTORY_DIR);
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, `v${cv.version}.yaml`), HEADER + stringify(cv, { lineWidth: 0 }), { mode: 0o600 });
+}
+
+/** Saved versions, newest first, with the current file's version even if it was saved by hand. */
+export function listMasterCvVersions(dataDir: string): { version: number; savedAt: string; factCount: number }[] {
+  const out = new Map<number, { version: number; savedAt: string; factCount: number }>();
+  const add = (path: string) => {
+    try {
+      const parsed = MasterCvSchema.safeParse(parse(readFileSync(path, "utf8")));
+      if (parsed.success && !out.has(parsed.data.version)) {
+        out.set(parsed.data.version, { version: parsed.data.version, savedAt: statSync(path).mtime.toISOString(), factCount: parsed.data.facts.length });
+      }
+    } catch {
+      // An unreadable copy is left out of the list.
+    }
+  };
+  if (existsSync(masterCvPath(dataDir))) add(masterCvPath(dataDir));
+  const dir = join(dataDir, MASTER_CV_HISTORY_DIR);
+  if (existsSync(dir)) for (const f of readdirSync(dir)) if (/^v\d+\.yaml$/.test(f)) add(join(dir, f));
+  return [...out.values()].sort((a, b) => b.version - a.version);
+}
 
 export const masterCvPath = (dataDir: string): string => join(dataDir, MASTER_CV_FILE);
 

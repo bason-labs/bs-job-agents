@@ -20,6 +20,9 @@ export default defineConfig({
   webServer: {
     command: `pnpm exec next dev --port ${PORT}`,
     url: baseURL,
+    // e2e always runs on the mock backend (lib/api/mock), never on an orchestrator that happens to
+    // be running; its simulated bots run 3× faster.
+    env: { BSJA_API_MODE: "mock", BSJA_MOCK_SPEED: process.env.BSJA_MOCK_SPEED ?? "3" },
     // Opt-in only (E2E_REUSE=1): agents run e2e from parallel worktrees, and silently
     // reusing a server already on the port would test another worktree's code. Use
     // E2E_PORT to run several suites side by side.

@@ -6,6 +6,7 @@ export { Card, CardDescription, CardHeader, CardTitle } from "./Card";
 export { Checkbox } from "./Checkbox";
 export { ConfirmDialog } from "./ConfirmDialog";
 export { Dialog, DialogClose, DialogContent, DialogTrigger } from "./Dialog";
+export { Drawer, type DrawerProps } from "./Drawer";
 export {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +17,7 @@ export {
 } from "./DropdownMenu";
 export { EmptyState } from "./EmptyState";
 export { Field } from "./Field";
-export { FileDropzone } from "./FileDropzone";
+export { FileDropzone, type FileDropzoneHandle } from "./FileDropzone";
 export { FileButton, FileViewer, FileViewerProvider, useFileViewer, type ViewerFile, type ViewerKind } from "./FileViewer";
 export { IconButton } from "./IconButton";
 export { Input, Textarea, inputClass } from "./Input";
@@ -33,3 +34,4 @@ export { TIME_SLOTS, TimePicker } from "./TimePicker";
 export { ToastProvider, useToast, type ToastOptions } from "./Toast";
 export { Tooltip, TooltipProvider } from "./Tooltip";
 export { TRUST_DESCRIPTIONS, TrustBadge } from "./TrustBadge";
+export { useReturnFocus } from "./focus";

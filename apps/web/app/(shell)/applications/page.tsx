@@ -1,17 +1,16 @@
-import { Briefcase } from "lucide-react";
 import type { Metadata } from "next";
-import { PlaceholderPage } from "@/components/shell/Page";
+import { ApplicationsScreen } from "@/components/applications/ApplicationsScreen";
+import { applicationsData } from "@/components/applications/data";
+import { Page } from "@/components/shell/Page";
 
 export const metadata: Metadata = { title: "Applications" };
 
-// Phase 1 placeholder; the real screen is built in Phase 3.
-export default function Page() {
+/** UC-13 / UC-13b: applications table, submission record panel, ZIP export (wide, centered). */
+export default async function ApplicationsPage() {
+  const initial = await applicationsData.list();
   return (
-    <PlaceholderPage
-      width="wide"
-      icon={<Briefcase aria-hidden />}
-      heading="No applications yet"
-      description="Every submitted application is listed here with its CV version, screenshot and status. Click a row for the full submission record."
-    />
+    <Page width="wide">
+      <ApplicationsScreen initial={initial} />
+    </Page>
   );
 }
