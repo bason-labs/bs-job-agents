@@ -195,6 +195,9 @@ describe("Apply's own pauses wait for Ba (UC-11 a/b/e, UC-12, UC-17)", () => {
     expect(() => t.engine.answerQuestion(taskId, { field: "notice", mode: "skip", value: null, remember: false })).toThrow(/required/);
     expect(t.engine.answerQuestion(taskId, { field: "notice", mode: "answer", value: "2 weeks", remember: true })).toEqual({ resumed: true, next: null });
     expect(getSavedAnswer(t.db, "Notice period")?.answer).toBe("2 weeks");
+    // W3a request: the question card settles with Ba's answer, in the same transaction.
+    const card = (listMessages(t.db, lead.id).find((m) => m.id === asked[0]!.id)!.meta?.cards as Array<Record<string, unknown>>)[0];
+    expect(card).toMatchObject({ type: "question", answered: true, answer: "2 weeks" });
     await t.idle();
 
     const calls = t.runner.callsFor("apply.submit");
@@ -214,6 +217,9 @@ describe("Apply's own pauses wait for Ba (UC-11 a/b/e, UC-12, UC-17)", () => {
     expect(t.engine.answerQuestion(taskId, { field: "salary", mode: "negotiable", value: null, remember: false }).resumed).toBe(true);
     await t.idle();
     expect(t.runner.callsFor("apply.submit")[1]!.input).toMatchObject({ answers: [{ field: "salary", value: NEGOTIABLE_TEXT.vi }] });
+    const lead = listRooms(t.db, { kind: "lead" })[0]!;
+    const cards = listMessages(t.db, lead.id).flatMap((m) => (m.meta?.cards as Array<Record<string, unknown>> | undefined) ?? []);
+    expect(cards.find((c) => c.type === "question")).toMatchObject({ answered: true, answer: NEGOTIABLE_TEXT.vi });
   });
 
   it("UC-17: a login wall pauses Apply; Ba clicks Done in the app; Apply resumes", async () => {
@@ -241,6 +247,23 @@ describe("Apply's own pauses wait for Ba (UC-11 a/b/e, UC-12, UC-17)", () => {
     expect(second.allowedSites).toEqual(["itviec.com", "novapay.breezy.hr"]);
     expect(t.guards.siteCalls.at(-1)?.allowedSites).toEqual(["itviec.com", "novapay.breezy.hr"]);
     expect(getApplication(t.db, applicationId)?.status).toBe("submitted");
+  });
+
+  it("UC-11 e, Don't allow (W3a request): Ba declines the domain; Apply ends, the application needs a check, the token is not widened", async () => {
+    const { t, applicationId, taskId } = await approved();
+    t.runner.script({ bot: "apply", kind: "submit", times: 1, result: fake.applyDomainConfirm("novapay.breezy.hr") });
+    await t.idle();
+    expect(() => t.engine.declineDomain(999)).toThrow(/not found/);
+    t.engine.declineDomain(taskId);
+    await t.idle();
+    expect(getTask(t.db, taskId)).toMatchObject({ status: "failed", error: expect.stringMatching(/declined novapay\.breezy\.hr/) });
+    expect(getApplication(t.db, applicationId)?.status).toBe("needs_check");
+    expect(latestApprovalForApplication(t.db, applicationId)!.allowedDomains).toEqual(["itviec.com"]);
+    expect(safety(t).at(-1)).toMatchObject({ reason: "off_allowlist", action: "apply.domain_confirm", detail: expect.stringContaining("novapay.breezy.hr") });
+    expect(t.events("application.updated").at(-1)).toMatchObject({ applicationId: String(applicationId), status: "needs_check" });
+    expect(t.runner.callsFor("apply.submit")).toHaveLength(1);
+    // Only a domain_confirm pause can be declined.
+    expect(() => t.engine.declineDomain(taskId)).toThrow(/not waiting for a domain/);
   });
 
   it("an expired token on resume is denied; Ba approves again and Apply starts fresh (PM M2)", async () => {

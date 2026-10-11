@@ -82,7 +82,21 @@ describe("evaluateChromeToolCall", () => {
     });
   });
 
+  it("PM2 S7: refuses a screenshot saved to disk (the runner keeps screenshots); plain screenshots and clicks pass", () => {
+    for (const v of [true, "true", 1]) {
+      expect(evaluateChromeToolCall(call("computer", { action: "screenshot", tabId: 1, save_to_disk: v }), policy)).toMatchObject({
+        allow: false,
+        rule: "screenshot_save_to_disk",
+      });
+    }
+    expect(evaluateChromeToolCall(call("computer", { action: "screenshot", tabId: 1 }), policy)).toEqual({ allow: true });
+    expect(evaluateChromeToolCall(call("computer", { action: "screenshot", tabId: 1, save_to_disk: false }), policy)).toEqual({ allow: true });
+    expect(
+      evaluateChromeToolCall(call("browser_batch", { actions: [{ name: "computer", input: { action: "screenshot", save_to_disk: true } }] }), policy),
+    ).toMatchObject({ allow: false, rule: "screenshot_save_to_disk" });
+  });
+
   it("lists the tools the settings must route to the hook, never tabs_create_mcp", () => {
-    expect(SITE_GUARD_TOOLS).toEqual(["navigate", "javascript_tool", "browser_batch", "shortcuts_execute", "switch_browser", "select_browser"]);
+    expect(SITE_GUARD_TOOLS).toEqual(["navigate", "javascript_tool", "browser_batch", "shortcuts_execute", "switch_browser", "select_browser", "computer"]);
   });
 });

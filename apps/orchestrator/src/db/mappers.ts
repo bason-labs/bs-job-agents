@@ -33,6 +33,7 @@ import {
   type Job as SharedJob,
   type JobSnapshot as SharedJobSnapshot,
   type MemoryChange as SharedMemoryChange,
+  type BotDemotion as SharedBotDemotion,
   type Message as SharedMessage,
   type MessageAuthor,
   type MessageCard,
@@ -387,6 +388,22 @@ export function toMemoryChange(row: Row.MemoryChange): SharedMemoryChange {
     taskId: toIdOrNull(row.taskId),
     note: row.note,
     createdAt: row.createdAt,
+  };
+}
+
+/** PM2 S8: a demotion as the shared BotDemotion (W3a's BotView.demotion). */
+export function toBotDemotion(row: Row.BotDemotion): SharedBotDemotion {
+  return {
+    id: toId(row.id),
+    botName: row.botName,
+    fromLevel: row.fromLevel as SharedBotDemotion["fromLevel"],
+    toLevel: row.toLevel as SharedBotDemotion["toLevel"],
+    reason: row.reason,
+    detail: row.detail,
+    taskId: toIdOrNull(row.taskId),
+    runId: toIdOrNull(row.runId),
+    at: row.createdAt,
+    restoredAt: row.restoredAt,
   };
 }
 

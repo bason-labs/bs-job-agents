@@ -145,6 +145,77 @@ describe("diffFingerprints", () => {
   });
 });
 
+describe("visual properties (PM2 S9)", () => {
+  const styled = (style: Record<string, unknown>): PageSnapshot => {
+    const page = resumePage();
+    return { ...page, nodes: page.nodes.map((n) => (n.id === "459:1800" ? { ...n, style } : n)) };
+  };
+  const base = {
+    fills: [{ type: "SOLID", color: { r: 0, g: 0, b: 0 }, opacity: 1 }],
+    strokes: [],
+    strokeWeight: 1,
+    effects: [],
+    opacity: 1,
+    blendMode: "PASS_THROUGH",
+    fontName: { family: "Inter", style: "Regular" },
+    fontSize: 10,
+    lineHeight: { unit: "AUTO" },
+    letterSpacing: { unit: "PERCENT", value: 0 },
+    fillStyleId: "S:1,",
+    textStyleId: "",
+    effectStyleId: "",
+    layoutMode: "NONE",
+    itemSpacing: 0,
+    paddingLeft: 0,
+    rotation: 0,
+    cornerRadius: 0,
+    description: "",
+    componentProperties: {},
+  };
+  const changes: Array<[string, unknown]> = [
+    ["fills", []],
+    ["strokes", [{ type: "SOLID", color: { r: 1, g: 0, b: 0 } }]],
+    ["strokeWeight", 2],
+    ["effects", [{ type: "DROP_SHADOW", radius: 4 }]],
+    ["opacity", 0.5],
+    ["blendMode", "MULTIPLY"],
+    ["fontName", { family: "Arial", style: "Bold" }],
+    ["fontSize", 12],
+    ["lineHeight", { unit: "PIXELS", value: 14 }],
+    ["letterSpacing", { unit: "PERCENT", value: 5 }],
+    ["fillStyleId", "S:2,"],
+    ["textStyleId", "S:9,"],
+    ["effectStyleId", "S:3,"],
+    ["layoutMode", "VERTICAL"],
+    ["itemSpacing", 8],
+    ["paddingLeft", 4],
+    ["rotation", 90],
+    ["cornerRadius", 6],
+    ["description", "do not use"],
+    ["componentProperties", { Label: { type: "TEXT", value: "x" } }],
+  ];
+
+  it.each(changes)("reports a change of %s", (prop, value) => {
+    const before = fp([styled(base), componentsPage]);
+    const after = fp([styled({ ...base, [prop]: value }), componentsPage]);
+    expect(after.hash).not.toBe(before.hash);
+    const diff = diffFingerprints(before, after);
+    expect(diff.changed).toBe(true);
+    expect(diff.changes).toEqual([
+      { kind: "node_changed", pageId: "0:1", pageName: "resume", nodeId: "459:1800", nodeName: "Profile", fields: [`style.${prop}`] },
+    ]);
+    expect(diff.summary).toContain(`style.${prop}`);
+  });
+
+  it("reports a property that appears or disappears, and ignores key order", () => {
+    const { rotation: _r, ...withoutRotation } = base;
+    expect(diffFingerprints(fp([styled(base)]), fp([styled(withoutRotation)])).changes[0]?.fields).toEqual(["style.rotation"]);
+    const reversed = Object.fromEntries(Object.entries(base).reverse());
+    expect(diffFingerprints(fp([styled(base)]), fp([styled(reversed)])).changed).toBe(false);
+    expect(diffFingerprints(fp([resumePage()]), fp([styled(base)])).changes[0]?.fields).toEqual(Object.keys(base).map((k) => `style.${k}`).sort());
+  });
+});
+
 describe("templatesFromFingerprint", () => {
   it("lists A4 frames at page level or directly inside a section", () => {
     expect(templatesFromFingerprint(fp([resumePage(), componentsPage]))).toEqual([

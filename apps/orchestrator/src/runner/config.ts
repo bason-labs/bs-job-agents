@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { LIMITS } from "@bs-job-agents/shared";
 import { FIGMA_CONSOLE_MCP_VERSION } from "../bridges/figma/constants.js";
 import { resolveFigmaConsoleMcp } from "../bridges/figma/mcp.js";
+import { FIGMA_CONSOLE_MCP_TOOLS } from "../bridges/figma/tools.js";
 
 export interface McpStdioServerConfig {
   command: string;
@@ -63,10 +64,12 @@ export const ORCHESTRATOR_MCP_SERVER = "orchestrator";
  * service has a minimal PATH) and no download when a CV task starts. npx only if it is missing.
  */
 function figmaConsoleMcpServer(): McpStdioServerConfig {
+  // PM2 S12: its full tool list, so a bot sees only the Figma tools it may use.
+  const knownTools = [...FIGMA_CONSOLE_MCP_TOOLS];
   try {
-    return { command: process.execPath, args: [resolveFigmaConsoleMcp().serverPath] };
+    return { command: process.execPath, args: [resolveFigmaConsoleMcp().serverPath], knownTools };
   } catch {
-    return { command: "npx", args: ["-y", `figma-console-mcp@${FIGMA_CONSOLE_MCP_VERSION}`] };
+    return { command: "npx", args: ["-y", `figma-console-mcp@${FIGMA_CONSOLE_MCP_VERSION}`], knownTools };
   }
 }
 

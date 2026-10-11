@@ -32,27 +32,33 @@ import {
   getJob,
   getStepByKey,
   getSubmissionRecord,
+  getTask,
+  isBlockingDryRun,
   holdEngineTasks,
   isEnginePaused,
   latestApprovalForApplication,
   listActiveRuns,
   listRuns,
+  resetStep,
   setJobStatus,
   skipJob,
+  updateRunStatus,
   updateStepStatus,
   type Approval,
   type Conn,
+  type Job,
   type Step,
 } from "../db/index.js";
 import { buildApplyPromptInput, emitApplication, moveApplication, registrableHost } from "./apply.js";
 import { effectiveBot } from "./bots.js";
+import { companyMissing } from "./company.js";
 import { loadRunCtx, type RunCtx, type Scope } from "./context.js";
 import type { EngineCore } from "./core.js";
 import { EngineError, errorMessage, forbidden, invalidInput, invalidState, notFound } from "./errors.js";
 import { jobRef } from "./filters.js";
 import { startGate } from "./gate.js";
 import type { ActionStepOutput, GateStepOutput, HumanStepOutput, ReviewCvOption, ReviewDecision } from "./state.js";
-import { openStep, setStep } from "./steps.js";
+import { openStep, setStep, stepRef } from "./steps.js";
 import { ensureStepRow } from "./task-factory.js";
 import { gateOutputsOf } from "./workflow.js";
 
@@ -87,6 +93,7 @@ export function startReview(core: EngineCore, conn: Conn, ctx: RunCtx, step: Hum
     qaPassed: cvVersions.every((c) => c.qaPassed),
     escalated: cvVersions.some((c) => c.escalated),
     needsInput: factRequests.length > 0,
+    companyMissing: companyMissing(conn, ctx.def, ctx.run.id, step.branch, item.jobId),
     decisions: (row?.output as HumanStepOutput | null | undefined)?.decisions ?? [],
   };
   openStep(core, conn, ctx, step.key, scope, "waiting", { output, preview: output.escalated ? "QA not passed · Ba decides" : "waiting for Ba" });
@@ -108,6 +115,7 @@ export function startReview(core: EngineCore, conn: Conn, ctx: RunCtx, step: Hum
     escalated: output.escalated,
     needsInput: output.needsInput,
     injectionFlagged: isApplyBlockedByInjection(job),
+    companyMissing: output.companyMissing ?? false,
   });
   return "active";
 }
@@ -177,7 +185,15 @@ export interface ApproveResult {
 }
 
 /** Queue apply.submit for an approved application; the prompt input never carries the token. */
-function queueApply(core: EngineCore, conn: Conn, ref: ReviewRef, approval: Approval, introText: string | null, dryRun: boolean): number {
+function queueApply(
+  core: EngineCore,
+  conn: Conn,
+  ref: ReviewRef,
+  approval: Approval,
+  introText: string | null,
+  dryRun: boolean,
+  extra: Pick<ActionStepOutput, "dryRunApplicationId"> = {},
+): number {
   const app = getApplication(conn, approval.applicationId!)!;
   const bot = effectiveBot(conn, core.deps.bots, "apply");
   const action = ref.action ?? ensureStepRow(conn, ref.ctx, ref.actionDef!.key, ref.scope);
@@ -197,7 +213,7 @@ function queueApply(core: EngineCore, conn: Conn, ref: ReviewRef, approval: Appr
     { now: core.now() },
   );
   if (isEnginePaused(conn, task.engine, { now: core.now() })) holdEngineTasks(conn, task.engine);
-  const output: ActionStepOutput = { applicationId: app.id, taskId: task.id, dryRun, outcome: null, error: null, uploaded: null, answers: [], asked: [] };
+  const output: ActionStepOutput = { applicationId: app.id, taskId: task.id, dryRun, outcome: null, error: null, uploaded: null, answers: [], asked: [], ...extra };
   setStep(core, conn, action, "running", { output, preview: dryRun ? "dry run queued" : "queued" });
   return task.id;
 }
@@ -211,6 +227,56 @@ function mapApprovalError(err: unknown): never {
     throw new EngineError("already_applied", "this job already has an application; use “apply again”");
   }
   throw err;
+}
+
+/**
+ * PM2 S15: a live approval on a card whose dry run has settled: a new application and token for
+ * the same CV version (no re-tailoring), Apply queued on the same action step, the record step
+ * reset, the run reopened. Refused while the dry run still runs or waits, while a dry run that
+ * reported "submitted" waits for Ba's check (it may really have been sent), or when the job
+ * already has a live application (unless the run says "apply again").
+ */
+function approveLiveAfterDryRun(core: EngineCore, tx: Conn, ref: ReviewRef, job: Job, actionOut: ActionStepOutput, input: ApproveInput): ApproveResult {
+  const dry = getApplication(tx, actionOut.applicationId!)!;
+  const task = actionOut.taskId === null ? undefined : getTask(tx, actionOut.taskId);
+  if (task && !["done", "failed", "interrupted"].includes(task.status)) throw invalidState("the dry run of this card is still running or waiting for you; finish it first");
+  if (!dry.dryRun || dry.status === "approved" || dry.status === "paused") throw invalidState("the dry run of this card has not finished");
+  if (isBlockingDryRun(tx, dry)) {
+    throw new EngineError("already_applied", "the dry run reported that it submitted, so it may really have been sent; check it on the Applications screen first");
+  }
+  if (input.cvVersionId !== dry.cvVersionId) throw invalidInput("a live approval after a dry run keeps the CV version the dry run used");
+  if (!job.url) throw invalidState("this job has no apply link");
+  const problem = publicHostProblem(registrableHost(job.url));
+  if (problem) throw invalidState(`the job link's site is not a public web site, so Apply cannot be sent there: ${problem}`, { reason: "invalid_domain" });
+  const existing = getApplicationByJob(tx, job.id);
+  const reapply = existing !== undefined && ref.ctx.params.applyAgain === true;
+  if (existing && !reapply) throw new EngineError("already_applied", `job ${job.id} already has application ${existing.id}`);
+  let created: ReturnType<typeof approveApplication>;
+  try {
+    created = approveApplication(tx, { jobId: job.id, cvVersionId: input.cvVersionId, allowedDomains: [registrableHost(job.url)], reapply, dryRun: false }, { now: core.now() });
+  } catch (err) {
+    return mapApprovalError(err);
+  }
+  // The record step runs again for the live application.
+  const recordDef = ref.ctx.def.steps.find((s) => s.type === "record" && s.branch === ref.humanDef.branch);
+  const recordRow = recordDef ? getStepByKey(tx, ref.ctx.run.id, recordDef.key, ref.scope.branchKey) : undefined;
+  if (recordRow) {
+    const reset = resetStep(tx, recordRow.id);
+    core.bus.emit(tx, { type: "step.updated", ...stepRef(reset), status: "pending", round: reset.round, preview: "live apply", counts: null });
+  }
+  const taskId = queueApply(core, tx, ref, created.approval, input.introText, false, { dryRunApplicationId: dry.id });
+  recordDecision(tx, ref.human, decision(core, { decision: "approve", cvVersionId: input.cvVersionId, introText: input.introText, introEdited: input.introText !== null, fromDryRun: true }));
+  if (ref.ctx.run.status === "done" || ref.ctx.run.status === "failed") {
+    updateRunStatus(tx, ref.ctx.run.id, "running", { now: core.now(), error: null });
+    core.bus.emit(tx, { type: "run.updated", runId: String(ref.ctx.run.id), status: "running" });
+  }
+  emitApplication(core, tx, created.application);
+  return {
+    applicationId: created.application.id,
+    taskId,
+    approval: { expiresAt: created.approval.expiresAt, allowedDomains: created.approval.allowedDomains },
+    reapproval: false,
+  };
 }
 
 /** UC-08 Approve & submit (and a re-approval after a denied or expired token). */
@@ -253,6 +319,10 @@ export function approve(core: EngineCore, jobId: number, input: ApproveInput): A
       return { applicationId: app.id, taskId, approval: { expiresAt: approval.expiresAt, allowedDomains: approval.allowedDomains }, reapproval: true };
     }
 
+    // PM2 S15: the card's dry run has settled; Ba now approves the same card live.
+    if (!dryRun && ref.human.status === "done" && actionOut?.dryRun === true && actionOut.applicationId !== null) {
+      return approveLiveAfterDryRun(core, tx, ref, job, actionOut, input);
+    }
     if (ref.human.status !== "waiting") throw invalidState(`the review card for job ${jobId} is not waiting for a decision`);
     if (!humanOut.cvVersions.some((c) => c.cvVersionId === input.cvVersionId)) {
       throw invalidInput(`CV version ${input.cvVersionId} is not on this review card`);

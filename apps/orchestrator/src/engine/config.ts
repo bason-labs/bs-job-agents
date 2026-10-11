@@ -90,6 +90,15 @@ export class EnginePaths {
     return `applications/${applicationId}`;
   }
 
+  /**
+   * PM2 S7: one attempt's screenshots as the runner captured them from the Chrome tools
+   * (data/screenshots/<taskId>-<attempt>/<n>.<png|jpg> + manifest.json). Outside every bot's read
+   * folder; the record cites only the copies the engine makes in the application's folder.
+   */
+  screenshotDir(taskId: number, attempt: number): string {
+    return `screenshots/${taskId}-${attempt}`;
+  }
+
   /** A task's own read folder (copies of master-cv.yaml or an uploaded JD), so a bot never reads all of data/. */
   taskDir(taskId: number): string {
     return `tasks/${taskId}`;

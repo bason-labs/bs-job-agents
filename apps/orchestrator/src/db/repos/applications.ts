@@ -4,11 +4,11 @@ import {
   canTransitionApplicationStatus,
   type ApplicationStatusChange,
 } from "@bs-job-agents/shared";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import type { ApplicationOrigin, ApplicationStatus } from "../enums.js";
 import { ImmutableRecordError, InvalidTransitionError, NotFoundError, SubmissionRefusedError } from "../errors.js";
-import { applications, jobs, jobSnapshots, submissions, type StatusHistoryEntry } from "../schema.js";
+import { applications, jobs, jobSnapshots, submissions, tasks, type StatusHistoryEntry } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
 import type { Application, Approval, Company, CvVersion, EventRow, Job, JobSnapshot, Submission } from "../types.js";
 import { createApproval, getApproval, requireCvVersionOfJob } from "./approvals.js";
@@ -40,13 +40,48 @@ export function getApplicationByJob(
   jobId: number,
   opts: { includeDryRuns?: boolean } = {},
 ): Application | undefined {
-  return db
+  const app = db
     .select()
     .from(applications)
     .where(and(eq(applications.jobId, jobId), opts.includeDryRuns ? undefined : eq(applications.dryRun, false)))
     .orderBy(desc(applications.id))
     .limit(1)
     .get();
+  // PM2 S15: a dry run that reported "submitted" counts as applied until Ba settles it.
+  return app ?? (opts.includeDryRuns ? undefined : blockingDryRunForJob(db, jobId));
+}
+
+/**
+ * PM2 S15: a dry run whose Apply reported "submitted" and that Ba has not settled yet (still
+ * needs_check): it may really have been sent, so it counts as "already applied".
+ */
+export function isBlockingDryRun(db: Conn, app: Pick<Application, "id" | "dryRun" | "status">): boolean {
+  if (!app.dryRun || app.status !== DRY_RUN_APPLICATION_STATUS) return false;
+  const row = db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.botName, "apply"),
+        eq(tasks.kind, "submit"),
+        sql`json_extract(${tasks.input}, '$.applicationId') = ${String(app.id)}`,
+        sql`json_extract(${tasks.output}, '$.status') = 'submitted'`,
+      ),
+    )
+    .limit(1)
+    .get();
+  return row !== undefined;
+}
+
+/** The newest blocking dry run of a job (PM2 S15), or undefined. */
+export function blockingDryRunForJob(db: Conn, jobId: number): Application | undefined {
+  return db
+    .select()
+    .from(applications)
+    .where(and(eq(applications.jobId, jobId), eq(applications.dryRun, true), eq(applications.status, DRY_RUN_APPLICATION_STATUS)))
+    .orderBy(desc(applications.id))
+    .all()
+    .find((a) => isBlockingDryRun(db, a));
 }
 
 export function listApplications(

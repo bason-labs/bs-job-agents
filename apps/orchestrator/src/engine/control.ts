@@ -13,10 +13,12 @@ import {
   listTasks,
   resetStep,
   updateRunStatus,
+  updateStepStatus,
   type Conn,
   type Step,
 } from "../db/index.js";
 import { moveApplication } from "./apply.js";
+import { RERUN_MARK } from "./company.js";
 import { loadRunCtx, stepDef, type RunCtx } from "./context.js";
 import type { EngineCore } from "./core.js";
 import { forbidden, invalidState, notFound } from "./errors.js";
@@ -131,7 +133,10 @@ export function rerunStep(core: EngineCore, stepId: number): void {
         if (task.status === "running") stillRunning.push(task.id);
         if (task.status !== "done" && task.status !== "failed") failTaskNow(core, tx, task, "invalidated by a re-run (UC-23)");
       }
-      const reset = resetStep(tx, r.id);
+      let reset = resetStep(tx, r.id);
+      // PM2 S16: the step Ba re-runs does its work again (a company profile is researched anew,
+      // past the 30-day cache); the later steps it invalidates may still use caches.
+      if (r.id === row.id && def?.type === "task") reset = updateStepStatus(tx, r.id, "pending", { output: RERUN_MARK });
       core.bus.emit(tx, { type: "step.updated", ...stepRef(reset), status: "pending", round: reset.round, preview: "re-run", counts: null });
     }
     if (ctx.run.status === "done" || ctx.run.status === "failed") {

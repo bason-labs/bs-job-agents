@@ -65,6 +65,8 @@ export const researchScanFixture: ResearchScanOutput = {
   ],
   pageViews: 6,
   blocked: null,
+  injectionSuspected: false,
+  injectionNote: null,
   selfCheck: [
     pass("Every job has a reachable URL"),
     pass("Every job has full JD text (not a snippet)"),
@@ -77,6 +79,8 @@ export const researchScanBlockedFixture: ResearchScanOutput = {
   jobs: [],
   pageViews: 1,
   blocked: { reason: "needs_login", site: "linkedin.com", detail: "LinkedIn shows the sign-in wall" },
+  injectionSuspected: false,
+  injectionNote: null,
   selfCheck: [{ item: "Every job has a reachable URL", passed: true, note: "no jobs read" }],
   memoryNotes: [],
 };
@@ -244,6 +248,8 @@ export const applyOutputFixture: ApplyOutput = {
     pageScreenshot: "data/screenshots/task_42_jd.png",
     capturedAt: "2026-10-10T15:39:00+07:00",
   },
+  injectionSuspected: false,
+  injectionNote: null,
   selfCheck: [
     pass("The correct PDF filename is attached and visible, and its SHA-256 matches the approved CV version"),
     pass("All required fields are filled"),
@@ -269,6 +275,8 @@ export const applyPausedFixture: ApplyOutput = {
   ],
   pauseReason: { reason: "needs_answer", site: null, detail: "Required field with no saved answer" },
   jdSnapshot: null,
+  injectionSuspected: false,
+  injectionNote: null,
   selfCheck: [{ item: "All required fields are filled", passed: true, note: "paused before submit" }],
   memoryNotes: [],
 };

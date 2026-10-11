@@ -49,6 +49,8 @@ export const MessageCardSchema = z.discriminatedUnion("type", [
     taskId: IdSchema,
     question: PendingQuestionSchema,
     answered: z.boolean(),
+    /** Additive (W3a request): what Ba answered (the value Apply fills in); null = left blank. Set with `answered: true`. */
+    answer: z.string().nullable().optional(),
   }),
   z.object({ type: z.literal("fact_request"), jobId: IdSchema, topic: z.string(), question: z.string() }),
   z.object({

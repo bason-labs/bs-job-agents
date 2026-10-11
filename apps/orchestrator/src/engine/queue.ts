@@ -26,6 +26,7 @@ import {
   type ResearchFitOutput,
   type SafetyDenialReason,
 } from "@bs-job-agents/shared";
+import { CHROME_TOOL_PREFIX, evaluateChromeToolCall } from "../bridges/chrome/site-guard/guard.js";
 import { isFigmaUnavailable } from "../bridges/figma/errors.js";
 import { diffFingerprints, templatesFromFingerprint, type ProtectedPagesFingerprint } from "../bridges/figma/fingerprint.js";
 import { mergeHookSettings, type ClaudeHookSettings } from "../bridges/hooks/settings.js";
@@ -38,6 +39,7 @@ import {
   getRun,
   getTask,
   holdEngineTasks,
+  latestApprovalForApplication,
   listEvents,
   pauseTask,
   requeueTask,
@@ -48,16 +50,18 @@ import {
   type Conn,
   type Task,
 } from "../db/index.js";
+import { SCREENSHOT_MANIFEST, readScreenshotManifest, type CapturedScreenshot } from "../runner/screenshots.js";
 import type { PermissionDenial, RunnerEvent, RunnerResult, RunnerTask } from "../runner/types.js";
 import {
   applyStoppedBeforeSpawn,
+  flagApplyJob,
   isApplyPause,
   moveApplication,
   onApplyDone,
   onApplyFailedAfterSpawn,
   onApplyPaused,
   prepareApply,
-  verifyRecordFiles,
+  captureRecordFiles,
   type RecordFiles,
 } from "./apply.js";
 import { MASTER_CV_TASK_KEYS, effectiveBot, type EffectiveBot } from "./bots.js";
@@ -67,8 +71,10 @@ import { errorMessage } from "./errors.js";
 import { onCheckerDone, onProducerDone, type CvExport } from "./gate.js";
 import type { GuardBlock } from "./ports.js";
 import { isConversationTask, sinkContext, sinkFailed } from "./conversations.js";
+import { injectionDetail, reportedInjection } from "./injection.js";
+import { DEMOTING_SAFETY_REASONS, demoteBot, postProtectedChangeAlert } from "./demotion.js";
 import { noticePause, noticeTaskFailed } from "./notices.js";
-import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, postLeadMessage, stillRunning } from "./task-events.js";
+import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, stillRunning } from "./task-events.js";
 import { hostOfUrl, pauseSite, siteBlocksOf, siteKey, type SiteBlock } from "./sites.js";
 import { checkTaskTrust } from "./trust-guard.js";
 
@@ -80,12 +86,20 @@ interface SafetyNote {
   detail: string | null;
   /** A runner denial from a guard hook (the guard log has the same block). */
   fromHook?: boolean;
+  /**
+   * PM2 S8: false = logged, but not a violation by the bot's own conduct (its own injection report,
+   * the after-the-fact URL check), so it never demotes the bot.
+   */
+  demote?: boolean;
 }
 
 /** What one attempt came to, after the engine checked the runner's result. */
 export type Outcome =
-  /** `recordFiles`: apply.submit's screenshots as the record may cite them (PM2 M1), checked before settle. */
-  | { kind: "ok"; output: unknown; safety?: SafetyNote[]; recordFiles?: RecordFiles }
+  /**
+   * `recordFiles`: apply.submit's screenshots as the record may cite them (PM2 M1, S7), checked
+   * before settle. `recordCheck`: why the record must be needs_check whatever Apply said (PM2 S10).
+   */
+  | { kind: "ok"; output: unknown; safety?: SafetyNote[]; recordFiles?: RecordFiles; recordCheck?: string }
   /** The bot paused itself: a login, a CAPTCHA, questions, a domain to confirm (UC-03 a, UC-11, UC-12, UC-17). */
   | { kind: "paused"; reason: PauseReason; output: unknown; safety?: SafetyNote[] }
   | {
@@ -115,6 +129,8 @@ interface Prepared {
   guardLog: string | null;
   /** Where this spawn's lines start in the guard log (a resume keeps the attempt, so the log holds earlier spawns' lines). */
   guardLogOffset: number;
+  /** PM2 S7: absolute data/screenshots/<task>-<attempt>/ of a Claude browser task, else null. */
+  screenshotDir: string | null;
 }
 
 interface Inflight {
@@ -337,9 +353,14 @@ export class TaskQueue {
     const blocks = await this.readGuardLog(prepared);
     outcome = this.withGuardLog(outcome, blocks);
     outcome = this.checkSiteGuard(task, outcome, siteBlocksOf(blocks, result));
+    outcome = this.checkInjectionReport(task, outcome);
+    if (prepared.apply) outcome = this.checkApplyPages(task, outcome, result);
     if (outcome.kind === "ok" && prepared.apply) {
       const appId = Number((task.input as { applicationId?: unknown } | null)?.applicationId);
-      if (Number.isInteger(appId)) outcome = { ...outcome, recordFiles: await verifyRecordFiles(core, appId, outcome.output as ApplyOutput) };
+      if (Number.isInteger(appId)) {
+        const source = prepared.screenshotDir ? { dir: prepared.screenshotDir, captures: await this.capturesOf(prepared.screenshotDir, result) } : null;
+        outcome = { ...outcome, recordFiles: await captureRecordFiles(core, appId, outcome.output as ApplyOutput, source) };
+      }
     }
     let exported: CvExport | undefined;
     if (task.usesFigma) ({ outcome, exported } = await this.afterFigmaTask(task, prepared, outcome));
@@ -467,11 +488,14 @@ export class TaskQueue {
       }
     }
     if (!stillRunning(core.db, task.id)) return null;
+    // PM2 S7: a Claude task that drives Chrome keeps its screenshots (Apply's record cites copies of them).
+    const screenshotDir = claude && task.usesBrowser ? core.paths.abs(core.paths.screenshotDir(task.id, task.attempt)) : null;
     return {
       bot,
       apply: trust.needsApproval,
       guardLog,
       guardLogOffset,
+      screenshotDir,
       ...(figmaBefore ? { figmaBefore } : {}),
       ...(authorize ? { authorize } : {}),
       runnerTask: {
@@ -486,6 +510,7 @@ export class TaskQueue {
         ...(readDirs ? { readDirs } : {}),
         ...(allowedSites ? { allowedSites } : {}),
         usesBrowser: task.usesBrowser,
+        ...(screenshotDir ? { screenshotDir } : {}),
         ...(hooks.length > 0 ? { hookSettings: mergeHookSettings(...hooks) } : {}),
         timeoutMs: bot.def.timeoutSec * 1000,
         signal: controller.signal,
@@ -616,6 +641,56 @@ export class TaskQueue {
       ...(outcome.safety ? { safety: outcome.safety } : {}),
       ...(outcome.kind === "usage_limit" ? { limit: { engine: outcome.engine, resetsAt: outcome.resetsAt } } : {}),
     };
+  }
+
+  /**
+   * PM2 S11 (§10.2 rule 4): the bot reported an injection attempt. It is logged as a safety event
+   * (not a violation of its own, so no demotion). A paused Apply stops (needs_check, no retry): a
+   * page that tries to instruct it is not one to keep filling in. A finished Apply is recorded as
+   * needs_check (writeSubmissionRecord); Research's jobs are flagged when they are stored.
+   */
+  private checkInjectionReport(task: Task, outcome: Outcome): Outcome {
+    if (outcome.kind !== "ok" && outcome.kind !== "paused") return outcome;
+    const key = taskKey(task.botName, task.kind);
+    const report = reportedInjection(key, outcome.output);
+    if (!report) return outcome;
+    const detail = injectionDetail(report.note);
+    const safety: SafetyNote[] = [...(outcome.safety ?? []), { reason: "injection_flagged", action: key, detail, demote: false }];
+    if (key === "apply.submit" && outcome.kind === "paused") {
+      return { kind: "failed", error: `Apply reported a suspected injection: ${detail}`, output: outcome.output, retryable: false, safety };
+    }
+    return { ...outcome, safety };
+  }
+
+  /**
+   * PM2 S10 (decision 10c): the site guard checks `navigate` before it runs, but a click can take
+   * the tab elsewhere. After the run, Apply's finalUrl and every page URL the Chrome tools reported
+   * must be on the approval's domains (with any Ba confirmed). Otherwise: safety.denied
+   * (off_allowlist) and needs_check — a finished Apply is never recorded clean, a paused one stops.
+   * Logged, not a demotion: the guard did not block anything the bot asked for.
+   */
+  private checkApplyPages(task: Task, outcome: Outcome, result: RunnerResult): Outcome {
+    if (outcome.kind === "cancelled" || outcome.kind === "needs_figma") return outcome;
+    const input = (task.input ?? {}) as { applicationId?: unknown; allowedDomains?: unknown };
+    const approval = latestApprovalForApplication(this.core.db, Number(input.applicationId));
+    const fromInput = Array.isArray(input.allowedDomains) ? input.allowedDomains.filter((d): d is string => typeof d === "string") : [];
+    const sites = approval?.allowedDomains ?? fromInput;
+    const output = "output" in outcome ? (outcome.output as Partial<ApplyOutput> | null | undefined) : undefined;
+    const urls = [...(result.pageUrls ?? []), ...(typeof output?.finalUrl === "string" ? [output.finalUrl] : [])];
+    const off = urls.filter((url) => !evaluateChromeToolCall({ toolName: `${CHROME_TOOL_PREFIX}navigate`, toolInput: { url } }, { allowedSites: sites }).allow);
+    if (off.length === 0) return outcome;
+    const hosts = [...new Set(off.map((u) => hostOfUrl(u) ?? u))];
+    const detail = `Apply's tab reached ${hosts.join(", ")}, outside the approved domains (${sites.join(", ") || "none"})`;
+    const safety: SafetyNote[] = [...(outcome.safety ?? []), { reason: "off_allowlist", action: "apply.page_check", detail, demote: false }];
+    if (outcome.kind === "ok") return { ...outcome, safety, recordCheck: detail };
+    if (outcome.kind === "paused") return { kind: "failed", error: detail, output: outcome.output, retryable: false, safety };
+    return { ...outcome, safety };
+  }
+
+  /** PM2 S7: the attempt's captures: the folder's manifest (every spawn of the attempt), else what this spawn listed. */
+  private async capturesOf(dir: string, result: RunnerResult): Promise<CapturedScreenshot[]> {
+    const fromDisk = readScreenshotManifest(await this.core.deps.files.readText(join(dir, SCREENSHOT_MANIFEST)).catch(() => null));
+    return fromDisk.length > 0 ? fromDisk : [...(result.screenshots ?? [])];
   }
 
   classify(task: Task, bot: EffectiveBot, result: RunnerResult): Outcome {
@@ -780,12 +855,23 @@ export class TaskQueue {
       const current = getTask(tx, task.id);
       for (const s of outcome.safety ?? []) {
         emitSafetyDenied(core, tx, { botName: task.botName, taskId: task.id, action: s.action, reason: s.reason, detail: s.detail });
-        if (s.reason === "protected_page_changed") {
-          // §6.2: any change to a protected page alerts Ba; Figma's version history can restore it.
-          postLeadMessage(core, tx, `A protected Figma page changed during a CV task, so I stopped it. ${s.detail ?? ""} Please check the file and restore the page from Figma's version history.`.trim(), {
-            runId: task.runId,
-          });
-        }
+        // PM2 S11: Apply met an injection on the job's page: the job is flagged like QA's flag.
+        if (s.reason === "injection_flagged" && key === "apply.submit") flagApplyJob(tx, task);
+      }
+      // PM2 S8: a violation by the bot's own conduct demotes it one level (once per task).
+      const violation = (outcome.safety ?? []).find(
+        (s) =>
+          s.demote !== false &&
+          DEMOTING_SAFETY_REASONS.includes(s.reason) &&
+          !(outcome.kind === "paused" && outcome.reason.code === "domain_confirm" && s.reason === "off_allowlist"),
+      );
+      const changed = (outcome.safety ?? []).find((s) => s.reason === "protected_page_changed");
+      if (changed) {
+        // §6.2: any change to a protected page alerts Ba; it may have been his own edit (S8).
+        const demoted = demoteBot(core, tx, { botName: task.botName, reason: "protected_page_changed", detail: changed.detail, taskId: task.id, runId: task.runId, silent: true });
+        postProtectedChangeAlert(core, tx, task, `A protected Figma page changed during a CV task, by the bot or by you, so I stopped it. ${changed.detail ?? ""}`, demoted);
+      } else if (violation) {
+        demoteBot(core, tx, { botName: task.botName, reason: violation.reason, detail: violation.detail, taskId: task.id, runId: task.runId });
       }
       if (!current || current.status !== "running") {
         // Finished elsewhere while it ran (the run was cancelled). An Apply that ran may have submitted.
@@ -806,7 +892,7 @@ export class TaskQueue {
           const done = completeTask(tx, task.id, { output: outcome.output, now: core.now() });
           emitTaskFinished(core, tx, done, "done", null);
           const ctx = task.runId === null ? null : loadRunCtx(core, task.runId, tx);
-          this.onDone(tx, ctx, done, outcome.output, exported, outcome.recordFiles);
+          this.onDone(tx, ctx, done, outcome.output, exported, outcome.recordFiles, outcome.recordCheck);
           return;
         }
         case "paused": {
@@ -868,7 +954,7 @@ export class TaskQueue {
     sinkFailed(core, tx, failed, error);
   }
 
-  private onDone(tx: Conn, ctx: RunCtx | null, task: Task, output: unknown, exported: CvExport | undefined, recordFiles?: RecordFiles): void {
+  private onDone(tx: Conn, ctx: RunCtx | null, task: Task, output: unknown, exported: CvExport | undefined, recordFiles?: RecordFiles, recordCheck?: string): void {
     const core = this.core;
     const input = (task.input ?? {}) as Record<string, unknown>;
     switch (taskKey(task.botName, task.kind)) {
@@ -887,7 +973,7 @@ export class TaskQueue {
         if (ctx) onCheckerDone(core, tx, ctx, task, output as QaOutput);
         return;
       case "apply.submit":
-        onApplyDone(core, tx, task, output as ApplyOutput, recordFiles);
+        onApplyDone(core, tx, task, output as ApplyOutput, recordFiles, recordCheck ?? null);
         return;
       default:
         // PM2 S2: W3a posts the reply (and queues Lead's chat for a handoff) in this transaction.
@@ -906,7 +992,11 @@ export class TaskQueue {
     this.core.db.transaction((tx) => {
       const failed = failTaskNow(this.core, tx, task, `denied: ${detail}`);
       emitSafetyDenied(this.core, tx, { botName: task.botName, taskId: task.id, action: taskKey(task.botName, task.kind), reason, detail });
-      if (reason === "protected_page_changed") postLeadMessage(this.core, tx, `I stopped a CV task: ${detail}.`, { runId: task.runId });
+      if (reason === "protected_page_changed") {
+        // PM2 S8: the change happened after an earlier spawn of this task, by the bot or by Ba.
+        const demoted = demoteBot(this.core, tx, { botName: task.botName, reason, detail, taskId: task.id, runId: task.runId, silent: true });
+        postProtectedChangeAlert(this.core, tx, task, `I stopped a CV task: ${detail}, by the bot or by you.`, demoted);
+      }
       else if (isRetryableTask(task.botName, task.kind)) noticeTaskFailed(this.core, tx, failed, `denied: ${detail}`);
       sinkFailed(this.core, tx, failed, `denied: ${detail}`);
       if (!isRetryableTask(task.botName, task.kind)) applyStoppedBeforeSpawn(this.core, tx, task, "denied", detail);
@@ -950,7 +1040,13 @@ export class TaskQueue {
     const notes = (output as { memoryNotes?: string[] } | null)?.memoryNotes ?? [];
     const writer = this.core.deps.memory;
     if (!writer || notes.length === 0) return;
-    writer.append({ botName: task.botName, notes, runId: task.runId, taskId: task.id }).catch((err: unknown) => {
+    // PM2 S14: a note may name only the hosts this task could open.
+    const browser = this.core.deps.bots.get(task.botName)?.browser;
+    const domains = (task.input as { allowedDomains?: unknown } | null)?.allowedDomains;
+    const allowedSites = browser?.sitesFromApproval
+      ? Array.isArray(domains) ? domains.filter((d): d is string => typeof d === "string") : []
+      : [...(browser?.allowedSites ?? [])];
+    writer.append({ botName: task.botName, notes, runId: task.runId, taskId: task.id, allowedSites }).catch((err: unknown) => {
       this.core.log.warn(`memory notes of task ${task.id} were not saved: ${errorMessage(err)}`);
     });
   }

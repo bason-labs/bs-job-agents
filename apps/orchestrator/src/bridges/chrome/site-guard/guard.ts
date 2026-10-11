@@ -11,6 +11,8 @@ export const CHROME_TOOL_PREFIX = "mcp__claude-in-chrome__";
  * `browser_batch` runs both inside one call; `shortcuts_execute` runs saved extension
  * workflows; `switch_browser`/`select_browser` move the session to another browser.
  * `tabs_create_mcp` is deliberately absent: it opens a blank tab, and blocking it stops the bot.
+ * PM2 S7: `computer` is checked for `save_to_disk` (a screenshot written outside data/ whose path
+ * the model would repeat); the runner keeps screenshots itself.
  */
 export const SITE_GUARD_TOOLS = [
   "navigate",
@@ -19,7 +21,11 @@ export const SITE_GUARD_TOOLS = [
   "shortcuts_execute",
   "switch_browser",
   "select_browser",
+  "computer",
 ] as const;
+
+/** A truthy flag as a model might send it: true, "true", 1. */
+const truthy = (v: unknown): boolean => v === true || v === 1 || (typeof v === "string" && /^(?:true|1|yes)$/i.test(v.trim()));
 
 export interface SiteGuardPolicy {
   /** Allowed domains; subdomains match. Fixed per spawn (Apply: the approval's domains). */
@@ -51,6 +57,14 @@ function evaluateTool(name: string, input: Record<string, unknown>, sites: reado
         rule: "chrome_switch_browser",
         reason: "Blocked by site guard: bots work only in the browser they were started with.",
       };
+    case "computer":
+      return truthy(input.save_to_disk)
+        ? {
+            allow: false,
+            rule: "screenshot_save_to_disk",
+            reason: "Blocked by site guard: do not save screenshots to disk. Take the screenshot without save_to_disk and name it by the ID the tool shows.",
+          }
+        : { allow: true };
     default:
       return { allow: true };
   }

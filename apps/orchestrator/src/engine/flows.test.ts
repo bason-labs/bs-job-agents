@@ -64,7 +64,7 @@ describe("apply-to-file (§7.3b, UC-24)", () => {
     const t = await createTestEngine();
     t.files.write("/data/uploads/7-JD_NovaPay.pdf", "%PDF a JD");
     const upload = createUpload(t.db, { filename: "JD_NovaPay.pdf", mime: "application/pdf", size: 9, path: "uploads/7-JD_NovaPay.pdf", sha256: "f".repeat(64) });
-    t.runner.script({ bot: "research", kind: "file", result: fake.ok({ jobs: [{ ...NOVAPAY, source: "file", url: null }], pageViews: 0, blocked: null, selfCheck: [pass("x")], memoryNotes: [] }) });
+    t.runner.script({ bot: "research", kind: "file", result: fake.ok({ jobs: [{ ...NOVAPAY, source: "file", url: null }], pageViews: 0, blocked: null, injectionSuspected: false, injectionNote: null, selfCheck: [pass("x")], memoryNotes: [] }) });
     const run = t.engine.startWorkflow({ workflow: "apply-to-file", params: { uploadId: String(upload.id), searchProfileId: null } }, { trigger: "chat" });
     await t.idle();
     const call = t.runner.callsFor("research.file")[0]!;
@@ -93,7 +93,7 @@ describe("an uploaded file's name never reaches the trusted prompt part (PM2 M4)
     const t = await createTestEngine();
     t.files.write("/data/uploads/9-x", "%PDF a JD");
     const upload = createUpload(t.db, { filename, mime, size: 9, path: "uploads/9-x", sha256: "f".repeat(64) });
-    t.runner.script({ bot: "research", kind: "file", result: fake.ok({ jobs: [{ ...NOVAPAY, source: "file", url: null }], pageViews: 0, blocked: null, selfCheck: [pass("x")], memoryNotes: [] }) });
+    t.runner.script({ bot: "research", kind: "file", result: fake.ok({ jobs: [{ ...NOVAPAY, source: "file", url: null }], pageViews: 0, blocked: null, injectionSuspected: false, injectionNote: null, selfCheck: [pass("x")], memoryNotes: [] }) });
     t.engine.startWorkflow({ workflow: "apply-to-file", params: { uploadId: String(upload.id), searchProfileId: null } }, { trigger: "chat" });
     await t.idle();
     const call = t.runner.callsFor("research.file")[0]!;
@@ -116,12 +116,13 @@ describe("partial failure (§7.1, UC-03)", () => {
 
   it("one job's branch fails; the other job still reaches review; the run is done, not failed", async () => {
     const t = await createTestEngine({ sources: ["itviec", "topcv"] });
-    t.runner.script({ bot: "research", kind: "company", when: (task) => (task.input as { name: string }).name === "NovaPay", result: fake.failed("no public data") });
+    // (A failed company profile no longer fails a branch, PM2 S16; a CV that cannot be made does.)
+    t.runner.script({ bot: "cv", kind: "tailor", when: (task) => (task.input as { job: { company: string } }).job.company === "NovaPay", result: fake.failed("Figma frame missing") });
     const run = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
     await t.idle();
     const novapay = [1, 2].find((id) => getJob(t.db, id)?.title === NOVAPAY.title)!;
     const other = novapay === 1 ? 2 : 1;
-    expect(t.step(run.id, "company", String(novapay))?.status).toBe("failed");
+    expect(t.review(run.id, novapay)).toBeUndefined();
     expect(t.review(run.id, other)).toBeDefined();
     t.engine.skip(other, { reason: "location", note: null });
     await t.idle();
@@ -223,6 +224,15 @@ describe("bot memory (rule 2, §5.4)", () => {
     t.runner.script({ bot: "research", kind: "scan", result: fake.ok({ ...researchScanFixture, jobs: [NOVAPAY] }) });
     engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
     await engine.idle();
-    expect(notes).toEqual([{ botName: "research", notes: ['TopCV salary often hidden: read "Mức lương" field.'], runId: 1, taskId: 1 }]);
+    expect(notes).toEqual([
+      {
+        botName: "research",
+        notes: ['TopCV salary often hidden: read "Mức lương" field.'],
+        runId: 1,
+        taskId: 1,
+        // PM2 S14: the hosts a note may name.
+        allowedSites: t.engine.deps.bots.get("research")!.browser!.allowedSites,
+      },
+    ]);
   });
 });
