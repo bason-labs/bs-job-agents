@@ -2,7 +2,7 @@
 
 import type { Message, Upload } from "@bs-job-agents/shared";
 import { MessageSquareOff } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MessagesPage } from "@/lib/api/contract";
 import { errorMessage } from "@/lib/api/errors";
 import { useRooms } from "@/lib/api/hooks";
@@ -17,10 +17,19 @@ import { ChatContext, botDisplay, type ChatContextValue } from "./ChatContext";
 import { Composer } from "./Composer";
 import { BotBlock, DraftItem, MessageItem, TypingItem } from "./MessageItem";
 import { RichText } from "./RichText";
-import { CONSULT_SUGGESTIONS, LEAD_GREETING, LEAD_SUGGESTIONS, consultGreeting, mergeMessages, taskPhaseOf, type TaskPhase } from "./model";
+import {
+  CONSULT_SUGGESTIONS,
+  LEAD_GREETING,
+  LEAD_SUGGESTIONS,
+  consultGreeting,
+  mergeMessages,
+  taskPhaseOf,
+  workingReducer,
+  type TaskPhase,
+  type WorkingTasks,
+} from "./model";
 
 const PAGE_SIZE = 50;
-const TYPING_TIMEOUT_MS = 90_000;
 
 /**
  * Chat (§11): Lead's chat at /chat, consult threads at /chat/<bot> (UC-25). Bot tabs, the
@@ -44,7 +53,11 @@ export function ChatScreen({ botName }: { botName: string }) {
   const [olderHasMore, setOlderHasMore] = useState<boolean | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [typingSince, setTypingSince] = useState<number | null>(null);
+  // PM3 S5: "is working" follows this chat's conversation task (lead.chat or <bot>.consult), not a
+  // timer. `awaiting` covers the moment between Ba's send and the task's start.
+  const [awaiting, setAwaiting] = useState(false);
+  const [working, setWorking] = useState<WorkingTasks>({});
+  const convo = useMemo(() => ({ botName, kind: consult ? "consult" : "chat" }), [botName, consult]);
   const [phases, setPhases] = useState<Record<string, TaskPhase>>({});
   const [taskBots, setTaskBots] = useState<Record<string, string>>({});
   const [uploads, setUploads] = useState<Record<string, Upload>>({});
@@ -60,11 +73,12 @@ export function ChatScreen({ botName }: { botName: string }) {
         const { [e.message.id]: _done, ...rest } = d;
         return rest;
       });
-      if (e.message.author.type !== "ba") setTypingSince(null);
+      if (e.message.author.type !== "ba") setAwaiting(false);
     } else if (e.type === "message.delta" && e.roomId === roomId) {
       setDrafts((d) => ({ ...d, [e.messageId]: (d[e.messageId] ?? "") + e.delta }));
-      setTypingSince(null);
     } else {
+      setWorking((w) => workingReducer(w, e, convo));
+      if (e.type === "task.started" && e.botName === convo.botName && e.kind === convo.kind) setAwaiting(false);
       const phase = taskPhaseOf(e);
       if (phase) {
         setPhases((p) => ({ ...p, [phase[0]]: phase[1] }));
@@ -72,12 +86,6 @@ export function ChatScreen({ botName }: { botName: string }) {
       }
     }
   });
-
-  useEffect(() => {
-    if (typingSince === null) return;
-    const t = setTimeout(() => setTypingSince(null), TYPING_TIMEOUT_MS);
-    return () => clearTimeout(t);
-  }, [typingSince]);
 
   const messages = useMemo(() => mergeMessages(older, page.data?.messages ?? []), [older, page.data]);
   const hasMore = olderHasMore ?? page.data?.hasMore ?? false;
@@ -111,7 +119,7 @@ export function ChatScreen({ botName }: { botName: string }) {
         }
         const message = await api.sendMessage({ roomId, text, uploadIds });
         mutate((prev) => ({ messages: mergeMessages(prev?.messages ?? [], [message]), hasMore: prev?.hasMore ?? false }));
-        setTypingSince(Date.now());
+        setAwaiting(true);
         return true;
       } catch (err) {
         setError(`Couldn't send: ${errorMessage(err)}`);
@@ -125,10 +133,12 @@ export function ChatScreen({ botName }: { botName: string }) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const draftText = Object.values(drafts).join("");
+  const workingSteps = Object.values(working).at(-1) ?? [];
+  const showWorking = (awaiting || Object.keys(working).length > 0) && Object.keys(drafts).length === 0;
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [messages.length, draftText, typingSince]);
+  }, [messages.length, draftText, showWorking, workingSteps.length]);
   const onScroll = () => {
     const el = scroller.current;
     if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
@@ -211,7 +221,7 @@ export function ChatScreen({ botName }: { botName: string }) {
               {Object.entries(drafts).map(([id, text]) => (
                 <DraftItem key={id} bot={room?.botName ?? "lead"} consult={consult} text={text} />
               ))}
-              {typingSince !== null && Object.keys(drafts).length === 0 ? <TypingItem bot={botName} consult={consult} /> : null}
+              {showWorking ? <TypingItem bot={botName} consult={consult} steps={workingSteps} /> : null}
             </ChatContext.Provider>
           )}
         </div>

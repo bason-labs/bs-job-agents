@@ -165,23 +165,18 @@ export class MockBackend implements WebApi, EventFeed {
     return room;
   }
 
-  /** Appends a message (optionally streamed with message.delta first) and emits message.created. */
+  /**
+   * Appends a message and emits message.created. Replies arrive whole, as on the orchestrator (PM3
+   * S5: no token streaming; the chat shows the conversation task's tool steps instead).
+   */
   async post(
     roomId: string,
     author: MessageAuthor,
     text: string,
-    o: { cards?: MessageCard[]; runIds?: string[]; uploadIds?: string[]; mentions?: string[]; stream?: boolean } = {},
+    o: { cards?: MessageCard[]; runIds?: string[]; uploadIds?: string[]; mentions?: string[] } = {},
   ): Promise<Message> {
     const room = this.room(roomId);
     const id = this.nextId();
-    if (o.stream) {
-      const words = text.split(/(?<= )/);
-      const chunk = Math.max(1, Math.ceil(words.length / 4));
-      for (let i = 0; i < words.length; i += chunk) {
-        this.emit({ type: "message.delta", roomId, messageId: id, delta: words.slice(i, i + chunk).join("") });
-        await this.wait(70);
-      }
-    }
     const message: Message = {
       id,
       roomId,

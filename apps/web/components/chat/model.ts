@@ -35,6 +35,77 @@ export function parseRichText(text: string): RichSegment[] {
   return out;
 }
 
+// ---------------------------------------------------------------- "is working" (PM3 S5)
+
+/** The conversation task behind a chat screen: Lead's `lead.chat`, or a bot's `<bot>.consult`. */
+export interface ConversationTaskRef {
+  botName: string;
+  kind: string;
+}
+
+/** Running conversation tasks of one chat, by task id, with the tool steps seen so far. */
+export type WorkingTasks = Record<string, string[]>;
+
+const ORCHESTRATOR_TOOL = "mcp__orchestrator__";
+const field = (text: string | null, key: string): string | null => {
+  const m = text ? new RegExp(`"${key}"\\s*:\\s*"([^"]{1,80})"`).exec(text) : null;
+  return m ? m[1]! : null;
+};
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** One line per tool call ("Starting job-scan…"); replies are whole JSON, so tool steps are the live signal. */
+export function toolStepText(tool: string, text: string | null): string {
+  if (!tool.startsWith(ORCHESTRATOR_TOOL)) return text ? `${tool}: ${text}` : `${tool}…`;
+  const name = tool.slice(ORCHESTRATOR_TOOL.length);
+  switch (name) {
+    case "start_workflow":
+      return `Starting ${field(text, "workflow") ?? "a workflow"}…`;
+    case "get_status": {
+      const run = field(text, "runId");
+      return run ? `Checking run ${run}…` : "Checking the status…";
+    }
+    case "get_result": {
+      const task = field(text, "taskId");
+      return task ? `Reading the result of task ${task}…` : "Reading a result…";
+    }
+    case "create_task": {
+      const bot = field(text, "bot");
+      const kind = field(text, "kind");
+      return bot ? `Asking ${capital(bot)}${kind ? ` (${kind})` : ""}…` : "Creating a task…";
+    }
+    case "message_user":
+      return "Writing to you…";
+    case "propose_workflow":
+      return "Proposing a workflow…";
+    default:
+      return `${name.replace(/_/g, " ")}…`;
+  }
+}
+
+/**
+ * The chat's "is working" state from task events: a conversation task of this chat starts it, each
+ * tool call adds a step, its end (done, failed, interrupted) clears it. No timer: a long Opus turn
+ * keeps the indicator for as long as the task runs.
+ */
+export function workingReducer(state: WorkingTasks, e: AppEvent, ref: ConversationTaskRef): WorkingTasks {
+  switch (e.type) {
+    case "task.started":
+      return e.botName === ref.botName && e.kind === ref.kind ? { ...state, [e.taskId]: [] } : state;
+    case "task.progress": {
+      const steps = state[e.taskId];
+      if (!steps || e.kind !== "tool_use" || !e.tool) return state;
+      return { ...state, [e.taskId]: [...steps, toolStepText(e.tool, e.text)].slice(-3) };
+    }
+    case "task.finished": {
+      if (!(e.taskId in state)) return state;
+      const { [e.taskId]: _ended, ...rest } = state;
+      return rest;
+    }
+    default:
+      return state;
+  }
+}
+
 // ---------------------------------------------------------------- question and pause cards
 
 export type TaskPhase = "paused" | "running" | "ended";

@@ -13,6 +13,7 @@ import type { TaskPhase } from "./model";
 import { MessageCards } from "./MessageCards";
 import { PauseCard } from "./PauseCard";
 import { QuestionCard } from "./QuestionCard";
+import { TypingItem } from "./MessageItem";
 
 const LEAD_ROOM: Room = { id: "lead", name: "Lead", kind: "lead", botName: "lead", members: ["lead"], createdAt: "2026-10-10T08:00:00Z" };
 
@@ -187,5 +188,21 @@ describe("proposal choice cards (PM3 M3, S1)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save to my criteria" }));
     expect(chooseOption).toHaveBeenCalledWith({ messageId: "m7", key: "criteria-save:AbCdEf123456", optionId: "save" });
     expect(await screen.findByText("You chose “Save to my criteria”.")).toBeInTheDocument();
+  });
+});
+
+describe("TypingItem (PM3 S5)", () => {
+  it("says the bot is working and lists its latest tool steps", () => {
+    setup(<TypingItem bot="lead" consult={false} steps={["Checking the status…", "Starting job-scan…"]} />);
+    const status = screen.getByTestId("typing");
+    expect(status).toHaveTextContent("Lead is working");
+    expect(screen.getByTestId("working-steps").querySelectorAll("li")).toHaveLength(2);
+    expect(status).toHaveTextContent("Starting job-scan…");
+  });
+
+  it("without steps it shows only the working line", () => {
+    setup(<TypingItem bot="lead" consult={false} />);
+    expect(screen.getByTestId("typing")).toHaveTextContent("Lead is working");
+    expect(screen.queryByTestId("working-steps")).toBeNull();
   });
 });

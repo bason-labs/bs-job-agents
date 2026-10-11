@@ -1,4 +1,4 @@
-import type { Message, Step, Task } from "@bs-job-agents/shared";
+import type { AppEvent, Message, Step, Task } from "@bs-job-agents/shared";
 import { messageFixture, runFixture, stepFixture, taskFixture } from "@bs-job-agents/shared/fixtures";
 import { describe, expect, it } from "vitest";
 import type { RunView } from "@/lib/api/runs";
@@ -10,9 +10,43 @@ import {
   pauseCopy,
   questionPlaceholder,
   taskPhaseOf,
+  toolStepText,
+  workingReducer,
+  type WorkingTasks,
 } from "./model";
 
 const msg = (id: string, createdAt: string, over: Partial<Message> = {}): Message => ({ ...messageFixture, id, createdAt, cards: [], ...over });
+
+describe("the working indicator follows the conversation task (PM3 S5)", () => {
+  const ev = (e: Record<string, unknown>) => ({ id: "1", at: "2026-10-11T03:00:00Z", runId: null, stepId: null, ...e }) as unknown as AppEvent;
+  const lead = { botName: "lead", kind: "chat" };
+
+  it("Lead's tool calls become one-line steps", () => {
+    expect(toolStepText("mcp__orchestrator__start_workflow", '{"workflow":"job-scan","params":{"searchProfileId":null}}')).toBe("Starting job-scan…");
+    expect(toolStepText("mcp__orchestrator__start_workflow", '{"workflow":"danang-react","params":{}}')).toBe("Starting danang-react…");
+    expect(toolStepText("mcp__orchestrator__get_status", '{"runId":"13"}')).toBe("Checking run 13…");
+    expect(toolStepText("mcp__orchestrator__get_status", null)).toBe("Checking the status…");
+    expect(toolStepText("mcp__orchestrator__get_result", '{"taskId":"7"}')).toBe("Reading the result of task 7…");
+    expect(toolStepText("mcp__orchestrator__create_task", '{"bot":"research","kind":"company"}')).toBe("Asking Research (company)…");
+    expect(toolStepText("mcp__orchestrator__message_user", "On it")).toBe("Writing to you…");
+    expect(toolStepText("mcp__orchestrator__propose_workflow", "{}")).toBe("Proposing a workflow…");
+    expect(toolStepText("WebSearch", "react jobs")).toBe("WebSearch: react jobs");
+  });
+
+  it("starts on task.started, gathers tool steps, ends on task.finished; other bots and kinds are ignored", () => {
+    let w: WorkingTasks = {};
+    w = workingReducer(w, ev({ type: "task.started", taskId: "5", botName: "lead", kind: "chat", engine: "claude", attempt: 1 }), lead);
+    expect(w).toEqual({ "5": [] });
+    w = workingReducer(w, ev({ type: "task.started", taskId: "6", botName: "research", kind: "scan", engine: "claude", attempt: 1 }), lead);
+    w = workingReducer(w, ev({ type: "task.progress", taskId: "5", botName: "lead", kind: "status", text: "Lead started on claude", tool: null }), lead);
+    w = workingReducer(w, ev({ type: "task.progress", taskId: "5", botName: "lead", kind: "tool_use", text: '{"workflow":"job-scan"}', tool: "mcp__orchestrator__start_workflow" }), lead);
+    w = workingReducer(w, ev({ type: "task.progress", taskId: "5", botName: "lead", kind: "tool_result", text: "ok", tool: "mcp__orchestrator__start_workflow" }), lead);
+    w = workingReducer(w, ev({ type: "task.progress", taskId: "6", botName: "research", kind: "tool_use", text: "x", tool: "navigate" }), lead);
+    expect(w).toEqual({ "5": ["Starting job-scan…"] });
+    w = workingReducer(w, ev({ type: "task.finished", taskId: "5", botName: "lead", status: "done", attempt: 1, error: null }), lead);
+    expect(w).toEqual({});
+  });
+});
 
 describe("mergeMessages", () => {
   it("de-duplicates by id (POST answer and SSE event) and keeps time order", () => {
