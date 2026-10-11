@@ -12,7 +12,7 @@ const SHOTS: Array<{ name: string; route: string; height: number }> = [
   { name: "criteria", route: "/criteria", height: 1700 },
   { name: "schedules", route: "/schedules", height: 900 },
   { name: "bots", route: "/bots", height: 1150 },
-  { name: "cv", route: "/cv", height: 1450 },
+  { name: "cv", route: "/cv", height: 1750 },
 ];
 
 for (const theme of ["light", "dark"] as const) {
