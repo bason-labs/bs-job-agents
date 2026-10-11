@@ -54,6 +54,17 @@ interface Sleeper {
   sleep(ms: number): Promise<void>;
 }
 
+/** Where the fake writes the screenshots its default Apply output names (a MemoryFileStore). */
+interface ScreenshotSink {
+  write(path: string, content: string | Buffer): void;
+}
+
+/** The screenshots the default Apply output names, relative to its application folder (PM2 M1). */
+export const FAKE_APPLY_SCREENSHOTS = { preSubmit: "pre-submit.png", confirmation: "confirmation.png", jdPage: "jd.png" } as const;
+
+/** A minimal PNG header: enough for the record's magic-byte check. */
+export const FAKE_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+
 const pass = (item: string) => ({ item, passed: true, note: null });
 const ms = 1200;
 
@@ -210,10 +221,15 @@ function baseFakeResult(task: RunnerTask): RunnerResult {
       const pdfPath = typeof input.pdfPath === "string" ? input.pdfPath : "/data/applications/0/CV.pdf";
       const sha256 = typeof input.pdfSha256 === "string" ? input.pdfSha256 : applyOutputFixture.uploadedFile!.sha256;
       const uploaded = { filename: basename(pdfPath), sha256 };
+      const shots = {
+        preSubmitScreenshot: FAKE_APPLY_SCREENSHOTS.preSubmit,
+        confirmationScreenshot: FAKE_APPLY_SCREENSHOTS.confirmation,
+        jdSnapshot: applyOutputFixture.jdSnapshot ? { ...applyOutputFixture.jdSnapshot, pageScreenshot: FAKE_APPLY_SCREENSHOTS.jdPage } : null,
+      };
       const output: ApplyOutput =
         input.dryRun === true
-          ? { ...applyOutputFixture, status: "needs_check", uploadedFile: uploaded, confirmationScreenshot: null, confirmationText: null }
-          : { ...applyOutputFixture, uploadedFile: uploaded };
+          ? { ...applyOutputFixture, ...shots, status: "needs_check", uploadedFile: uploaded, confirmationScreenshot: null, confirmationText: null }
+          : { ...applyOutputFixture, ...shots, uploadedFile: uploaded };
       return fake.ok(output);
     }
     case "lead.chat":
@@ -234,9 +250,16 @@ export class FakeRunner implements Runner {
   private readonly peaks = new Map<string, number>();
   private peakAll = 0;
   private readonly clock: Sleeper | undefined;
+  private readonly screenshots: ScreenshotSink | undefined;
 
-  constructor(opts: { clock?: Sleeper; engine?: Engine | "fake"; scripts?: FakeScript[] } = {}) {
+  /**
+   * `screenshots`: where the default Apply output's screenshots are written (its application
+   * folder), standing in for the capture pipeline (PM2 S7), so a default Apply is recorded clean.
+   * Scripted results name their own screenshots and write nothing.
+   */
+  constructor(opts: { clock?: Sleeper; engine?: Engine | "fake"; scripts?: FakeScript[]; screenshots?: ScreenshotSink } = {}) {
     this.clock = opts.clock;
+    this.screenshots = opts.screenshots;
     this.engine = opts.engine ?? "fake";
     for (const s of opts.scripts ?? []) this.script(s);
   }
@@ -281,7 +304,16 @@ export class FakeRunner implements Runner {
       }
       if (task.signal?.aborted) return fake.cancelled();
       const result = entry?.result;
-      if (result === undefined) return defaultFakeResult(task);
+      if (result === undefined) {
+        const answer = defaultFakeResult(task);
+        if (key === "apply.submit" && answer.status === "ok" && this.screenshots && task.readDirs?.[0]) {
+          const out = answer.output as ApplyOutput;
+          for (const name of [out.preSubmitScreenshot, out.confirmationScreenshot, out.jdSnapshot?.pageScreenshot]) {
+            if (name) this.screenshots.write(`${task.readDirs[0]}/${name}`, FAKE_PNG);
+          }
+        }
+        return answer;
+      }
       return typeof result === "function" ? await result(task, call) : result;
     } finally {
       this.leave(key);

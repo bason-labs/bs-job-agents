@@ -1,8 +1,9 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { appendMemoryNotes, formatMemoryLine } from "./memory.js";
+import { defaultBotsDir } from "./config.js";
+import { MEMORY_TEMPLATE, appendMemoryNotes, formatMemoryLine, seedMemoryFiles } from "./memory.js";
 
 let dir: string;
 beforeEach(() => {
@@ -69,5 +70,27 @@ describe("appendMemoryNotes (§5.4, rule 2)", () => {
     await appendMemoryNotes({ botDir: dir, notes: ["first"], runId: null, taskId: null, now: NOW });
     expect(existsSync(join(dir, "memory.md"))).toBe(true);
     expect(lines()).toEqual(["- 2026-10-11: first"]);
+  });
+});
+
+describe("bot memory is runtime state, kept out of git (PM2 S5)", () => {
+  it("the repo ignores bots/*/memory.md and bots/*/memory.archive.md, like data/", () => {
+    const gitignore = readFileSync(join(defaultBotsDir(), "..", ".gitignore"), "utf8").split("\n").map((l) => l.trim());
+    expect(gitignore).toContain("bots/*/memory.md");
+    expect(gitignore).toContain("bots/*/memory.archive.md");
+  });
+
+  it("start-up seeds a missing memory.md from the template and never overwrites Ba's notes", async () => {
+    const bots = join(dir, "bots");
+    for (const name of ["qa", "cv"]) mkdirSync(join(bots, name), { recursive: true });
+    writeFileSync(join(bots, "cv", "memory.md"), "- 2026-10-10: keep me\n");
+    const created = await seedMemoryFiles(bots, ["qa", "cv", "ghost"]);
+    expect(created).toEqual([join(bots, "qa", "memory.md")]);
+    expect(readFileSync(join(bots, "qa", "memory.md"), "utf8")).toBe(MEMORY_TEMPLATE);
+    expect(readFileSync(join(bots, "cv", "memory.md"), "utf8")).toBe("- 2026-10-10: keep me\n");
+    // A bot without a folder is not created here (bot.json lives in the folder).
+    expect(existsSync(join(bots, "ghost"))).toBe(false);
+    // Seeding again changes nothing.
+    expect(await seedMemoryFiles(bots, ["qa", "cv"])).toEqual([]);
   });
 });

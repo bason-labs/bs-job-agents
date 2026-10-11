@@ -1,7 +1,8 @@
 // Task lifecycle writes paired with their shared events (§10.2 rule 8, §11).
 import type { PauseReason, SafetyDenialReason } from "@bs-job-agents/shared";
-import { appendMessage, failTask, getOrCreateLeadRoom, getTask, mappers, requeueTask, type Conn, type Task } from "../db/index.js";
+import { failTask, getTask, requeueTask, type Conn, type Task } from "../db/index.js";
 import type { EngineCore } from "./core.js";
+import { postNotice } from "./notices.js";
 
 export function emitTaskFinished(core: EngineCore, conn: Conn, task: Task, status: "done" | "failed" | "interrupted", error: string | null): void {
   core.bus.emit(conn, {
@@ -59,11 +60,5 @@ export const stillRunning = (conn: Conn, taskId: number): boolean => getTask(con
 
 /** A message from Lead in the Lead chat (alerts Ba must act on), with its message.created event. */
 export function postLeadMessage(core: EngineCore, conn: Conn, text: string, opts: { runId?: number | null } = {}): void {
-  const room = getOrCreateLeadRoom(conn, { now: core.now() });
-  const message = appendMessage(
-    conn,
-    { roomId: room.id, author: "lead", text, runRefs: opts.runId ? [opts.runId] : [], meta: opts.runId ? { cards: [{ type: "run", runId: String(opts.runId) }] } : null },
-    { now: core.now() },
-  );
-  core.bus.emit(conn, { type: "message.created", roomId: String(room.id), message: mappers.toMessage(message, room.kind, []) });
+  postNotice(core, conn, { text, runId: opts.runId ?? null });
 }

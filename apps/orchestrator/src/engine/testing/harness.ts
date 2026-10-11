@@ -18,7 +18,8 @@ import {
 import { seedBots, T0 } from "../../db/test-helpers.js";
 import { EnginePaths, type EngineConfig } from "../config.js";
 import { Engine } from "../engine.js";
-import type { OrphanKiller, RolePromptSource } from "../ports.js";
+import type { ConversationSink } from "../conversations.js";
+import type { MemoryWriter, OrphanKiller, RolePromptSource } from "../ports.js";
 import type { ActionStepOutput, HumanStepOutput } from "../state.js";
 import { FakeClock } from "./fake-clock.js";
 import { FakeRunner } from "./fake-runner.js";
@@ -51,6 +52,10 @@ export interface TestEngineOptions {
   processes?: OrphanKiller;
   /** ROLE.md per bot: start-up records prompt_versions (and refuses a stale version). */
   prompts?: RolePromptSource;
+  /** Rule 2 memory writer (default none); start-up seeds through it (PM2 S5). */
+  memory?: MemoryWriter;
+  /** W3a's chat-flow port (PM2 S2). */
+  conversations?: ConversationSink;
 }
 
 export interface TestEngine {
@@ -90,8 +95,11 @@ export interface TestEngine {
 export const DATA_DIR = "/data";
 export const BOTS_DIR = "/bots";
 
-/** Rows the engine writes for the audit log only; never streamed (UC-18: the spawned CLI's pid). */
-export const AUDIT_ONLY_EVENT_TYPES = ["runner.spawned"] as const;
+/**
+ * Rows the engine writes for the audit log only; never streamed (UC-18: the spawned CLI's pid;
+ * PM2 S4: a CV spawn's protected-pages hash; PM2 S1: a once-only Lead message was posted).
+ */
+export const AUDIT_ONLY_EVENT_TYPES = ["runner.spawned", "figma.before", "lead.notice"] as const;
 
 export async function createTestEngine(opts: TestEngineOptions = {}): Promise<TestEngine> {
   const fresh = opts.db === undefined;
@@ -99,7 +107,7 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
   if (fresh) seedBots(db);
   const clock = opts.clock ?? new FakeClock(T0);
   const files = opts.files ?? new MemoryFileStore();
-  const runner = new FakeRunner({ clock });
+  const runner = new FakeRunner({ clock, screenshots: files });
   const browser = new FakeBrowserProbe();
   const figma = new FakeFigmaPort(files);
   const guards = new FakeGuardHooks(files);
@@ -136,6 +144,8 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
     config: opts.config,
     ...(opts.processes ? { processes: opts.processes } : {}),
     ...(opts.prompts ? { prompts: opts.prompts } : {}),
+    ...(opts.memory ? { memory: opts.memory } : {}),
+    ...(opts.conversations ? { conversations: opts.conversations } : {}),
   });
   const delivered: AppEvent[] = [];
   engine.subscribe((event) => delivered.push(event));

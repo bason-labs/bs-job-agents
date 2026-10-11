@@ -250,6 +250,8 @@ export function recordSubmission(
     dryRun?: boolean;
     submission: SubmissionInput;
     snapshot: CompleteSnapshotInput;
+    /** Why the record is needs_check, for the status history (e.g. "screenshots not captured", PM2 M1). */
+    note?: string | null;
   },
   opts?: ClockOpts,
 ): SubmissionRecord {
@@ -301,7 +303,7 @@ export function recordSubmission(
     const submittedAt = input.submission.submittedAt ?? now;
     const history: StatusHistoryEntry[] = [
       ...app.statusHistory,
-      { status, at: submittedAt, note: dryRun ? "dry run: form filled, not submitted" : null },
+      { status, at: submittedAt, note: dryRun ? "dry run: form filled, not submitted" : (input.note ?? null) },
     ];
     const application = tx
       .update(applications)

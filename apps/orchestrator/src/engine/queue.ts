@@ -4,13 +4,16 @@
 // with the attempt policy: 2 attempts per task (§5.5 step 6), never for apply.submit once it
 // started (PM FYI c). Locks live in memory; they are free after a restart because recovery runs
 // first. The Figma lock covers the orchestrator's own fingerprint and export calls too.
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import {
+  ALLOWED_UPLOAD_TYPES,
   EngineSchema,
   PauseReasonSchema,
   failedSelfChecks,
   isRetryableTask,
+  normalizeHostName,
   parseBotOutput,
+  publicHostProblem,
   resolveOutputSchemaName,
   taskKey,
   type ApplyOutput,
@@ -35,6 +38,7 @@ import {
   getRun,
   getTask,
   holdEngineTasks,
+  listEvents,
   pauseTask,
   requeueTask,
   saveCompanyProfile,
@@ -53,7 +57,8 @@ import {
   onApplyFailedAfterSpawn,
   onApplyPaused,
   prepareApply,
-  registrableHost,
+  verifyRecordFiles,
+  type RecordFiles,
 } from "./apply.js";
 import { MASTER_CV_TASK_KEYS, effectiveBot, type EffectiveBot } from "./bots.js";
 import { loadRunCtx, type RunCtx } from "./context.js";
@@ -61,7 +66,10 @@ import type { EngineCore } from "./core.js";
 import { errorMessage } from "./errors.js";
 import { onCheckerDone, onProducerDone, type CvExport } from "./gate.js";
 import type { GuardBlock } from "./ports.js";
+import { isConversationTask, sinkContext, sinkFailed } from "./conversations.js";
+import { noticePause, noticeTaskFailed } from "./notices.js";
 import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, postLeadMessage, stillRunning } from "./task-events.js";
+import { hostOfUrl, pauseSite, siteBlocksOf, siteKey, type SiteBlock } from "./sites.js";
 import { checkTaskTrust } from "./trust-guard.js";
 
 const ENGINES = EngineSchema.options;
@@ -76,10 +84,19 @@ interface SafetyNote {
 
 /** What one attempt came to, after the engine checked the runner's result. */
 export type Outcome =
-  | { kind: "ok"; output: unknown; safety?: SafetyNote[] }
+  /** `recordFiles`: apply.submit's screenshots as the record may cite them (PM2 M1), checked before settle. */
+  | { kind: "ok"; output: unknown; safety?: SafetyNote[]; recordFiles?: RecordFiles }
   /** The bot paused itself: a login, a CAPTCHA, questions, a domain to confirm (UC-03 a, UC-11, UC-12, UC-17). */
   | { kind: "paused"; reason: PauseReason; output: unknown; safety?: SafetyNote[] }
-  | { kind: "failed"; error: string; output?: unknown; retryable: boolean; safety?: SafetyNote[] }
+  | {
+      kind: "failed";
+      error: string;
+      output?: unknown;
+      retryable: boolean;
+      safety?: SafetyNote[];
+      /** The attempt also hit a usage limit: the engine still pauses (S3 turned it into a failure). */
+      limit?: { engine: Engine; resetsAt: string | null };
+    }
   | { kind: "usage_limit"; engine: Engine; resetsAt: string | null; safety?: SafetyNote[] }
   | { kind: "cancelled"; safety?: SafetyNote[] }
   /** Figma went away during the orchestrator's own calls: wait as needs_figma, then run again. */
@@ -96,6 +113,8 @@ interface Prepared {
   apply: boolean;
   /** Absolute JSONL log the guard hooks write their decisions to. */
   guardLog: string | null;
+  /** Where this spawn's lines start in the guard log (a resume keeps the attempt, so the log holds earlier spawns' lines). */
+  guardLogOffset: number;
 }
 
 interface Inflight {
@@ -108,6 +127,30 @@ interface Inflight {
 
 /** Where the orchestrator's own Figma calls went wrong. */
 class FigmaGone extends Error {}
+
+/** `upload-<id><ext>`: the file name's extension when UC-24 allows it for the mime type, else the type's own. */
+export function uploadCopyName(file: { uploadId: string; filename: string; mime: string }): string {
+  const id = file.uploadId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40) || "file";
+  const allowed: readonly string[] = (ALLOWED_UPLOAD_TYPES as Record<string, readonly string[]>)[file.mime] ?? [];
+  const fromName = /\.[A-Za-z0-9]{1,5}$/.exec(file.filename)?.[0]?.toLowerCase();
+  return `upload-${id}${fromName && allowed.includes(fromName) ? fromName : (allowed[0] ?? "")}`;
+}
+
+/** The audit row a CV spawn writes with the protected pages' "before" hash (PM2 S4). */
+export const FIGMA_BEFORE_EVENT = "figma.before";
+
+/**
+ * PM2 S4: the "before" hash of the protected Figma pages that this CV task last spawned with (its
+ * after-check may never have run: a crash, Figma gone, a failed attempt), or null. The next spawn
+ * and the start-up after a crash compare the pages with it.
+ */
+export function lastFigmaBeforeHash(conn: Conn, task: Pick<Task, "id" | "output">): string | null {
+  const row = listEvents(conn, { taskId: task.id, types: [FIGMA_BEFORE_EVENT] }).at(-1);
+  const fromAudit = (row?.payload as { hash?: unknown } | undefined)?.hash;
+  if (typeof fromAudit === "string" && fromAudit !== "") return fromAudit;
+  const fromWait = (task.output as { figmaBeforeHash?: unknown } | null)?.figmaBeforeHash;
+  return typeof fromWait === "string" && fromWait !== "" ? fromWait : null;
+}
 
 /** UC-11 d: Apply's own check that the page shows the approved company and title failed. */
 function pageMismatch(key: string, failed: readonly string[]): SafetyNote[] {
@@ -260,6 +303,8 @@ export class TaskQueue {
     const { runnerTask, bot } = prepared;
     core.db.transaction((tx) => {
       setTaskTranscriptPath(tx, task.id, core.paths.transcript(task.id, task.attempt));
+      // PM2 S4: persisted before the spawn, so a crash cannot lose what the pages looked like.
+      if (prepared.figmaBefore) core.bus.audit(tx, FIGMA_BEFORE_EVENT, { hash: prepared.figmaBefore.hash, attempt: task.attempt }, { runId: task.runId, taskId: task.id });
       core.bus.emit(tx, {
         type: "task.started",
         taskId: String(task.id),
@@ -289,7 +334,13 @@ export class TaskQueue {
     }
     if (timedOut && result.status === "cancelled") result = { status: "timeout", durationMs: result.durationMs };
     let outcome = this.classify(task, bot, result);
-    outcome = await this.withGuardLog(prepared, outcome);
+    const blocks = await this.readGuardLog(prepared);
+    outcome = this.withGuardLog(outcome, blocks);
+    outcome = this.checkSiteGuard(task, outcome, siteBlocksOf(blocks, result));
+    if (outcome.kind === "ok" && prepared.apply) {
+      const appId = Number((task.input as { applicationId?: unknown } | null)?.applicationId);
+      if (Number.isInteger(appId)) outcome = { ...outcome, recordFiles: await verifyRecordFiles(core, appId, outcome.output as ApplyOutput) };
+    }
     let exported: CvExport | undefined;
     if (task.usesFigma) ({ outcome, exported } = await this.afterFigmaTask(task, prepared, outcome));
     this.settle(task, prepared, outcome, exported);
@@ -337,6 +388,7 @@ export class TaskQueue {
 
     const claude = bot.def.engine === "claude";
     const guardLog = claude ? core.paths.abs(core.paths.guardLog(task.id, task.attempt)) : null;
+    const guardLogOffset = guardLog ? ((await core.deps.files.readText(guardLog).catch(() => null))?.length ?? 0) : 0;
     const hooks: ClaudeHookSettings[] = [];
     let input: unknown = task.input;
     let readDirs: string[] | undefined;
@@ -349,8 +401,10 @@ export class TaskQueue {
         readDirs = [taskDir];
       }
       if (key === "research.file") {
-        const file = input as { path: string; filename: string };
-        const dest = join(taskDir, basename(file.filename));
+        const file = input as { uploadId: string; path: string; filename: string; mime: string };
+        // PM2 M4: the copy is named by the orchestrator; Ba's file name (untrusted text) stays in
+        // `filename`, which the prompt puts in an UNTRUSTED_CONTENT block, never in the path.
+        const dest = join(taskDir, uploadCopyName(file));
         await core.deps.files.copy(core.paths.abs(file.path), dest);
         input = { ...file, path: dest };
         readDirs = [taskDir];
@@ -386,10 +440,15 @@ export class TaskQueue {
       try {
         const drafts = await core.deps.figma.ensureDraftsPage();
         figmaBefore = await core.deps.figma.fingerprintProtectedPages();
-        const verified = (task.output as { figmaBeforeHash?: string } | null)?.figmaBeforeHash;
+        // PM2 S4: compare with the hash this task last spawned with (persisted before every spawn):
+        // an earlier spawn's after-check may never have run, so what changed since is unverified.
+        const verified = lastFigmaBeforeHash(core.db, task);
         if (verified && verified !== figmaBefore.hash) {
-          // An earlier spawn's after-check never ran (Figma went away): what changed since is unverified.
-          this.refuse(task, "protected_page_changed", "the protected Figma pages changed while this CV task waited for Figma; check them before continuing");
+          this.refuse(
+            task,
+            "protected_page_changed",
+            "the protected Figma pages changed while this CV task waited (for Figma, after a restart or between attempts); check them before continuing",
+          );
           return null;
         }
         if (key === "cv.tailor") {
@@ -412,6 +471,7 @@ export class TaskQueue {
       bot,
       apply: trust.needsApproval,
       guardLog,
+      guardLogOffset,
       ...(figmaBefore ? { figmaBefore } : {}),
       ...(authorize ? { authorize } : {}),
       runnerTask: {
@@ -473,26 +533,89 @@ export class TaskQueue {
 
   // ------------------------------------------------------------------ the result
 
-  /** What a bot reported as its own pause (UC-03 a, UC-11 a/b/e, UC-12, UC-17). */
+  /** What a bot reported as its own pause (UC-03 a, UC-11 a/b/e, UC-12, UC-17). Sites are plain hosts (PM2 M2). */
   private selfPause(task: Task, output: unknown): PauseReason | null {
     const key = taskKey(task.botName, task.kind);
     if (key === "research.scan" || key === "research.single" || key === "research.file") {
       const blocked = (output as { blocked?: { reason: "needs_login" | "captcha"; site: string; detail: string | null } | null }).blocked;
-      return blocked ? { code: blocked.reason, site: blocked.site, detail: blocked.detail } : null;
+      if (!blocked) return null;
+      // S1: Lead names the site in Ba's chat, so a bot-named host counts only when the task may open it.
+      const allowed = [...(this.core.deps.bots.get(task.botName)?.browser?.allowedSites ?? []), ...[hostOfUrl((task.input as { url?: unknown } | null)?.url)].filter((h): h is string => h !== null)];
+      return { code: blocked.reason, site: pauseSite(blocked.site, this.researchSite(task), allowed) ?? "unknown-site", detail: blocked.detail };
     }
     if (key === "apply.submit") {
       const o = output as ApplyOutput;
       if (o.status !== "paused") return null;
       const code = o.pauseReason?.reason ?? "needs_answer";
-      let site = o.pauseReason?.site ?? null;
-      if (!site && code !== "needs_answer") {
-        const url = (task.input as { jobUrl?: string } | null)?.jobUrl;
-        site = url ? registrableHost(url) : null;
-      }
+      const url = (task.input as { jobUrl?: string } | null)?.jobUrl;
+      const jobHost = url ? hostOfUrl(url) : null;
+      // domain_confirm keeps what Apply named (null too): checkSiteGuard compares it with the guard's blocks.
+      const domains = (task.input as { allowedDomains?: unknown } | null)?.allowedDomains;
+      const allowed = Array.isArray(domains) ? domains.filter((d): d is string => typeof d === "string") : [];
+      const site = code === "domain_confirm" ? (o.pauseReason?.site ?? null) : code === "needs_answer" ? null : pauseSite(o.pauseReason?.site, jobHost, allowed);
       const reason = { code, site, detail: o.pauseReason?.detail ?? null };
+      if (code === "domain_confirm") return reason as PauseReason;
       return PauseReasonSchema.safeParse(reason).success ? reason : { code: "needs_answer", site: null, detail: reason.detail };
     }
     return null;
+  }
+
+  /** The site a Research task works on, for a pause that named none: the single URL's host or the source's site. */
+  private researchSite(task: Task): string | null {
+    const input = (task.input ?? {}) as { url?: unknown; source?: unknown };
+    const fromUrl = hostOfUrl(input.url);
+    if (fromUrl) return fromUrl;
+    if (typeof input.source !== "string") return null;
+    const sites = this.core.deps.bots.get(task.botName)?.browser?.allowedSites ?? [];
+    return sites.find((s) => s.split(".")[0] === input.source) ?? null;
+  }
+
+  /**
+   * PM2 M2 and S3, after the guard log was read:
+   * - Apply's domain_confirm pause is offered only for a host the site guard blocked in this
+   *   attempt, and only when it is a public web site; the pause then names that host (lowercase,
+   *   no www.). Anything else (a bot-named site with no matching block, e.g. `vn`) fails Apply:
+   *   needs_check and a safety event. Ba can never be asked to widen the token to a site no
+   *   navigation needed.
+   * - Any other attempt with a site-guard block fails the task with no retry (decision 6, §10.2
+   *   rule 7: the navigation stops the task). Figma-guard blocks keep their retry.
+   */
+  private checkSiteGuard(task: Task, outcome: Outcome, blocks: readonly SiteBlock[]): Outcome {
+    const domainConfirm = outcome.kind === "paused" && outcome.reason.code === "domain_confirm";
+    if (blocks.length === 0 && !domainConfirm) return outcome;
+    // The exact hosts the guard blocked; Apply's name for one is matched without `www.`, but the
+    // offer is always the exact blocked host, so a confirmation never widens to a parent domain.
+    const hosts = [...new Set(blocks.map((b) => b.host).filter((h): h is string => h !== null))];
+    if (outcome.kind === "paused" && domainConfirm) {
+      const named = outcome.reason.site ? normalizeHostName(outcome.reason.site) : hosts.length === 1 ? hosts[0]! : null;
+      const blocked = named === null ? undefined : hosts.find((h) => siteKey(h) === siteKey(named));
+      const blockedText = hosts.length > 0 ? `the site guard blocked ${hosts.join(", ")}` : "the site guard blocked no navigation";
+      let detail: string | null = null;
+      if (named === null) detail = `Apply asked to confirm a domain without naming it, and ${blockedText} in this attempt`;
+      else if (!blocked) detail = `Apply asked to confirm ${named}, but ${blockedText} in this attempt`;
+      else {
+        const problem = publicHostProblem(blocked);
+        if (problem) detail = `Apply asked to confirm ${blocked}, which the site guard blocked, but ${problem}`;
+      }
+      if (detail === null) return { ...outcome, reason: { ...outcome.reason, site: blocked! } };
+      return {
+        kind: "failed",
+        error: `domain not confirmed: ${detail}`,
+        output: outcome.output,
+        retryable: false,
+        safety: [...(outcome.safety ?? []), { reason: "off_allowlist", action: "apply.domain_confirm", detail }],
+      };
+    }
+    if (outcome.kind === "cancelled") return outcome;
+    const where = hosts.length > 0 ? hosts.join(", ") : [...new Set(blocks.map((b) => b.tool))].join(", ");
+    return {
+      kind: "failed",
+      error: `the site guard blocked ${where} (§10.2 rule 7): the task stops without a retry`,
+      ...("output" in outcome && outcome.output !== undefined ? { output: outcome.output } : {}),
+      retryable: false,
+      ...(outcome.safety ? { safety: outcome.safety } : {}),
+      ...(outcome.kind === "usage_limit" ? { limit: { engine: outcome.engine, resetsAt: outcome.resetsAt } } : {}),
+    };
   }
 
   classify(task: Task, bot: EffectiveBot, result: RunnerResult): Outcome {
@@ -559,14 +682,19 @@ export class TaskQueue {
     }
   }
 
+  /** The guard hooks' blocks in this attempt (empty when there is no log or it cannot be read). */
+  private async readGuardLog(prepared: Prepared): Promise<GuardBlock[]> {
+    if (!prepared.guardLog) return [];
+    const text = await this.core.deps.files.readText(prepared.guardLog).catch(() => null);
+    return parseGuardLog(text === null ? null : text.slice(prepared.guardLogOffset));
+  }
+
   /**
    * Coordinator E: every block the guard hooks logged becomes a safety.denied event (a blocked
-   * call does not end the bot's session). The log has the same blocks as the runner's hook
-   * denials, so those are kept only when the log is empty or unreadable.
+   * call does not end the bot's session by itself). The log has the same blocks as the runner's
+   * hook denials, so those are kept only when the log is empty or unreadable.
    */
-  private async withGuardLog(prepared: Prepared, outcome: Outcome): Promise<Outcome> {
-    if (!prepared.guardLog) return outcome;
-    const blocks = parseGuardLog(await this.core.deps.files.readText(prepared.guardLog).catch(() => null));
+  private withGuardLog(outcome: Outcome, blocks: readonly GuardBlock[]): Outcome {
     if (blocks.length === 0) return outcome;
     const own = (outcome.safety ?? []).filter((s) => !s.fromHook);
     return { ...outcome, safety: [...own, ...blocks.map(blockNote)] } as Outcome;
@@ -678,12 +806,14 @@ export class TaskQueue {
           const done = completeTask(tx, task.id, { output: outcome.output, now: core.now() });
           emitTaskFinished(core, tx, done, "done", null);
           const ctx = task.runId === null ? null : loadRunCtx(core, task.runId, tx);
-          this.onDone(tx, ctx, done, outcome.output, exported);
+          this.onDone(tx, ctx, done, outcome.output, exported, outcome.recordFiles);
           return;
         }
         case "paused": {
           const paused = pauseTask(tx, task.id, outcome.reason, { output: outcome.output });
           emitTaskPaused(core, tx, paused, outcome.reason);
+          // S1: the UC-17 card (login, CAPTCHA, a domain to confirm); questions get their own cards.
+          noticePause(core, tx, paused, outcome.reason);
           if (key === "apply.submit") onApplyPaused(core, tx, paused, outcome.output as ApplyOutput);
           return;
         }
@@ -692,6 +822,7 @@ export class TaskQueue {
           core.waitForBridge(tx, current, "needs_figma", { detail: outcome.detail, output: { figmaBeforeHash: outcome.beforeHash } });
           return;
         case "failed":
+          if (outcome.limit) core.pauseEngineForLimit(tx, outcome.limit.engine, outcome.limit.resetsAt);
           this.failAttempt(tx, task, outcome.error, outcome.output, outcome.retryable && retryable, prepared.apply);
           return;
         case "usage_limit": {
@@ -730,10 +861,14 @@ export class TaskQueue {
       requeueTask(tx, task.id, { newAttempt: true });
       return;
     }
-    failTaskNow(core, tx, task, error, output);
+    const failed = failTaskNow(core, tx, task, error, output);
+    // §5.5 step 6: the task failed for good, so Lead reports it (S1); never for a retried attempt.
+    // A conversation's failure goes to W3a's sink instead (S2).
+    noticeTaskFailed(core, tx, failed, error);
+    sinkFailed(core, tx, failed, error);
   }
 
-  private onDone(tx: Conn, ctx: RunCtx | null, task: Task, output: unknown, exported: CvExport | undefined): void {
+  private onDone(tx: Conn, ctx: RunCtx | null, task: Task, output: unknown, exported: CvExport | undefined, recordFiles?: RecordFiles): void {
     const core = this.core;
     const input = (task.input ?? {}) as Record<string, unknown>;
     switch (taskKey(task.botName, task.kind)) {
@@ -752,9 +887,14 @@ export class TaskQueue {
         if (ctx) onCheckerDone(core, tx, ctx, task, output as QaOutput);
         return;
       case "apply.submit":
-        onApplyDone(core, tx, task, output as ApplyOutput);
+        onApplyDone(core, tx, task, output as ApplyOutput, recordFiles);
         return;
       default:
+        // PM2 S2: W3a posts the reply (and queues Lead's chat for a handoff) in this transaction.
+        if (isConversationTask(task) && core.deps.conversations) {
+          const result = (task.kind === "chat" ? { kind: "chat", output } : { kind: task.kind, output }) as Parameters<typeof core.deps.conversations.done>[1];
+          core.deps.conversations.done(sinkContext(core, tx, task), result);
+        }
         return;
     }
   }
@@ -764,9 +904,11 @@ export class TaskQueue {
   /** The trust guard refused (nothing ran): the task fails with a safety.denied event. */
   private refuse(task: Task, reason: SafetyDenialReason, detail: string): void {
     this.core.db.transaction((tx) => {
-      failTaskNow(this.core, tx, task, `denied: ${detail}`);
+      const failed = failTaskNow(this.core, tx, task, `denied: ${detail}`);
       emitSafetyDenied(this.core, tx, { botName: task.botName, taskId: task.id, action: taskKey(task.botName, task.kind), reason, detail });
       if (reason === "protected_page_changed") postLeadMessage(this.core, tx, `I stopped a CV task: ${detail}.`, { runId: task.runId });
+      else if (isRetryableTask(task.botName, task.kind)) noticeTaskFailed(this.core, tx, failed, `denied: ${detail}`);
+      sinkFailed(this.core, tx, failed, `denied: ${detail}`);
       if (!isRetryableTask(task.botName, task.kind)) applyStoppedBeforeSpawn(this.core, tx, task, "denied", detail);
     });
   }
@@ -790,8 +932,10 @@ export class TaskQueue {
         const current = getTask(tx, task.id);
         if (current?.status !== "running") return;
         const error = `engine error: ${errorMessage(err)}`;
-        failTaskNow(core, tx, current, error);
-        if (!isRetryableTask(task.botName, task.kind)) {
+        const failed = failTaskNow(core, tx, current, error);
+        sinkFailed(core, tx, failed, error);
+        if (isRetryableTask(task.botName, task.kind)) noticeTaskFailed(core, tx, failed, error);
+        else {
           // After the spawn it may have submitted; before it, nothing ran and the token is untouched.
           if (entry.spawned) onApplyFailedAfterSpawn(core, tx, current, error);
           else applyStoppedBeforeSpawn(core, tx, current, "not_started", error);

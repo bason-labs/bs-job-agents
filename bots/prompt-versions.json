@@ -1,0 +1,22 @@
+{
+  "apply": {
+    "promptVersion": 1,
+    "roleMdSha256": "6fe0f089f1b4189341f098f1ceb0d141d7a4d006de880b2f50609f596cd89bc3"
+  },
+  "cv": {
+    "promptVersion": 1,
+    "roleMdSha256": "e2bc28cc22a393c18479c918526b21c523cd597be49b5d80e962e9e24c666c24"
+  },
+  "lead": {
+    "promptVersion": 1,
+    "roleMdSha256": "5966b27349cf1205df1db333657ad755b23c59bff4539f6df462c5ff1a142a2e"
+  },
+  "qa": {
+    "promptVersion": 1,
+    "roleMdSha256": "eca5f52462f911a63a5548a8f0e78a03bdb0e2c4170950a624c5dc1f94a53664"
+  },
+  "research": {
+    "promptVersion": 1,
+    "roleMdSha256": "47d58fd801e1a27e419fb311551cfe576f1f055379b7f77175cff0f74e795ae5"
+  }
+}

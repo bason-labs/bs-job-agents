@@ -83,6 +83,7 @@ export const sampleEvents: AppEvent[] = [
   { id: id(), at, type: "bot.updated", botName: "apply", engine: "claude", trustLevel: 1, enabled: true, activity: "idle", promotionSuggested: true },
   { id: id(), at, type: "schedule.fired", scheduleId: "sch_1", runId: "run_14", catchUp: false },
   { id: id(), at, type: "schedule.skipped", scheduleId: "sch_1", reason: "overlap" },
+  { id: id(), at, type: "injection.confirmed", jobId: "job_3", runId: "run_13" },
   { id: id(), at, type: "bridge.status", bridge: "chrome", engine: "claude", connected: false },
   {
     id: id(),

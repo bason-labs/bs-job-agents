@@ -34,7 +34,7 @@ describe("site guard hook as a child process", () => {
   beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), "bridges-site-guard-"));
     logFile = join(dir, "guard.jsonl");
-    command = siteGuardHookCommand({ allowedSites: ["topcv.vn", "127.0.0.1"], logFile });
+    command = siteGuardHookCommand({ allowedSites: ["topcv.vn", "itviec.com"], logFile });
   });
   afterAll(async () => {
     await rm(dir, { recursive: true, force: true });

@@ -6,6 +6,7 @@
 import type { Engine } from "@bs-job-agents/shared";
 import { getEngineState, holdEngineTasks, listEngineStates, pauseEngine, releaseEngineTasks, resumeEngine, type Conn } from "../db/index.js";
 import type { EngineCore } from "./core.js";
+import { noticeEnginePaused, noticeEngineResumed } from "./notices.js";
 
 export class UsageWatcher {
   private readonly timers = new Map<Engine, unknown>();
@@ -19,10 +20,13 @@ export class UsageWatcher {
     const reset = resetsAt === null ? null : new Date(resetsAt);
     const until = reset && !Number.isNaN(reset.getTime()) && reset > now ? reset : new Date(now.getTime() + core.config.usageRetryMs);
     const state = getEngineState(conn, engine);
+    const wasPaused = state.pausedUntil !== null && new Date(state.pausedUntil) > now;
     holdEngineTasks(conn, engine);
     if (state.pausedUntil !== null && new Date(state.pausedUntil) >= until) return;
     pauseEngine(conn, engine, { until, reason: "usage_limit" });
     core.bus.emit(conn, { type: "engine.paused", engine, until: until.toISOString(), reason: "usage_limit" });
+    // S1: one message per pause (not when the same pause is extended).
+    if (!wasPaused) noticeEnginePaused(core, conn, engine, until.toISOString());
     this.schedule(engine, until);
   }
 
@@ -52,6 +56,7 @@ export class UsageWatcher {
       resumeEngine(tx, engine);
       releaseEngineTasks(tx, engine);
       core.bus.emit(tx, { type: "engine.resumed", engine });
+      noticeEngineResumed(core, tx, engine);
       return true;
     });
     core.bus.flush();

@@ -421,6 +421,31 @@ describe("an approval binds the approved job, CV version and file (PM M1)", () =
     expect(approval.allowedDomains).toEqual(["itviec.com"]);
   });
 
+  describe("the public-host rule (PM2 M2): a token can never name a public suffix, an IP or a local name", () => {
+    it.each(["com", "vn", "com.vn", "github.io", "127.0.0.1", "192.168.1.1", "localhost", "printer.local", "COM.VN."])(
+      "createApproval and addApprovalDomain refuse %s",
+      (domain) => {
+        expect(refusal(() => approveApplication(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: [domain] }))).toBe("invalid_domain");
+        expect(count("applications")).toBe(0);
+        const { approval } = approve();
+        expect(refusal(() => addApprovalDomain(db, approval.token, domain))).toBe("invalid_domain");
+        expect(getApproval(db, approval.token)?.allowedDomains).toEqual(["itviec.com"]);
+      },
+    );
+
+    it.each(["topcv.vn", "itviec.com", "acme.wd3.myworkdayjobs.com", "Novapay.Breezy.HR"])("accepts %s", (domain) => {
+      const { approval } = approveApplication(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: [domain] });
+      expect(approval.allowedDomains).toEqual([domain.toLowerCase()]);
+      expect(addApprovalDomain(db, approval.token, "topcv.vn").allowedDomains).toContain("topcv.vn");
+    });
+
+    it("the refusal says why", () => {
+      expect(() => approveApplication(db, { jobId: job.id, cvVersionId: cv.id, allowedDomains: ["com.vn"] })).toThrow(/public suffix/);
+      const { approval } = approve();
+      expect(() => addApprovalDomain(db, approval.token, "192.168.1.1")).toThrow(/IP address/);
+    });
+  });
+
   it("addApprovalDomain refuses an invalid domain", () => {
     const { approval } = approve();
     expect(refusal(() => addApprovalDomain(db, approval.token, "https://novapay.breezy.hr/apply"))).toBe("invalid_domain");

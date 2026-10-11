@@ -23,6 +23,8 @@ import {
   ApplyPromptInputSchema,
   BOT_TASK_INPUT_SCHEMAS,
   BOT_TASK_PROMPT_INPUT_SCHEMAS,
+  LeadChatInputSchema,
+  LeadChatPromptInputSchema,
   ConversationPromptInputSchema,
   CvTailorInputSchema,
   PROMPT_FORBIDDEN_KEYS,
@@ -98,7 +100,8 @@ describe("S5: the approval token never reaches a prompt", () => {
     expect(promptInputSchemaFor("cv", "tailor")).toBe(BOT_TASK_PROMPT_INPUT_SCHEMAS["cv.tailor"]);
     expect(promptInputSchemaFor("qa", "consult")).toBe(ConversationPromptInputSchema);
     expect(promptInputSchemaFor("lead", "discussion")).toBe(ConversationPromptInputSchema);
-    expect(promptInputSchemaFor("lead", "chat")).toBeNull();
+    expect(promptInputSchemaFor("lead", "chat")).toBe(LeadChatPromptInputSchema);
+    expect(promptInputSchemaFor("scout", "probe")).toBeNull();
   });
 
   it("finds forbidden keys at any depth", () => {
@@ -193,5 +196,19 @@ describe("output rules the JSON Schema cannot express", () => {
     expect(BOT_OUTPUT_RULES.CvOutput.join("\n")).toMatch(/<COMPANY>_<ROLE>_<LANG>_v<n>/);
     expect(BOT_OUTPUT_RULES.QaOutput.join("\n")).toMatch(/total equals/);
     expect(COMMON_OUTPUT_RULES.join("\n")).toMatch(/placeholder/);
+  });
+});
+
+describe("lead.chat input (PM2 S2): a ConversationInput plus the UC-25 a handoff", () => {
+  const base = { roomId: "1", messageId: "9", text: "Find frontend jobs in HCM", history: [{ author: "ba", text: "Hi" }], uploadIds: [] };
+
+  it("is strict, and the handoff names the bot and its restated request (or null)", () => {
+    expect(LeadChatInputSchema.safeParse({ ...base, handoff: null }).success).toBe(true);
+    expect(LeadChatInputSchema.safeParse({ ...base, handoff: { fromBot: "qa", request: "Find AI roles" } }).success).toBe(true);
+    expect(LeadChatInputSchema.safeParse(base).success).toBe(false);
+    expect(LeadChatInputSchema.safeParse({ ...base, handoff: { fromBot: "QA!", request: "x" } }).success).toBe(false);
+    expect(LeadChatPromptInputSchema.safeParse({ ...base, handoff: null, extra: 1 }).success).toBe(false);
+    expect(promptInputSchemaFor("lead", "chat")).toBe(LeadChatPromptInputSchema);
+    expect(promptInputSchemaFor("lead", "consult")).toBe(ConversationPromptInputSchema);
   });
 });

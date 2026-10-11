@@ -31,6 +31,12 @@ export interface FileStore {
   exists(path: string): Promise<boolean>;
   /** A small text file (e.g. a guard's JSONL log), or null when it does not exist. */
   readText(path: string): Promise<string | null>;
+  /**
+   * PM2 M1: the first `bytes` bytes of a regular file (to check an image's magic bytes), or null
+   * when it is missing, a folder or a symbolic link (never followed), or, with `within`, when its
+   * real path (folder links resolved) is outside that folder.
+   */
+  readHead(path: string, bytes: number, within?: string): Promise<Buffer | null>;
 }
 
 /**
@@ -116,6 +122,11 @@ export interface WorkflowSource {
 /** Rule 2 (§5.4): append a task's memoryNotes to the bot's memory.md, one at a time (W2b's appendMemoryNotes). */
 export interface MemoryWriter {
   append(input: { botName: string; notes: readonly string[]; runId: number | null; taskId: number }): Promise<void>;
+  /**
+   * PM2 S5: bots/<name>/memory.md is runtime state and gitignored (like data/), so a fresh clone has
+   * none. Start-up creates each missing file from the template; existing notes are never touched.
+   */
+  seed?(botNames: readonly string[]): Promise<void>;
 }
 
 /**

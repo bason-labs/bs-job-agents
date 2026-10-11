@@ -11,9 +11,12 @@ import {
   type StartWorkflowInput,
 } from "@bs-job-agents/shared";
 import {
+  INTERRUPTED_APPLY_NOTE,
+  applicationIdOfTask,
   createRun,
   getPromptVersion,
   getRun,
+  getTask,
   listActiveRuns,
   listEvents,
   recordPromptVersion,
@@ -36,10 +39,13 @@ import { EngineError, invalidInput, notFound } from "./errors.js";
 import { EventBus, type EventListener } from "./events.js";
 import { LeadTools } from "./lead-tools.js";
 import { silentLogger, type Clock, type Logger } from "./ports.js";
-import { TaskQueue } from "./queue.js";
-import { approve, requestChanges, skip, type ApproveInput, type ApproveResult } from "./review.js";
+import { TaskQueue, lastFigmaBeforeHash } from "./queue.js";
+import { createConversationTask, sinkFailed, type ConversationRequest } from "./conversations.js";
+import { approve, confirmInjection, requestChanges, skip, type ApproveInput, type ApproveResult } from "./review.js";
 import { Scheduler } from "./scheduler.js";
 import { systemClock } from "./system.js";
+import { noticeNeedsCheck, noticeTaskFailed } from "./notices.js";
+import { emitSafetyDenied, failTaskNow, postLeadMessage } from "./task-events.js";
 import { UsageWatcher } from "./usage.js";
 import { advanceRun } from "./workflow.js";
 
@@ -151,10 +157,24 @@ export class Engine implements EngineCore {
     // Recovery marks every running task interrupted: never while this engine runs tasks itself.
     if (this.running) throw new EngineError("conflict", "the engine is already started");
     this.syncBots();
-    const r = recoverInterruptedTasks(this.db, { now: this.now(), maxAttempts: this.config.maxAttempts });
+    await this.seedMemory();
+    // UC-18 and S1: recovery and Lead's reports of it in one transaction.
+    const r = this.db.transaction((tx) => {
+      const recovered = recoverInterruptedTasks(tx, { now: this.now(), maxAttempts: this.config.maxAttempts });
+      for (const appId of recovered.needsCheckApplicationIds) {
+        const task = recovered.needsCheck.find((t) => applicationIdOfTask(t) === appId);
+        noticeNeedsCheck(this, tx, appId, INTERRUPTED_APPLY_NOTE, { runId: task?.runId ?? null });
+      }
+      for (const t of recovered.exhausted) {
+        noticeTaskFailed(this, tx, t, t.error ?? "interrupted by restart; no attempts left");
+        sinkFailed(this, tx, t, t.error ?? "interrupted by restart; no attempts left");
+      }
+      return recovered;
+    }, { behavior: "immediate" });
     const interrupted = [...r.requeued, ...r.exhausted, ...r.needsCheck];
     const orphanPids = this.killOrphans(interrupted);
     const orphanSessions = await this.removeOrphanSessions(interrupted);
+    await this.checkFigmaAfterCrash([...r.requeued, ...r.exhausted]);
     this.bus.flush();
     this.running = true;
     this.queue.resume();
@@ -206,6 +226,17 @@ export class Engine implements EngineCore {
         if (!stored) recordPromptVersion(tx, { botName: def.name, version: def.promptVersion, roleMdHash: hash, roleMdText: text }, { now });
       }
     });
+  }
+
+  /** PM2 S5: memory.md is gitignored; create each bot's missing file. Best effort: notes are appended later anyway. */
+  private async seedMemory(): Promise<void> {
+    const memory = this.deps.memory;
+    if (!memory?.seed) return;
+    try {
+      await memory.seed(this.deps.bots.list().map((b) => b.name).sort());
+    } catch (err) {
+      this.log.warn(`could not seed the bots' memory files: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** Stop claiming and stop the timers. Running tasks are left to finish (or to recovery). */
@@ -265,6 +296,43 @@ export class Engine implements EngineCore {
       }
     }
     return removed;
+  }
+
+  /**
+   * PM2 S4: a CV task a crash interrupted may have changed a protected Figma page before its
+   * after-check. Its spawn persisted the "before" hash; when Figma is reachable now, compare: a
+   * change is a safety event and a Lead alert, and the task does not run again. When Figma is
+   * not reachable, the task's next spawn compares instead (TaskQueue.prepare).
+   */
+  private async checkFigmaAfterCrash(tasks: readonly Task[]): Promise<void> {
+    const cv = tasks
+      .filter((t) => t.usesFigma)
+      .map((t) => ({ task: t, hash: lastFigmaBeforeHash(this.db, t) }))
+      .filter((x): x is { task: Task; hash: string } => x.hash !== null);
+    if (cv.length === 0) return;
+    let now: string;
+    try {
+      if (!(await this.deps.figma.status()).connected) return;
+      now = (await this.deps.figma.fingerprintProtectedPages()).hash;
+    } catch (err) {
+      this.log.warn(`could not check the protected Figma pages after the restart: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    this.db.transaction((tx) => {
+      for (const { task, hash } of cv) {
+        if (hash === now) continue;
+        const detail = "the protected Figma pages changed during a CV task that a restart interrupted, before the orchestrator could check them";
+        emitSafetyDenied(this, tx, { botName: task.botName, taskId: task.id, action: "figma_execute", reason: "protected_page_changed", detail });
+        postLeadMessage(
+          this,
+          tx,
+          "A protected Figma page changed during a CV task that a restart interrupted, so I stopped it. Please check the file and restore the page from Figma's version history.",
+          { runId: task.runId },
+        );
+        const current = getTask(tx, task.id);
+        if (current?.status === "queued" || current?.status === "waiting_limit") failTaskNow(this, tx, current, `denied: ${detail}`);
+      }
+    });
   }
 
   /** SSE (W3a): committed shared events in order, including the ones repositories append. */
@@ -360,6 +428,27 @@ export class Engine implements EngineCore {
 
   runScheduleNow(scheduleId: number) {
     return this.scheduler.runNow(scheduleId);
+  }
+
+  /** UC-07 b: Ba confirms a flagged job is safe to apply to (audited: `injection.confirmed`). */
+  confirmInjection(jobId: number): void {
+    confirmInjection(this, jobId);
+  }
+
+  // ------------------------------------------------------------------ conversations (PM2 S2)
+
+  /**
+   * Queue Lead's chat (UC-01), a consult answer (UC-25) or a room reply (UC-15). The input is checked
+   * against the bot's strict prompt schema before anything is queued; the task runs on the bot's
+   * effective engine and waits out a usage limit. Its result reaches the ConversationSink.
+   */
+  enqueueConversation(req: ConversationRequest): { taskId: number } {
+    // It dispatches after its commit: inside another transaction (e.g. a sink) use ctx.enqueue.
+    if (this.db.$client.inTransaction) throw new EngineError("conflict", "enqueueConversation cannot run inside a transaction: a ConversationSink queues with ctx.enqueue");
+    const task = this.db.transaction((tx) => createConversationTask(this, tx, req));
+    this.bus.flush();
+    this.dispatch();
+    return { taskId: task.id };
   }
 
   /** Events after `afterId` as the UI sees them (SSE replay; audit-only rows are left out). */
