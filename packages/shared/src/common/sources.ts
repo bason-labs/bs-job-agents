@@ -46,8 +46,8 @@ export function sourcesInGroup(group: SourceGroup): SearchSource[] {
   return SearchSourceSchema.options.filter((s) => SEARCH_SOURCES[s].group === group);
 }
 
-export const FEED_SOURCES = SearchSourceSchema.options.filter((s) => SEARCH_SOURCES[s].kind === "feed");
-export type FeedSource = (typeof FEED_SOURCES)[number];
+export type FeedSource = { [K in SearchSource]: (typeof SEARCH_SOURCES)[K]["kind"] extends "feed" ? K : never }[SearchSource];
+export const FEED_SOURCES = SearchSourceSchema.options.filter((s): s is FeedSource => SEARCH_SOURCES[s].kind === "feed");
 
 export function isSearchSource(source: unknown): source is SearchSource {
   return typeof source === "string" && (SearchSourceSchema.options as readonly string[]).includes(source);

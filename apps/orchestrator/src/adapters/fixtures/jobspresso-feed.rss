@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fixture (real response, observed 2026-10-11): https://jobspresso.co/?feed=job_feed. Captured read-only with one plain HTTP GET, no login. Trimmed: 4 of the 10 items kept, long descriptions cut (marked [trimmed for the fixture]). -->
+<rss version="2.0"
+	xmlns:content="http://purl.org/rss/1.0/modules/content/"
+	xmlns:wfw="http://wellformedweb.org/CommentAPI/"
+	xmlns:dc="http://purl.org/dc/elements/1.1/"
+	xmlns:atom="http://www.w3.org/2005/Atom"
+	xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
+	xmlns:slash="http://purl.org/rss/1.0/modules/slash/"
+	xmlns:job_listing="https://jobspresso.co"
+>
+
+<channel>
+	<title>Jobs Archive | Jobspresso</title>
+	<atom:link href="https://jobspresso.co/?feed=job_feed" rel="self" type="application/rss+xml" />
+	<link>https://jobspresso.co</link>
+	<description>Jobspresso is the easiest way to find remote jobs and careers at interesting and innovative companies.</description>
+	<lastBuildDate>Sat, 29 Aug 2026 02:13:20 +0000</lastBuildDate>
+	<language>en-US</language>
+	<sy:updatePeriod>
+	hourly	</sy:updatePeriod>
+	<sy:updateFrequency>
+	1	</sy:updateFrequency>
+	<generator>https://wordpress.org/?v=7.1.3</generator>
+<site xmlns="com-wordpress:feed-additions:1">88453655</site>	<item>
+		<title>Senior Full Stack Engineer, Realtime &#038; Voice</title>
+		<link>https://jobspresso.co/job/senior-full-stack-engineer-realtime-voice/</link>
+		
+		<dc:creator><![CDATA[Hopper<br>⚲&nbsp;Canada]]></dc:creator>
+		<pubDate>Sat, 29 Aug 2026 02:11:11 +0000</pubDate>
+				<guid isPermaLink="false">https://jobspresso.co/?post_type=job_listing&#038;p=163412</guid>
+
+					<description><![CDATA[About the Role HTS Assist is Hopper&#8217;s agentic AI assistant for travel, resolving flight changes, cancellations, refunds, and bookings over chat and voice for some of the world&#8217;s largest travel brands. We&#8217;re looking for a senior full stack engineer to anchor this product, owning the realtime and voice layer end to end while building across]]></description>
+										<content:encoded><![CDATA[<p><strong>About the Role</strong></p>
+<p>HTS Assist is Hopper&#8217;s agentic AI assistant for travel, resolving flight changes, cancellations, refunds, and bookings over chat and voice for some of the world&#8217;s largest travel brands. We&#8217;re looking for a senior full stack engineer to anchor this product, owning the realtime and voice layer end to end while building across React/TypeScript front ends, Scala and Python services, and cloud infrastructure. The team is lean and senior, ownership is broad, and the path from your code to a traveler&#8217;s phone call is short.</p>
+<p><strong>What would your day-to-day look like</strong></p>
+<ul>
+<li>Own the voice channel end to end, including telephony and CPaaS integrations (e.g., Twilio, Amazon Connect), streaming speech-to-text and text-to-speech pipelines, realtime model orchestration, and latency and quality budgets</li>
+<li>Build product features across the stack, including web chat front ends in React/TypeScript, backend services in Scala and Python, and infrastructure on GCP</li>
+<li>Design for multi-tenant scale, with one codebase serving many partners through configuration rather than forks</li>
+<li>Build the safety and compliance plumbing enterprise partners audit, including guardrails, content filtering, and PII redaction integration points</li>
+<li>Keep revenue-critical deployments healthy through observability, alerting, incident response, and SLA performance</li>
+<li>Build the platform capabilities forward-deployed engineers configure for partner telephony integrations and go-lives</li>
+<li>Raise the engineering bar through code review, architecture reviews, and mentoring</li>
+</ul>
+<p><strong>An ideal candidate has</strong></p>
+<ul>
+<li>6+ years of software engineering experience, with senior-level ownership of production systems and genuine full-stack range</li>
+<li>Hands-on realtime systems experience, such as voice applications, WebRTC/SIP, streaming media, or comparable low-latency products</li>
+<li>Strength in a modern front end (React, TypeScript) and depth on the backend (Scala or another JVM language, and/or Python), along with cloud infrastructure experience on GCP or AWS</li>
+<li>A track record designing, building, and maintaining RESTful APIs, microservices, or event-driven systems</li>
+<li>Familiarity using AI coding tools as a standard part of their workflow, with the judgment to review, correct, and own everything that ships</li><p>[trimmed for the fixture]</p>]]></content:encoded>
+					
+		
+		
+		<post-id xmlns="com-wordpress:feed-additions:1">163412</post-id><media:content xmlns:media="http://search.yahoo.com/mrss/" medium="image" type="image/jpeg" url="https://jobspresso.co/wp-content/uploads/41990827_1937543459602328_7031249281918959616_n1-150x150.png" width="70" height="70" /><job_listing:location><![CDATA[Canada]]></job_listing:location>
+<job_listing:job_type><![CDATA[Engineer]]></job_listing:job_type>
+<job_listing:job_category><![CDATA[Full Time]]></job_listing:job_category>
+<job_listing:company><![CDATA[Hopper]]></job_listing:company>
+	</item>
+<item>
+		<title>Senior Product Designer</title>
+		<link>https://jobspresso.co/job/senior-product-designer-22/</link>
+		
+		<dc:creator><![CDATA[The Athletic<br>⚲&nbsp;United States]]></dc:creator>
+		<pubDate>Mon, 10 Aug 2026 02:15:09 +0000</pubDate>
+				<guid isPermaLink="false">https://jobspresso.co/?post_type=job_listing&#038;p=163385</guid>
+
+					<description><![CDATA[Powered by one of the largest global newsrooms in sports media, The Athletic brings sports fans the most comprehensive stories about the teams, sports and athletes they love. The Athletic’s newsroom of 500+ full-time staff delivers in-depth coverage of hundreds of professional and college teams across more than 47 North American markets and all 20]]></description>
+										<content:encoded><![CDATA[<p>Powered by one of the largest global newsrooms in sports media, The Athletic brings sports fans the most comprehensive stories about the teams, sports and athletes they love. The Athletic’s newsroom of 500+ full-time staff delivers in-depth coverage of hundreds of professional and college teams across more than 47 North American markets and all 20 football clubs in the English Premier League, as well as many Championship clubs.</p>
+<p><strong>About the Role</strong></p>
+<p>Our product mission is to be the best place for sports fans. We already provide an unrivaled breadth and depth of sports coverage. We are looking for a product designer to support the experience of our core product, which encompasses how users discover and consume content across all our platforms. The ideal candidate is also able to help drive the future vision of our products, through world-class designs that add value to both our business and to our users.</p>
+<p>As a Product Designer on the Core team, you will be counted on to help lead new projects and initiatives related to our core offering. You’ll work closely with the product team to bring new experiences to life, while collaborating with engineers, editors and other designers on the team. There’s ample opportunity here for a designer who works well independently and is well versed in both user experience and visual design.</p>
+<p><strong>Responsibilities</strong></p>
+<ul>
+<li>Create user flows, wireframes, prototypes, and production-ready design deliverables.</li>
+<li>Support high-level product strategy, ensuring we&#8217;re asking the right questions and solving for the most important internal and external user needs.</li>
+<li>Lead and conduct design and user research, as necessary.</li>
+<li>Collaborate with cross-functional teams, partnering with Product Managers, Engineers, Content Operations, SEO Strategists, Product Analysts, and fellow designers to take concepts from ideation to execution.</li>
+<li>Work closely with engineers and PMs to evaluate constraints and trade offs.</li>
+<li>Lead design projects with input from other members of the design team to ensure design quality and consistency across the user experience.</li>
+<li>Understand the competitive environment and stay on top of great user experiences, especially within sports apps, sports media, and news related products.</li>
+<li>Actively contribute to The Athletic’s Design System.</li>
+</ul>
+<p><strong>Requirements</strong></p>
+<p>[trimmed for the fixture]</p>]]></content:encoded>
+					
+		
+		
+		<post-id xmlns="com-wordpress:feed-additions:1">163385</post-id><media:content xmlns:media="http://search.yahoo.com/mrss/" medium="image" type="image/jpeg" url="https://jobspresso.co/wp-content/uploads/0EzxMNkc_400x4001-150x150.jpg" width="70" height="70" /><job_listing:location><![CDATA[United States]]></job_listing:location>
+<job_listing:job_type><![CDATA[Design]]></job_listing:job_type>
+<job_listing:job_category><![CDATA[Full Time]]></job_listing:job_category>
+<job_listing:company><![CDATA[The Athletic]]></job_listing:company>
+	</item>
+<item>
+		<title>Staff Software Engineer</title>
+		<link>https://jobspresso.co/job/staff-software-engineer-3/</link>
+		
+		<dc:creator><![CDATA[Samsara<br>⚲&nbsp;Canada]]></dc:creator>
+		<pubDate>Tue, 04 Aug 2026 02:18:03 +0000</pubDate>
+				<guid isPermaLink="false">https://jobspresso.co/?post_type=job_listing&#038;p=163387</guid>
+
+					<description><![CDATA[Samsara&#8217;s Mission Improve the safety, efficiency, and sustainability of the operations that power the global economy. Read Samsara&#8217;s Culture Playbook Who we are Samsara (NYSE: IOT) is the pioneer of the Connected Operations™ Cloud, which is a platform that enables organizations that depend on physical operations to harness Internet of Things (IoT) data to develop]]></description>
+										<content:encoded><![CDATA[<p><strong>Samsara&#8217;s Mission</strong></p>
+<p>Improve the safety, efficiency, and sustainability of the operations that power the global economy.</p>
+<p><a href="https://www.samsara.com/blog/the-samsara-culture-playbook"><strong>Read Samsara&#8217;s Culture Playbook</strong></a></p>
+<p><strong>Who we are</strong></p>
+<p>Samsara (NYSE: IOT) is the pioneer of the Connected Operations<img src="https://s.w.org/images/core/emoji/17.0.2/72x72/2122.png" alt="™" class="wp-smiley" style="height: 1em; max-height: 1em;" /> Cloud, which is a platform that enables organizations that depend on physical operations to harness Internet of Things (IoT) data to develop actionable insights and improve their operations. At Samsara, we are helping improve the safety, efficiency and sustainability of the physical operations that power our global economy. Representing more than 40% of global GDP, these industries are the infrastructure of our planet, including agriculture, construction, field services, transportation, and manufacturing — and we are excited to help digitally transform their operations at scale.</p>
+<p>Working at Samsara means you’ll help define the future of physical operations and be on a team that’s shaping an exciting array of product solutions, including Video-Based Safety, Vehicle Telematics, Apps and Driver Workflows, and Equipment Monitoring. As part of a recently public company, you’ll have the autonomy and support to make an impact as we build for the long term.</p>
+<p><strong>Recovering entrepreneur? Frustrated with bureaucracy? Want to write the roadmap, not inherit one?</strong></p>
+<p>We&#8217;re hiring across multiple levels and verticals. The nice thing about growing 30%+ at ~$2B ARR is that we need great engineers everywhere, and we have the room to shape the role around the right person. You build like a founder. We give you the platform to do it at scale.</p>
+<p><strong>About the role:</strong></p>
+<p>Samsara (NYSE: IOT) sits at the center of hardware, software, AI, and the physical world. The platform processes 25+ trillion data points annually from IoT sensors, cameras, and connected devices across thousands of organizations, and that dataset is compounding: it grew from 4 trillion to 25+ trillion in four years. We&#8217;re still early in turning that data into the products that will define how physical operations run, and we&#8217;re hiring the engineers who will build what comes next.</p>
+<p>[trimmed for the fixture]</p>]]></content:encoded>
+					
+		
+		
+		<post-id xmlns="com-wordpress:feed-additions:1">163387</post-id><media:content xmlns:media="http://search.yahoo.com/mrss/" medium="image" type="image/jpeg" url="https://jobspresso.co/wp-content/uploads/ihNwGnxf_400x4001-150x150.jpg" width="70" height="70" /><job_listing:location><![CDATA[Canada]]></job_listing:location>
+<job_listing:job_type><![CDATA[Engineer]]></job_listing:job_type>
+<job_listing:job_category><![CDATA[Full Time]]></job_listing:job_category>
+<job_listing:company><![CDATA[Samsara]]></job_listing:company>
+	</item>
+<item>
+		<title>Senior Software Engineer &#8211; k6 Core</title>
+		<link>https://jobspresso.co/job/senior-software-engineer-k6-core/</link>
+		
+		<dc:creator><![CDATA[Grafana Labs<br>⚲&nbsp;United States (EST Time Zone)]]></dc:creator>
+		<pubDate>Fri, 31 Jul 2026 02:20:00 +0000</pubDate>
+				<guid isPermaLink="false">https://jobspresso.co/?post_type=job_listing&#038;p=163388</guid>
+
+					<description><![CDATA[Grafana Labs, the company behind the open observability cloud, is founded on the principles of open source, open standards, open ecosystems, and open culture. Grafana Cloud, our fully managed observability platform, is flexible and built for scale. With Grafana Cloud&#8217;s actually useful AI, organizations can see, understand, and act on all their disparate data to]]></description>
+										<content:encoded><![CDATA[<p>Grafana Labs, the company behind the open observability cloud, is founded on the principles of open source, open standards, open ecosystems, and open culture. Grafana Cloud, our fully managed observability platform, is flexible and built for scale. With Grafana Cloud&#8217;s actually useful AI, organizations can see, understand, and act on all their disparate data to move at the speed of their ambitions. Today, more than 35 million users and 7,000+ customers – including Anthropic, Bloomberg, NVIDIA, Microsoft, and Salesforce – trust Grafana Labs to ensure reliability of their applications and systems, resolve incidents quickly, and optimize their telemetry to reduce noise and cost. We are a 100% remote company with 1,600+ team members across 40+ countries, and we’re backed by leading investors including Lightspeed Venture Partners, Sequoia Capital, GIC, Coatue, J.P. Morgan, CapitalG, and Lead Edge Capital. Learn more at <u><a href="http://grafana.com/">grafana.com</a></u> and follow us on <u><a href="https://www.linkedin.com/company/grafana-labs/">LinkedIn</a></u> and <u><a href="https://twitter.com/grafana">X</a></u>.</p>
+<p>We’re scaling fast and staying true to what makes us different: an open-source legacy, a global collaborative culture, and a passion for meaningful work. Our team thrives in an innovation-driven environment where transparency, autonomy, and trust fuel everything we do.</p>
+<p>You may not meet every requirement, and that’s okay. If this role excites you, we’d love you to raise your hand for what could be a truly career-defining opportunity.</p>
+<p>This is a remote opportunity and we would be interested in applicants from the United States <u>Eastern</u> time zones only at this time.</p>
+<p><strong>Senior Software Engineer &#8211; k6 Core</strong></p>
+<p><strong>The Opportunity:</strong></p>
+<p>At k6, we build reliability and performance testing tools for developers and QA engineers.</p>
+<p><a href="https://grafana.com/docs/k6/latest/">Grafana k6</a> is an open-source project focused on making performance testing practical, approachable, and useful in real-world engineering workflows. We care deeply about developer experience, correctness, and scalability. k6 is part of the Grafana ecosystem and is used by engineers to test and understand systems under real load.</p>
+<p><strong>What You’ll Be Doing:</strong></p>
+<p>[trimmed for the fixture]</p>]]></content:encoded>
+					
+		
+		
+		<post-id xmlns="com-wordpress:feed-additions:1">163388</post-id><media:content xmlns:media="http://search.yahoo.com/mrss/" medium="image" type="image/jpeg" url="https://jobspresso.co/wp-content/uploads/HxPK_45O_400x4001-150x150.jpg" width="70" height="70" /><job_listing:location><![CDATA[United States (EST Time Zone)]]></job_listing:location>
+<job_listing:job_type><![CDATA[Engineer]]></job_listing:job_type>
+<job_listing:job_category><![CDATA[Full Time]]></job_listing:job_category>
+<job_listing:company><![CDATA[Grafana Labs]]></job_listing:company>
+	</item>
+
+  </channel>
+</rss>
