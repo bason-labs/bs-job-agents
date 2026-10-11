@@ -22,7 +22,8 @@ const UTF8_BOM = String.fromCharCode(0xfeff);
 /** A CSV cell: quoted when needed; a leading = + - @ (a formula) gets an apostrophe first. */
 export function csvCell(value: string | null | undefined): string {
   let v = value ?? "";
-  if (/^[=+\-@\t\r]/.test(v)) v = `'${v}`;
+  // A formula start, also after leading spaces (some spreadsheet apps trim them first).
+  if (/^[\t\r]|^[ ]*[=+\-@]/.test(v)) v = `'${v}`;
   return /[",\n\r]/.test(v) || v !== value ? `"${v.replace(/"/g, '""')}"` : v;
 }
 

@@ -1,18 +1,5 @@
-// Orchestrator route paths. API_ROUTES (shared) is the contract W3a implements; the two
-// routes below are what the UI also needs and are not in API_ROUTES yet (W3b → W3a handoff).
-
-/** Routes the UI calls that API_ROUTES does not list yet. W3a: add them, or tell W3b the real paths. */
-export const PROPOSED_ROUTES = {
-  /** POST ChoiceRequest (shared ChoiceRequestSchema): a chip on a `choice` card (UC-21b a). */
-  chatChoice: "/chat/choices",
-  /** GET → { lines: TranscriptLine[] }: a task's transcript for the step drawer (UC-22). */
-  taskTranscript: "/tasks/:id/transcript",
-  /**
-   * POST {}: UC-11 e "Don't allow" on a domain_confirm pause (engine.declineDomain, F3). The API route
-   * lands in Phase 3 QA; until then the orchestrator answers 404 and the UI says so.
-   */
-  taskDeclineDomain: "/tasks/:id/decline-domain",
-} as const;
+// Orchestrator route paths: the shared API_ROUTES is the whole contract (every route the UI calls
+// is in it; lib/api/parity.test.ts checks); apiPath fills a template.
 
 export type QueryValue = string | number | boolean | null | undefined;
 

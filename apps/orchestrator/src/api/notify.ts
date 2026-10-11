@@ -42,9 +42,28 @@ export function notificationFor(event: AppEvent): Notification | null {
   return null;
 }
 
+/** §10.3: one notification per bridge wait, not one per waiting task. */
+export const BRIDGE_WAIT_NOTIFY_GAP_MS = 30 * 60_000;
+
+const BRIDGE_WAIT: Record<string, Notification> = {
+  needs_browser: { title: "Chrome is not connected", body: "Browser steps are waiting. They start as soon as Chrome and its extension reconnect." },
+  needs_figma: { title: "Figma is not connected", body: "CV steps are waiting. Open Figma desktop with the CV file and run the Desktop Bridge plugin." },
+};
+
 /** Send a notification for each matching event; returns the unsubscribe. */
 export function startNotifications(events: EventHub, notify: Notifier): () => void {
+  const lastWait = new Map<string, number>();
   return events.subscribe((event) => {
+    // §10.3 "Chrome not open … Ba gets a notification" (and the Figma wait, UC-17).
+    if (event.type === "task.paused" && BRIDGE_WAIT[event.reason.code]) {
+      const at = Date.parse(event.at);
+      const last = lastWait.get(event.reason.code);
+      if (last === undefined || at - last >= BRIDGE_WAIT_NOTIFY_GAP_MS) {
+        lastWait.set(event.reason.code, at);
+        notify(BRIDGE_WAIT[event.reason.code]!);
+      }
+      return;
+    }
     const n = notificationFor(event);
     if (n) notify(n);
   });

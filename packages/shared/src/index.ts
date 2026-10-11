@@ -65,3 +65,4 @@ export * from "./api/applications.js";
 export * from "./api/uploads.js";
 export * from "./api/runs.js";
 export * from "./api/bots.js";
+export * from "./api/contract.js";

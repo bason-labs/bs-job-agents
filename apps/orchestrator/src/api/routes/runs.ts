@@ -9,6 +9,7 @@ import {
   RunDetailSchema,
   RunSchema,
   RunsQuerySchema,
+  RunsResponseSchema,
   StartRunRequestSchema,
   StartRunResponseSchema,
   StepDetailSchema,
@@ -57,7 +58,7 @@ export function runRoutes(app: FastifyInstance, ctx: ApiContext): void {
     const db = requireDb(ctx);
     const q = parseWith(RunsQuerySchema, req.query);
     const rows = listRuns(db, { ...(q.status ? { status: q.status } : {}), limit: q.limit });
-    return { runs: keepValid(RunSchema, rows.map(mappers.toRun), warn) };
+    return respond(RunsResponseSchema, { runs: keepValid(RunSchema, rows.map(mappers.toRun), warn) });
   });
 
   app.post(API_ROUTES.runs, async (req, reply) => {
@@ -130,6 +131,14 @@ export function runRoutes(app: FastifyInstance, ctx: ApiContext): void {
     const id = idParam(req.params.id, "task");
     const { confirmDomain } = parseWith(TaskResumeRequestSchema, req.body ?? {});
     engine.resumeTask(id, { confirmDomain });
+    return respond(OkResponseSchema, { ok: true });
+  });
+
+  // UC-11 e "Don't allow": Ba declines the site Apply paused at; Apply ends (needs_check), the
+  // token keeps its domains, and a safety event is logged (engine.declineDomain, F3).
+  app.post<IdParams>(API_ROUTES.taskDeclineDomain, async (req) => {
+    const engine = requireEngine(ctx);
+    engine.declineDomain(idParam(req.params.id, "task"));
     return respond(OkResponseSchema, { ok: true });
   });
 }

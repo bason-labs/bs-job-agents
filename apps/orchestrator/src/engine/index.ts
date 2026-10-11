@@ -43,7 +43,7 @@ export {
   pdfTextExtractor,
   type ProductionEngineOptions,
 } from "./wiring.js";
-export { approvalStatus, type ApproveInput, type ApproveResult } from "./review.js";
+export { approvalStatus, isDryRunSettled, type ApproveInput, type ApproveResult } from "./review.js";
 export type { ConversationKind, ConversationRequest, ConversationResult, ConversationSink, ConversationSinkContext } from "./conversations.js";
 export type { AnswerInput } from "./apply.js";
 export { LEAD_TASK_KEYS, type LeadCaller, type LeadTools } from "./lead-tools.js";

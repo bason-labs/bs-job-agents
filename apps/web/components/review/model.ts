@@ -1,7 +1,6 @@
 // Pure logic behind a review card (§11 Review queue; UC-07..10; PM S24): copy for the job line,
 // QA rounds, flags and the approve button.
 import { QA_MAX_ROUNDS, type CvVersion, type Job, type QaReviewRecord, type ReviewCard } from "@bs-job-agents/shared";
-import type { ReviewCardFlagsExt } from "@/lib/api/contract";
 import { errorMessage, isApiError } from "@/lib/api/errors";
 
 export type CvOption = ReviewCard["cvOptions"][number];
@@ -66,11 +65,9 @@ export const isBlockedByInjection = (card: ReviewCard) => card.flags.injectionFl
 /** PM S24 "approve again": Apply was denied before it ran (e.g. its token expired). Shared `flags.approveAgain`. */
 export const needsReapproval = (card: ReviewCard) => card.flags.approveAgain === true;
 
-/** The flags lib/api reads beyond the shared schema (contract.ts ReviewCardFlagsExt). */
-const extFlags = (card: ReviewCard): ReviewCardFlagsExt => card.flags;
 
 /** PM2 S15: the card's dry run finished; approving now (without dry run) applies live with the same CV. */
-export const isDryRunSettled = (card: ReviewCard) => extFlags(card).dryRunSettled === true;
+export const isDryRunSettled = (card: ReviewCard) => card.flags.dryRunSettled === true;
 
 /** Toast text for a failed approval; `already_applied` on Approve live means the dry run may really have been sent. */
 export function approveErrorText(err: unknown): string {
@@ -107,7 +104,7 @@ export function flagNotices(card: ReviewCard): FlagNotice[] {
       text: "The dry run of this card has finished; its screenshots are on the Applications screen. Approve live to send it for real with the same CV.",
     });
   }
-  if (extFlags(card).companyMissing) {
+  if (card.flags.companyMissing) {
     out.push({ key: "companyMissing", tone: "warn", text: "Company research failed · continuing without it. CV tailored this CV without a company profile." });
   }
   if (flags.masterChanged) out.push({ key: "master", tone: "warn", text: "Your master CV changed after this CV was made. Regenerate it with Request changes?" });

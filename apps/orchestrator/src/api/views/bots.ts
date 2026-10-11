@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { maxTrustLevel, type BotActivity, type BotDefinition, type BotView, type TrustLevel } from "@bs-job-agents/shared";
-import { listRuns, listSteps, listTasks, mappers, type Bot, type Db } from "../../db/index.js";
+import { latestBotDemotion, listRuns, listSteps, listTasks, mappers, type Bot, type Db } from "../../db/index.js";
 import type { ActionStepOutput, GateStepOutput, HumanStepOutput, WorkflowSource } from "../../engine/index.js";
 import { readApiState } from "../state.js";
 
@@ -132,9 +132,15 @@ export function botView(
     memory: notes.map((n) => n.text),
     memoryNotes: notes.map(({ id, text }) => ({ id, text })),
     residualRisk: record.engine === "codex" && def?.browser ? RESIDUAL_RISK : null,
-    // §5.3 demotion is F3's (in progress); it is shown once the engine records one.
-    demotion: null,
+    // §5.3 / PM2 S8: the newest demotion Ba has not restored (the engine records it).
+    demotion: demotionOf(db, name),
   };
+}
+
+function demotionOf(db: Db, name: string): BotView["demotion"] {
+  const row = latestBotDemotion(db, name);
+  if (!row) return null;
+  return { fromLevel: row.fromLevel as TrustLevel, at: row.createdAt, reason: row.reason };
 }
 
 /** The current streak count (UC-19), for a dismissal. */

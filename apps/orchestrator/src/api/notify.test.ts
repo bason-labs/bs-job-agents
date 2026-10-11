@@ -23,6 +23,28 @@ function created(cards: MessageCard[], over: Partial<Message> = {}): AppEvent {
   return { id: "1", at: message.createdAt, type: "message.created", roomId: "1", message };
 }
 
+function paused(code: "needs_browser" | "needs_figma" | "needs_login", at: string, taskId = "4"): AppEvent {
+  return { id: taskId, at, type: "task.paused", taskId, runId: "1", botName: "research", reason: { code, site: null, detail: null } } as AppEvent;
+}
+
+describe("§10.3 Chrome not open → Ba gets a notification (Phase 3 QA)", () => {
+  it("notifies once when browser or Figma steps start waiting, not for every waiting task", () => {
+    const sent: Notification[] = [];
+    const listeners: ((e: AppEvent) => void)[] = [];
+    const hub = { subscribe: (l: (e: AppEvent) => void) => (listeners.push(l), () => {}) } as unknown as Parameters<typeof startNotifications>[0];
+    startNotifications(hub, (n) => sent.push(n));
+    const emit = (e: AppEvent) => listeners.forEach((l) => l(e));
+    emit(paused("needs_browser", "2026-10-10T08:00:00.000Z", "4"));
+    emit(paused("needs_browser", "2026-10-10T08:01:00.000Z", "5"));
+    emit(paused("needs_figma", "2026-10-10T08:02:00.000Z", "6"));
+    emit(paused("needs_login", "2026-10-10T08:02:00.000Z", "7"));
+    expect(sent.map((n) => n.title)).toEqual(["Chrome is not connected", "Figma is not connected"]);
+    // A new wait later on notifies again.
+    emit(paused("needs_browser", "2026-10-10T09:00:00.000Z", "8"));
+    expect(sent.map((n) => n.title)).toEqual(["Chrome is not connected", "Figma is not connected", "Chrome is not connected"]);
+  });
+});
+
 describe("macOS notifications (UC-02, decision 4)", () => {
   it("notifies for Lead's summary with review cards and for Lead needing Ba; nothing else", () => {
     expect(notificationFor(created([{ type: "review_link", count: 3 }]))).toEqual({ title: "Review cards ready", body: "3 review cards are ready" });

@@ -1,6 +1,6 @@
 import { API_ROUTES } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
-import { PROPOSED_ROUTES, apiPath } from "./routes";
+import { apiPath } from "./routes";
 
 describe("apiPath", () => {
   it("fills path params and encodes them", () => {
@@ -21,15 +21,11 @@ describe("apiPath", () => {
     expect(apiPath(API_ROUTES.reviewQueue)).toBe("/review");
   });
 
-  it("the routes the UI proposed are now in API_ROUTES (W3a part 2 landed the handoff), except Don't allow (Phase 3 QA)", () => {
-    expect(PROPOSED_ROUTES).toEqual({
-      chatChoice: "/chat/choices",
+  it("every route the UI once proposed is in API_ROUTES (W3a part 2, and Don't allow in Phase 3 QA)", () => {
+    expect(API_ROUTES).toMatchObject({
+      chatChoices: "/chat/choices",
       taskTranscript: "/tasks/:id/transcript",
       taskDeclineDomain: "/tasks/:id/decline-domain",
     });
-    const { taskDeclineDomain, ...landed } = PROPOSED_ROUTES;
-    for (const path of Object.values(landed)) expect(Object.values(API_ROUTES)).toContain(path);
-    // Pending: once W3a adds it, this fails and the proposal can be dropped.
-    expect(Object.values(API_ROUTES)).not.toContain(taskDeclineDomain);
   });
 });

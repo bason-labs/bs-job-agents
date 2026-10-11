@@ -20,10 +20,9 @@ export type {
   HealthState,
   MessagesPage,
   SendMessageInput,
-  TranscriptLine,
+  ProgressLine,
   WebApi,
 } from "./contract";
-export { supportsDryRun } from "./contract";
 export { ApiRequestError, errorMessage, isApiError } from "./errors";
 
 function serverOnly(name: string) {

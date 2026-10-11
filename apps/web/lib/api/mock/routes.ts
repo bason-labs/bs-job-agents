@@ -249,7 +249,7 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
     const message = await core.sendMessage({ roomId: room.id, text: body.text, uploadIds: body.uploadIds });
     return { message, taskIds: [] };
   }),
-  route("POST", API_ROUTES.chatChoices, null, async (core, req) => core.chooseOption(parse(ChoiceRequestSchema, req.body))),
+  route("POST", API_ROUTES.chatChoices, ChatSendResultSchema, async (core, req) => ({ message: await core.choose(parse(ChoiceRequestSchema, req.body)), taskIds: [] })),
 
   // ------------------------------------------------ applications (UC-13, UC-13b)
   route("GET", API_ROUTES.applications, ApplicationsResponseSchema, (core) => ({

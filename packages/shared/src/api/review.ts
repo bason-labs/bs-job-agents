@@ -25,6 +25,13 @@ export const ReviewCardFlagsSchema = z.object({
    * Approve issues a new token for the same application and CV version (PM M2). W3a, additive.
    */
   approveAgain: z.boolean().optional(),
+  /** PM2 S16: the company research failed for good; CV tailored without a profile. Phase 3 QA, additive. */
+  companyMissing: z.boolean().optional(),
+  /**
+   * PM2 S15: the card's dry run has settled (not one that reported "submitted" and waits for Ba's
+   * check); Approve without dryRun now applies live with the same CV. Phase 3 QA, additive.
+   */
+  dryRunSettled: z.boolean().optional(),
 });
 
 export const ReviewCvOptionSchema = z.object({

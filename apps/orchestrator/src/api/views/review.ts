@@ -18,6 +18,7 @@ import {
   getJob,
   listActiveRuns,
   listCvVersions,
+  listRuns,
   listEvents,
   listQaReviews,
   listSteps,
@@ -26,6 +27,7 @@ import {
   type Step,
 } from "../../db/index.js";
 import type { ActionStepOutput, HumanStepOutput, WorkflowSource } from "../../engine/index.js";
+import { isDryRunSettled } from "../../engine/review.js";
 import { canApproveAgain } from "../../engine/workflow.js";
 import { fileRef } from "../files.js";
 import { keepValid } from "../http.js";
@@ -39,12 +41,17 @@ interface Candidate {
   human: Step;
   action: Step | undefined;
   approveAgain: boolean;
+  /** PM2 S15: the card's dry run settled; Approve now applies live with the same CV. */
+  dryRunSettled: boolean;
 }
 
-/** Waiting review steps of active runs, and denied-before-spawn Apply steps Ba can approve again. */
+/**
+ * Waiting review steps of active runs, denied-before-spawn Apply steps Ba can approve again, and
+ * cards whose dry run settled (their run may have finished; a live approval reopens it, PM2 S15).
+ */
 function candidates(db: Db, workflows: WorkflowSource): Candidate[] {
   const out: Candidate[] = [];
-  for (const run of listActiveRuns(db)) {
+  for (const run of [...listActiveRuns(db), ...listRuns(db, { status: ["done", "failed"] })]) {
     const def = workflows.get(run.workflowName, run.workflowVersion);
     if (!def) continue;
     const steps = listSteps(db, run.id);
@@ -59,7 +66,10 @@ function candidates(db: Db, workflows: WorkflowSource): Candidate[] {
           (actionOut?.outcome === "denied" || actionOut?.outcome === "not_started") &&
           actionOut.applicationId !== null &&
           canApproveAgain(db, actionOut.applicationId);
-        if (human.status === "waiting" || approveAgain) out.push({ runId: run.id, human, action, approveAgain });
+        const dryRunSettled =
+          !approveAgain &&
+          isDryRunSettled(db, { humanStatus: human.status, actionOut, jobId: Number(human.branchKey), applyAgain: run.params.applyAgain === true });
+        if (human.status === "waiting" || approveAgain || dryRunSettled) out.push({ runId: run.id, human, action, approveAgain, dryRunSettled });
       }
     }
   }
@@ -74,8 +84,8 @@ async function buildCard(db: Db, dataDir: string, c: Candidate, readyAt: Map<num
   const company = getCompany(db, job.companyId);
   let options = out.cvVersions;
   let defaultLanguage = out.defaultLanguage;
-  if (c.approveAgain) {
-    // A re-approval keeps the approved CV version (the engine refuses another one).
+  if (c.approveAgain || c.dryRunSettled) {
+    // A re-approval, or a live approval after a dry run, keeps that CV version (the engine refuses another).
     const app = getApplication(db, (c.action!.output as ActionStepOutput).applicationId!);
     options = options.filter((o) => o.cvVersionId === app?.cvVersionId);
     defaultLanguage = options[0]?.language ?? defaultLanguage;
@@ -113,6 +123,8 @@ async function buildCard(db: Db, dataDir: string, c: Candidate, readyAt: Map<num
       noApplyLink: job.url === null,
       lowConfidenceCompany: company?.confidence === "low_confidence",
       approveAgain: c.approveAgain,
+      companyMissing: out.companyMissing === true,
+      dryRunSettled: c.dryRunSettled,
     },
     readyAt: readyAt.get(job.id) ?? now.toISOString(),
   };

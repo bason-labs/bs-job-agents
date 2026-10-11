@@ -769,7 +769,7 @@ function requeueAfterDryRun(core: Core, ctx: ApplyCtx): void {
   const back: ReviewCard = {
     ...card,
     cvOptions: options.length ? options : card.cvOptions,
-    flags: { ...card.flags, dryRunSettled: true } as ReviewCard["flags"],
+    flags: { ...card.flags, dryRunSettled: true },
     readyAt: core.nowIso(),
   };
   core.state.queue = [...core.state.queue.filter((c) => c.job.id !== ctx.jobId), back];

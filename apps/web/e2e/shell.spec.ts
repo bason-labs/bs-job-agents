@@ -109,7 +109,7 @@ test.describe("layout rule", () => {
   test.use({ viewport: { width: 1600, height: 900 } });
 
   test("constrained pages are centered; chat and flows are full width", async ({ page }) => {
-    for (const path of ["/criteria", "/schedules", "/cv", "/bots", "/review", "/applications"]) {
+    for (const path of ["/criteria", "/schedules", "/cv", "/bots", "/bots/apply", "/review", "/applications", "/rooms"]) {
       await open(page, path);
       const pageBox = (await page.getByTestId("page").boundingBox())!;
       const mainBox = (await page.locator("main").boundingBox())!;

@@ -11,6 +11,7 @@ import { API_ROUTES, AppEventSchema, encodeSseEvent, type AppEvent } from "@bs-j
 import type { FastifyInstance } from "fastify";
 import type { ApiContext } from "../context.js";
 import { ApiHttpError } from "../errors.js";
+import { storedTokens } from "../token-guard.js";
 
 export const DEFAULT_HEARTBEAT_MS = 15_000;
 export const SSE_RETRY_MS = 3000;
@@ -60,7 +61,13 @@ export function eventRoutes(app: FastifyInstance, ctx: ApiContext, opts: { heart
         return;
       }
       lastSent = id;
-      res.write(encodeSseEvent(parsed.data));
+      const frame = encodeSseEvent(parsed.data);
+      // S18 backstop (like the JSON token guard): a frame that would carry an approval token is dropped.
+      if (storedTokens(ctx).some((token) => frame.includes(token))) {
+        ctx.log.error(`SSE: event ${event.id} (${event.type}) contained an approval token; not sent`);
+        return;
+      }
+      res.write(frame);
     };
     if (resumeFrom === null) res.write(`id: ${lastSent}\n\n`);
     else for (const event of hub.replay(resumeFrom)) send(event);

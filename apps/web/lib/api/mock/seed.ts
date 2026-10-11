@@ -28,7 +28,7 @@ import {
   researchCompanyFixture,
   researchScanFixture,
 } from "@bs-job-agents/shared/fixtures";
-import type { TranscriptLine } from "../contract";
+import type { ProgressLine } from "../contract";
 import { APPLICATION_DETAILS, extraOf, sampleFileUrls } from "./seed-applications";
 import { seedBotViews } from "./seed-bots";
 import { MASTER_CV } from "./seed-master-cv";
@@ -381,7 +381,7 @@ export const selfCheckFor = (bot: string, kind: string, passed = true) =>
   (SELF_CHECK[`${bot}.${kind}`] ?? ["Output matches the schema"]).map((item) => ({ item, passed, note: null }));
 
 /** Plausible transcript lines for a finished task (the drawer, UC-22). */
-export function transcriptFor(task: Pick<Task, "botName" | "kind" | "startedAt" | "input">, extra: string[] = []): TranscriptLine[] {
+export function transcriptFor(task: Pick<Task, "botName" | "kind" | "startedAt" | "input">, extra: string[] = []): ProgressLine[] {
   const at = task.startedAt ?? seedTime(0);
   const tool: Record<string, [string, string]> = {
     "research.scan": ["cua_repl", "Opening the search results page"],
@@ -406,7 +406,7 @@ export function transcriptFor(task: Pick<Task, "botName" | "kind" | "startedAt" 
 interface Builder {
   steps: StepRow[];
   tasks: Task[];
-  transcripts: Record<string, TranscriptLine[]>;
+  transcripts: Record<string, ProgressLine[]>;
   step(key: string, branchKey: string | null, status: Step["status"], o: Partial<StepRow> & { start?: string; end?: string }): StepRow;
   task(step: StepRow, bot: string, kind: string, o: { input?: unknown; output?: unknown; start: string; end?: string; attempt?: number; status?: Task["status"]; error?: string | null }): Task;
 }
@@ -491,7 +491,7 @@ const FIT_EXTRAS = [
 
 export interface SeededRun {
   state: RunState;
-  transcripts: Record<string, TranscriptLine[]>;
+  transcripts: Record<string, ProgressLine[]>;
 }
 
 /** Job scan #12 at the review step (the prototype's demo run). */

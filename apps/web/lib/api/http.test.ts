@@ -112,6 +112,24 @@ describe("createHttpApi: reads", () => {
     expect(shell.usage[0]).toMatchObject({ label: "Claude", pausedUntil: "2026-10-10T14:05:00+07:00" });
     expect(shell.reviewCount).toBe(2);
     expect(shell.activeRunId).toBe("12");
+    // No /bridges answer: the sidebar does not alarm.
+    expect(shell.chromeConnected).toBe(true);
+  });
+
+  it("the sidebar's Chrome status comes from GET /bridges: not connected when an engine's extension does not answer", async () => {
+    const lists = {
+      "GET /bots": () => json({ bots: [BOT, LEAD] }),
+      "GET /rooms": () => json({ rooms: ROOMS }),
+      "GET /engines": () => json({ engines: ENGINES }),
+      "GET /review": () => json({ cards: [] }),
+      "GET /runs": () => json({ runs: [] }),
+    };
+    const bridges = (claude: boolean | null, codex: boolean | null) => () =>
+      json({ chrome: [{ engine: "claude", connected: claude }, { engine: "codex", connected: codex }], checkedAt: "2026-10-10T08:00:00.000Z" });
+    expect((await api({ ...lists, "GET /bridges": bridges(true, false) }).api.getShellData()).chromeConnected).toBe(false);
+    expect((await api({ ...lists, "GET /bridges": bridges(true, true) }).api.getShellData()).chromeConnected).toBe(true);
+    // Unknown (engine stopped) is not "not connected".
+    expect((await api({ ...lists, "GET /bridges": bridges(null, null) }).api.getShellData()).chromeConnected).toBe(true);
   });
 
   it("getBot and getRoom look a name or id up in the lists", async () => {
@@ -143,11 +161,23 @@ describe("createHttpApi: reads", () => {
     expect(await down.getHealth()).toEqual({ ok: false, reason: "unreachable", detail: null });
   });
 
-  it("a transcript route the server does not have yet reads as empty", async () => {
+  it("a transcript is the shared TranscriptResponse's lines; a task without one yet (404) reads as empty", async () => {
     const { api: a } = api({});
     expect(await a.getTranscript("t1")).toEqual([]);
+    const lines = [
+      { n: 1, kind: "system", text: "session started" },
+      { n: 2, kind: "tool", text: "cua_repl — Opening TopCV" },
+    ];
+    const body = { taskId: "t1", attempt: 1, attempts: [1], lines, nextAfter: 2, truncated: false, running: true };
+    expect(await api({ "GET /tasks/t1/transcript": () => json(body) }).api.getTranscript("t1")).toEqual(lines);
+  });
+
+  it("a transcript in another shape than the shared one is bad_response, not an empty drawer", async () => {
     const lines = [{ at: "2026-10-10T09:00:00+07:00", kind: "tool_use", text: "Opening TopCV", tool: "cua_repl" }];
-    expect(await api({ "GET /tasks/t1/transcript": () => json({ lines }) }).api.getTranscript("t1")).toEqual(lines);
+    const err = await api({ "GET /tasks/t1/transcript": () => json({ lines }) })
+      .api.getTranscript("t1")
+      .catch((e: unknown) => e);
+    expect(isApiError(err) && err.code).toBe("bad_response");
   });
 
   it("file URLs go through the base URL; Download adds ?download=1", () => {
@@ -174,7 +204,7 @@ describe("createHttpApi: commands", () => {
       "POST /review/job_1/approve": () => json({ applicationId: "app_1", taskId: "t9", approval: null }),
     });
     const result = await a.approve("job_1", { cvVersionId: "cvv_2", introText: "Hi", dryRun: true });
-    expect(result.reapproval).toBe(false);
+    expect(result.reapproval).toBeFalsy();
     expect(calls[0]!.body).toEqual({ cvVersionId: "cvv_2", introText: "Hi", dryRun: true });
   });
 
@@ -189,6 +219,7 @@ describe("createHttpApi: commands", () => {
       "POST /runs/12/control": () => json({ run: { ...runFixture, id: "12", status: "paused" }, abortedTaskIds: [] }),
       "POST /steps/s1/rerun": ok,
       "POST /chat/choices": ok,
+      "POST /tasks/43/decline-domain": ok,
     });
     await a.requestChanges("job_1", { comment: "Lead with Next.js" });
     await a.skip("job_1", { reason: "other", note: "too far" });
@@ -199,6 +230,7 @@ describe("createHttpApi: commands", () => {
     expect((await a.controlRun("12", "pause")).run.status).toBe("paused");
     await a.rerunStep("s1");
     await a.chooseOption({ messageId: "m1", key: "criteria", optionId: "save" });
+    await a.declineDomain("43");
     expect(calls.map((c) => [c.method, c.url.replace("http://orch.test", ""), c.body])).toEqual([
       ["POST", "/review/job_1/request-changes", { comment: "Lead with Next.js" }],
       ["POST", "/review/job_1/skip", { reason: "other", note: "too far" }],
@@ -209,11 +241,12 @@ describe("createHttpApi: commands", () => {
       ["POST", "/runs/12/control", { action: "pause" }],
       ["POST", "/steps/s1/rerun", {}],
       ["POST", "/chat/choices", { messageId: "m1", key: "criteria", optionId: "save" }],
+      ["POST", "/tasks/43/decline-domain", {}],
     ]);
   });
 
   it("sendMessage posts the shared ChatSendRequest and returns the stored message", async () => {
-    const { api: a, calls } = api({ "POST /chat/messages": () => json({ message: messageFixture }) });
+    const { api: a, calls } = api({ "POST /chat/messages": () => json({ message: messageFixture, taskIds: ["7"] }) });
     await expect(a.sendMessage({ roomId: "room_lead", text: "Find jobs" })).resolves.toEqual(messageFixture);
     expect(calls[0]!.body).toEqual({ roomId: "room_lead", text: "Find jobs", uploadIds: [] });
   });

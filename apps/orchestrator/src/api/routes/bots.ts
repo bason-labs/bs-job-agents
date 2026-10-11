@@ -4,11 +4,11 @@
 //   stay on Claude. A queued task keeps the engine it was queued on; the runner checks again.
 // - trust level: never above the Phase 1 cap (Apply: L1, every submit needs Ba's token), and up one
 //   level at a time (a promotion, or restoring a demoted bot); lowering is always allowed.
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { API_ROUTES, BotUpdateRequestSchema, BotViewSchema, BotsResponseSchema, checkBotSafety, maxTrustLevel, type BotDefinition, type BotView } from "@bs-job-agents/shared";
 import type { FastifyInstance } from "fastify";
-import { appendMemoryChange, getBot, listBots, syncBotFromDefinition, updateBot, type Bot, type Db } from "../../db/index.js";
+import { appendMemoryChange, getBot, latestBotDemotion, listBots, syncBotFromDefinition, updateBot, type Bot, type Db } from "../../db/index.js";
+import { removeMemoryNote } from "../../runner/index.js";
 import { emitEvent, requireDb, type ApiContext } from "../context.js";
 import { conflict, forbidden, notFound } from "../errors.js";
 import { keepValid, parseWith, respond } from "../http.js";
@@ -65,12 +65,19 @@ export function botRoutes(app: FastifyInstance, ctx: ApiContext): void {
       const refusal = trustRefusal(name, row?.trustLevel ?? def!.trustLevel, patch.trustLevel);
       if (refusal) throw forbidden(refusal);
     }
+    // PM2 S8: raising a demoted bot back to the level its demotion took is a restore; the engine
+    // closes the demotion (capped at the Phase 1 limit) and announces it.
+    const demotion = row && patch.trustLevel !== undefined && patch.trustLevel > row.trustLevel ? latestBotDemotion(db, name) : undefined;
+    const restore = ctx.engine && demotion && patch.trustLevel === Math.min(demotion.fromLevel, maxTrustLevel(name));
+    if (restore) ctx.engine!.restoreBot(name);
+    const rest = restore ? { ...patch, trustLevel: undefined } : patch;
     row = db.transaction((tx) => {
       // A bot.json the engine has not synced yet (degraded start) gets its row first.
       if (!getBot(tx, name) && def) {
         syncBotFromDefinition(tx, { name, displayName: def.displayName, engine: def.engine, trustLevel: def.trustLevel, model: def.model, promptVersion: def.promptVersion, enabled: def.enabled });
       }
-      return updateBot(tx, name, patch);
+      const fields = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined));
+      return Object.keys(fields).length > 0 ? updateBot(tx, name, fields) : getBot(tx, name)!;
     });
     const view = viewOf(db, def, row)!;
     emitUpdated(view);
@@ -96,14 +103,23 @@ export function botRoutes(app: FastifyInstance, ctx: ApiContext): void {
   };
 
   // PM S14: Ba deletes one memory note (a poisoned note would reach every later prompt). The
-  // deletion is recorded in memory_changes like every memory write (rule 2).
+  // deletion runs under the same per-bot lock as the engine's memory appends (rule 2: one write at
+  // a time, so a delete never loses a note appended at the same moment, nor brings the deleted
+  // one back) and is recorded in memory_changes like every memory write.
   app.delete<{ Params: { name: string; noteId: string } }>(API_ROUTES.botMemoryNote, async (req) => {
     const db = requireDb(ctx);
     const { name, noteId } = req.params;
     const { def, row } = existing(db, name);
-    const removed = removeMemoryNote(ctx.config.botsDir, name, noteId);
-    if (!removed) throw notFound(`bot ${name} has no memory note ${noteId}`);
-    appendMemoryChange(db, { botName: name, note: `deleted by Ba: ${removed}` }, { now: ctx.now() });
+    const text = /^[a-z][a-z0-9-]*$/.test(name) ? botMemoryNotes(ctx.config.botsDir, name).find((n) => n.id === noteId)?.text : undefined;
+    const removed =
+      text === undefined
+        ? null
+        : await removeMemoryNote({
+            botDir: join(ctx.config.botsDir, name),
+            noteId,
+            onRemoved: () => void appendMemoryChange(db, { botName: name, note: `deleted by Ba: ${text}` }, { now: ctx.now() }),
+          });
+    if (removed === null) throw notFound(`bot ${name} has no memory note ${noteId}`);
     const view = viewOf(db, def, row)!;
     emitUpdated(view);
     return respond(BotViewSchema, view);
@@ -122,20 +138,4 @@ export function botRoutes(app: FastifyInstance, ctx: ApiContext): void {
     emitUpdated(view);
     return respond(BotViewSchema, view);
   });
-}
-
-/** Remove one note line from bots/<name>/memory.md (temp file + rename); its text, or null. */
-function removeMemoryNote(botsDir: string, name: string, noteId: string): string | null {
-  if (!/^[a-z][a-z0-9-]*$/.test(name) || !/^[0-9a-f]{16}$/.test(noteId)) return null;
-  const note = botMemoryNotes(botsDir, name).find((n) => n.id === noteId);
-  if (!note) return null;
-  const path = join(botsDir, name, "memory.md");
-  const lines = readFileSync(path, "utf8").split("\n");
-  const index = lines.findIndex((l) => l.trim() === note.line);
-  if (index < 0) return null;
-  lines.splice(index, 1);
-  const tmp = `${path}.api.tmp`;
-  writeFileSync(tmp, lines.join("\n"));
-  renameSync(tmp, path);
-  return note.text;
 }

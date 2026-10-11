@@ -2,12 +2,14 @@
 
 import { Check, RotateCcw, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { TranscriptLine } from "@/lib/api/contract";
+import type { TranscriptLine } from "@bs-job-agents/shared";
+import type { ProgressLine } from "@/lib/api/contract";
 import { errorMessage } from "@/lib/api/errors";
 import { useReviewQueue } from "@/lib/api/hooks";
 import { ENGINE_NAMES } from "@/lib/api/map";
 import { useApi, useAppEvents, useResource } from "@/lib/api/react";
 import type { RunView } from "@/lib/api/runs";
+import { mergeTranscript } from "@/lib/api/transcript";
 import { cn } from "@/lib/cn";
 import { formatElapsed } from "@/lib/datetime";
 import { useNow } from "@/lib/useNow";
@@ -42,25 +44,17 @@ const json = (value: unknown) => {
 /** Transcript of one task: what was saved, plus lines streamed live while it runs. */
 function Transcript({ taskId, running }: { taskId: string; running: boolean }) {
   const saved = useResource<TranscriptLine[]>(`transcript:${taskId}`, (api) => api.getTranscript(taskId));
-  const [live, setLive] = useState<TranscriptLine[]>([]);
+  const [live, setLive] = useState<ProgressLine[]>([]);
   useAppEvents((e) => {
     if (e.type === "task.progress" && e.taskId === taskId) setLive((l) => [...l, { at: e.at, kind: e.kind, text: e.text, tool: e.tool }]);
   });
-  const lines = useMemo(() => {
-    const seen = new Set<string>();
-    return [...(saved.data ?? []), ...live].filter((l) => {
-      const k = `${l.at}|${l.kind}|${l.text}`;
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
-  }, [saved.data, live]);
+  const lines = useMemo(() => mergeTranscript(saved.data ?? [], live), [saved.data, live]);
   return (
     <div className="space-y-1 rounded-xl border border-border bg-bg p-3 font-mono text-[11px] text-muted" data-testid="transcript">
       {lines.length === 0 ? <p>{saved.data === undefined ? "Loading…" : running ? "Waiting for output…" : "No transcript saved for this task."}</p> : null}
       {lines.map((l, i) => (
-        <p key={i} className={cn(l.kind === "tool_use" && "text-fg")}>
-          › {l.kind === "tool_use" || l.kind === "tool_result" ? `${l.kind === "tool_use" ? "tool" : "result"}: ${l.tool ? `${l.tool} — ` : ""}` : ""}
+        <p key={i} className={cn(l.kind === "tool" && "text-fg")}>
+          › {l.kind === "tool" ? "tool: " : l.kind === "result" ? "result: " : ""}
           {l.text}
         </p>
       ))}

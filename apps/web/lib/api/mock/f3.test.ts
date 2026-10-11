@@ -2,7 +2,6 @@
 // "Don't allow" on a domain confirm, the figma-change choice, and review flags lib/api keeps.
 import { AppEventSchema, type AppEvent, type MessageCard } from "@bs-job-agents/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ReviewCardFlagsExt } from "../contract";
 import { isApiError } from "../errors";
 import { createHttpApi } from "../http";
 import type { MockBackend } from "./backend";
@@ -24,7 +23,7 @@ afterEach(async () => {
 });
 
 const err = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => e);
-const flags = async (jobId: string) => (await mock.getReviewQueue()).find((c) => c.job.id === jobId)?.flags as ReviewCardFlagsExt | undefined;
+const flags = async (jobId: string) => (await mock.getReviewQueue()).find((c) => c.job.id === jobId)?.flags;
 
 /** A queue card with an apply link, approved as a dry run and settled. */
 async function settledDryRun() {
@@ -88,7 +87,7 @@ describe("figma-change choice (PM2 S8)", () => {
   });
 });
 
-describe("review flags beyond the shared schema", () => {
+describe("F3's review flags and Don't allow on the live client", () => {
   it("live: getReviewQueue keeps companyMissing and dryRunSettled", async () => {
     const card = (await mock.getReviewQueue())[0]!;
     const body = { cards: [{ ...card, flags: { ...card.flags, companyMissing: true, dryRunSettled: true } }] };
@@ -98,10 +97,15 @@ describe("review flags beyond the shared schema", () => {
     expect(read!.flags).toMatchObject({ companyMissing: true, dryRunSettled: true });
   });
 
-  it("live: Don't allow on an orchestrator without the route explains it instead of 'no route'", async () => {
-    const fetch = async () => new Response(JSON.stringify({ error: { code: "not_found", message: "no route POST /tasks/5/decline-domain", details: null } }), { status: 404 });
+  it("live: Don't allow posts POST /tasks/:id/decline-domain; a refusal shows the server's own reason", async () => {
+    const calls: string[] = [];
+    const fetch = async (url: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(`${init?.method} ${String(url)}`);
+      return new Response(JSON.stringify({ error: { code: "conflict", message: "task 5 is not waiting for a domain to confirm", details: null } }), { status: 409 });
+    };
     const api = createHttpApi({ baseUrl: "/api", fetch: fetch as typeof globalThis.fetch, events: mock });
     const e = await err(api.declineDomain("5"));
-    expect(isApiError(e) && e.message).toMatch(/arrives with the next orchestrator update/);
+    expect(calls).toEqual(["POST /api/tasks/5/decline-domain"]);
+    expect(isApiError(e) && [e.code, e.message]).toEqual(["conflict", "task 5 is not waiting for a domain to confirm"]);
   });
 });

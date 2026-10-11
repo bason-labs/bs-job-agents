@@ -92,4 +92,6 @@ test("/rooms lists group rooms and direct threads (GET /rooms) and creates a roo
   await expect(page).toHaveURL(/\/rooms\/\d+$/);
   await expect(page.getByRole("combobox", { name: "Message #salary-talk" })).toBeVisible();
   await expect(page.getByTestId("room-members")).toHaveText(/^Members:.*Research.*CV$/);
+  // The sidebar lists the new room without a reload (the shell re-reads after a create).
+  await expect(page.getByTestId("sidebar").getByRole("link", { name: "# salary-talk" })).toBeVisible();
 });

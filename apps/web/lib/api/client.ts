@@ -12,7 +12,7 @@ import { BROWSER_API_BASE, orchestratorUrl } from "./config";
 import { createHttpClient, type HttpClient } from "./http";
 
 export type { HttpClient };
-export { apiPath, PROPOSED_ROUTES } from "./routes";
+export { apiPath } from "./routes";
 
 let browser: HttpClient | null = null;
 

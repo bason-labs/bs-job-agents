@@ -111,6 +111,22 @@ export function chatRoutes(app: FastifyInstance, ctx: ApiContext): void {
     if (!option) throw badRequest(`option ${body.optionId} is not one of this card's choices`);
     const room = getRoom(engine.db, message.roomId);
     if (!room) throw notFound(`room ${message.roomId} not found`);
+    const figma = /^figma-change:([1-9]\d{0,15})$/.exec(body.key);
+    if (figma && option.id === "was_me") {
+      // PM2 S8 "That was me — retry": an answer to the engine, not a request for Lead. The engine
+      // undoes the task's demotion, settles the card and re-runs the failed step.
+      const { retried } = engine.protectedChangeWasBa(Number(figma[1]));
+      const bot = engine.deps.bots.get("cv")?.displayName ?? "CV";
+      const stored = engine.db.transaction((tx) => {
+        const ba = postMessage(tx, { room, author: "ba", text: option.label }, ctx.now());
+        const note = retried ? `Noted: the change was yours, so it isn't held against ${bot}. ${bot} is working on it again.` : `Noted: the change was yours, so it isn't held against ${bot}.`;
+        postMessage(tx, { room, author: "lead", text: note }, ctx.now());
+        return ba;
+      });
+      ctx.events?.flush();
+      void reply.code(201);
+      return respond(ChatSendResultSchema, { message: chatMessageView(engine.db, stored, room), taskIds: [] });
+    }
     engine.db.transaction((tx) => updateMessageCards(tx, message, cards.map((c, i) => (i === index ? { ...card, chosen: option.id } : c))));
     void reply.code(201);
     return respond(ChatSendResultSchema, sendChatMessage(ctx, engine, room, option.label, []));

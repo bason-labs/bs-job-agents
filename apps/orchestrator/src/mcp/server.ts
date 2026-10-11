@@ -85,7 +85,12 @@ export async function startMcpServer(deps: McpServerDeps, opts: { host?: "127.0.
       const reqHost = (req.headers.host ?? "").toLowerCase();
       if (!allowedHosts().has(reqHost)) return send(req, res, 403, "this server answers only on its loopback address");
       if (req.headers.origin !== undefined) return send(req, res, 403, "browser requests are refused");
-      const token = decodeURIComponent(url.slice(MCP_PATH_PREFIX.length).split("?")[0] ?? "");
+      let token: string;
+      try {
+        token = decodeURIComponent(url.slice(MCP_PATH_PREFIX.length).split("?")[0] ?? "");
+      } catch {
+        return send(req, res, 404, "not found");
+      }
       const cap = deps.capabilities.resolve(token);
       if (!cap) return send(req, res, 404, "not found");
       if (req.method !== "POST") return send(req, res, 405, "only POST (stateless Streamable HTTP)");

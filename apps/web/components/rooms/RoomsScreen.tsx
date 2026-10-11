@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { errorText } from "@/components/schedules/apiError";
+import { useShellRefresh } from "@/components/shell/ShellContext";
 import { ResourceGate } from "@/components/schedules/ResourceGate";
 import { BotAvatar, Button, Checkbox, Field, Input, useToast } from "@/components/ui";
 import { useResource } from "@/lib/api/react";
@@ -106,6 +107,7 @@ function NewRoom({ bots, data, onCreated }: { bots: RoomBot[]; data: RoomsData; 
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
+  const refreshShell = useShellRefresh();
   const nameId = useId();
   const choosable = bots.filter((b) => b.name !== "lead");
 
@@ -120,6 +122,7 @@ function NewRoom({ bots, data, onCreated }: { bots: RoomBot[]; data: RoomsData; 
       const room = await data.createRoom(name.trim(), members);
       toast({ title: `Created #${room.name}` });
       onCreated?.(room);
+      refreshShell();
       router.push(roomHref(room.id));
     } catch (e) {
       toast({ title: `Couldn't create the room: ${errorText(e)}`, tone: "err" });

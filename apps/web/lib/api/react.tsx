@@ -6,7 +6,7 @@
 // - useAppEvents(handler): every live AppEvent
 // - useFeedStatus(): SSE connection state
 // - useResource(key, load): a cached read that screens refresh on events (stale-while-revalidate)
-import type { AppEvent } from "@bs-job-agents/shared";
+import { API_ROUTES, type AppEvent } from "@bs-job-agents/shared";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { BROWSER_API_BASE } from "./config";
 import type { ApiMode, EventFeed, EventListener, FeedStatus, WebApi } from "./contract";
@@ -103,7 +103,7 @@ export function getClientApi(mode: ApiMode, speed = 1): WebApi {
   if (clientApi?.key === key) return clientApi.api;
   const api =
     mode === "live"
-      ? createHttpApi({ baseUrl: BROWSER_API_BASE, events: createLiveEventFeed({ url: `${BROWSER_API_BASE}/events` }) })
+      ? createHttpApi({ baseUrl: BROWSER_API_BASE, events: createLiveEventFeed({ url: `${BROWSER_API_BASE}${API_ROUTES.events}` }) })
       : lazyMockApi(speed);
   clientApi = { key, api };
   return api;
