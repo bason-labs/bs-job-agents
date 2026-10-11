@@ -3,7 +3,7 @@
 // what it did, which the chat renders as the delegation trace (Lead → @Bot: task · status).
 import { z } from "zod";
 import { BotNameSchema, CurrencySchema, SearchSourceSchema, SenioritySchema, WorkModeSchema } from "../common/primitives.js";
-import { WorkflowNameSchema } from "../workflow/params.js";
+import { WorkflowSlugSchema } from "../workflow/params.js";
 import { botEnvelopeShape } from "./self-check.js";
 
 const term = z.string().trim().min(1);
@@ -56,7 +56,7 @@ export type ScheduleProposal = z.infer<typeof ScheduleProposalSchema>;
 export const LeadActionSchema = z.discriminatedUnion("type", [
   z.strictObject({
     type: z.literal("start_workflow"),
-    workflow: WorkflowNameSchema,
+    workflow: WorkflowSlugSchema.describe("A shipped workflow (job-scan, apply-to-link, apply-to-file) or a saved preset's name"),
     runId: z.string().nullable().describe("Run id returned by start_workflow"),
     summary: z.string().min(1).describe("One line for the delegation trace"),
   }),

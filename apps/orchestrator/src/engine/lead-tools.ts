@@ -7,6 +7,7 @@ import {
   BOT_TASK_INPUT_SCHEMAS,
   BotNameSchema,
   StartWorkflowInputSchema,
+  WORKFLOW_NAMES,
   isOutwardFacingTask,
   taskKey,
   type BotTaskKey,
@@ -21,12 +22,14 @@ import {
   getApplicationByJob,
   getRun,
   getTask,
+  getWorkflowPreset,
   holdEngineTasks,
   isEnginePaused,
   listActiveRuns,
   listEngineStates,
   listSteps,
   listTasks,
+  listWorkflowPresets,
   mappers,
   type Run,
 } from "../db/index.js";
@@ -59,7 +62,17 @@ function assertLead(core: EngineCore, caller: LeadCaller, action: string): void 
   throw forbidden(`only Lead, in the Lead chat, can ${action} (rule 1, UC-25)`);
 }
 
-export type StartWorkflowFn = (input: StartWorkflowInput, opts: { trigger: Run["trigger"] }) => Run;
+export type StartWorkflowFn = (input: StartWorkflowInput, opts: { trigger: Run["trigger"]; presetName?: string | null }) => Run;
+
+const isShippedName = (name: unknown): boolean => typeof name === "string" && (WORKFLOW_NAMES as readonly string[]).includes(name);
+
+/** get_status: the saved presets Lead may start by name (PM3 S4, rule 3). */
+export interface PresetSummary {
+  name: string;
+  description: string;
+  basedOn: string;
+  params: Record<string, unknown>;
+}
 
 /**
  * Lead has no tool that answers Apply's questions or resumes Apply: an answer reaches a waiting
@@ -128,7 +141,10 @@ export class LeadTools {
     raw: unknown,
   ): { started: true; runId: number } | { started: false; reason: "already_applied"; applicationId: number } {
     assertLead(this.core, caller, "start_workflow");
-    const parsed = StartWorkflowInputSchema.safeParse(raw);
+    // PM3 S4: a saved preset's name starts its base workflow with the stored params; a param Lead
+    // gives replaces the preset's for this run only. The run keeps the preset's name.
+    const preset = this.resolvePreset(raw);
+    const parsed = StartWorkflowInputSchema.safeParse(preset?.input ?? raw);
     if (!parsed.success) throw invalidInput("start_workflow input is invalid", parsed.error.issues);
     if (parsed.data.workflow === "apply-to-link" && !parsed.data.params.applyAgain) {
       // UC-14 a: the URL was already applied to → Lead says so and stops.
@@ -137,8 +153,29 @@ export class LeadTools {
       if (app) return { started: false, reason: "already_applied", applicationId: app.id };
     }
     const trigger: Run["trigger"] = parsed.data.workflow === "apply-to-link" ? "link" : "chat";
-    const run = this.startWorkflowFn(parsed.data, { trigger });
+    const run = this.startWorkflowFn(parsed.data, { trigger, presetName: preset?.name ?? null });
     return { started: true, runId: run.id };
+  }
+
+  /** A start_workflow call naming a saved preset → its base workflow's input; null for a shipped name. */
+  private resolvePreset(raw: unknown): { name: string; input: unknown } | null {
+    const r = (raw ?? {}) as { workflow?: unknown; params?: unknown };
+    if (isShippedName(r.workflow)) return null;
+    const name = typeof r.workflow === "string" ? r.workflow : "";
+    const preset = name ? getWorkflowPreset(this.core.db, name) : undefined;
+    if (!preset || !isShippedName(preset.basedOn)) {
+      const saved = listWorkflowPresets(this.core.db).map((p) => p.name);
+      throw invalidInput(
+        `there is no workflow or saved preset named ${JSON.stringify(name.slice(0, 60))}; start one of ${[...WORKFLOW_NAMES, ...saved].join(", ")}`,
+      );
+    }
+    const given = r.params && typeof r.params === "object" && !Array.isArray(r.params) ? (r.params as Record<string, unknown>) : {};
+    return { name: preset.name, input: { workflow: preset.basedOn, params: { ...preset.params, ...given } } };
+  }
+
+  /** The saved presets, for get_status (PM3 S4). */
+  presets(): PresetSummary[] {
+    return listWorkflowPresets(this.core.db).map((p) => ({ name: p.name, description: p.description, basedOn: p.basedOn, params: p.params }));
   }
 
   /** get_status: active runs (or one run) with steps and tasks, engines, reviews waiting. */
@@ -157,6 +194,8 @@ export class LeadTools {
       })),
       engines: listEngineStates(db).map((s) => ({ ...mappers.toEngineState(s), running: listTasks(db, { status: "running", engine: s.engine as Engine }).length })),
       pausedTasks: listTasks(db, { status: "paused" }).map((t) => ({ taskId: String(t.id), runId: t.runId === null ? null : String(t.runId), botName: t.botName, kind: t.kind, reason: t.pauseReason })),
+      // PM3 S4: saved presets Lead can start by name with start_workflow.
+      presets: this.presets(),
     };
   }
 

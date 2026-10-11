@@ -20,11 +20,7 @@
               },
               "workflow": {
                 "type": "string",
-                "enum": [
-                  "job-scan",
-                  "apply-to-link",
-                  "apply-to-file"
-                ]
+                "description": "A shipped workflow (job-scan, apply-to-link, apply-to-file) or a saved preset's name"
               },
               "runId": {
                 "type": [

@@ -26,6 +26,8 @@ export interface CreateRunInput {
   searchProfileId?: number | null;
   scheduleId?: number | null;
   status?: RunStatus;
+  /** PM3 S4: the saved preset Lead started the run from (its workflow is the preset's base). */
+  presetName?: string | null;
 }
 
 export function createRun(db: Conn, input: CreateRunInput, opts?: ClockOpts): Run {
@@ -39,6 +41,7 @@ export function createRun(db: Conn, input: CreateRunInput, opts?: ClockOpts): Ru
       searchProfileVersion: input.searchProfileVersion ?? null,
       searchProfileId: input.searchProfileId ?? null,
       scheduleId: input.scheduleId ?? null,
+      presetName: input.presetName ?? null,
       status: input.status ?? "running",
       createdAt: nowIso(opts),
     })

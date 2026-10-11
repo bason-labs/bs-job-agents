@@ -168,10 +168,14 @@ describe("LeadOutput", () => {
     expect(LeadOutputSchema.safeParse(v).success).toBe(false);
   });
 
-  it("rejects a start_workflow with an unknown workflow", () => {
+  it("a start_workflow names a shipped workflow or a saved preset (PM3 S4); anything but a slug is refused", () => {
     const v = clone(leadOutputFixture) as { actions: Array<Record<string, unknown>> };
-    v.actions[0] = { ...v.actions[0], workflow: "hack-the-planet" };
-    expect(LeadOutputSchema.safeParse(v).success).toBe(false);
+    v.actions[0] = { ...v.actions[0], workflow: "danang-react" };
+    expect(LeadOutputSchema.safeParse(v).success).toBe(true);
+    for (const bad of ["Hack The Planet!", "../job-scan", ""]) {
+      v.actions[0] = { ...v.actions[0], workflow: bad };
+      expect(LeadOutputSchema.safeParse(v).success, bad).toBe(false);
+    }
   });
 });
 

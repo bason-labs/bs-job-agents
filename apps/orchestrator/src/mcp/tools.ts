@@ -32,10 +32,10 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   {
     name: "start_workflow",
     description:
-      "Start a named workflow: job-scan (find jobs; params {searchProfileId: null, overrides: null | {...}}), apply-to-link (params {url, applyAgain: false}) or apply-to-file (params {uploadId}). Returns {started, runId} or {started: false, reason: \"already_applied\"}.",
+      "Start a named workflow: job-scan (find jobs; params {searchProfileId: null, overrides: null | {...}}), apply-to-link (params {url, applyAgain: false}) or apply-to-file (params {uploadId}), or a saved preset by its name (get_status lists them; params {} uses the preset's own, a param you give replaces the preset's for this run). Returns {started, runId} or {started: false, reason: \"already_applied\"}.",
     inputSchema: {
       type: "object",
-      properties: { workflow: { type: "string", enum: ["job-scan", "apply-to-link", "apply-to-file"] }, params: { type: "object" } },
+      properties: { workflow: { type: "string", pattern: "^[a-z][a-z0-9-]*$" }, params: { type: "object" } },
       required: ["workflow", "params"],
       additionalProperties: false,
     },
@@ -52,7 +52,7 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   },
   {
     name: "get_status",
-    description: "Active runs (or one run by runId) with their steps and tasks, engine usage pauses and tasks waiting for Ba.",
+    description: "Active runs (or one run by runId) with their steps and tasks, engine usage pauses, tasks waiting for Ba, and the saved presets you can start by name.",
     inputSchema: { type: "object", properties: { runId: idString }, additionalProperties: false },
   },
   {

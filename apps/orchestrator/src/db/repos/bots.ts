@@ -3,7 +3,7 @@ import { and, asc, desc, eq, isNull, lte } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { TRUST_LEVELS, type Engine, type TrustLevel } from "../enums.js";
 import { NotFoundError, TrustLevelRefusedError } from "../errors.js";
-import { botDemotions, bots, memoryChanges, promptVersions, workflows } from "../schema.js";
+import { botDemotions, bots, memoryChanges, promptVersions, workflows, type WorkflowPresetData } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
 import type { Bot, BotDemotion, MemoryChange, PromptVersion, Workflow } from "../types.js";
 
@@ -216,7 +216,7 @@ export function listMemoryChanges(db: Conn, botName: string): MemoryChange[] {
 /** Store a workflow definition version. Re-saving the same YAML is a no-op; different YAML for an existing version throws. */
 export function saveWorkflow(
   db: Conn,
-  input: { name: string; version: number; definitionYaml: string },
+  input: { name: string; version: number; definitionYaml: string; preset?: WorkflowPresetData | null },
   opts?: ClockOpts,
 ): Workflow {
   const existing = getWorkflow(db, input.name, input.version);
@@ -242,4 +242,22 @@ export function getWorkflow(db: Conn, name: string, version?: number): Workflow 
     .orderBy(desc(workflows.version))
     .limit(1)
     .get();
+}
+
+/** PM3 S4: a saved preset as Lead starts it: its name, base workflow, stored params and description. */
+export interface WorkflowPreset extends WorkflowPresetData {
+  name: string;
+  version: number;
+}
+
+/** The latest version of `name` when that version is a saved preset; undefined otherwise. */
+export function getWorkflowPreset(db: Conn, name: string): WorkflowPreset | undefined {
+  const row = getWorkflow(db, name);
+  return row?.preset ? { name: row.name, version: row.version, ...row.preset } : undefined;
+}
+
+/** Every saved preset (latest version per name), by name. */
+export function listWorkflowPresets(db: Conn): WorkflowPreset[] {
+  const names = db.selectDistinct({ name: workflows.name }).from(workflows).orderBy(asc(workflows.name)).all();
+  return names.map((n) => getWorkflowPreset(db, n.name)).filter((p): p is WorkflowPreset => p !== undefined);
 }

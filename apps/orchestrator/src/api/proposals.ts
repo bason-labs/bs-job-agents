@@ -17,7 +17,7 @@ import {
 } from "@bs-job-agents/shared";
 import { stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
-import { getWorkflow, saveWorkflow, type Db } from "../db/index.js";
+import { getWorkflow, saveWorkflow, type Db, type WorkflowPresetData } from "../db/index.js";
 import type { WorkflowSource } from "../engine/index.js";
 import { WorkflowLoadError, parseWorkflowYaml } from "./boot/workflows.js";
 import { ApiHttpError, badRequest, conflict, notFound, zodMessage } from "./errors.js";
@@ -130,9 +130,15 @@ export class ProposalStore {
     const version = (getWorkflow(db, proposal.name)?.version ?? 0) + 1;
     let def: WorkflowDefinition;
     let header = `# Proposed by Lead (rule 3) and approved by Ba on ${this.opts.now().toISOString()}.\n`;
+    let preset: WorkflowPresetData | null = null;
     if (proposal.basedOn !== null) {
       const base = source?.get(proposal.basedOn);
       if (!base) throw new ApiHttpError(503, "internal", `the ${proposal.basedOn} workflow is not loaded`);
+      // PM3 S4: a saved preset = the base workflow + these params, stored as data; Lead starts it
+      // by name (start_workflow) and the run is the base workflow with them.
+      const params = WORKFLOW_PARAMS_SCHEMAS[proposal.basedOn].safeParse(proposal.params ?? {});
+      if (!params.success) throw badRequest(`the preset's params for ${proposal.basedOn} are no longer valid: ${zodMessage(params.error)}`);
+      preset = { basedOn: proposal.basedOn, params: proposal.params ?? {}, description: proposal.description };
       def = { ...base, name: proposal.name, version, description: proposal.description };
       header += `# Based on ${proposal.basedOn} v${base.version}; preset params: ${JSON.stringify(proposal.params ?? {})}\n`;
     } else {
@@ -141,7 +147,7 @@ export class ProposalStore {
     const yaml = header + stringifyYaml(def);
     // The saved text must load like a file would (S4 checks).
     parseWorkflowYaml(yaml, `${proposal.name} v${version}`);
-    saveWorkflow(db, { name: proposal.name, version, definitionYaml: yaml }, { now: this.opts.now() });
+    saveWorkflow(db, { name: proposal.name, version, definitionYaml: yaml, preset }, { now: this.opts.now() });
     const decided: WorkflowProposal = { ...proposal, status: "approved", decidedAt: this.opts.now().toISOString(), savedVersion: version };
     this.save(all.map((p) => (p.id === id ? decided : p)));
     return { proposal: decided, workflow: { name: proposal.name, version } };

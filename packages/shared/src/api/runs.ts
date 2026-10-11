@@ -32,10 +32,16 @@ export const RunDetailSchema = z.object({
   definition: WorkflowDefinitionSchema.nullable().optional(),
   /** W3a, additive: a one-line live preview per step id (latest progress, or a summary of its output). */
   previews: z.record(IdSchema, z.string()).optional(),
+  /** PM3 S4, F4 additive: the saved preset Lead started this run from (its workflow is the preset's base). */
+  presetName: z.string().nullable().optional(),
 });
 export type RunDetail = z.infer<typeof RunDetailSchema>;
 
-export const RunsResponseSchema = z.object({ runs: z.array(RunSchema) });
+export const RunsResponseSchema = z.object({
+  runs: z.array(RunSchema),
+  /** PM3 S4, F4 additive: run id → the saved preset it was started from (runs with none are left out). */
+  presetNames: z.record(IdSchema, z.string()).optional(),
+});
 
 /** UC-22 step drawer. */
 export const StepDetailSchema = z.object({
