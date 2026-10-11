@@ -224,9 +224,9 @@ describe("CodexRunner: failures and limits", () => {
     const { r, work } = runner([{ hang: true }]);
     expect((await r.run(qaConsult({ timeoutMs: 40 }), () => {})).status).toBe("timeout");
     expect(work()[0]!.child.signals[0]).toBe("SIGTERM");
-    const two = runner([{ hang: true }]);
     const ac = new AbortController();
-    setTimeout(() => ac.abort(), 30);
+    // Abort once the process runs, never before it spawned (Phase 4 QA flake fix).
+    const two = runner([{ hang: true, onSpawn: () => setTimeout(() => ac.abort(), 10) }]);
     expect((await two.r.run(qaConsult({ signal: ac.signal }), () => {})).status).toBe("cancelled");
   });
 
