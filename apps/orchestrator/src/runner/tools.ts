@@ -3,6 +3,8 @@
 //   read              Read files in the bot folder and the task's readDirs.
 //                     Claude: built-in Read; each read dir gets --add-dir and Read(//<dir>/**).
 //                     Codex: the read-only sandbox (it cannot scope reads; prompt only).
+// (F8) A conversation task with attachments gets Read on its attachments folder only, on Claude,
+// even without `read` (Lead views Ba's screenshot); Codex gets the images with `-i <file>`.
 //   web_search        Claude: WebSearch. Codex: -c web_search="live" (verified live).
 //   skill:<glob>      Read the bot's skills/<glob> files (source adapters, W4a).
 //   chrome:read       Ba's Chrome, read only (navigate, read, find, tabs). Needs browser.mode read.
@@ -137,6 +139,12 @@ export interface ClaudeToolFlags {
 
 export interface ClaudeToolContext {
   readDirs: readonly string[];
+  /**
+   * F8: the task's attachments folder (Ba's files on a conversation message), or null. Read is
+   * allowed for that folder only, for any bot (Lead included: it can view what Ba attached, and
+   * nothing else). The runner checked it holds only the orchestrator's copies.
+   */
+  attachmentDir?: string | null;
   /** Known tool names per MCP server; when given, tools the bot may not use are hidden. */
   mcpKnownTools: Record<string, readonly string[] | undefined>;
 }
@@ -155,7 +163,8 @@ export function claudeToolFlags(plan: ToolPlan, ctx: ClaudeToolContext): ClaudeT
   }
   // Read dirs are granted only to bots that may read (Apply uploads the approved PDF from one).
   const addDirs = plan.read ? [...ctx.readDirs] : [];
-  if (plan.read) tools.add("Read");
+  if (ctx.attachmentDir && !addDirs.includes(ctx.attachmentDir)) addDirs.push(ctx.attachmentDir);
+  if (plan.read || ctx.attachmentDir) tools.add("Read");
   for (const dir of addDirs) allowed.push(`Read(/${dir}/**)`);
   if (plan.chrome) {
     const ok = new Set<string>(plan.chrome === "write" ? CHROME_WRITE_TOOLS : CHROME_READ_TOOLS);

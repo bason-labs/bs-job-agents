@@ -89,6 +89,8 @@ export interface ClaudeInvocationInput {
   sessionId: string;
   workDir: string;
   readDirs: readonly string[];
+  /** F8: the task's attachments folder (Read on it only), or null/undefined. */
+  attachmentDir?: string | null;
   /** RunnerTask.hookSettings (the site guard carries the task's allowed sites). */
   hookSettings?: ClaudeHookSettings | undefined;
   config: RunnerConfig;
@@ -98,7 +100,7 @@ const display = (args: string[]) => displayArgs(args, { "-p": promptLabel, "--js
 
 export function buildClaudeInvocation(i: ClaudeInvocationInput): Invocation {
   const knownTools = Object.fromEntries(Object.entries(i.config.mcpServers).map(([name, cfg]) => [name, cfg.knownTools]));
-  const flags = claudeToolFlags(i.plan, { readDirs: i.readDirs, mcpKnownTools: knownTools });
+  const flags = claudeToolFlags(i.plan, { readDirs: i.readDirs, attachmentDir: i.attachmentDir ?? null, mcpKnownTools: knownTools });
   const mcp = claudeMcpConfig(i.plan, i.config);
   const mcpPath = join(i.workDir, "mcp.json");
   const settings = claudeSettings({ plan: i.plan, hookSettings: i.hookSettings });

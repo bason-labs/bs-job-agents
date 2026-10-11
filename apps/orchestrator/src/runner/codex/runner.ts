@@ -37,6 +37,7 @@ export class CodexRunner extends CliRunner {
       config: this.config,
       pluginsToDisable: browser ? listPlugins() : [],
       mcpServersToDisable: browser ? listServers() : [],
+      images: p.attachments.filter((a) => a.mime.startsWith("image/")).map((a) => a.path),
     });
   }
 

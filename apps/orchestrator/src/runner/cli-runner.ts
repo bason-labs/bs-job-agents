@@ -3,7 +3,7 @@
 // ClaudeRunner and CodexRunner plug in their command lines and stream parsers.
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import {
   BOT_TASK_KINDS,
   CONVERSATION_TASK_KINDS,
@@ -28,7 +28,7 @@ import { conversationPlan, planTools, type ToolPlan } from "./tools.js";
 import { PageUrlCollector } from "./page-urls.js";
 import { ScreenshotCapture } from "./screenshots.js";
 import { TranscriptWriter } from "./transcript.js";
-import type { PermissionDenial, Runner, RunnerEvent, RunnerResult, RunnerTask } from "./types.js";
+import type { PermissionDenial, Runner, RunnerAttachment, RunnerEvent, RunnerResult, RunnerTask } from "./types.js";
 
 export interface RunnerDeps {
   spawn?: SpawnFn;
@@ -52,6 +52,9 @@ export interface PreparedTask {
   prompt: string;
   readDirs: string[];
   allowedSites: string[];
+  /** F8: the files Ba attached (checked), and the one folder that holds them (null: none). */
+  attachments: RunnerAttachment[];
+  attachmentDir: string | null;
   workDir: string;
   /** Claude: chosen up front (--session-id). Codex: null until thread.started. */
   sessionId: string | null;
@@ -217,6 +220,7 @@ export abstract class CliRunner implements Runner {
     // §10.3: only a task that holds the browser lock may drive Ba's Chrome.
     if (task.usesBrowser === false && plan.chrome) plan = { ...plan, chrome: null };
     const readDirs = checkReadDirs(task.readDirs ?? []);
+    const { attachments, dir: attachmentDir } = checkAttachments(task, conversation || (bot.name === "lead" && task.kind === "chat"));
     const allowedSites = plan.chrome ? checkSites(task) : [];
     const { roleMd, memoryMd } = readBotPromptFiles(task.cwd);
     const selfCheckItems = resolveSelfCheckItems(bot, task.kind);
@@ -231,6 +235,7 @@ export abstract class CliRunner implements Runner {
       selfCheckItems,
       allowedSites,
       readDirs: plan.read ? readDirs : [],
+      attachments,
     });
     if (task.screenshotDir !== undefined && (!isAbsolute(task.screenshotDir) || /[\s,()]/.test(task.screenshotDir))) {
       throw new TaskSetupError(`screenshot dir ${task.screenshotDir} must be an absolute path without a space, a comma or a parenthesis`);
@@ -247,6 +252,8 @@ export abstract class CliRunner implements Runner {
       prompt,
       readDirs,
       allowedSites,
+      attachments,
+      attachmentDir,
       workDir,
       sessionId: this.initialSessionId(),
       capture,
@@ -393,6 +400,28 @@ function checkReadDirs(dirs: readonly string[]): string[] {
     if (/[\s,()]/.test(dir)) throw new TaskSetupError(`read dir ${dir} must not contain a space, a comma or a parenthesis`);
   }
   return [...dirs];
+}
+
+/** F8: the attachment types a bot may look at (Claude's Read shows images and PDFs; Codex takes images with -i). */
+export const ATTACHMENT_MIMES = ["image/png", "image/jpeg", "application/pdf", "text/plain"] as const;
+const ATTACHMENT_FILE = /^upload-[A-Za-z0-9_-]{1,40}\.(png|jpe?g|pdf|txt)$/;
+
+/**
+ * F8: attachments only on a conversation task (lead.chat, consult, discussion), every copy in one
+ * folder the engine made for the task, named by the orchestrator, of a type the bot can view. The
+ * folder is what Claude may Read; anything else is refused before a spawn (fail closed).
+ */
+function checkAttachments(task: RunnerTask, conversation: boolean): { attachments: RunnerAttachment[]; dir: string | null } {
+  const list = task.attachments ?? [];
+  if (list.length === 0) return { attachments: [], dir: null };
+  if (!conversation) throw new TaskSetupError(`${task.bot.name}.${task.kind} takes no attachments: only Lead's chat, consult and discussion do`);
+  const dir = dirname(list[0]!.path);
+  for (const a of list) {
+    if (!isAbsolute(a.path) || /[\s,()]/.test(a.path)) throw new TaskSetupError(`attachment ${a.path} must be an absolute path without a space, a comma or a parenthesis`);
+    if (dirname(a.path) !== dir || !ATTACHMENT_FILE.test(basename(a.path))) throw new TaskSetupError(`attachment ${a.path} is not an orchestrator copy in ${dir}`);
+    if (!(ATTACHMENT_MIMES as readonly string[]).includes(a.mime)) throw new TaskSetupError(`attachment ${basename(a.path)}: ${a.mime} cannot be shown to a bot`);
+  }
+  return { attachments: list.map((a) => ({ ...a })), dir };
 }
 
 /** Sites a browser task may open: the task's list (Apply: the approval's domains) or the bot's list. */

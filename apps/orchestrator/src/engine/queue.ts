@@ -6,7 +6,6 @@
 // first. The Figma lock covers the orchestrator's own fingerprint and export calls too.
 import { join } from "node:path";
 import {
-  ALLOWED_UPLOAD_TYPES,
   EngineSchema,
   PauseReasonSchema,
   failedSelfChecks,
@@ -53,7 +52,8 @@ import {
   type Task,
 } from "../db/index.js";
 import { SCREENSHOT_MANIFEST, readScreenshotManifest, type CapturedScreenshot } from "../runner/screenshots.js";
-import type { PermissionDenial, RunnerEvent, RunnerResult, RunnerTask } from "../runner/types.js";
+import type { PermissionDenial, RunnerAttachment, RunnerEvent, RunnerResult, RunnerTask } from "../runner/types.js";
+import { prepareConversationAttachments, uploadCopyName } from "./attachments.js";
 import {
   applyStoppedBeforeSpawn,
   flagApplyJob,
@@ -149,13 +149,7 @@ interface Inflight {
 /** Where the orchestrator's own Figma calls went wrong. */
 class FigmaGone extends Error {}
 
-/** `upload-<id><ext>`: the file name's extension when UC-24 allows it for the mime type, else the type's own. */
-export function uploadCopyName(file: { uploadId: string; filename: string; mime: string }): string {
-  const id = file.uploadId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 40) || "file";
-  const allowed: readonly string[] = (ALLOWED_UPLOAD_TYPES as Record<string, readonly string[]>)[file.mime] ?? [];
-  const fromName = /\.[A-Za-z0-9]{1,5}$/.exec(file.filename)?.[0]?.toLowerCase();
-  return `upload-${id}${fromName && allowed.includes(fromName) ? fromName : (allowed[0] ?? "")}`;
-}
+export { uploadCopyName } from "./attachments.js";
 
 /** The audit row a CV spawn writes with the protected pages' "before" hash (PM2 S4). */
 export const FIGMA_BEFORE_EVENT = "figma.before";
@@ -442,6 +436,7 @@ export class TaskQueue {
     let input: unknown = task.input;
     let readDirs: string[] | undefined;
     let allowedSites: string[] | undefined;
+    let attachments: RunnerAttachment[] | undefined;
     const taskDir = core.paths.abs(core.paths.taskDir(task.id));
     try {
       // A per-task read folder, so a bot never reads all of data/ (coordinator, W2b handoff).
@@ -458,6 +453,15 @@ export class TaskQueue {
         input = { ...file, path: dest };
         readDirs = [taskDir];
         core.db.transaction((tx) => updateTaskInput(tx, task.id, input));
+      }
+      // F8: the files Ba attached to the message this conversation answers, copied into
+      // tasks/<id>/attachments/: the only folder the bot may read for them (Lead: nothing else).
+      if (isConversationTask(task)) {
+        const attached = await prepareConversationAttachments(core, task.id, input);
+        if (attached) {
+          attachments = attached.attachments;
+          readDirs = [attached.dir];
+        }
       }
     } catch (err) {
       this.failBeforeSpawn(task, `could not prepare the task's read folder: ${errorMessage(err)}`);
@@ -536,6 +540,7 @@ export class TaskQueue {
         cwd: core.paths.botDir(task.botName),
         transcriptPath: core.paths.abs(core.paths.transcript(task.id, task.attempt)),
         ...(readDirs ? { readDirs } : {}),
+        ...(attachments ? { attachments } : {}),
         ...(allowedSites ? { allowedSites } : {}),
         usesBrowser: task.usesBrowser,
         ...(screenshotDir ? { screenshotDir } : {}),

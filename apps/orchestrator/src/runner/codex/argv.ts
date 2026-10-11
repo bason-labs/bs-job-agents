@@ -45,6 +45,12 @@ export interface CodexInvocationInput {
   pluginsToDisable: readonly string[];
   /** Browser bots: the MCP servers Ba's config defines (config.codexUserMcpServers, PM2 M3). */
   mcpServersToDisable: readonly string[];
+  /**
+   * F8: images Ba attached to a consult/discussion message (the task's own copies), passed with
+   * `-i <file>` (`codex exec --help`: "-i, --image <FILE>... Optional image(s) to attach to the
+   * initial prompt"). Each goes right after `exec`, so the variadic flag never takes the prompt.
+   */
+  images?: readonly string[];
 }
 
 export const codexPaths = (workDir: string) => ({
@@ -58,7 +64,7 @@ const display = (args: string[]) => displayArgs(args, {}, promptLabel);
 export function buildCodexInvocation(i: CodexInvocationInput): Invocation {
   const tools = codexToolConfig(i.plan);
   const paths = codexPaths(i.workDir);
-  const args = ["exec", "--json", "--skip-git-repo-check"];
+  const args = ["exec", ...(i.images ?? []).flatMap((file) => ["-i", file]), "--json", "--skip-git-repo-check"];
   if (tools.browser) {
     for (const id of i.pluginsToDisable) args.push("-c", `plugins.${JSON.stringify(id)}.enabled=false`);
     const own = new Set(tools.mcp.map((m) => m.server));

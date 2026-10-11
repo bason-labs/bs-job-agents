@@ -123,6 +123,19 @@ describe("POST /chat/messages in the Lead chat (UC-01, rule 1)", () => {
     expect((await send(h, lead, "ghost", ["999"])).statusCode).toBe(400);
   });
 
+  it("F8: Lead gets Ba's screenshot as a copy it may view (the API's upload → the runner's attachments)", async () => {
+    h = await createApiHarness();
+    const lead = await roomId(h, "lead");
+    h.t.files.write("/data/uploads/9-shot.png", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const upload = createUpload(h.t.db, { filename: "Screenshot at Oct 11 5-14-30 PM.png", mime: "image/png", size: 8, path: "uploads/9-shot.png", sha256: "e".repeat(64) });
+    const res = await send(h, lead, "I can't apply, see the screenshot", [String(upload.id)]);
+    expect(res.statusCode).toBe(201);
+    await h.t.idle();
+    const call = h.t.runner.callsFor("lead.chat")[0]!;
+    expect(call.attachments).toEqual([{ path: `/data/tasks/${call.taskId}/attachments/upload-${upload.id}.png`, name: "Screenshot at Oct 11 5-14-30 PM.png", mime: "image/png" }]);
+    expect(call.readDirs).toEqual([`/data/tasks/${call.taskId}/attachments`]);
+  });
+
   it("validates the body: no text and no file (400), an unknown room (404); 503 when degraded", async () => {
     h = await createApiHarness();
     const lead = await roomId(h, "lead");

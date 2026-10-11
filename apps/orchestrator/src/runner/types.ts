@@ -25,6 +25,14 @@ export interface RunnerTask {
   transcriptPath: string;
   /** Extra directories the bot may read (and upload from), e.g. the approved PDF folder for Apply. */
   readDirs?: string[];
+  /**
+   * Additive (F8): files Ba attached to the message a conversation task answers (lead.chat,
+   * consult, discussion), copied by the engine into the task's own `attachments/` folder (images,
+   * PDF and text). Claude may Read that one folder (its Read shows images to the model), even
+   * Lead, which gets no other file access (rule 5); Codex gets the images with `-i <file>`. The
+   * prompt lists them in an UNTRUSTED_CONTENT block: `name` is Ba's file name, untrusted.
+   */
+  attachments?: RunnerAttachment[];
   /** Sites the browser may navigate to for this task (bot allowlist, or the approval's domains for Apply). */
   allowedSites?: string[];
   /**
@@ -56,6 +64,16 @@ export interface RunnerTask {
   screenshotDir?: string;
   timeoutMs: number;
   signal?: AbortSignal;
+}
+
+/** F8: one attached file, as the engine copied it for the task. */
+export interface RunnerAttachment {
+  /** Absolute path of the copy, named by the orchestrator (upload-<id>.<ext>). */
+  path: string;
+  /** Ba's original file name (untrusted text). */
+  name: string;
+  /** image/png, image/jpeg, application/pdf or text/plain. */
+  mime: string;
 }
 
 /** Live events while a task runs; the engine turns them into `task.progress` / `engine.usage` events. */

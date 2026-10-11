@@ -45,7 +45,7 @@ const FIGMA_HOOKS: ClaudeHookSettings = {
   },
 };
 
-function claude(name: string, kind: string, extra: { readDirs?: string[]; hookSettings?: ClaudeHookSettings } = {}) {
+function claude(name: string, kind: string, extra: { readDirs?: string[]; hookSettings?: ClaudeHookSettings; attachmentDir?: string } = {}) {
   const def = bot(name);
   return buildClaudeInvocation({
     bot: def,
@@ -55,12 +55,13 @@ function claude(name: string, kind: string, extra: { readDirs?: string[]; hookSe
     sessionId: SID,
     workDir: W,
     readDirs: extra.readDirs ?? [],
+    attachmentDir: extra.attachmentDir ?? null,
     hookSettings: extra.hookSettings,
     config: CONFIG,
   });
 }
 
-function codex(name: string, kind: string, plugins: string[] = [], mcpServers: string[] = []) {
+function codex(name: string, kind: string, plugins: string[] = [], mcpServers: string[] = [], images: string[] = []) {
   const def = bot(name);
   return buildCodexInvocation({
     bot: def,
@@ -71,8 +72,11 @@ function codex(name: string, kind: string, plugins: string[] = [], mcpServers: s
     config: CONFIG,
     pluginsToDisable: plugins,
     mcpServersToDisable: mcpServers,
+    images,
   });
 }
+
+const ATTACHED = "/repo/data/tasks/9/attachments";
 
 const chrome = (t: string) => `mcp__claude-in-chrome__${t}`;
 const SETTINGS = '{"autoMemoryEnabled":false}';
@@ -103,6 +107,35 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
       "--model", "sonnet",
     ]);
     expect(JSON.parse(inv.files[`${W}/mcp.json`]!)).toEqual({ mcpServers: { orchestrator: { type: "http", url: "http://127.0.0.1:4100/mcp" } } });
+  });
+
+  it("lead with Ba's screenshot (F8): Read on the task's attachments folder only, still no shell, browser or write tool (rule 5)", () => {
+    const inv = claude("lead", "chat", { attachmentDir: ATTACHED });
+    expect(inv.display).toEqual([
+      "-p", "<prompt: 6 chars>",
+      "--output-format", "stream-json", "--verbose",
+      "--setting-sources", "",
+      "--disable-slash-commands",
+      "--tools", "Read",
+      "--allowedTools",
+      `Read(/${ATTACHED}/**)`,
+      "mcp__orchestrator__start_workflow",
+      "mcp__orchestrator__create_task",
+      "mcp__orchestrator__get_status",
+      "mcp__orchestrator__get_result",
+      "mcp__orchestrator__message_user",
+      "mcp__orchestrator__propose_workflow",
+      "--mcp-config", `${W}/mcp.json`,
+      "--strict-mcp-config",
+      "--settings", SETTINGS,
+      "--json-schema", "<schema: LeadOutput>",
+      "--session-id", SID,
+      "--permission-prompts", "none",
+      "--model", "sonnet",
+      "--add-dir", ATTACHED,
+    ]);
+    // Lead's readDirs (no `read` tool) never widen it: only the attachments folder is granted.
+    expect(claude("lead", "chat", { attachmentDir: ATTACHED, readDirs: ["/repo/data"] }).args.filter((a) => a.startsWith("Read("))).toEqual([`Read(/${ATTACHED}/**)`]);
   });
 
   it("cv", () => {
@@ -289,6 +322,22 @@ describe("Codex argv (spike S1/S2/S4)", () => {
       "<prompt: 6 chars>",
     ]);
     expect(JSON.parse(inv.files[`${W}/schema.json`]!)).toEqual(getBotOutputJsonSchema("QaOutput"));
+  });
+
+  it("qa consult with Ba's screenshots (F8): each image with -i right after exec, so the variadic flag never takes the prompt", () => {
+    const inv = codex("qa", "consult", [], [], [`${ATTACHED}/upload-3.png`, `${ATTACHED}/upload-5.jpg`]);
+    expect(inv.display).toEqual([
+      "exec",
+      "-i", `${ATTACHED}/upload-3.png`,
+      "-i", `${ATTACHED}/upload-5.jpg`,
+      "--json", "--skip-git-repo-check",
+      "--ignore-user-config", "--disable", "apps",
+      "--sandbox", "read-only",
+      "-c", 'web_search="disabled"',
+      "--output-schema", `${W}/schema.json`,
+      "-o", `${W}/last.json`,
+      "<prompt: 6 chars>",
+    ]);
   });
 
   it("research (browser): Ba's config keeps only the Chrome plugin: other plugins, his MCP servers, connectors and notify off (PM2 M3)", () => {
