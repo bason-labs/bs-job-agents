@@ -257,5 +257,8 @@ describe("orchestrator MCP server (S17)", () => {
     expect(await raw(port, `/mcp/${token}`, { headers: { host: `evil.example:${port}` } })).toBe(403);
     expect(await raw(port, `/mcp/${token}`, { method: "GET" })).toBe(405);
     expect(await raw(port, "/other")).toBe(404);
+    // A malformed capability is just not found (no 500, nothing logged as a server error).
+    expect(await raw(port, "/mcp/%E0%A4%A")).toBe(404);
+    expect(await raw(port, `/mcp/${token}%`)).toBe(404);
   });
 });
