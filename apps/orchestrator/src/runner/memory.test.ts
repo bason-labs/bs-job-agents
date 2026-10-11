@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defaultBotsDir } from "./config.js";
-import { MEMORY_TEMPLATE, appendMemoryNotes, formatMemoryLine, seedMemoryFiles } from "./memory.js";
+import { MEMORY_TEMPLATE, appendMemoryNotes, formatMemoryLine, memoryNoteId, removeMemoryNote, seedMemoryFiles } from "./memory.js";
 
 let dir: string;
 beforeEach(() => {
@@ -85,6 +85,23 @@ describe("appendMemoryNotes (§5.4, rule 2)", () => {
     expect(lines()[0]).toBe("- old 2");
     expect(lines().at(-1)).toMatch(/new two$/);
     expect(lines("memory.archive.md")).toEqual(["- old 0", "- old 1"]);
+  });
+
+  it("removeMemoryNote deletes one note by id under the bot's lock, so it never races an append (coordinator, W3a)", async () => {
+    await appendMemoryNotes({ botDir: dir, notes: ["keep one", "drop me", "keep two"], runId: 1, taskId: 1, now: NOW });
+    const target = lines().find((l) => l.endsWith("drop me"))!;
+    const removedSeen: string[] = [];
+    const [removed] = await Promise.all([
+      removeMemoryNote({ botDir: dir, noteId: memoryNoteId(target), onRemoved: (n) => void removedSeen.push(n) }),
+      appendMemoryNotes({ botDir: dir, notes: ["late note"], runId: 1, taskId: 2, now: NOW }),
+    ]);
+    expect(removed).toBe("drop me");
+    expect(removedSeen).toEqual(["drop me"]);
+    expect(lines().map((l) => l.replace(/^- [^:]*: /, ""))).toEqual(["keep one", "keep two", "late note"]);
+    expect(await removeMemoryNote({ botDir: dir, noteId: memoryNoteId(target) })).toBeNull();
+    expect(await removeMemoryNote({ botDir: dir, noteId: "not-an-id" })).toBeNull();
+    expect(memoryNoteId(`  ${target}  `)).toBe(memoryNoteId(target));
+    expect(memoryNoteId(target)).toMatch(/^[0-9a-f]{16}$/);
   });
 
   it("creates memory.md when it is missing", async () => {

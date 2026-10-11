@@ -5,6 +5,7 @@
 // PM2 S5: memory.md and memory.archive.md are runtime state, gitignored like data/ (Ba's lessons
 // never end up in commits). Start-up seeds a missing memory.md from MEMORY_TEMPLATE; the first
 // append creates it too.
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { appendFile, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -81,6 +82,44 @@ export function appendMemoryNotes(input: AppendMemoryInput): Promise<AppendMemor
       await input.onNote?.(note);
     }
     return result;
+  });
+}
+
+/** A note line's id for the Bots screen: the first 16 hex characters of the trimmed line's SHA-256. */
+export function memoryNoteId(line: string): string {
+  return createHash("sha256").update(line.trim()).digest("hex").slice(0, 16);
+}
+
+export interface RemoveMemoryNoteInput {
+  /** bots/<name>/ */
+  botDir: string;
+  noteId: string;
+  /** Called with the note's text after the file was rewritten, still inside the bot's lock (memory_changes). */
+  onRemoved?: (note: string) => void | Promise<void>;
+}
+
+/**
+ * PM2 S14 / W3a: Ba deletes one note (Bots screen). Under the same per-bot lock as appendMemoryNotes,
+ * so a delete never loses an append that lands at the same moment. Returns the note's text, or null
+ * when no line has that id.
+ */
+export function removeMemoryNote(input: RemoveMemoryNoteInput): Promise<string | null> {
+  const botDir = resolve(input.botDir);
+  return serialised(botDir, async () => {
+    if (!/^[0-9a-f]{16}$/.test(input.noteId)) return null;
+    const memoryPath = join(botDir, "memory.md");
+    const text = await readFile(memoryPath, "utf8").catch(() => null);
+    if (text === null) return null;
+    const lines = text.split("\n").filter((l) => l.trim().length > 0);
+    const index = lines.findIndex((l) => memoryNoteId(l) === input.noteId);
+    if (index < 0) return null;
+    const [line] = lines.splice(index, 1);
+    const tmp = `${memoryPath}.tmp`;
+    await writeFile(tmp, lines.length > 0 ? `${lines.join("\n")}\n` : "");
+    await rename(tmp, memoryPath);
+    const note = noteOf(line!.trim()).replace(/^[-*]\s+/, "");
+    await input.onRemoved?.(note);
+    return note;
   });
 }
 

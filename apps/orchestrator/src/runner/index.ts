@@ -23,7 +23,7 @@ export { BotDefinitionError, assertRunnableBot, botTaskKinds, loadBotDefinition,
 export { staleBotSchemas, writeBotSchemas } from "./schemas.js";
 export { PROMPT_LOCK_FILE, PromptLockError, checkPromptLock, currentPromptVersions, readPromptLock, updatePromptLock, type PromptLock } from "./prompt-lock.js";
 export { PromptSecurityError, UNTRUSTED_INPUT_FIELDS, buildPrompt } from "./prompt.js";
-export { MEMORY_TEMPLATE, appendMemoryNotes, seedMemoryFiles, type AppendMemoryInput, type AppendMemoryResult } from "./memory.js";
+export { MEMORY_TEMPLATE, appendMemoryNotes, memoryNoteId, removeMemoryNote, seedMemoryFiles, type AppendMemoryInput, type AppendMemoryResult, type RemoveMemoryNoteInput } from "./memory.js";
 export { MEMORY_NOTE_MAX_CHARS, filterMemoryNotes, screenMemoryNote, type MemoryDropReason } from "./memory-hygiene.js";
 export { RunnerConfigError, TaskSetupError } from "./errors.js";
 export { killProcessGroup, nodeSpawn, type KillTreeFn, type SpawnFn } from "./process.js";
