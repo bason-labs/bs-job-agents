@@ -9,7 +9,9 @@ import { formatDateTime } from "@/components/schedules/datetime";
 import { Button, Field, NumberInput, Select, Slider, useToast } from "@/components/ui";
 import { ChipInput, ToggleChips } from "./ChipInput";
 import { SavedAnswers } from "./SavedAnswers";
-import { criteriaData, type CriteriaData, type CriteriaVersions } from "./data";
+import { ResourceGate } from "@/components/schedules/ResourceGate";
+import { useResource } from "@/lib/api/react";
+import { readCriteria, useCriteriaData, type CriteriaData, type CriteriaVersions } from "./data";
 import {
   CHIP_FIELDS,
   CURRENCY_OPTIONS,
@@ -28,12 +30,23 @@ import {
 } from "./logic";
 
 export interface CriteriaScreenProps {
-  initial: SearchProfile;
+  /** The active profile; null before the first save (GET /criteria answered 404). */
+  initial: SearchProfile | null;
   initialVersions: CriteriaVersions["versions"];
   /** UC-12 remembered answers, shown next to the form defaults. */
   initialAnswers?: SavedAnswer[];
-  /** Defaults to the app's data source; tests pass their own. */
-  data?: CriteriaData;
+  data: CriteriaData;
+}
+
+/** The page: criteria, versions and saved answers read through lib/api, then the form. */
+export function CriteriaLive() {
+  const data = useCriteriaData();
+  const read = useResource("w3c:criteria", () => readCriteria(data));
+  return (
+    <ResourceGate resource={read} label="search criteria">
+      {(r) => <CriteriaScreen initial={r.profile} initialVersions={r.versions} initialAnswers={r.answers} data={data} />}
+    </ResourceGate>
+  );
 }
 
 function Card({ children, className, invalid }: { children: ReactNode; className?: string; invalid?: boolean }) {
@@ -68,10 +81,20 @@ const SALARY_RULE_NOTES: Record<CriteriaForm["salaryPolicy"], ReactNode> = {
 };
 
 /** UC-21b: edit the active Search Profile (§7.5); saving creates a new version. */
-export function CriteriaScreen({ initial, initialVersions, initialAnswers = [], data = criteriaData }: CriteriaScreenProps) {
+export function CriteriaScreen({ initial, initialVersions, initialAnswers = [], data }: CriteriaScreenProps) {
   const [profile, setProfile] = useState(initial);
   const [form, setForm] = useState<CriteriaForm>(() => profileToForm(initial));
   const [versions, setVersions] = useState(initialVersions);
+  const [seen, setSeen] = useState({ initial, initialVersions });
+  if (seen.initial !== initial || seen.initialVersions !== initialVersions) {
+    // A fresh read (e.g. "Save to my criteria" in chat made a new version): take it unless Ba is editing.
+    setSeen({ initial, initialVersions });
+    if (!isDirty(form, profile) && (initial?.version ?? 0) >= (profile?.version ?? 0)) {
+      setProfile(initial);
+      setForm(profileToForm(initial));
+      setVersions(initialVersions);
+    }
+  }
   const [errors, setErrors] = useState<CriteriaErrors>({});
   const [tried, setTried] = useState(false);
   const [saving, setSaving] = useState(false);
