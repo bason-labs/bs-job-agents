@@ -10,8 +10,10 @@ import { open, presetTheme } from "./helpers";
 const OUT = path.join(__dirname, "__screenshots__");
 const WRITE = process.env.UPDATE_SCREENSHOTS === "1";
 
-const SHOTS: Array<{ name: string; route: string; fullPage: boolean }> = [
-  { name: "chat", route: "/chat", fullPage: false },
+const SHOTS: Array<{ name: string; route: string; fullPage: boolean; ready?: string }> = [
+  { name: "chat", route: "/chat", fullPage: false, ready: "[data-testid=run-card] li" },
+  { name: "flows-run", route: "/flows/12", fullPage: false, ready: "[data-testid=node-record-103]" },
+  { name: "review", route: "/review", fullPage: false, ready: "[data-testid=cv-preview]" },
   { name: "dev-components", route: "/dev/components", fullPage: true },
 ];
 
@@ -23,6 +25,7 @@ for (const theme of ["light", "dark"] as const) {
       await presetTheme(page, theme);
       await open(page, shot.route);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+      if (shot.ready) await page.locator(shot.ready).first().waitFor();
       await page.evaluate(() => document.fonts.ready);
       const image = await page.screenshot({
         fullPage: shot.fullPage,
