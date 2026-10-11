@@ -30,6 +30,12 @@ const play = (lines: string[], over: Partial<FakeScript> = {}): FakeScript => {
 };
 const deleteOk: FakeScript = { stdout: [], stderr: [], exitCode: 0 };
 
+/** Research as it runs if Ba picks E1 option B or C: bots/research/bot.json is on Claude (option A). */
+function codexResearch() {
+  const { def, cwd } = kit.realBot("research");
+  return { def: { ...def, engine: "codex" as const }, cwd };
+}
+
 function runner(scripts: FakeScript[], plugins: string[] = [], mcpServers: string[] = []) {
   const queue = [...scripts];
   const fake = fakeSpawn((_command, args) => (args[0] === "delete" ? deleteOk : queue.shift() ?? deleteOk));
@@ -85,7 +91,7 @@ describe("CodexRunner: a successful run", () => {
   });
 
   it("consult mode: web search off and no MCP servers, even for Research (UC-25)", async () => {
-    const { def, cwd } = kit.realBot("research");
+    const { def, cwd } = codexResearch();
     const { r, work } = runner([play(codexLines("structuredOk"))]);
     await r.run(kit.task(def, cwd, { kind: "consult", input: CONSULT_INPUT }), () => {});
     const args = work()[0]!.args;
@@ -94,7 +100,7 @@ describe("CodexRunner: a successful run", () => {
   });
 
   it("Research scan (browser): Ba's config with the other plugins off, host skills skipped, live search", async () => {
-    const { def, cwd } = kit.realBot("research");
+    const { def, cwd } = codexResearch();
     const { r, work } = runner([play(codexLines("structuredOk"))], ["browser@openai-bundled"], ["node_repl", "computer-use"]);
     await r.run(kit.task(def, cwd, { kind: "scan", input: researchScanInputFixture }), () => {});
     const args = work()[0]!.args;
@@ -112,7 +118,7 @@ describe("CodexRunner: a successful run", () => {
   });
 
   it("by default reads Ba's MCP servers from his Codex config (PM2 M3)", async () => {
-    const { def, cwd } = kit.realBot("research");
+    const { def, cwd } = codexResearch();
     writeFileSync(kit.config().codexUserConfigPath, '[plugins."chrome@openai-bundled"]\nenabled = true\n\n[mcp_servers.node_repl]\ncommand = "/x"\n');
     const fake = fakeSpawn((_c, args) => (args[0] === "delete" ? deleteOk : play(codexLines("structuredOk"))));
     const r = new CodexRunner(kit.config(), { spawn: fake.spawn, now: () => NOW.getTime() });
@@ -123,7 +129,7 @@ describe("CodexRunner: a successful run", () => {
   });
 
   it("a Research task that does not hold the browser lock gets no Chrome (§10.3): fit, company and file are search-only", async () => {
-    const { def, cwd } = kit.realBot("research");
+    const { def, cwd } = codexResearch();
     const { r, work } = runner([play(codexLines("structuredOk"))], ["browser@openai-bundled"]);
     await r.run(kit.task(def, cwd, { kind: "company", input: { name: "NovaPay", website: null }, usesBrowser: false }), () => {});
     const args = work()[0]!.args;

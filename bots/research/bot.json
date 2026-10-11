@@ -2,7 +2,7 @@
   "name": "research",
   "displayName": "Research",
   "role": "Find jobs that fit Ba and profile the companies behind them.",
-  "engine": "codex",
+  "engine": "claude",
   "model": null,
   "trustLevel": 2,
   "allowedTools": ["read", "web_search", "chrome:read", "skill:source-*"],
@@ -48,5 +48,5 @@
       "Every claim comes from a cited source"
     ]
   },
-  "promptVersion": 1
+  "promptVersion": 2
 }
