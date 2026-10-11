@@ -25,6 +25,8 @@ import {
   EnginesResponseSchema,
   ExportResponseSchema,
   ExportsResponseSchema,
+  FactDraftStartedSchema,
+  FactDraftViewSchema,
   FactRequestsResponseSchema,
   HealthStatusSchema,
   LIMITS,
@@ -66,6 +68,7 @@ import { ApiRequestError } from "../errors";
 import type { QueryValue } from "../routes";
 import type { MockBackend } from "./backend";
 import { activeProfile, saveCriteria } from "./criteria";
+import { readFactDraft, startFactDraft, undoFacts } from "./fact-drafts";
 import { figmaGuardOffFor, residualRiskFor } from "./seed-bots";
 import * as sim from "./sim";
 import type { ApplicationExtra } from "./state";
@@ -485,8 +488,13 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
     const saved = { ...body, version: current === null ? 1 : current + 1 };
     core.state.masterCv = { kind: "ok", cv: saved };
     core.state.masterCvVersions.push({ version: saved.version, savedAt: core.nowIso(), factCount: saved.facts.length });
+    core.emit({ type: "master_cv.updated", version: saved.version, change: "saved", factIds: [], taskId: null });
     return saved;
   }),
+  // Owner request 2026-10-11: facts from Ba's own words (mock/fact-drafts.ts mirrors the orchestrator).
+  route("POST", API_ROUTES.masterCvFactDrafts, FactDraftStartedSchema, (core, req) => startFactDraft(core, req.body)),
+  route("GET", API_ROUTES.masterCvFactDraft, FactDraftViewSchema, (core, req) => readFactDraft(core, req.params.taskId!)),
+  route("POST", API_ROUTES.masterCvFactsUndo, MasterCvSchema, (core, req) => undoFacts(core, req.body)),
   route("GET", API_ROUTES.masterCvVersions, MasterCvVersionsResponseSchema, (core) => ({
     versions: [...core.state.masterCvVersions].sort((a, b) => b.version - a.version),
   })),

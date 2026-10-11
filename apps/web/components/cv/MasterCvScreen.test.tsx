@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { ToastProvider } from "@/components/ui";
 import { MASTER_CV } from "@/lib/api/mock/seed-master-cv";
 import type { MockMasterCv } from "@/lib/api/mock/state";
-import { testMock } from "@/lib/api/mock/testing";
+import { gatedSleep, testMock } from "@/lib/api/mock/testing";
 import { ApiProvider } from "@/lib/api/react";
 import { createMasterCvData, readMasterCvPage, type MasterCvData } from "./data";
 import { MasterCvLive, MasterCvScreen } from "./MasterCvScreen";
@@ -15,9 +15,9 @@ async function cvOf(data: MasterCvData) {
   return read.cv;
 }
 
-async function setup(opts: { file?: MockMasterCv } = {}) {
-  const mock = testMock({ state: (s) => void (opts.file && (s.masterCv = opts.file)) });
-  const data = createMasterCvData(mock);
+async function setup(opts: { file?: MockMasterCv; sleep?: (ms: number) => Promise<void> } = {}) {
+  const mock = testMock({ state: (s) => void (opts.file && (s.masterCv = opts.file)), ...(opts.sleep ? { sleep: opts.sleep } : {}) });
+  const data = createMasterCvData(mock, { pollMs: 5 });
   const page = await readMasterCvPage(data);
   const user = userEvent.setup();
   render(
@@ -63,21 +63,91 @@ describe("MasterCvScreen (UC-20)", () => {
     expect((await cvOf(data)).version).toBe(7);
   });
 
-  it("answers CV's question by adding a prefilled fact (§6.1)", async () => {
+  it("answers CV's question in free text: CV adds the fact, shown with Added, Undo and Edit; the question goes (owner request 2026-10-11)", async () => {
     const { user, data } = await setup();
     const request = screen.getByTestId("fact-request");
     expect(request).toHaveTextContent("CV asks: “Have you used GraphQL in a project?” NovaPay asks for it");
-    await user.click(within(request).getByRole("button", { name: "Add a fact" }));
+    expect(within(request).queryByRole("button", { name: "Add a fact" })).toBeNull();
+    expect(within(request).getByRole("button", { name: "Add" })).toBeDisabled();
+    await user.type(within(request).getByRole("textbox", { name: /Your answer/ }), "Yes, I used GraphQL with Apollo Client at Aegona.");
+    await user.click(within(request).getByRole("button", { name: "Add" }));
+
+    const added = await screen.findByTestId("fact-added");
+    expect(added.dataset.factId).toBe("aeg-2");
+    expect(added).toHaveTextContent("Addedfrom your words");
+    expect(added).toHaveTextContent("I used GraphQL with Apollo Client at Aegona.");
     expect(screen.queryByTestId("fact-request")).toBeNull();
-    const text = within(screen.getByTestId("fact-editor")).getByLabelText("Text (English)");
-    expect(text).toHaveValue("GraphQL — ");
-    await user.type(text, "Apollo Client at Aegona");
-    await user.click(screen.getByTestId("cv-save"));
-    await screen.findByText(/Master CV saved as v8/);
-    expect((await cvOf(data)).facts.at(-1)).toMatchObject({ id: "skill-2", text: "GraphQL — Apollo Client at Aegona", tags: ["graphql"] });
-    // Answered with a saved fact: closed on the server too, so it doesn't come back.
-    expect((await data.factRequests()).map((r) => r.topic)).not.toContain("GraphQL");
-    expect(screen.queryAllByTestId("fact-request").map((r) => r.textContent)).not.toContain(expect.stringMatching(/GraphQL/));
+    expect(screen.getByTestId("cv-header")).toHaveTextContent("Master version v8.");
+    expect(screen.queryByText("unsaved changes")).toBeNull();
+    expect((await cvOf(data)).facts.at(-1)).toMatchObject({ id: "aeg-2", org: "Aegona", dates: "Feb 2024 – Sep 2025", tags: ["graphql"] });
+    expect(await data.factRequests()).toEqual([]);
+    expect(screen.getByTestId("retailor-banner")).toHaveTextContent("Re-tailor CVs for: NovaPay");
+
+    // Edit opens the fact editor on it.
+    await user.click(within(added).getByRole("button", { name: "Edit" }));
+    expect(within(screen.getByTestId("fact-editor")).getByLabelText("Fact id")).toHaveValue("aeg-2");
+  });
+
+  it("Undo removes the added fact, restores the version before (as a new version) and brings the question back", async () => {
+    const { user, data } = await setup();
+    const request = screen.getByTestId("fact-request");
+    await user.type(within(request).getByRole("textbox", { name: /Your answer/ }), "Yes, I used GraphQL with Apollo Client at Aegona.");
+    await user.click(within(request).getByRole("button", { name: "Add" }));
+    await user.click(within(await screen.findByTestId("fact-added")).getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("Undone — master CV restored as v9.")).toBeInTheDocument();
+    expect(screen.queryByTestId("fact-added")).toBeNull();
+    expect(screen.getAllByTestId("fact").map((f) => f.dataset.factId)).not.toContain("aeg-2");
+    expect(screen.getByTestId("cv-header")).toHaveTextContent("Master version v9.");
+    expect((await cvOf(data)).facts.map((f) => f.id)).not.toContain("aeg-2");
+    expect(await screen.findByTestId("fact-request")).toBeInTheDocument();
+    expect(screen.queryByTestId("retailor-banner")).toBeNull();
+  });
+
+  it("shows CV's progress while it drafts, then the facts from the free-text box (⌘+Enter)", async () => {
+    const gate = gatedSleep();
+    const { user } = await setup({ sleep: gate.sleep });
+    const box = within(screen.getByTestId("fact-free-text")).getByRole("textbox", { name: "Tell me something new about your experience" });
+    await user.type(box, "I mentor two junior developers at Gradion");
+    await user.keyboard("{Meta>}{Enter}{/Meta}");
+    expect(await screen.findByTestId("fact-drafting")).toHaveTextContent("CV is turning your words into facts…");
+    expect(box).toBeDisabled();
+    gate.release();
+    const added = await screen.findByTestId("fact-added");
+    expect(added).toHaveTextContent("I mentor two junior developers at Gradion");
+    expect(screen.queryByTestId("fact-drafting")).toBeNull();
+    expect(box).toHaveValue("");
+    // A free-text fact answers no job's question: nothing to re-tailor.
+    expect(screen.queryByTestId("retailor-banner")).toBeNull();
+  });
+
+  it("shows CV's note and adds nothing when Ba's answer is no", async () => {
+    const { user, data } = await setup();
+    const request = screen.getByTestId("fact-request");
+    await user.type(within(request).getByRole("textbox", { name: /Your answer/ }), "No, never used it.");
+    await user.click(within(request).getByRole("button", { name: "Add" }));
+    expect(await within(request).findByTestId("fact-draft-note")).toHaveTextContent("You said no, so I added nothing.");
+    expect(screen.queryByTestId("fact-added")).toBeNull();
+    expect((await cvOf(data)).version).toBe(7);
+  });
+
+  it("re-tailors the CVs of the jobs whose questions Ba answered", async () => {
+    const { user, mock } = await setup();
+    const request = screen.getByTestId("fact-request");
+    await user.type(within(request).getByRole("textbox", { name: /Your answer/ }), "Yes, I used GraphQL with Apollo Client at Aegona.");
+    await user.click(within(request).getByRole("button", { name: "Add" }));
+    const banner = await screen.findByTestId("retailor-banner");
+    await user.click(within(banner).getByRole("button", { name: "Re-tailor CVs" }));
+    expect(await within(banner).findByTestId("retailor-results")).toHaveTextContent("NovaPay: CV is tailoring it again");
+    await mock.idle();
+  });
+
+  it("a draft sent from a stale page shows the reload banner (409 master_cv_changed)", async () => {
+    const { user, data } = await setup();
+    await data.save(await cvOf(data)); // another tab saves v8
+    await user.type(within(screen.getByTestId("fact-free-text")).getByRole("textbox"), "I mentor two juniors at Gradion");
+    await user.click(screen.getByRole("button", { name: "Add facts" }));
+    expect(await screen.findByTestId("cv-conflict")).toHaveTextContent("now v8");
+    expect(screen.queryByTestId("fact-added")).toBeNull();
   });
 
   it("“No, I don't” closes CV's question on the server", async () => {

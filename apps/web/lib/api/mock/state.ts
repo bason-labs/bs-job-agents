@@ -24,6 +24,7 @@ import type {
   WorkflowProposal,
 } from "@bs-job-agents/shared";
 import type { ProgressLine } from "../contract";
+import type { MockFactDraft } from "./fact-drafts";
 import type { MockLeadProposal } from "./lead-proposals";
 
 /** A step row plus its last preview text (the engine only sends it in step.* events; W3a handoff). */
@@ -106,6 +107,8 @@ export interface MockState {
   masterCv: MockMasterCv;
   masterCvVersions: { version: number; savedAt: string; factCount: number }[];
   factRequests: FactRequestItem[];
+  /** Owner request 2026-10-11: facts drafted from Ba's words, by task id (created on first use). */
+  factDrafts?: Record<string, MockFactDraft>;
   /** Lead's propose_workflow suggestions (rule 3), oldest first. */
   proposals: WorkflowProposal[];
   /** Workflows saved by approving a proposal: name → latest version. */

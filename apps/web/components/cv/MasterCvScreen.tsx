@@ -1,8 +1,8 @@
 "use client";
 
-import type { Fact, MasterCv } from "@bs-job-agents/shared";
-import { CircleHelp, FileWarning, NotebookPen, RefreshCw } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import type { Fact, FactDraftRetailor, FactDraftView, MasterCv } from "@bs-job-agents/shared";
+import { FileWarning, NotebookPen, RefreshCw } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button, EmptyState, Field, Input, useToast } from "@/components/ui";
 import { errorDetails, errorReason, errorText } from "@/components/schedules/apiError";
 import { formatDateTime } from "@/components/schedules/datetime";
@@ -10,7 +10,20 @@ import { ResourceGate } from "@/components/schedules/ResourceGate";
 import { useResource } from "@/lib/api/react";
 import { readMasterCvPage, useMasterCvData, type FactRequestItem, type MasterCvData, type MasterCvRead, type MasterCvVersion } from "./data";
 import { FactCard } from "./FactCard";
-import { factFromRequest, hasErrors, isMasterDirty, newFact, validateMasterCv, type MasterCvErrors } from "./logic";
+import { AddedBar, FactRequestCard, FreeTextFacts, RetailorBanner, type DraftNote, type RetailorResult } from "./FactDrafts";
+import { hasErrors, isMasterDirty, newFact, validateMasterCv, type MasterCvErrors } from "./logic";
+
+/** The free-text box's key among the answer boxes (request ids are `<cvVersionId>-<index>`). */
+const FREE = "free";
+
+/** Facts CV added from Ba's words in one draft (Undo removes them together). */
+interface AddedGroup {
+  taskId: string;
+  version: number;
+  factIds: string[];
+  requestId: string | null;
+  jobId: string | null;
+}
 
 export interface MasterCvScreenProps {
   initial: MasterCvRead;
@@ -153,8 +166,22 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, data
   const [saving, setSaving] = useState(false);
   /** The version on disk when a save was refused as stale (409 master_cv_changed). */
   const [conflict, setConflict] = useState<number | null>(null);
-  /** Fact requests answered with a new fact, closed on the server once it is saved. */
-  const answered = useRef(new Set<string>());
+  // Facts from Ba's own words (owner request 2026-10-11), keyed by request id or FREE.
+  const [texts, setTexts] = useState<Record<string, string>>({});
+  const [drafting, setDrafting] = useState<Record<string, boolean>>({});
+  const [notes, setNotes] = useState<Record<string, DraftNote | null>>({});
+  /** Additions CV made from Ba's words on this page, shown highlighted with Undo and Edit. */
+  const [added, setAdded] = useState<AddedGroup[]>([]);
+  const [undoing, setUndoing] = useState<string | null>(null);
+  /** Jobs whose questions Ba answered with facts: "Re-tailor CVs for: …". */
+  const [retailor, setRetailor] = useState<FactDraftRetailor[]>([]);
+  /** Aborted when the page goes: polling stops. */
+  const alive = useRef(new AbortController());
+  useEffect(() => {
+    const controller = new AbortController();
+    alive.current = controller;
+    return () => controller.abort();
+  }, []);
   const { toast } = useToast();
   const ids = { name: useId(), email: useId(), phone: useId(), location: useId() };
 
@@ -213,11 +240,8 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, data
       setEditing(null);
       setErrors(NO_ERRORS);
       setTried(false);
-      // Requests Ba answered with a fact are closed now that the fact is saved (the API keeps a request
-      // open until it is dismissed or its job closes).
-      const closing = answered.current;
-      answered.current = new Set();
-      await Promise.all([...closing].map((id) => data.dismissFactRequest(id).catch(() => undefined)));
+      // Facts added from Ba's words are part of this saved version now: Undo no longer applies.
+      setAdded([]);
       const [v, r] = await Promise.all([data.versions(), data.factRequests()]);
       setVersions(v);
       setRequests(r);
@@ -236,15 +260,87 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, data
     }
   };
 
-  const addFromRequest = (r: FactRequestItem) => {
-    const fact = factFromRequest(
-      items.map((i) => i.fact),
-      r,
-    );
-    addFact(fact);
-    answered.current.add(r.id);
-    setRequests((rs) => rs.filter((x) => x.id !== r.id));
-    toast({ title: `Fact ${fact.id} added — finish its text, then Save` });
+  // ---------------------------------------------------------------- facts from Ba's words
+
+  /** Start a draft: `key` is the request id, or FREE for the free-text box. */
+  const draftFrom = async (key: string, text: string, request: FactRequestItem | null) => {
+    setNotes((n) => ({ ...n, [key]: null }));
+    setDrafting((d) => ({ ...d, [key]: true }));
+    try {
+      const { taskId } = await data.draftFacts({ text: text.trim(), factRequestId: request?.id ?? null, version: saved.version });
+      const view = await data.awaitFactDraft(taskId, { signal: alive.current.signal });
+      if (alive.current.signal.aborted) return;
+      if (view.status === "added") await onAdded(key, view, request);
+      else if (view.status === "no_facts") {
+        setNotes((n) => ({
+          ...n,
+          [key]: { tone: "note", text: view.notes ?? "CV found nothing to add from your words.", rejected: view.rejected.map((r) => ({ text: r.text, reasons: r.reasons })) },
+        }));
+      } else setNotes((n) => ({ ...n, [key]: { tone: "error", text: `CV couldn't write the fact: ${view.error ?? "the task failed"}. Try again.` } }));
+    } catch (e) {
+      if (errorReason(e) === "master_cv_changed") {
+        const current = errorDetails(e)?.currentVersion;
+        setConflict(typeof current === "number" ? current : saved.version + 1);
+      } else setNotes((n) => ({ ...n, [key]: { tone: "error", text: `Couldn't send your answer: ${errorText(e)}` } }));
+    } finally {
+      if (!alive.current.signal.aborted) setDrafting((d) => ({ ...d, [key]: false }));
+    }
+  };
+
+  /** CV's facts are in the master CV: show them highlighted (Undo / Edit), keep Ba's unsaved edits. */
+  const onAdded = async (key: string, view: FactDraftView, request: FactRequestItem | null) => {
+    const read = await data.get();
+    const server = read.state === "ok" ? read.cv : { ...saved, version: view.version ?? saved.version + 1, facts: [...saved.facts, ...view.facts] };
+    const have = new Set(items.map((i) => i.fact.id));
+    const fresh = view.facts.filter((f) => !have.has(f.id));
+    setItems((xs) => [...xs, ...toItems(fresh)]);
+    setSaved(server);
+    setTexts((t) => ({ ...t, [key]: "" }));
+    setAdded((a) => [...a, { taskId: view.taskId, version: view.version!, factIds: view.facts.map((f) => f.id), requestId: request?.id ?? null, jobId: view.retailor?.jobId ?? null }]);
+    if (view.retailor) {
+      const job = view.retailor;
+      setRetailor((r) => [...r.filter((x) => x.jobId !== job.jobId), job]);
+    }
+    if (request) setRequests((rs) => rs.filter((x) => x.id !== request.id));
+    const [v, r] = await Promise.all([data.versions(), data.factRequests()]);
+    setVersions(v);
+    setRequests(r);
+    toast({ title: `${view.facts.length === 1 ? `Added ${view.facts[0]!.id}` : `Added ${view.facts.length} facts`} from your words (v${server.version}). Undo or edit it below.` });
+  };
+
+  const undoAdded = async (group: AddedGroup) => {
+    setUndoing(group.taskId);
+    try {
+      const restored = await data.undoFacts(group.version);
+      const ids = new Set(group.factIds);
+      setItems((xs) => xs.filter((i) => !ids.has(i.fact.id)));
+      if (editing !== null && items.some((i) => i.key === editing && ids.has(i.fact.id))) setEditing(null);
+      setSaved(restored);
+      setAdded((a) => a.filter((g) => g.taskId !== group.taskId));
+      if (group.jobId && !added.some((g) => g.taskId !== group.taskId && g.jobId === group.jobId)) setRetailor((r) => r.filter((x) => x.jobId !== group.jobId));
+      const [v, r] = await Promise.all([data.versions(), data.factRequests()]);
+      setVersions(v);
+      setRequests(r);
+      toast({ title: `Undone — master CV restored as v${restored.version}.` });
+    } catch (e) {
+      toast({ title: `Couldn't undo: ${errorText(e)}`, tone: "err" });
+    } finally {
+      setUndoing(null);
+    }
+  };
+
+  const retailorNow = async (): Promise<RetailorResult[]> => {
+    const out: RetailorResult[] = [];
+    for (const job of retailor) {
+      if (job.stepIds.length === 0) {
+        out.push({ jobId: job.jobId, company: job.company, problem: job.note ?? "there is no CV step to re-run; ask Lead to tailor it again." });
+        continue;
+      }
+      const results = await data.rerunSteps(job.stepIds);
+      const problem = Object.values(results).find((p) => p !== null) ?? null;
+      out.push({ jobId: job.jobId, company: job.company, problem: problem ? `couldn't re-tailor (${problem})` : null });
+    }
+    return out;
   };
 
   const declineRequest = async (r: FactRequestItem) => {
@@ -290,21 +386,33 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, data
         </div>
       ) : null}
 
+      {retailor.length > 0 ? (
+        <RetailorBanner key={retailor.map((j) => j.jobId).join(",")} jobs={retailor} onRetailor={retailorNow} onDismiss={() => setRetailor([])} />
+      ) : null}
+
+      {exists ? (
+        <FreeTextFacts
+          value={texts[FREE] ?? ""}
+          onChange={(text) => setTexts((t) => ({ ...t, [FREE]: text }))}
+          onSubmit={() => void draftFrom(FREE, texts[FREE] ?? "", null)}
+          drafting={drafting[FREE] === true}
+          disabled={conflict !== null}
+          note={notes[FREE] ?? null}
+        />
+      ) : null}
+
       {requests.map((r) => (
-        <div key={r.id} data-testid="fact-request" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-warn/40 bg-warn/5 p-3 text-xs">
-          <CircleHelp aria-hidden className="size-4 shrink-0 text-warn" />
-          <span className="min-w-0 flex-1">
-            <b>CV asks:</b> “{r.question}” {r.company} asks for it ({r.reason.charAt(0).toLowerCase() + r.reason.slice(1)}).
-          </span>
-          <span className="flex gap-3">
-            <button type="button" onClick={() => addFromRequest(r)} className="text-accent underline">
-              Add a fact
-            </button>
-            <button type="button" onClick={() => void declineRequest(r)} className="text-muted underline">
-              No, I don&apos;t
-            </button>
-          </span>
-        </div>
+        <FactRequestCard
+          key={r.id}
+          request={r}
+          value={texts[r.id] ?? ""}
+          onChange={(text) => setTexts((t) => ({ ...t, [r.id]: text }))}
+          onSubmit={() => void draftFrom(r.id, texts[r.id] ?? "", r)}
+          onDecline={() => void declineRequest(r)}
+          drafting={drafting[r.id] === true}
+          disabled={!exists || conflict !== null}
+          note={notes[r.id] ?? null}
+        />
       ))}
 
       <section aria-label="Contact" className="space-y-2 rounded-2xl border border-border bg-surface/60 p-4">
@@ -326,18 +434,28 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, data
       </section>
 
       <section aria-label="Facts" className="space-y-3">
-        {items.map((item, index) => (
-          <FactCard
-            key={item.key}
-            fact={item.fact}
-            editing={editing === item.key}
-            error={errors.facts[index]}
-            onChange={(fact) => setFact(item.key, fact)}
-            onEdit={() => setEditing(item.key)}
-            onDone={() => setEditing(null)}
-            onDelete={() => removeFact(item)}
-          />
-        ))}
+        {items.map((item, index) => {
+          const group = added.find((g) => g.factIds.includes(item.fact.id));
+          const card = (
+            <FactCard
+              key={item.key}
+              fact={item.fact}
+              editing={editing === item.key}
+              error={errors.facts[index]}
+              onChange={(fact) => setFact(item.key, fact)}
+              onEdit={() => setEditing(item.key)}
+              onDone={() => setEditing(null)}
+              onDelete={() => removeFact(item)}
+            />
+          );
+          if (!group) return card;
+          return (
+            <div key={item.key} data-testid="fact-added" data-fact-id={item.fact.id} className="space-y-1 rounded-[1.1rem] bg-accent/5 p-1 ring-1 ring-accent/50">
+              <AddedBar factId={item.fact.id} undoing={undoing === group.taskId} onUndo={() => void undoAdded(group)} onEdit={() => setEditing(item.key)} />
+              {card}
+            </div>
+          );
+        })}
         <button
           type="button"
           onClick={() => addFact(newFact(items.map((i) => i.fact)))}

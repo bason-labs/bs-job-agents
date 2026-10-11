@@ -1,4 +1,4 @@
-import { FactRequestsResponseSchema, MasterCvVersionsResponseSchema } from "@bs-job-agents/shared";
+import { FactDraftViewSchema, FactRequestsResponseSchema, MasterCvVersionsResponseSchema } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
 import { apiErrorInfo, errorDetails } from "@/components/schedules/apiError";
 import { createHttpApi } from "@/lib/api/http";
@@ -68,6 +68,45 @@ describe("master CV adapter (GET/PUT /master-cv, /versions, /fact-requests)", ()
     await data.dismissFactRequest("2102-0");
     expect((await data.factRequests()).map((r) => r.id)).not.toContain("2102-0");
     expect(apiErrorInfo(await data.dismissFactRequest("2102-0").catch((e: unknown) => e))).toMatchObject({ status: 404 });
+  });
+
+  it("drafts facts from Ba's words, polls until CV settles, and undoes them (owner request 2026-10-11)", async () => {
+    const mock = testMock();
+    const data = createMasterCvData(mock, { pollMs: 1 });
+    const { taskId } = await data.draftFacts({ text: "Yes, I used GraphQL with Apollo Client at Aegona.", factRequestId: "2102-0", version: 7 });
+    const view = await data.awaitFactDraft(taskId);
+    expect(FactDraftViewSchema.safeParse(view).success).toBe(true);
+    expect(view).toMatchObject({ status: "added", version: 8, previousVersion: 7, factRequestId: "2102-0", undoable: true });
+    expect(view.facts.map((f) => f.id)).toEqual(["aeg-2"]);
+    expect(view.retailor).toMatchObject({ jobId: "101", company: "NovaPay", note: null });
+    expect(view.retailor!.stepIds.length).toBeGreaterThan(0);
+    expect((await current(data)).version).toBe(8);
+    expect((await data.factRequests()).map((r) => r.id)).not.toContain("2102-0");
+    const restored = await data.undoFacts(8);
+    expect(restored.version).toBe(9);
+    expect(restored.facts.map((f) => f.id)).not.toContain("aeg-2");
+    expect((await data.factRequests()).map((r) => r.id)).toContain("2102-0");
+    expect(await data.factDraft(taskId)).toMatchObject({ undone: true, undoable: false, retailor: null });
+    expect(apiErrorInfo(await data.undoFacts(9).catch((e: unknown) => e))).toMatchObject({ status: 409, reason: "not_undoable" });
+    await mock.idle();
+  });
+
+  it("refuses a draft from a stale page (409 master_cv_changed), an unknown request (404) and empty text (400)", async () => {
+    const data = make();
+    expect(errorDetails(await data.draftFacts({ text: "x", factRequestId: null, version: 6 }).catch((e: unknown) => e))).toMatchObject({ reason: "master_cv_changed", currentVersion: 7 });
+    expect(apiErrorInfo(await data.draftFacts({ text: "x", factRequestId: "9-9", version: 7 }).catch((e: unknown) => e))).toMatchObject({ status: 404 });
+    expect(apiErrorInfo(await data.draftFacts({ text: " ", factRequestId: null, version: 7 }).catch((e: unknown) => e))).toMatchObject({ status: 400 });
+  });
+
+  it("re-runs CV steps and reports each step's problem", async () => {
+    const mock = testMock();
+    const data = createMasterCvData(mock);
+    const run = Object.values(mock.state.runs).find((r) => r.steps.some((s) => s.stepKey === "tailor" && s.status === "done"))!;
+    const tailor = run.steps.find((s) => s.stepKey === "tailor" && s.status === "done")!;
+    const results = await data.rerunSteps([tailor.id, "nope"]);
+    expect(results[tailor.id]).toBeNull();
+    expect(results.nope).toMatch(/not found/);
+    await mock.idle();
   });
 
   it("live: the orchestrator's 409 master_cv_invalid body becomes the invalid state", async () => {
