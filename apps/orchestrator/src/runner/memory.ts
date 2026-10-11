@@ -9,8 +9,8 @@ import { existsSync } from "node:fs";
 import { appendFile, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { LIMITS } from "@bs-job-agents/shared";
+import { filterMemoryNotes, type FilteredMemoryNotes } from "./memory-hygiene.js";
 
-const NOTE_MAX = 300;
 const locks = new Map<string, Promise<unknown>>();
 
 /** Run `fn` after every earlier call for the same key has finished. */
@@ -32,7 +32,6 @@ export function formatMemoryLine(note: string, ctx: { runId: number | null; task
   return `- ${[localDate(ctx.now), ...where].join(" · ")}: ${note}`;
 }
 
-const cleanNote = (note: string): string => note.replace(/\s+/g, " ").trim().slice(0, NOTE_MAX);
 const noteOf = (line: string): string => line.replace(/^- [^:]*: /, "");
 
 export interface AppendMemoryInput {
@@ -42,6 +41,11 @@ export interface AppendMemoryInput {
   runId: number | null;
   taskId: number | null;
   now?: Date;
+  /**
+   * PM2 S14: hosts a note may name (the bot's allowlist; Apply: the task's approved domains).
+   * Omitted = none. Notes with a secret, an override or another host are dropped (memory-hygiene.ts).
+   */
+  allowedSites?: readonly string[];
   /** Called after each note is written, still inside the bot's lock (e.g. appendMemoryChange). */
   onNote?: (note: string) => void | Promise<void>;
 }
@@ -49,17 +53,18 @@ export interface AppendMemoryInput {
 export interface AppendMemoryResult {
   appended: string[];
   archived: number;
+  /** PM2 S14: notes that were not written, and why. */
+  dropped: FilteredMemoryNotes["dropped"];
 }
 
 export function appendMemoryNotes(input: AppendMemoryInput): Promise<AppendMemoryResult> {
   const botDir = resolve(input.botDir);
+  const screened = filterMemoryNotes(input.notes, { allowedSites: input.allowedSites ?? [] });
   return serialised(botDir, async () => {
     const memoryPath = join(botDir, "memory.md");
     const archivePath = join(botDir, "memory.archive.md");
-    const result: AppendMemoryResult = { appended: [], archived: 0 };
-    for (const raw of input.notes) {
-      const note = cleanNote(raw);
-      if (!note) continue;
+    const result: AppendMemoryResult = { appended: [], archived: 0, dropped: screened.dropped };
+    for (const note of screened.kept) {
       const text = await readFile(memoryPath, "utf8").catch(() => "");
       const lines = text.split("\n").filter((l) => l.trim().length > 0);
       if (lines.some((l) => noteOf(l) === note)) continue;

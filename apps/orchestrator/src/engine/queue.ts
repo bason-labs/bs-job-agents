@@ -950,7 +950,13 @@ export class TaskQueue {
     const notes = (output as { memoryNotes?: string[] } | null)?.memoryNotes ?? [];
     const writer = this.core.deps.memory;
     if (!writer || notes.length === 0) return;
-    writer.append({ botName: task.botName, notes, runId: task.runId, taskId: task.id }).catch((err: unknown) => {
+    // PM2 S14: a note may name only the hosts this task could open.
+    const browser = this.core.deps.bots.get(task.botName)?.browser;
+    const domains = (task.input as { allowedDomains?: unknown } | null)?.allowedDomains;
+    const allowedSites = browser?.sitesFromApproval
+      ? Array.isArray(domains) ? domains.filter((d): d is string => typeof d === "string") : []
+      : [...(browser?.allowedSites ?? [])];
+    writer.append({ botName: task.botName, notes, runId: task.runId, taskId: task.id, allowedSites }).catch((err: unknown) => {
       this.core.log.warn(`memory notes of task ${task.id} were not saved: ${errorMessage(err)}`);
     });
   }

@@ -67,18 +67,21 @@ export function botRegistryFrom(botsDir: string): BotRegistry {
 }
 
 /** Rule 2 (§5.4): W2b's appendMemoryNotes, recording each note in memory_changes. */
-export function memoryWriter(db: Db, botsDir: string): MemoryWriter {
+export function memoryWriter(db: Db, botsDir: string, log?: Logger): MemoryWriter {
   return {
-    append: async ({ botName, notes, runId, taskId }) => {
-      await appendMemoryNotes({
+    append: async ({ botName, notes, runId, taskId, allowedSites }) => {
+      const result = await appendMemoryNotes({
         botDir: join(botsDir, botName),
         notes,
         runId,
         taskId,
+        allowedSites: allowedSites ?? [],
         onNote: (note) => {
           appendMemoryChange(db, { botName, note, runId, taskId });
         },
       });
+      // PM2 S14: a dropped note is never written; the log says which and why (not the text: it may hold a secret).
+      for (const d of result.dropped) log?.warn(`memory note of ${botName} (task ${taskId}) dropped: ${d.reason}`);
     },
     seed: async (botNames) => {
       await seedMemoryFiles(botsDir, botNames);
@@ -135,7 +138,7 @@ export function createProductionEngine(opts: ProductionEngineOptions): Engine {
     guards: bridgeGuardHooks,
     pdf: pdfTextExtractor,
     masterCv: fileMasterCv(join(opts.dataDir, "master-cv.yaml")),
-    memory: memoryWriter(opts.db, opts.botsDir),
+    memory: memoryWriter(opts.db, opts.botsDir, opts.logger),
     processes: cliOrphanKiller,
     prompts: botPromptSource(opts.botsDir),
     ...(opts.config ? { config: opts.config } : {}),
