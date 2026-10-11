@@ -106,7 +106,7 @@ describe("POST /chat/messages in the Lead chat (UC-01, rule 1)", () => {
     expect(res.statusCode).toBe(201);
     const body = ChatSendResultSchema.parse(res.json());
     expect(body.message.uploadIds).toEqual([String(upload.id)]);
-    expect(body.message.attachments[0]).toMatchObject({ filename: "NovaPay JD.pdf", file: { id: `upload-${upload.id}`, kind: "upload" } });
+    expect(body.message.attachments?.[0]).toMatchObject({ filename: "NovaPay JD.pdf", file: { id: `upload-${upload.id}`, kind: "upload" } });
     expect(getUpload(h.t.db, upload.id)?.messageId).toBe(Number(body.message.id));
     await h.t.idle();
     const input = h.t.runner.callsFor("lead.chat")[0]!.input as LeadChatInput;

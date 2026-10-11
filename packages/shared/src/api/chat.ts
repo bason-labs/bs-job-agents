@@ -40,7 +40,7 @@ export const MessageAttachmentSchema = z.object({
 export type MessageAttachment = z.infer<typeof MessageAttachmentSchema>;
 
 /** A message as GET /rooms/:id/messages returns it: the shared Message plus its attachments. */
-export const ChatMessageSchema = MessageSchema.extend({ attachments: z.array(MessageAttachmentSchema).default([]) });
+export const ChatMessageSchema = MessageSchema.extend({ attachments: z.array(MessageAttachmentSchema).optional() });
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
 export const MessagesResponseSchema = z.object({ messages: z.array(ChatMessageSchema), hasMore: z.boolean() });
