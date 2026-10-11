@@ -179,6 +179,40 @@ export function isDryRunSettled(
   return getApplicationByJob(conn, job.id) === undefined || ref.applyAgain;
 }
 
+/**
+ * PM2 S15: a dry run that settled puts its card back in the queue for "Approve live". Announce it
+ * like a new card (review.ready), so an open review screen shows it without a reload: the web keeps
+ * an approved card hidden until its review.ready (found by W4b's live-shape e2e; the mock did this).
+ * Called with Apply's action row once the apply.submit task has finished.
+ */
+export function announceSettledDryRun(core: EngineCore, conn: Conn, actionRow: Step | undefined): void {
+  const out = actionRow?.output as ActionStepOutput | null | undefined;
+  if (!actionRow || out?.dryRun !== true) return;
+  const ctx = loadRunCtx(core, actionRow.runId, conn);
+  const def = ctx?.def.steps.find((s) => s.key === actionRow.stepKey && s.type === "action") as ActionStep | undefined;
+  if (!ctx || !def) return;
+  const human = getStepByKey(conn, ctx.run.id, def.approvalFrom, actionRow.branchKey);
+  const jobId = Number(actionRow.branchKey);
+  if (!human || !isDryRunSettled(conn, { humanStatus: human.status, actionOut: out, jobId, applyAgain: ctx.run.params.applyAgain === true })) return;
+  const h = human.output as HumanStepOutput;
+  const job = getJob(conn, jobId)!;
+  const dry = out.applicationId === null ? undefined : getApplication(conn, out.applicationId);
+  core.bus.emit(conn, {
+    type: "review.ready",
+    jobId: String(job.id),
+    runId: String(ctx.run.id),
+    company: getCompany(conn, job.companyId)?.name ?? "",
+    title: job.title,
+    // The live approval keeps the CV version the dry run used.
+    cvVersionIds: dry ? [String(dry.cvVersionId)] : h.cvVersions.map((c) => String(c.cvVersionId)),
+    qaPassed: h.qaPassed,
+    escalated: h.escalated,
+    needsInput: h.needsInput,
+    injectionFlagged: isApplyBlockedByInjection(job),
+    companyMissing: h.companyMissing ?? false,
+  });
+}
+
 function settledDryRunRef(conn: Conn, ref: ReviewRef): boolean {
   return isDryRunSettled(conn, {
     humanStatus: ref.human.status,

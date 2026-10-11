@@ -38,6 +38,7 @@ import {
   ensureCompany,
   findCvVersionByPdfPath,
   getRun,
+  getStep,
   getTask,
   holdEngineTasks,
   latestApprovalForApplication,
@@ -67,6 +68,7 @@ import {
 } from "./apply.js";
 import { MASTER_CV_TASK_KEYS, effectiveBot, type EffectiveBot } from "./bots.js";
 import { loadRunCtx, type RunCtx } from "./context.js";
+import { announceSettledDryRun } from "./review.js";
 import type { EngineCore } from "./core.js";
 import { errorMessage } from "./errors.js";
 import { onCheckerDone, onProducerDone, type CvExport } from "./gate.js";
@@ -1012,6 +1014,7 @@ export class TaskQueue {
         return;
       case "apply.submit":
         onApplyDone(core, tx, task, output as ApplyOutput, recordFiles, recordCheck ?? null);
+        announceSettledDryRun(core, tx, task.stepId === null ? undefined : getStep(tx, task.stepId));
         return;
       default:
         // PM2 S2: W3a posts the reply (and queues Lead's chat for a handoff) in this transaction.

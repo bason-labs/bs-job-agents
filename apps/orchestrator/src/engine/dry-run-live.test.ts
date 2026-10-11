@@ -85,4 +85,16 @@ describe("dry run → live (PM2 S15)", () => {
     await t.idle();
     expect(() => t.engine.approve(1, { cvVersionId, introText: null })).toThrow(/dry run/);
   });
+
+  it("a settled dry run announces its card again (review.ready), so an open review screen shows Approve live (W4b live-shape)", async () => {
+    const { t, run, cvVersionId } = await dryRun(false);
+    const ready = t.events("review.ready").filter((e) => e.jobId === "1");
+    expect(ready).toHaveLength(2);
+    expect(ready[1]).toMatchObject({ runId: String(run.id), company: "NovaPay", cvVersionIds: [String(cvVersionId)], qaPassed: true });
+  });
+
+  it("a dry run that reported submitted does not announce its card (it is not back until Ba settles it)", async () => {
+    const { t } = await dryRun(true);
+    expect(t.events("review.ready").filter((e) => e.jobId === "1")).toHaveLength(1);
+  });
 });
