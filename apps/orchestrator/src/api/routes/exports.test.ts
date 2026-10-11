@@ -35,8 +35,12 @@ describe("POST /exports (UC-13b ⬇ Export all)", () => {
     expect([...zip["applications.csv"]!.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const csv = strFromU8(zip["applications.csv"]!);
     const lines = csv.trim().split("\n");
-    expect(lines[0]).toBe("application_id,company,role,source,url,cv_file,cv_sha256,submitted_at,status,origin");
+    // PM3 S7: the CV version, its language and whether the record is partial, as the Applications screen shows them.
+    expect(lines[0]).toBe("application_id,company,role,source,url,cv_file,cv_sha256,submitted_at,status,origin,cv_version,cv_language,partial_record");
     expect(lines).toHaveLength(3);
+    const row = (id: number) => lines.find((l) => l.startsWith(`${id},`))!.split(",");
+    expect(row(application.id).slice(-3)).toEqual(["NOVAPAY_SENIOR-FE_EN_v1", "en", "false"]);
+    expect(lines.find((l) => l.includes("DEKON"))!.split(",").slice(-3)).toEqual(["", "", "true"]);
     // A formula from a job page is never run by a spreadsheet.
     expect(csv).toContain(`"'=HYPERLINK(""http://evil"")"`);
     expect(csv).toContain("not captured");

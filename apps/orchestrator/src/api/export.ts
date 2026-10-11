@@ -12,7 +12,7 @@ import { randomBytes } from "node:crypto";
 import { Zip, ZipDeflate, ZipPassThrough } from "fflate";
 import { getSubmissionRecord, listApplications, mappers, recordExport, type Db, type ExportRecord } from "../db/index.js";
 import { resolveFile, type AppFilePart } from "./files.js";
-import { panelRecord } from "./views/applications.js";
+import { applicationListItem, panelRecord } from "./views/applications.js";
 
 export const EXPORTS_DIR = "exports";
 const NOT_CAPTURED = "not captured";
@@ -87,13 +87,15 @@ async function writeZip(path: string, entries: AsyncIterable<Entry>, mtime: Date
 const utf8 = (text: string): Uint8Array => new Uint8Array(Buffer.from(text, "utf8"));
 
 async function* entriesFor(db: Db, dataDir: string, appIds: readonly number[], warn: (m: string) => void): AsyncGenerator<Entry> {
-  const rows = ["application_id,company,role,source,url,cv_file,cv_sha256,submitted_at,status,origin"];
+  // PM3 S7: cv_version, cv_language and partial_record as the Applications screen shows them.
+  const rows = ["application_id,company,role,source,url,cv_file,cv_sha256,submitted_at,status,origin,cv_version,cv_language,partial_record"];
   for (const id of appIds) {
     const rec = getSubmissionRecord(db, id);
     if (!rec) continue;
     const app = rec.application;
     const s = rec.submission;
     const company = rec.company?.name ?? "";
+    const listed = await applicationListItem(db, dataDir, app);
     rows.push(
       [
         String(app.id),
@@ -106,6 +108,9 @@ async function* entriesFor(db: Db, dataDir: string, appIds: readonly number[], w
         app.submittedAt ?? "",
         app.status,
         app.origin,
+        listed?.cvVersion?.label ?? "",
+        listed?.cvVersion?.language ?? "",
+        String(listed?.partialRecord ?? app.origin === "imported"),
       ]
         .map(csvCell)
         .join(","),
