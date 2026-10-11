@@ -71,7 +71,7 @@ export const JdSnapshotCaptureSchema = z.strictObject({
   company: z.string().min(1),
   salaryText: z.string().nullable(),
   jdText: z.string().min(1),
-  pageScreenshot: z.string().nullable().describe("Path of the full-page screenshot"),
+  pageScreenshot: z.string().nullable().describe("ID the screenshot tool showed (e.g. ss_…) for the job page screenshot (top of the page)"),
   capturedAt: IsoDateTimeSchema,
 });
 export type JdSnapshotCapture = z.infer<typeof JdSnapshotCaptureSchema>;
@@ -85,8 +85,8 @@ const applyResultShape = {
   introText: z.string().nullable(),
   consent: ConsentSchema.nullable(),
   uploadedFile: UploadedFileSchema.nullable(),
-  preSubmitScreenshot: z.string().nullable().describe("Path of the filled-form screenshot"),
-  confirmationScreenshot: z.string().nullable(),
+  preSubmitScreenshot: z.string().nullable().describe("ID the screenshot tool showed (e.g. ss_…) for the filled-form screenshot; never a file path"),
+  confirmationScreenshot: z.string().nullable().describe("ID the screenshot tool showed (e.g. ss_…) for the confirmation page"),
   confirmationText: z.string().nullable(),
   finalUrl: UrlSchema.nullable(),
   pendingQuestions: z.array(PendingQuestionSchema),

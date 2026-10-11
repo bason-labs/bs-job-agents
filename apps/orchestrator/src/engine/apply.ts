@@ -8,7 +8,7 @@
 // - on the result: pauses Apply reports itself wait for Ba (UC-11 a/b/e, UC-12, UC-17); anything
 //   else after a spawn that is not a clean result goes to needs_check, never retried (PM FYI c);
 // - the record step writes the §9.1 record with the ORCHESTRATOR's hash of the uploaded copy.
-import { basename, isAbsolute, relative, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import {
   ApplyPromptInputSchema,
   BOT_TASK_INPUT_SCHEMAS,
@@ -49,6 +49,7 @@ import {
   type Step,
   type Task,
 } from "../db/index.js";
+import type { CapturedScreenshot } from "../runner/screenshots.js";
 import { formDefaultsOf, loadRunCtx, type RunCtx, type Scope } from "./context.js";
 import { noticeApplyNotStarted, noticeNeedsCheck } from "./notices.js";
 import { siteKey } from "./sites.js";
@@ -318,7 +319,7 @@ export async function prepareApply(core: EngineCore, task: Task): Promise<ApplyP
  * transaction as the task's result, whatever the run's state (a paused or cancelled run must not
  * lose a submission). A dry run that says submitted is a safety event (PM §7).
  */
-export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: ApplyOutput, files: RecordFiles = NO_RECORD_FILES): void {
+export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: ApplyOutput, files: RecordFiles = NO_RECORD_FILES, check: string | null = null): void {
   const row = actionRowOf(conn, task);
   const out = row?.output as ActionStepOutput | undefined;
   if (out?.dryRun && output.status === "submitted") {
@@ -331,7 +332,7 @@ export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: Ap
     });
   }
   if (!row || !out || out.applicationId === null) return;
-  const record = writeSubmissionRecord(core, conn, task, output, out, files);
+  const record = writeSubmissionRecord(core, conn, task, output, out, files, check);
   updateAction(core, conn, row, { outcome: record.status === "submitted" ? "submitted" : "needs_check", record });
 }
 
@@ -566,12 +567,52 @@ async function recordFile(core: EngineCore, applicationId: number, value: string
   return head && isImage(head) ? core.paths.rel(abs) : null;
 }
 
-/** The record's screenshots, checked before the record's transaction (the FileStore is async). */
-export async function verifyRecordFiles(core: EngineCore, applicationId: number, output: ApplyOutput): Promise<RecordFiles> {
+/** PM2 S7: the screenshot Apply named, by the id the Chrome tool showed it (exactly, or as the one id its text names). */
+export function pickCapture(value: string | null | undefined, captures: readonly CapturedScreenshot[]): CapturedScreenshot | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const v = value.trim();
+  const exact = captures.filter((c) => c.screenshotId === v);
+  if (exact.length > 0) return exact.at(-1)!;
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const named = captures.filter((c) => c.screenshotId !== null && new RegExp(`(?:^|[^A-Za-z0-9_-])${esc(c.screenshotId)}(?:$|[^A-Za-z0-9_-])`).test(v));
+  const ids = new Set(named.map((c) => c.screenshotId));
+  return ids.size === 1 ? named.at(-1)! : null;
+}
+
+/** Where an attempt's captures are: data/screenshots/<task>-<attempt>/ and what the runner listed. */
+export interface CaptureSource {
+  /** Absolute folder. */
+  dir: string;
+  captures: CapturedScreenshot[];
+}
+
+/**
+ * PM2 S7 + M1: the record's screenshots. Apply names a screenshot by the id the tool showed; the
+ * capture it names is copied (hash-checked against what the runner wrote) into
+ * data/applications/<id>/ as pre-submit / confirmation / jd, and only that copy passes M1's check.
+ * A name that is no capture (a path, prose, a file Apply claims to have saved) is null. One capture
+ * is one proof: named as both the pre-submit and the confirmation screenshot it counts once.
+ * Runs before the record's transaction (the FileStore is async).
+ */
+export async function captureRecordFiles(core: EngineCore, applicationId: number, output: ApplyOutput, source: CaptureSource | null): Promise<RecordFiles> {
+  const captures = source?.captures ?? [];
+  const pre = pickCapture(output.preSubmitScreenshot, captures);
+  const conf = pickCapture(output.confirmationScreenshot, captures);
+  const jd = pickCapture(output.jdSnapshot?.pageScreenshot, captures);
+  const copy = async (c: CapturedScreenshot | null, name: string): Promise<string | null> => {
+    if (!c || !source) return null;
+    const dest = `${core.paths.applicationDir(applicationId)}/${name}.${c.mediaType === "image/png" ? "png" : "jpg"}`;
+    try {
+      await core.deps.files.copyVerified(join(source.dir, c.file), core.paths.abs(dest), c.sha256);
+    } catch {
+      return null;
+    }
+    return recordFile(core, applicationId, core.paths.abs(dest));
+  };
   return {
-    preSubmit: await recordFile(core, applicationId, output.preSubmitScreenshot),
-    confirmation: await recordFile(core, applicationId, output.confirmationScreenshot),
-    jdPage: await recordFile(core, applicationId, output.jdSnapshot?.pageScreenshot),
+    preSubmit: await copy(pre, "pre-submit"),
+    confirmation: conf !== null && conf.file === pre?.file ? null : await copy(conf, "confirmation"),
+    jdPage: await copy(jd, "jd"),
   };
 }
 
@@ -598,6 +639,8 @@ export function writeSubmissionRecord(
   output: ApplyOutput,
   out: ActionStepOutput,
   files: RecordFiles = NO_RECORD_FILES,
+  /** PM2 S10: the engine's own reason this record needs Ba's check (e.g. the tab left the approved domains). */
+  check: string | null = null,
 ): RecordStepOutput {
   const appId = out.applicationId!;
   if (getSubmissionRecord(conn, appId)?.submission) {
@@ -642,12 +685,14 @@ export function writeSubmissionRecord(
   const proofMissing = files.preSubmit === null || (confirmation === null && !output.confirmationText?.trim());
   // PM2 S11: a page that tried to instruct Apply means Ba checks what was sent.
   const injection = output.injectionSuspected === true;
-  const status = output.status === "submitted" && !app.dryRun && sameFile && !proofMissing && !injection ? "submitted" : "needs_check";
+  const status = output.status === "submitted" && !app.dryRun && sameFile && !proofMissing && !injection && check === null ? "submitted" : "needs_check";
   const note = injection
     ? `${INJECTION_SUSPECTED}: ${output.injectionNote?.trim() || "the page tried to instruct Apply"}`
-    : output.status === "submitted" && !app.dryRun && proofMissing
-      ? SCREENSHOTS_NOT_CAPTURED
-      : null;
+    : check !== null
+      ? check
+      : output.status === "submitted" && !app.dryRun && proofMissing
+        ? SCREENSHOTS_NOT_CAPTURED
+        : null;
   try {
     // recordSubmission runs in its own savepoint: a refusal writes nothing.
     const rec = recordSubmission(conn, { applicationId: appId, status, dryRun: app.dryRun, submission, snapshot, note }, { now: core.now() });
