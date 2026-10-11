@@ -11,10 +11,7 @@ Owner instruction (2026-10-10): no separate implementation plan. Build in phases
 ## Rules for every agent
 1. **Test first.** Write the failing test, make it pass, then refactor. Use Vitest for logic and Playwright for UI. Never call real CLIs, Chrome or Figma in automated tests; use the FakeRunner and fake bridges.
 2. **Stay inside your owned paths** (table below). If you need something outside them, write a stub or interface in your own area and note it under "Handoff" in your report. Don't edit another worker's files.
-3. **Small commits** with clear messages, each ending with exactly this one trailer line (updated 2026-10-10; do not add a `Claude-Session` line):
-   ```
-   Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-   ```
+3. **Small commits** with clear messages. **No AI attribution:** no `Co-Authored-By: Claude…` or `Claude-Session` lines (owner decision 2026-10-11).
 4. **Migration rule:** never rebuild `applications`, `submissions`, `job_snapshots` or `approvals` (it drops their immutability triggers). Use ADD COLUMN; `openDb` refuses to start if any trigger or index is missing. Shared changes are additive; the drift tests must stay green.
 5. **Definition of done:**
    - `pnpm install && pnpm -w typecheck && pnpm -w lint && pnpm -w test` pass from the repo root
