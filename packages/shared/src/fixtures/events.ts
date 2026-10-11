@@ -101,4 +101,5 @@ export const sampleEvents: AppEvent[] = [
     type: "export.ready",
     export: { id: "exp_1", createdAt: at, path: "data/exports/applications-2026-10-10.zip", applicationCount: 3 },
   },
+  { id: id(), at, type: "master_cv.updated", version: 4, change: "facts_added", factIds: ["grad-2"], taskId: "task_31" },
 ];

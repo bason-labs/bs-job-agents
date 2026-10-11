@@ -33,16 +33,55 @@ test("edits a fact's EN/VI text and tags, then saves a new master version (UC-20
   await expect(page.getByTestId("cv-versions").getByRole("listitem").first()).toContainText("v8");
 });
 
-test("answers CV's question with a new fact (§6.1 missing facts)", async ({ page }) => {
+const ANSWER = "Yes, I used GraphQL with Apollo Client at Aegona.";
+
+test("answers CV's question in free text: CV adds the fact, with Undo (owner request 2026-10-11)", async ({ page }) => {
   const request = page.getByTestId("fact-request");
   await expect(request).toContainText("CV asks: “Have you used GraphQL in a project?” NovaPay asks for it");
-  await request.getByRole("button", { name: "Add a fact" }).click();
+  await request.getByPlaceholder("Answer in your own words (EN or VI)…").fill(ANSWER);
+  await request.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(request.getByTestId("fact-drafting")).toContainText("CV is writing the fact from your words…");
+
+  const added = page.getByTestId("fact-added");
+  await expect(added).toHaveAttribute("data-fact-id", "aeg-2");
+  await expect(added).toContainText("Added");
+  await expect(added).toContainText("I used GraphQL with Apollo Client at Aegona.");
   await expect(page.getByTestId("fact-request")).toHaveCount(0);
-  await expect(editor(page).getByLabel("Fact id")).toHaveValue("skill-2");
-  await editor(page).getByLabel("Text (English)").fill("GraphQL (Apollo Client) — used at Aegona");
-  await page.getByTestId("cv-save").click();
   await expect(page.getByTestId("cv-header")).toContainText("Master version v8.");
-  await expect(page.locator('[data-testid="fact"][data-fact-id="skill-2"]')).toContainText("GraphQL (Apollo Client) — used at Aegona");
+  await expect(page.getByText("unsaved changes")).toBeHidden();
+
+  await added.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(page.getByTestId("toast").filter({ hasText: "Undone — master CV restored as v9." })).toBeVisible();
+  await expect(page.getByTestId("fact-added")).toHaveCount(0);
+  await expect(page.locator('[data-testid="fact"][data-fact-id="aeg-2"]')).toHaveCount(0);
+  await expect(page.getByTestId("fact-request")).toHaveCount(1);
+});
+
+test("Edit on an added fact opens the fact editor", async ({ page }) => {
+  const request = page.getByTestId("fact-request");
+  await request.getByPlaceholder("Answer in your own words (EN or VI)…").fill(ANSWER);
+  await request.getByPlaceholder("Answer in your own words (EN or VI)…").press("Control+Enter");
+  await page.getByTestId("fact-added").getByRole("button", { name: "Edit", exact: true }).click();
+  await expect(editor(page).getByLabel("Fact id")).toHaveValue("aeg-2");
+});
+
+test("adds facts from the free-text box", async ({ page }) => {
+  const box = page.getByTestId("fact-free-text");
+  await box.getByPlaceholder(/Tell me something new about your experience/).fill("I mentor two junior developers at Gradion");
+  await box.getByRole("button", { name: "Add facts" }).click();
+  await expect(page.getByTestId("fact-added")).toContainText("I mentor two junior developers at Gradion");
+  await expect(page.getByTestId("cv-header")).toContainText("Master version v8.");
+  await expect(page.getByTestId("retailor-banner")).toHaveCount(0);
+});
+
+test("after answering, re-tailors the CVs of the jobs that asked", async ({ page }) => {
+  const request = page.getByTestId("fact-request");
+  await request.getByPlaceholder("Answer in your own words (EN or VI)…").fill(ANSWER);
+  await request.getByRole("button", { name: "Add", exact: true }).click();
+  const banner = page.getByTestId("retailor-banner");
+  await expect(banner).toContainText("Re-tailor CVs for: NovaPay");
+  await banner.getByRole("button", { name: "Re-tailor CVs" }).click();
+  await expect(banner.getByTestId("retailor-results")).toContainText("NovaPay: CV is tailoring it again");
 });
 
 test("won't save a fact without text, or a duplicate id", async ({ page }) => {
@@ -76,10 +115,10 @@ test("a save based on an older version shows the reload banner (409 master_cv_ch
   await expect(banner).toBeHidden();
 });
 
-test("a question answered with a saved fact stays closed after a reload of the screen", async ({ page }) => {
-  await page.getByTestId("fact-request").getByRole("button", { name: "Add a fact" }).click();
-  await editor(page).getByLabel("Text (English)").fill("GraphQL (Apollo Client) — used at Aegona");
-  await page.getByTestId("cv-save").click();
+test("a question answered with a fact stays closed after a reload of the screen", async ({ page }) => {
+  const request = page.getByTestId("fact-request");
+  await request.getByPlaceholder("Answer in your own words (EN or VI)…").fill(ANSWER);
+  await request.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByTestId("cv-header")).toContainText("Master version v8.");
   await page.getByTestId("sidebar").getByRole("link", { name: "Schedules" }).click();
   await expect(page.getByTestId("page-title")).toHaveText("Schedules");

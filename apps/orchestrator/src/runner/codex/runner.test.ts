@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cvTailorInputFixture, researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
+import { cvFactDraftInputFixture, cvTailorInputFixture, researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
 import { codexLastMessage, codexLines, STDERR } from "../__fixtures__/index.js";
 import { argValue, fakeSpawn, type FakeScript } from "../__fixtures__/fake-cli.js";
 import { CONSULT_INPUT, eventLog, makeKit, type Kit } from "../__fixtures__/runner-kit.js";
@@ -267,6 +267,23 @@ describe("CodexRunner: failures and limits", () => {
     expect(result).toMatchObject({ status: "failed", error: expect.stringMatching(/Figma bridge must run on Claude/) });
     expect(calls).toHaveLength(0);
     expect(kit.workDirsLeft()).toEqual([]);
+  });
+
+  it("CV's fact_draft on Codex (Ba opted in): no Figma server, no web search, FactDraftOutput (owner request 2026-10-11)", async () => {
+    const { def, cwd } = kit.realBot("cv");
+    const seen: { args: readonly string[]; schema: unknown }[] = [];
+    const fake = fakeSpawn((_c, args) => {
+      if (args[0] === "delete") return deleteOk;
+      seen.push({ args, schema: JSON.parse(readFileSync(argValue(args, "--output-schema")!, "utf8")) });
+      return play(codexLines("structuredOk"));
+    });
+    const r = new CodexRunner(kit.config(), { spawn: fake.spawn, now: () => NOW.getTime() });
+    await r.run(kit.task({ ...def, engine: "codex" }, cwd, { kind: "fact_draft", input: cvFactDraftInputFixture, unguardedFigmaAcknowledged: true }), () => {});
+    const { args, schema } = seen[0]!;
+    expect(args.join(" ")).not.toMatch(/mcp_servers\.figma/);
+    expect(args).toContain('web_search="disabled"');
+    expect(args).toContain("--ignore-user-config");
+    expect(schema).toMatchObject({ title: "FactDraftOutput" });
   });
 
   it("the opt-in never lets Apply onto Codex", async () => {

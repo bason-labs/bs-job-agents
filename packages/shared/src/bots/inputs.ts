@@ -12,8 +12,10 @@ import {
   Sha256Schema,
   UrlSchema,
 } from "../common/primitives.js";
+import { FactTypeSchema } from "../domain/master-cv.js";
 import { SalaryPolicySchema, SearchProfileFieldsBaseSchema } from "../domain/search-profile.js";
 import { CvDraftSchema } from "./cv.js";
+import { FACT_DRAFT_TEXT_MAX } from "./fact-draft.js";
 import { CONVERSATION_TASK_KINDS } from "./definition.js";
 import { QaFixSchema } from "./qa.js";
 import { CompanyProfileSchema, JobCandidateSchema } from "./research.js";
@@ -84,6 +86,37 @@ export const CvTailorInputSchema = z.object({
   /** Added by the engine right before the spawn, under the Figma lock (W2a, coordinator B). */
   templates: z.array(CvTemplateSchema).optional(),
 });
+
+/**
+ * cv.fact_draft (owner request 2026-10-11): Ba's own words from the Master CV screen, the question he
+ * answered (CV's fact request, if any) and his existing facts' ids, types, organisations and dates,
+ * so CV can refer to a role ("at Gradion") and pick new ids. No tools, no Figma, no files.
+ */
+export const CvFactDraftInputSchema = z.object({
+  text: z.string().trim().min(1).max(FACT_DRAFT_TEXT_MAX).describe("Ba's own words (EN or VI): the only source of facts"),
+  question: z
+    .object({
+      topic: z.string().min(1),
+      question: z.string().min(1),
+      reason: z.string(),
+      company: z.string(),
+    })
+    .strict()
+    .nullable()
+    .describe("CV's fact request Ba answers (it came from a JD), or null"),
+  existingFacts: z.array(
+    z
+      .object({
+        id: z.string().min(1),
+        type: FactTypeSchema,
+        org: z.string().nullable(),
+        dates: z.string().nullable(),
+      })
+      .strict(),
+  ),
+  masterCvVersion: z.number().int().positive(),
+});
+export type CvFactDraftInput = z.infer<typeof CvFactDraftInputSchema>;
 
 /**
  * Live run 1 (F5): facts about the exported PDF that the orchestrator itself verified (its own
@@ -197,6 +230,7 @@ export const BOT_TASK_INPUT_SCHEMAS = {
   "research.fit": ResearchFitInputSchema,
   "research.company": ResearchCompanyInputSchema,
   "cv.tailor": CvTailorInputSchema,
+  "cv.fact_draft": CvFactDraftInputSchema,
   "qa.review": QaReviewInputSchema,
   "apply.submit": ApplySubmitInputSchema,
 } as const;
@@ -233,6 +267,7 @@ export const BOT_TASK_PROMPT_INPUT_SCHEMAS = {
   "research.fit": ResearchFitInputSchema.strict(),
   "research.company": ResearchCompanyInputSchema.strict(),
   "cv.tailor": CvTailorInputSchema.strict(),
+  "cv.fact_draft": CvFactDraftInputSchema.strict(),
   "qa.review": QaReviewInputSchema.strict(),
   "apply.submit": ApplyPromptInputSchema,
 } as const satisfies Record<BotTaskKey, z.ZodTypeAny>;

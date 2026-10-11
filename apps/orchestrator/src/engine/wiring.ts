@@ -9,6 +9,7 @@ import { appendMemoryNotes, loadBots, readBotPromptFiles, seedMemoryFiles } from
 import type { Runner } from "../runner/types.js";
 import { EnginePaths, type EngineConfig } from "./config.js";
 import type { ConversationSink } from "./conversations.js";
+import type { FactDraftSink } from "./fact-drafts.js";
 import { Engine } from "./engine.js";
 import type {
   BotRegistry,
@@ -127,6 +128,8 @@ export interface ProductionEngineOptions {
   logger?: Logger;
   /** PM2 S2: W3a's chat flows (replies, handoffs), called in the settle transaction. */
   conversations?: ConversationSink;
+  /** Owner request 2026-10-11: the API adds CV's fact drafts to the master CV, in the settle transaction. */
+  factDrafts?: FactDraftSink;
   /** W5: feed sources in a job scan. Default: one FeedScanner (src/adapters/feeds) per process. */
   feeds?: FeedScanPort;
   /** PM3 S8: default: the source adapters' checker (src/adapters, W4a). */
@@ -156,5 +159,6 @@ export function createProductionEngine(opts: ProductionEngineOptions): Engine {
     ...(opts.config ? { config: opts.config } : {}),
     ...(opts.logger ? { logger: opts.logger } : {}),
     ...(opts.conversations ? { conversations: opts.conversations } : {}),
+    ...(opts.factDrafts ? { factDrafts: opts.factDrafts } : {}),
   });
 }

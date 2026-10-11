@@ -10,6 +10,7 @@ import {
   DomainSchema,
   findForbiddenPromptKeys,
   getBotOutputJsonSchema,
+  isToollessTask,
   promptInputSchemaFor,
   resolveOutputSchemaName,
   resolveSelfCheckItems,
@@ -24,7 +25,7 @@ import type { Invocation } from "./invocation.js";
 import { checkOutput, failedSelfCheckItems, repairPrompt, type OutputCheck } from "./output.js";
 import { killProcessGroup, nodeSpawn, runCli, type CliExit, type KillTreeFn, type SpawnFn } from "./process.js";
 import { buildPrompt, PromptSecurityError } from "./prompt.js";
-import { conversationPlan, planTools, type ToolPlan } from "./tools.js";
+import { conversationPlan, planTools, toollessPlan, type ToolPlan } from "./tools.js";
 import { PageUrlCollector } from "./page-urls.js";
 import { ScreenshotCapture } from "./screenshots.js";
 import { TranscriptWriter } from "./transcript.js";
@@ -216,7 +217,7 @@ export abstract class CliRunner implements Runner {
     }
     const conversation = (CONVERSATION_TASK_KINDS as readonly string[]).includes(task.kind);
     const fullPlan = planTools(bot);
-    let plan = conversation ? conversationPlan(fullPlan) : fullPlan;
+    let plan = isToollessTask(bot.name, task.kind) ? toollessPlan() : conversation ? conversationPlan(fullPlan) : fullPlan;
     // §10.3: only a task that holds the browser lock may drive Ba's Chrome.
     if (task.usesBrowser === false && plan.chrome) plan = { ...plan, chrome: null };
     const readDirs = checkReadDirs(task.readDirs ?? []);

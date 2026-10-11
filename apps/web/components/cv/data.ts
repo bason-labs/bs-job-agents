@@ -8,14 +8,23 @@
 //   GET  /master-cv/versions                → MasterCvVersionsResponseSchema (newest first)
 //   GET  /master-cv/fact-requests           → FactRequestsResponseSchema (facts CV asked for, still open)
 //   POST /master-cv/fact-requests/:id/dismiss → { ok: true }; 404 when it is no longer open
+// Owner request 2026-10-11 (facts from Ba's own words):
+//   POST /master-cv/facts/draft             → body FactDraftRequestSchema { text, factRequestId?, version }; 202
+//                                             FactDraftStartedSchema { taskId }; 409 master_cv_changed like PUT
+//   GET  /master-cv/facts/draft/:taskId     → FactDraftViewSchema, polled until it settles (added / no_facts / failed)
+//   POST /master-cv/facts/undo              → body FactUndoRequestSchema { version }; the restored MasterCv (a new version)
+//   POST /steps/:id/rerun                   → WebApi.rerunStep: re-tailor the CVs of the jobs Ba answered for
 "use client";
 
 import {
   API_ROUTES,
+  FactDraftStartedSchema,
+  FactDraftViewSchema,
   FactRequestsResponseSchema,
   MasterCvSchema,
   MasterCvVersionsResponseSchema,
   OkResponseSchema,
+  type FactDraftView,
   type FactRequestItem,
   type MasterCv,
 } from "@bs-job-agents/shared";
@@ -24,7 +33,10 @@ import type { WebApi } from "@/lib/api/contract";
 import { isApiError } from "@/lib/api/errors";
 import { useApi } from "@/lib/api/react";
 
-export type { FactRequestItem };
+export type { FactDraftView, FactRequestItem };
+
+/** CV is still drafting. */
+export const isDraftPending = (v: Pick<FactDraftView, "status">): boolean => v.status === "queued" || v.status === "running";
 
 export type MasterCvRead = { state: "ok"; cv: MasterCv } | { state: "missing" } | { state: "invalid"; detail: string };
 
@@ -43,10 +55,62 @@ export interface MasterCvData {
   factRequests(): Promise<FactRequestItem[]>;
   /** Closes a fact request: "No, I don't" (CV continues without the fact, it never invents one), or answered by a saved fact. */
   dismissFactRequest(id: string): Promise<void>;
+  /** Ba's own words → CV drafts the fact(s); `version` is the master version on the page (409 master_cv_changed when stale). */
+  draftFacts(input: { text: string; factRequestId: string | null; version: number }): Promise<{ taskId: string }>;
+  /** The draft's state now. */
+  factDraft(taskId: string): Promise<FactDraftView>;
+  /** Polls the draft until CV settles it (added, no_facts or failed); stops quietly when `signal` aborts. */
+  awaitFactDraft(taskId: string, opts?: { signal?: AbortSignal }): Promise<FactDraftView>;
+  /** Removes the facts that `version` added: restores the version before (as a new version). */
+  undoFacts(version: number): Promise<MasterCv>;
+  /** Re-runs CV steps (POST /steps/:id/rerun); per step, null when it started or the server's reason. */
+  rerunSteps(stepIds: string[]): Promise<Record<string, string | null>>;
 }
 
-export function createMasterCvData(api: Pick<WebApi, "request">): MasterCvData {
+export interface MasterCvDataOptions {
+  /** How often awaitFactDraft polls (default 1 s). */
+  pollMs?: number;
+}
+
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+
+export function createMasterCvData(api: Pick<WebApi, "request" | "rerunStep">, opts: MasterCvDataOptions = {}): MasterCvData {
+  const pollMs = opts.pollMs ?? 1000;
+  const factDraft = (taskId: string) => api.request("GET", API_ROUTES.masterCvFactDraft, { params: { taskId }, schema: FactDraftViewSchema });
   return {
+    draftFacts(input) {
+      return api.request("POST", API_ROUTES.masterCvFactDrafts, { body: input, schema: FactDraftStartedSchema });
+    },
+    factDraft,
+    async awaitFactDraft(taskId, { signal } = {}) {
+      for (;;) {
+        const view = await factDraft(taskId);
+        if (!isDraftPending(view) || signal?.aborted) return view;
+        await sleep(pollMs, signal);
+      }
+    },
+    undoFacts(version) {
+      return api.request("POST", API_ROUTES.masterCvFactsUndo, { body: { version }, schema: MasterCvSchema });
+    },
+    async rerunSteps(stepIds) {
+      const out: Record<string, string | null> = {};
+      for (const id of stepIds) {
+        try {
+          await api.rerunStep(id);
+          out[id] = null;
+        } catch (err) {
+          out[id] = err instanceof Error ? err.message : String(err);
+        }
+      }
+      return out;
+    },
     async get() {
       try {
         return { state: "ok", cv: await api.request("GET", API_ROUTES.masterCv, { schema: MasterCvSchema }) };
@@ -72,6 +136,7 @@ export function createMasterCvData(api: Pick<WebApi, "request">): MasterCvData {
   };
 }
 
+/** The page's adapter (lib/api: the orchestrator in live mode, the mock otherwise). */
 export function useMasterCvData(): MasterCvData {
   const api = useApi();
   return useMemo(() => createMasterCvData(api), [api]);

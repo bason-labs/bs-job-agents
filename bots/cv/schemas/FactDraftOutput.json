@@ -1,0 +1,124 @@
+{
+  "title": "FactDraftOutput",
+  "type": "object",
+  "properties": {
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "New lowercase slug id, shaped like the existing ids (e.g. grad-5, skill-3) and used by no existing fact"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "experience",
+              "project",
+              "skill",
+              "education",
+              "metric"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "English wording, only what Ba wrote (translated faithfully when he wrote Vietnamese)"
+          },
+          "textVi": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Vietnamese wording, a faithful translation (or Ba's own Vietnamese)"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Short lowercase tags taken from Ba's text, e.g. aws, docker"
+          },
+          "org": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Organisation: one Ba named, or an existing fact's org he refers to; else null"
+          },
+          "dates": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Dates Ba gave, or the existing fact's dates when he refers to that role; else null"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "text",
+          "textVi",
+          "tags",
+          "org",
+          "dates"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 5,
+      "description": "1–5 facts from Ba's text; empty when his text says no or gives nothing to add"
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "A short note for Ba: why there is no fact, or which detail you left out because he did not give it; null if none"
+    },
+    "selfCheck": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "The checklist item, copied from bot.json selfCheck"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it passed or failed; null when nothing to add"
+          }
+        },
+        "required": [
+          "item",
+          "passed",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "One entry per selfCheck item in bot.json. Any failed item fails the attempt."
+    },
+    "memoryNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "description": "Up to 3 short lessons for this bot's memory, e.g. 'TopCV upload limit is 5MB'. Empty if none."
+    }
+  },
+  "required": [
+    "facts",
+    "notes",
+    "selfCheck",
+    "memoryNotes"
+  ],
+  "additionalProperties": false
+}

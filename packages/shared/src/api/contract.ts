@@ -42,6 +42,7 @@ import {
   WorkflowProposalsResponseSchema,
 } from "./chat.js";
 import { API_ROUTES, BridgesResponseSchema, HealthStatusSchema, OkResponseSchema, OrchestratorStatusSchema } from "./common.js";
+import { FactDraftRequestSchema, FactDraftStartedSchema, FactDraftViewSchema, FactUndoRequestSchema } from "./fact-drafts.js";
 import { CriteriaResponseSchema, CriteriaUpdateRequestSchema, CriteriaVersionsResponseSchema, SearchProfilesResponseSchema } from "./criteria.js";
 import {
   ApproveRequestSchema,
@@ -140,6 +141,9 @@ export const API_CONTRACT = {
   criteriaProfiles: { GET: ep(SearchProfilesResponseSchema) },
   taskDeclineDomain: { POST: ep(OkResponseSchema) },
   engineResume: { POST: ep(OkResponseSchema) },
+  masterCvFactDrafts: { POST: ep(FactDraftStartedSchema, FactDraftRequestSchema) },
+  masterCvFactDraft: { GET: ep(FactDraftViewSchema) },
+  masterCvFactsUndo: { POST: ep(MasterCvSchema, FactUndoRequestSchema) },
 } as const satisfies { [K in ApiRouteKey]: Partial<Record<ApiMethod, ApiEndpoint>> };
 
 /** Every (method, route) pair of the contract, e.g. `{ key: "bot", method: "PATCH", path: "/bots/:name", … }`. */

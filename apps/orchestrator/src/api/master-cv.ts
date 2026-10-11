@@ -2,7 +2,7 @@
 // reads and writes it for the Master CV screen. The engine reads the same file (its top-level
 // `version:` line) to pin a run's master version and to refuse a run when it is missing (UC-01 c).
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { MasterCvSchema, type MasterCv } from "@bs-job-agents/shared";
@@ -66,6 +66,40 @@ export function readMasterCv(dataDir: string): MasterCvRead {
 }
 
 const HEADER = "# Ba's master CV facts (spec §6.1). Edited on the Master CV screen; bots only read it.\n";
+
+/**
+ * The same atomic write and history copy, synchronously: the fact-draft sink runs inside the engine's
+ * settle transaction (owner request 2026-10-11), where nothing may await.
+ */
+export function writeMasterCvSync(dataDir: string, cv: MasterCv): void {
+  const path = masterCvPath(dataDir);
+  const tmp = join(dataDir, `.master-cv.${randomBytes(6).toString("hex")}.yaml`);
+  try {
+    writeFileSync(tmp, HEADER + stringify(cv, { lineWidth: 0 }), { mode: 0o600 });
+    renameSync(tmp, path);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
+}
+
+export function keepMasterCvVersionSync(dataDir: string, cv: MasterCv): void {
+  const dir = join(dataDir, MASTER_CV_HISTORY_DIR);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `v${cv.version}.yaml`), HEADER + stringify(cv, { lineWidth: 0 }), { mode: 0o600 });
+}
+
+/** A saved version from the history folder, or null when it is missing or unreadable. */
+export function readMasterCvHistory(dataDir: string, version: number): MasterCv | null {
+  const path = join(dataDir, MASTER_CV_HISTORY_DIR, `v${version}.yaml`);
+  if (!existsSync(path)) return null;
+  try {
+    const parsed = MasterCvSchema.safeParse(parse(readFileSync(path, "utf8")));
+    return parsed.success && parsed.data.version === version ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Write atomically (temp file + rename), so a bot's copy or the engine never reads half a file. */
 export async function writeMasterCv(dataDir: string, cv: MasterCv): Promise<void> {

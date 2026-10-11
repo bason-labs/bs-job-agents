@@ -43,6 +43,7 @@ const CALLS: Record<string, { params?: Record<string, string>; body?: unknown; q
   [`PATCH ${API_ROUTES.bot}`]: { params: { name: "research" }, body: { enabled: false } },
   [`POST ${API_ROUTES.botPromotionDismiss}`]: { params: { name: "apply" } },
   [`POST ${API_ROUTES.masterCvFactRequestDismiss}`]: { params: { id: "2102-0" } },
+  [`POST ${API_ROUTES.masterCvFactDrafts}`]: { body: { text: "I mentor two juniors at Gradion", version: 7 } },
   [`POST ${API_ROUTES.workflowProposalApprove}`]: { params: { id: "6f1c2a52-8d0b-4c56-9a7e-2b1f0c9d4e11" } },
 };
 
@@ -82,6 +83,9 @@ describe("mock routes: parity with the shared API", () => {
       `GET ${API_ROUTES.masterCvVersions}`,
       `GET ${API_ROUTES.masterCvFactRequests}`,
       `POST ${API_ROUTES.masterCvFactRequestDismiss}`,
+      `POST ${API_ROUTES.masterCvFactDrafts}`,
+      `GET ${API_ROUTES.masterCvFactDraft}`,
+      `POST ${API_ROUTES.masterCvFactsUndo}`,
       `GET ${API_ROUTES.workflowProposals}`,
       `POST ${API_ROUTES.workflowProposalApprove}`,
       `POST ${API_ROUTES.workflowProposalDismiss}`,

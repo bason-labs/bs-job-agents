@@ -7,6 +7,7 @@
 //   engine.startWorkflow({ workflow: "job-scan", params }, { trigger: "chat" });
 //   engine.approve(jobId, { cvVersionId, introText, dryRun? });  // UC-08; applicationId null without an apply link
 //   engine.enqueueConversation({ bot, kind, input });       // Lead chat / consult / room (PM2 S2)
+//   engine.enqueueFactDraft(input);                         // cv.fact_draft: Ba's words → master facts
 //   engine.confirmInjection(jobId);                         // UC-07 b, audited
 //   engine.lead.createTask({ botName: "lead", mode: "work" }, { bot, kind, input });  // MCP tools
 //
@@ -46,6 +47,7 @@ export {
 export { approvalStatus, isDryRunSettled, type ApproveInput, type ApproveResult } from "./review.js";
 export type { ConversationKind, ConversationRequest, ConversationResult, ConversationSink, ConversationSinkContext } from "./conversations.js";
 export type { AnswerInput } from "./apply.js";
+export { isFactDraftTask, screenFactDraft, type FactDraftResult, type FactDraftSink, type FactDraftSinkContext } from "./fact-drafts.js";
 export { LEAD_TASK_KEYS, type LeadCaller, type LeadTools } from "./lead-tools.js";
 export { computeNextRunAt, type SchedulerTick } from "./scheduler.js";
 export { resolvePendingQuestion, validateBaAnswer, type QuestionContext, type QuestionResolution } from "./questions.js";

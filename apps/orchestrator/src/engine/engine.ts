@@ -4,6 +4,7 @@
 import {
   StartWorkflowInputSchema,
   type AppEvent,
+  type CvFactDraftInput,
   type Engine as EngineName,
   type PauseReason,
   type RunTrigger,
@@ -42,6 +43,7 @@ import { LeadTools } from "./lead-tools.js";
 import { silentLogger, type Clock, type Logger } from "./ports.js";
 import { TaskQueue, lastFigmaBeforeHash } from "./queue.js";
 import { createConversationTask, sinkFailed, type ConversationRequest } from "./conversations.js";
+import { createFactDraftTask } from "./fact-drafts.js";
 import { announceDryRunCardForApplication, approve, confirmInjection, requestChanges, skip, type ApproveInput, type ApproveResult } from "./review.js";
 import { Scheduler } from "./scheduler.js";
 import { systemClock } from "./system.js";
@@ -481,6 +483,19 @@ export class Engine implements EngineCore {
     // It dispatches after its commit: inside another transaction (e.g. a sink) use ctx.enqueue.
     if (this.db.$client.inTransaction) throw new EngineError("conflict", "enqueueConversation cannot run inside a transaction: a ConversationSink queues with ctx.enqueue");
     const task = this.db.transaction((tx) => createConversationTask(this, tx, req));
+    this.bus.flush();
+    this.dispatch();
+    return { taskId: task.id };
+  }
+
+  /**
+   * Owner request 2026-10-11: queue a cv.fact_draft (Ba's own words → master facts). It runs on CV's
+   * effective engine with no tools (no Figma lock), waits out a usage limit, and its accepted facts
+   * reach the FactDraftSink in the settle transaction.
+   */
+  enqueueFactDraft(input: CvFactDraftInput): { taskId: number } {
+    if (this.db.$client.inTransaction) throw new EngineError("conflict", "enqueueFactDraft cannot run inside a transaction");
+    const task = this.db.transaction((tx) => createFactDraftTask(this, tx, input));
     this.bus.flush();
     this.dispatch();
     return { taskId: task.id };

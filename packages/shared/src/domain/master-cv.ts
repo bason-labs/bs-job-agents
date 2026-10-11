@@ -4,8 +4,11 @@ import { z } from "zod";
 export const FactTypeSchema = z.enum(["experience", "project", "skill", "education", "metric"]);
 export type FactType = z.infer<typeof FactTypeSchema>;
 
+/** Fact ids are lowercase slugs such as grad-1. */
+export const FACT_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
 export const FactSchema = z.object({
-  id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "fact ids are lowercase slugs such as grad-1"),
+  id: z.string().regex(FACT_ID_PATTERN, "fact ids are lowercase slugs such as grad-1"),
   type: FactTypeSchema,
   text: z.string().min(1),
   /** Vietnamese wording when it exists. */

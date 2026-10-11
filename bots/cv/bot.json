@@ -16,7 +16,10 @@
     "figma"
   ],
   "timeoutSec": 600,
-  "outputSchema": "CvOutput",
+  "outputSchema": {
+    "tailor": "CvOutput",
+    "fact_draft": "FactDraftOutput"
+  },
   "selfCheck": [
     "One A4 page",
     "No hidden, clipped or overflowing text frames",
@@ -26,5 +29,13 @@
     "Every bullet has factIds",
     "No numbers or skills absent from the referenced facts"
   ],
-  "promptVersion": 4
+  "selfCheckByKind": {
+    "fact_draft": [
+      "Every claim in the facts appears in Ba's text",
+      "No number, tool, employer, title or date Ba did not give",
+      "Each fact has English text and a faithful Vietnamese translation",
+      "Fact ids are new lowercase slugs that no existing fact uses"
+    ]
+  },
+  "promptVersion": 5
 }

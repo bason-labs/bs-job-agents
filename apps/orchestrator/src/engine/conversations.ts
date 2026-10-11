@@ -16,6 +16,7 @@ import { createTask, holdEngineTasks, isEnginePaused, type Conn, type Task } fro
 import { effectiveBot, taskNeeds } from "./bots.js";
 import type { EngineCore } from "./core.js";
 import { invalidInput, invalidState, notFound } from "./errors.js";
+import { factDraftFailed } from "./fact-drafts.js";
 
 /** Lead's chat (`lead.chat`), a 1:1 consult thread (UC-25) or a room reply (UC-15). */
 export type ConversationKind = "chat" | "consult" | "discussion";
@@ -87,8 +88,12 @@ export function sinkContext(core: EngineCore, conn: Conn, task: Task): Conversat
   return { conn, task, enqueue: (req) => ({ taskId: createConversationTask(core, conn, req).id }) };
 }
 
-/** Tell the sink a conversation failed for good, in a savepoint: a sink error never breaks the caller. */
+/**
+ * Tell the sink a conversation (or a cv.fact_draft, to its own sink) failed for good, in a
+ * savepoint: a sink error never breaks the caller.
+ */
 export function sinkFailed(core: EngineCore, conn: Conn, task: Task, error: string): void {
+  factDraftFailed(core, conn, task, error);
   const sink = core.deps.conversations;
   if (!sink || !isConversationTask(task)) return;
   try {

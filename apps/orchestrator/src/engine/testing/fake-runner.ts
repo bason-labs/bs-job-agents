@@ -12,8 +12,10 @@ import {
   CONVERSATION_TASK_KINDS,
   resolveSelfCheckItems,
   type ApplyOutput,
+  type CvFactDraftInput,
   type CvOutput,
   type Engine,
+  type FactDraftOutput,
   type JobCandidate,
   type PendingQuestion,
   type ResearchScanOutput,
@@ -211,6 +213,29 @@ export function fakeFrameName(input: { jobId?: unknown; job?: { company?: string
   return `${company}_${role}-J${String(input.jobId ?? "0")}_${lang}_v${Number(input.round ?? 1)}`;
 }
 
+/**
+ * cv.fact_draft as a faithful CV would answer: one fact that is Ba's own sentence (so it passes the
+ * invented-detail guard), at the organisation he names, or none when he says no.
+ */
+export function fakeFactDraft(input: CvFactDraftInput): FactDraftOutput {
+  const text = input.text.trim();
+  if (/^(no|nope|không|chưa)\b/i.test(text)) return { facts: [], notes: "You said no, so I added nothing.", selfCheck: [], memoryNotes: [] };
+  const role = input.existingFacts.find((f) => f.org && text.toLowerCase().includes(f.org.toLowerCase()));
+  const prefix = role ? role.id.replace(/-\d+$/, "") : "skill";
+  const taken = input.existingFacts.map((f) => new RegExp(`^${prefix}-(\\d+)$`).exec(f.id)).filter((m) => m !== null).map((m) => Number(m[1]));
+  const sentence = text.replace(/^(yes|có)[,.!\s]+/i, "");
+  const fact = {
+    id: `${prefix}-${(taken.length ? Math.max(...taken) : 0) + 1}`,
+    type: role ? ("experience" as const) : ("skill" as const),
+    text: sentence.charAt(0).toUpperCase() + sentence.slice(1),
+    textVi: sentence,
+    tags: input.question ? [input.question.topic.toLowerCase()] : [],
+    org: role?.org ?? null,
+    dates: role?.dates ?? null,
+  };
+  return { facts: [fact], notes: null, selfCheck: [], memoryNotes: [] };
+}
+
 function candidate(base: JobCandidate, over: Partial<JobCandidate>): JobCandidate {
   return { ...base, ...over };
 }
@@ -255,6 +280,8 @@ function baseFakeResult(task: RunnerTask): RunnerResult {
       };
       return fake.ok(output);
     }
+    case "cv.fact_draft":
+      return fake.ok(fakeFactDraft(input as unknown as CvFactDraftInput));
     case "qa.review":
       return fake.ok(qaPassFixture);
     case "apply.submit": {

@@ -125,6 +125,8 @@ const LANG = (input: unknown): string => String((input as { language?: unknown }
  */
 export function noticeTaskFailed(core: EngineCore, conn: Conn, task: Task, error: string): void {
   if ((CONVERSATION_TASK_KINDS as readonly string[]).includes(task.kind) || task.botName === "lead" || task.botName === "apply") return;
+  // A fact draft's failure shows on the Master CV screen, where Ba asked for it (FactDraftSink.failed).
+  if (taskKey(task.botName, task.kind) === "cv.fact_draft") return;
   const input = (task.input ?? {}) as Record<string, unknown>;
   const job = jobLabel(conn, taskJobId(conn, task)) ?? "a job";
   let text: string;
