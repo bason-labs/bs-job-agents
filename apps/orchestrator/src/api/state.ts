@@ -4,7 +4,7 @@
 // a temp file and a rename; one orchestrator holds the data folder, so there is one writer.
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CriteriaChangesSchema, ScheduleProposalSchema } from "@bs-job-agents/shared";
+import { CriteriaChangesSchema, FactSchema, RejectedDraftFactSchema, ScheduleProposalSchema } from "@bs-job-agents/shared";
 import { z } from "zod";
 
 export const API_STATE_FILE = "api-state.json";
@@ -24,6 +24,29 @@ export const StoredProposalSchema = z.discriminatedUnion("kind", [
 ]);
 export type StoredProposal = z.infer<typeof StoredProposalSchema>;
 
+/** One fact draft (POST /master-cv/facts/draft): what Ba asked and, once CV settled, what was added. */
+export const StoredFactDraftSchema = z.object({
+  taskId: z.number().int().positive(),
+  text: z.string(),
+  factRequestId: z.string().nullable(),
+  /** The answered request's job and company (re-tailor its CV), null for the free-text box. */
+  jobId: z.string().nullable(),
+  company: z.string().nullable(),
+  /** The master version Ba's page showed. */
+  baseVersion: z.number().int().positive(),
+  createdAt: z.string(),
+  status: z.enum(["pending", "added", "no_facts", "failed"]),
+  facts: z.array(FactSchema),
+  version: z.number().int().positive().nullable(),
+  previousVersion: z.number().int().positive().nullable(),
+  notes: z.string().nullable(),
+  rejected: z.array(RejectedDraftFactSchema),
+  error: z.string().nullable(),
+  settledAt: z.string().nullable(),
+  undoneAt: z.string().nullable(),
+});
+export type StoredFactDraft = z.infer<typeof StoredFactDraftSchema>;
+
 const StateSchema = z.object({
   /** Per bot: the streak count when Ba dismissed the suggestion, and when. */
   promotionDismissals: z.record(z.object({ count: z.number().int().nonnegative(), at: z.string() })).default({}),
@@ -34,6 +57,8 @@ const StateSchema = z.object({
    * acts on what is stored here, never on anything the model or the browser sends at click time.
    */
   leadProposals: z.record(StoredProposalSchema).default({}),
+  /** Owner request 2026-10-11: facts drafted from Ba's words, by cv.fact_draft task id (the newest kept). */
+  factDrafts: z.record(StoredFactDraftSchema).default({}),
 });
 export type ApiState = z.infer<typeof StateSchema>;
 

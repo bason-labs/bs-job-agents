@@ -30,6 +30,7 @@ import {
 import { CapabilityStore, createOrchestratorRunners, startMcpServer, type OrchestratorMcpServer } from "../../mcp/index.js";
 import { BotDefinitionError, type Runner } from "../../runner/index.js";
 import { ChatSink } from "../chat/sink.js";
+import { FactDraftStore } from "../fact-drafts.js";
 import { defaultNotifier, startNotifications, type Notifier } from "../notify.js";
 import { ProposalStore } from "../proposals.js";
 import { buildServer } from "../../server.js";
@@ -188,6 +189,8 @@ export async function startOrchestrator(opts: StartOptions): Promise<Orchestrato
         workflows,
         figma,
         conversations: sink,
+        // Owner request 2026-10-11: CV's fact drafts from Ba's words go into data/master-cv.yaml.
+        factDrafts: new FactDraftStore({ dataDir: config.dataDir }),
         ...(opts.browser ? { browser: opts.browser } : {}),
         ...(opts.engineConfig ? { config: opts.engineConfig } : {}),
         logger: log,

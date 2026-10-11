@@ -15,6 +15,7 @@ import { createTestEngine, type TestEngine, type TestEngineOptions } from "../en
 import { buildServer, type ServerOptions } from "../server.js";
 import { CapabilityStore } from "../mcp/capabilities.js";
 import { ChatSink } from "./chat/sink.js";
+import { FactDraftStore } from "./fact-drafts.js";
 import { engineEventHub, type ApiContext, type OrchestratorState } from "./context.js";
 
 export const TEST_PORT = 4100;
@@ -164,7 +165,8 @@ export async function createApiHarness(opts: ApiHarnessOptions = {}): Promise<Ap
   // S20: the chat flows' ConversationSink, with the capability log the MCP tools write to.
   const capabilities = new CapabilityStore();
   const sink = new ChatSink({ capabilities });
-  const t = await createTestEngine({ conversations: sink, ...opts.engine });
+  const factDrafts = new FactDraftStore();
+  const t = await createTestEngine({ conversations: sink, factDrafts, ...opts.engine });
   sink.bind({ now: () => t.clock.now() });
   const root = mkdtempSync(join(tmpdir(), "bsja-api-"));
   const dataDir = join(root, "data");
@@ -172,6 +174,7 @@ export async function createApiHarness(opts: ApiHarnessOptions = {}): Promise<Ap
   const workflowsDir = join(root, "workflows");
   for (const dir of [dataDir, botsDir, workflowsDir]) mkdirSync(dir, { recursive: true });
   sink.bind({ dataDir, workflows: () => t.engine.deps.workflows });
+  factDrafts.bind({ dataDir });
   const ctx: ApiContext = {
     config: { dataDir, botsDir, workflowsDir, port: TEST_PORT, webOrigins: [WEB_ORIGIN, "http://127.0.0.1:3000"] },
     state: opts.state ?? { state: "running", startedAt: t.clock.now().toISOString(), recovered: null },
