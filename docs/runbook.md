@@ -183,6 +183,10 @@ The source's page layout changed, so Research can't read it the way its skill sa
 
 Do these in order, with the app stopped unless a step says otherwise. Each one uses your subscriptions a little and touches nothing outside the listed page. Results of the run by W4b on **2026-10-11** are recorded under each check.
 
+Two things that make these checks flaky (found by W4b):
+- **One Claude session on Chrome at a time.** Close other Claude Code sessions (and the app) before a `--chrome` check; the extension serves one session, and a second one makes the calls time out (§5.3).
+- **Keep `--strict-mcp-config` and `--setting-sources ""`** on every manual `--chrome` command, as written below. Without them your own MCP servers and settings load too, so the check no longer matches what the app runs and may hang on a server prompt.
+
 ### Check 1: Claude in Chrome is connected
 ```bash
 claude -p "Call mcp__claude-in-chrome__tabs_context_mcp once WITHOUT createIfEmpty, then reply CONNECTED <n tabs> or NOT_CONNECTED <error>. Call nothing else." \
