@@ -2,6 +2,10 @@
 // bots/<name>/memory.md one at a time, serialised per bot, and archives the oldest lines beyond
 // LIMITS.memoryLinesMax to memory.archive.md. The engine records each note in memory_changes
 // through `onNote` (the runner never touches the DB).
+// PM2 S5: memory.md and memory.archive.md are runtime state, gitignored like data/ (Ba's lessons
+// never end up in commits). Start-up seeds a missing memory.md from MEMORY_TEMPLATE; the first
+// append creates it too.
+import { existsSync } from "node:fs";
 import { appendFile, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { LIMITS } from "@bs-job-agents/shared";
@@ -73,4 +77,30 @@ export function appendMemoryNotes(input: AppendMemoryInput): Promise<AppendMemor
     }
     return result;
   });
+}
+
+/** What a new bots/<name>/memory.md holds: nothing yet (the prompt then says "no notes yet"). */
+export const MEMORY_TEMPLATE = "";
+
+/**
+ * Create bots/<name>/memory.md from MEMORY_TEMPLATE for each bot whose folder exists and has no
+ * memory file yet (PM2 S5). Never overwrites: an existing file keeps Ba's notes. Returns the files
+ * it created.
+ */
+export async function seedMemoryFiles(botsDir: string, botNames: readonly string[]): Promise<string[]> {
+  const created: string[] = [];
+  for (const name of botNames) {
+    const botDir = join(resolve(botsDir), name);
+    if (!existsSync(botDir)) continue;
+    const path = join(botDir, "memory.md");
+    await serialised(botDir, async () => {
+      try {
+        await writeFile(path, MEMORY_TEMPLATE, { flag: "wx" });
+        created.push(path);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      }
+    });
+  }
+  return created;
 }

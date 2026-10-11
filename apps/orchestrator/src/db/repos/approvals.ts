@@ -1,10 +1,10 @@
 import { randomBytes } from "node:crypto";
 import {
-  DomainSchema,
   LIMITS,
   PRE_SUBMIT_APPLICATION_STATUSES,
   Sha256Schema,
   isApplyBlockedByInjection,
+  publicHostProblem,
   type SafetyDenialReason,
 } from "@bs-job-agents/shared";
 import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
@@ -29,13 +29,18 @@ export function requireCvVersionOfJob(db: Conn, jobId: number, cvVersionId: numb
   return cv;
 }
 
-/** PM M1: at least one domain, each a host name such as topcv.vn; normalised and de-duplicated. */
+/**
+ * PM M1: at least one domain, each a host name such as topcv.vn; normalised and de-duplicated.
+ * PM2 M2: each one a public web site (the shared public-host rule): never a public suffix such as
+ * vn or github.io (it would allow every site under it), an IP address, localhost or a local name.
+ */
 function validDomains(domains: readonly string[]): string[] {
   const out: string[] = [];
   for (const raw of domains) {
     const d = normalizeDomain(raw);
-    if (!DomainSchema.safeParse(d).success) {
-      throw new ApprovalRefusedError("invalid_domain", `"${raw}" is not a host name such as topcv.vn`);
+    const problem = publicHostProblem(d);
+    if (problem) {
+      throw new ApprovalRefusedError("invalid_domain", `approval domain refused: ${problem}`);
     }
     if (!out.includes(d)) out.push(d);
   }

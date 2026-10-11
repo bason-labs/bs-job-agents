@@ -5,7 +5,9 @@
 //   await engine.start();                         // UC-18 recovery, usage pauses, scheduler, queue
 //   engine.subscribe((event) => sse.send(event)); // committed shared AppEvents, in order
 //   engine.startWorkflow({ workflow: "job-scan", params }, { trigger: "chat" });
-//   engine.approve(jobId, { cvVersionId, introText });     // UC-08
+//   engine.approve(jobId, { cvVersionId, introText, dryRun? });  // UC-08; applicationId null without an apply link
+//   engine.enqueueConversation({ bot, kind, input });       // Lead chat / consult / room (PM2 S2)
+//   engine.confirmInjection(jobId);                         // UC-07 b, audited
 //   engine.lead.createTask({ botName: "lead", mode: "work" }, { bot, kind, input });  // MCP tools
 //
 // Test kit for other workers: `./testing/index.js` (FakeRunner, fake clock, fake bridges, harness).
@@ -41,7 +43,8 @@ export {
   pdfTextExtractor,
   type ProductionEngineOptions,
 } from "./wiring.js";
-export type { ApproveInput, ApproveResult } from "./review.js";
+export { approvalStatus, type ApproveInput, type ApproveResult } from "./review.js";
+export type { ConversationKind, ConversationRequest, ConversationResult, ConversationSink, ConversationSinkContext } from "./conversations.js";
 export type { AnswerInput } from "./apply.js";
 export { LEAD_TASK_KEYS, type LeadCaller, type LeadTools } from "./lead-tools.js";
 export { computeNextRunAt, type SchedulerTick } from "./scheduler.js";

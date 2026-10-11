@@ -17,7 +17,7 @@ export function jobRef(conn: Conn, job: Job): JobRef {
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-export function dedupeFilter(conn: Conn, ctx: RunCtx, from: JoinStepOutput, options: Record<string, unknown>, now: Date): FilterStepOutput {
+export function dedupeFilter(conn: Conn, ctx: RunCtx, from: JoinStepOutput, options: Record<string, unknown>, now: Date, passKey = ""): FilterStepOutput {
   if (from.taskKey === "research.fit") {
     const applyAgain = options.applyAgain === true;
     const items: JobRef[] = [];
@@ -38,7 +38,9 @@ export function dedupeFilter(conn: Conn, ctx: RunCtx, from: JoinStepOutput, opti
   const candidates = from.results.flatMap((r) => (r.output as Partial<ResearchScanOutput> | null)?.jobs ?? []) as JobCandidate[];
   // UC-04 b: a job Ba skipped stays excluded unless the run says "show skipped".
   const includeSkipped = ctx.params.showSkipped === true;
-  const r = dedupeCandidates(conn, candidates, { now, excludeRunId: ctx.run.id, includeSkipped });
+  // The run's own jobs count as taken in a follow-up pass (PM2 M5): the main pass may still be
+  // scoring one the late source found too. Only the main pass leaves its own run out (UC-23 re-run).
+  const r = dedupeCandidates(conn, candidates, { now, ...(passKey === "" ? { excludeRunId: ctx.run.id } : {}), includeSkipped });
   return { items: r.fresh.map((job) => jobRef(conn, job)), candidates: candidates.length, duplicates: r.duplicates.length };
 }
 
@@ -59,12 +61,12 @@ export function topFilter(conn: Conn, ctx: RunCtx, from: JoinStepOutput, options
   return { items: selected.map((j) => jobRef(conn, j)), threshold, take, belowThreshold };
 }
 
-export function runFilter(conn: Conn, ctx: RunCtx, fn: string, from: unknown, options: Record<string, unknown>, now: Date): FilterStepOutput {
+export function runFilter(conn: Conn, ctx: RunCtx, fn: string, from: unknown, options: Record<string, unknown>, now: Date, passKey = ""): FilterStepOutput {
   const join = from as JoinStepOutput | null;
   if (!join || !Array.isArray(join.results)) throw invalidInput(`filter ${fn} needs a join step's output`);
   switch (fn) {
     case "dedupe":
-      return dedupeFilter(conn, ctx, join, options, now);
+      return dedupeFilter(conn, ctx, join, options, now, passKey);
     case "top":
       return topFilter(conn, ctx, join, options);
     default:

@@ -4,6 +4,7 @@ import type { Engine as EngineName, PauseReason } from "@bs-job-agents/shared";
 import type { Conn, Db, Task } from "../db/index.js";
 import type { Runner } from "../runner/types.js";
 import type { EngineConfig, EnginePaths } from "./config.js";
+import type { ConversationSink } from "./conversations.js";
 import type { EventBus } from "./events.js";
 import type {
   BotRegistry,
@@ -43,6 +44,8 @@ export interface EngineDeps {
   processes?: OrphanKiller;
   /** ROLE.md per bot, for prompt_versions at start-up. Optional. */
   prompts?: RolePromptSource;
+  /** PM2 S2: W3a's chat flows; called in the transaction that settles a conversation task. Optional. */
+  conversations?: ConversationSink;
   logger?: Logger;
 }
 

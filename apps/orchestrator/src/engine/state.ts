@@ -35,9 +35,17 @@ export interface MapItemState {
   taskId: number;
   /** The job this item stands for (research.fit), when known. */
   jobId?: number;
-  status?: "done" | "failed";
+  /**
+   * `waiting`: its task waits for Ba (a login or a CAPTCHA, UC-17) and the map went on without it
+   * (PM2 M5); it becomes done or failed once the task settles.
+   */
+  status?: "done" | "failed" | "waiting";
   output?: unknown;
   error?: string | null;
+  /** The pause reason while it waits for Ba, e.g. `needs_login(linkedin.com)`. */
+  waitingFor?: string | null;
+  /** The follow-up pass its results went through after it finished late (`late-<taskId>`, PM2 M5). */
+  pass?: string;
 }
 
 export interface MapStepOutput {
@@ -51,6 +59,8 @@ export interface JoinStepOutput {
   taskKey: string;
   results: { item: unknown; jobId?: number; output: unknown }[];
   failures: { item: unknown; jobId?: number; error: string }[];
+  /** Items that wait for Ba (UC-17), listed apart from the failures (PM2 M5). */
+  waiting?: { item: unknown; taskId: number; reason: string | null }[];
 }
 
 export interface FilterStepOutput {

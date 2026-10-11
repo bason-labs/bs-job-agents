@@ -5,6 +5,7 @@
 import type { Engine } from "@bs-job-agents/shared";
 import { getTask, listTasks, pauseTask, type Conn, type Task } from "../db/index.js";
 import type { EngineCore } from "./core.js";
+import { noticeBridgeWait } from "./notices.js";
 import { emitTaskPaused, resumeTaskNow } from "./task-events.js";
 
 export type BridgeReason = "needs_browser" | "needs_figma";
@@ -29,6 +30,8 @@ export class BridgeWatcher {
     const pauseReason = { code: reason, site: null, detail: opts.detail ?? DETAIL[reason] };
     const paused = pauseTask(conn, task.id, pauseReason, opts.output !== undefined ? { output: opts.output } : {});
     emitTaskPaused(this.core, conn, paused, pauseReason);
+    // S1: one note per wait (the first task to wait for this bridge), with what Ba should do.
+    noticeBridgeWait(this.core, conn, paused, reason, opts.detail ?? null);
     this.core.bus.emit(conn, {
       type: "bridge.status",
       bridge: reason === "needs_browser" ? "chrome" : "figma",

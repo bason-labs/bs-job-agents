@@ -23,6 +23,8 @@ export interface EngineConfig {
   catchUpAfterMs: number;
   /** PM FYI d: the uploaded file is named `<applicantName>_<COMPANY>_<LANG>.pdf`. */
   applicantName: string;
+  /** Times in Lead's messages (e.g. "paused until 14:05"): Ba's zone, as the default schedule's (§15.2). */
+  displayTimeZone: string;
 }
 
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
@@ -36,6 +38,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   catchUpWindowMs: LIMITS.catchUpWindowMs,
   catchUpAfterMs: 2 * 60_000,
   applicantName: "BA_HUYNH",
+  displayTimeZone: "Asia/Ho_Chi_Minh",
 };
 
 export function resolveEngineConfig(over: Partial<EngineConfig> = {}): EngineConfig {

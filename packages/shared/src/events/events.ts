@@ -161,6 +161,8 @@ export const AppEventSchema = z.discriminatedUnion("type", [
     status: ApplicationStatusSchema,
     origin: ApplicationOriginSchema,
   }),
+  /** UC-07 b (PM2 S2): Ba confirmed a job QA flagged for a suspected injection; Apply may run for it. */
+  ev("injection.confirmed", { jobId: IdSchema, runId: IdSchema.nullable() }),
   // chat
   ev("message.created", { roomId: IdSchema, message: MessageSchema }),
   ev("message.delta", { roomId: IdSchema, messageId: IdSchema, delta: z.string() }),

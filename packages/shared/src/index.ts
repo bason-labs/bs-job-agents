@@ -12,6 +12,7 @@ export type Health = z.infer<typeof HealthSchema>;
 
 // common
 export * from "./common/primitives.js";
+export * from "./common/host.js";
 
 // strict JSON Schema (§5.5, spike S4)
 export * from "./json-schema/strict.js";

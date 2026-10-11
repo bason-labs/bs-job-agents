@@ -59,7 +59,7 @@ function claude(name: string, kind: string, extra: { readDirs?: string[]; hookSe
   });
 }
 
-function codex(name: string, kind: string, plugins: string[] = []) {
+function codex(name: string, kind: string, plugins: string[] = [], mcpServers: string[] = []) {
   const def = bot(name);
   return buildCodexInvocation({
     bot: def,
@@ -69,6 +69,7 @@ function codex(name: string, kind: string, plugins: string[] = []) {
     workDir: W,
     config: CONFIG,
     pluginsToDisable: plugins,
+    mcpServersToDisable: mcpServers,
   });
 }
 
@@ -279,12 +280,17 @@ describe("Codex argv (spike S1/S2/S4)", () => {
     expect(JSON.parse(inv.files[`${W}/schema.json`]!)).toEqual(getBotOutputJsonSchema("QaOutput"));
   });
 
-  it("research (browser): Ba's config with every other plugin off, host skills skipped, live search", () => {
-    const inv = codex("research", "scan", ["browser@openai-bundled", "superpowers@claude-plugins-official"]);
+  it("research (browser): Ba's config keeps only the Chrome plugin: other plugins, his MCP servers, connectors and notify off (PM2 M3)", () => {
+    const inv = codex("research", "scan", ["browser@openai-bundled", "superpowers@claude-plugins-official"], ["node_repl", "computer-use", "weird id"]);
     expect(inv.display).toEqual([
       "exec", "--json", "--skip-git-repo-check",
       "-c", 'plugins."browser@openai-bundled".enabled=false',
       "-c", 'plugins."superpowers@claude-plugins-official".enabled=false',
+      "-c", "mcp_servers.node_repl.enabled=false",
+      "-c", "mcp_servers.computer-use.enabled=false",
+      "-c", 'mcp_servers."weird id".enabled=false',
+      "-c", "notify=[]",
+      "--disable", "apps",
       "--enable", "skip_host_skill_discovery", "--disable", "skill_search",
       "--sandbox", "read-only",
       "-c", 'web_search="live"',
@@ -295,12 +301,31 @@ describe("Codex argv (spike S1/S2/S4)", () => {
     expect(JSON.parse(inv.files[`${W}/schema.json`]!).title).toBe("ResearchScanOutput");
   });
 
+  it("a browser bot's own MCP server is never switched off, even when Ba's config has one of the same name", () => {
+    const research = bot("research");
+    const def = { ...research, mcpServers: ["orchestrator"], allowedTools: [...research.allowedTools, "mcp:orchestrator:get_status"] };
+    const inv = buildCodexInvocation({
+      bot: def, plan: planTools(def), prompt: "P", schema: getBotOutputJsonSchema("ResearchScanOutput"), workDir: W, config: CONFIG,
+      pluginsToDisable: [], mcpServersToDisable: ["orchestrator", "node_repl"],
+    });
+    expect(inv.args).toContain("mcp_servers.node_repl.enabled=false");
+    expect(inv.args).not.toContain("mcp_servers.orchestrator.enabled=false");
+    expect(inv.args).toContain('mcp_servers.orchestrator.url="http://127.0.0.1:4100/mcp"');
+  });
+
+  it("non-browser bots ignore the user config altogether: no per-server switches needed", () => {
+    const inv = codex("qa", "review", ["browser@openai-bundled"], ["node_repl"]);
+    expect(inv.args).toContain("--ignore-user-config");
+    expect(inv.args.join(" ")).not.toMatch(/node_repl|notify|plugins\./);
+  });
+
   it("MCP servers via -c with approval mode and an enabled_tools allowlist", () => {
     const def = { ...bot("cv"), engine: "codex" as const };
     const inv = buildCodexInvocation({
       bot: def, plan: planTools(def), prompt: "P", schema: getBotOutputJsonSchema("CvOutput"), workDir: W,
       config: resolveRunnerConfig({ mcpServers: { figma: { command: "npx", args: ["-y", "figma-console-mcp@1.40.9"], env: { FIGMA_MODE: "desktop" } } } }, { HOME: "/h" }),
       pluginsToDisable: [],
+      mcpServersToDisable: [],
     });
     const i = inv.args.indexOf("-o") + 2;
     expect(inv.args.slice(i, -1)).toEqual([

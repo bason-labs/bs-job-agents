@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CODEX_BIN, codexPluginsToDisable, defaultBotsDir, listCodexPlugins, resolveRunnerConfig } from "./config.js";
+import { DEFAULT_CODEX_BIN, codexPluginsToDisable, codexUserMcpServers, defaultBotsDir, listCodexMcpServers, listCodexPlugins, resolveRunnerConfig } from "./config.js";
 
 const CONFIG_TOML = `model = "gpt-6-sol"
 
@@ -64,6 +64,63 @@ describe("runner config", () => {
         "superpowers@claude-plugins-official",
       ]);
       expect(codexPluginsToDisable({ codexUserConfigPath: join(dir, "missing.toml"), codexChromePlugin: "x" })).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("lists every MCP server Ba's Codex config defines, in every TOML form (PM2 M3)", () => {
+    const toml = `notify = ["/Applications/Notifier.app/x", "codex"]
+mcp_servers.top_dotted.command = "/x/a"
+mcp_servers."quoted dotted".url = "http://127.0.0.1:9/mcp"
+
+[mcp_servers.node_repl]
+args = ["--x"]
+command = "/x/node_repl"
+
+[mcp_servers.node_repl.env]
+CODEX_HOME = "/Users/ba/.codex"
+
+[mcp_servers."computer-use"]
+command = "/x/cu"
+enabled = false
+
+[ mcp_servers . spaced ]
+command = "/x/s"
+
+# [mcp_servers.commented_out]
+[mcp_servers]
+inline = { command = "/x/i" }
+tbl_dotted.command = "/x/t"
+"quoted-inline" = { url = "http://127.0.0.1:1" }
+
+[projects."/Users/ba/x"]
+trust_level = "trusted"
+note = """
+[mcp_servers.inside_a_string]
+"""
+
+[[mcp_servers.array_of_tables]]
+command = "/x/aot"
+`;
+    expect(listCodexMcpServers(toml)).toEqual([
+      "top_dotted",
+      "quoted dotted",
+      "node_repl",
+      "computer-use",
+      "spaced",
+      "inline",
+      "tbl_dotted",
+      "quoted-inline",
+      "array_of_tables",
+    ]);
+    expect(listCodexMcpServers(CONFIG_TOML)).toEqual(["node_repl"]);
+    expect(listCodexMcpServers('model = "x"\n')).toEqual([]);
+    const dir = mkdtempSync(join(tmpdir(), "bsja-codex-"));
+    try {
+      writeFileSync(join(dir, "config.toml"), CONFIG_TOML);
+      expect(codexUserMcpServers({ codexUserConfigPath: join(dir, "config.toml") })).toEqual(["node_repl"]);
+      expect(codexUserMcpServers({ codexUserConfigPath: join(dir, "missing.toml") })).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

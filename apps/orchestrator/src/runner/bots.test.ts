@@ -77,11 +77,11 @@ describe("bots/<name>/bot.json (§5.1, §5.2)", () => {
 });
 
 describe("ROLE.md and memory.md", () => {
-  it("every bot has a ROLE.md draft and an empty memory.md", () => {
+  it("every bot has a ROLE.md draft; memory.md is runtime state (gitignored, PM2 S5), so its content is not checked here", () => {
     for (const def of loadBots(BOTS)) {
       const files = readBotPromptFiles(join(BOTS, def.name));
       expect(files.roleMd.length, def.name).toBeGreaterThan(200);
-      expect(files.memoryMd, def.name).toBe("");
+      expect(typeof files.memoryMd, def.name).toBe("string");
       expect(files.roleMdHash).toBe(rolePromptHash(files.roleMd));
     }
   });

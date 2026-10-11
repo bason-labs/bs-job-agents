@@ -2,8 +2,18 @@
 // - Non-browser bots: `--ignore-user-config` (Ba's login stays, his plugins and skills go) and
 //   `--disable apps`: without it the built-in codex_apps server (ChatGPT connectors) answered a
 //   web search although web_search was disabled.
-// - Browser bots (§4.4): Ba's user config for the Chrome plugin, every other plugin disabled,
-//   `--enable skip_host_skill_discovery --disable skill_search` (its warning item is ignored).
+// - Browser bots (§4.4): Ba's user config for the Chrome plugin and nothing else of his (PM2 M3):
+//   every other plugin disabled (the plugin, never its server: switching a plugin's server off
+//   fails config loading, spike S1), every MCP server his config defines switched off
+//   (`mcp_servers.<id>.enabled=false`), his ChatGPT connectors off (`--disable apps`), no notify
+//   program (`notify=[]`), and `--enable skip_host_skill_discovery --disable skill_search` (its
+//   warning item is ignored).
+//   Live check 2026-10-11 (codex-cli 0.162.0-alpha.17.2, Ba's real config.toml, research.scan argv,
+//   a prompt that only listed its tools; nothing was opened or called): the session had the Chrome
+//   plugin's `mcp__cua_repl.js` / `js_reset` and web search (`web.run`), and Codex's built-ins
+//   (functions.exec / exec_command / apply_patch under the read-only sandbox, view_image, goals,
+//   collaboration.* sub-agents, image_gen, clock). Nothing from node_repl, computer-use, ChatGPT
+//   connectors or the 13 disabled plugins. The Chrome plugin's tools stay with node_repl off.
 // - MCP servers via -c, with default_tools_approval_mode="approve" (exec fails MCP calls
 //   otherwise) and enabled_tools as the allowlist (other tools are not offered).
 // - `--output-schema` (strict JSON Schema) + `-o`; the first call is not --ephemeral so the one
@@ -18,6 +28,9 @@ import { codexToolConfig, type ToolPlan } from "../tools.js";
 /** TOML value for `-c key=value`: JSON strings and arrays of strings are valid TOML. */
 const toml = (value: string | readonly string[]): string => JSON.stringify(value);
 
+/** A TOML key segment: bare when it can be, else a quoted string. */
+const tomlKey = (key: string): string => (/^[A-Za-z0-9_-]+$/.test(key) ? key : JSON.stringify(key));
+
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export interface CodexInvocationInput {
@@ -29,6 +42,8 @@ export interface CodexInvocationInput {
   config: RunnerConfig;
   /** Browser bots: Ba's plugins other than Chrome (config.codexPluginsToDisable). */
   pluginsToDisable: readonly string[];
+  /** Browser bots: the MCP servers Ba's config defines (config.codexUserMcpServers, PM2 M3). */
+  mcpServersToDisable: readonly string[];
 }
 
 export const codexPaths = (workDir: string) => ({
@@ -45,6 +60,9 @@ export function buildCodexInvocation(i: CodexInvocationInput): Invocation {
   const args = ["exec", "--json", "--skip-git-repo-check"];
   if (tools.browser) {
     for (const id of i.pluginsToDisable) args.push("-c", `plugins.${JSON.stringify(id)}.enabled=false`);
+    const own = new Set(tools.mcp.map((m) => m.server));
+    for (const id of i.mcpServersToDisable) if (!own.has(id)) args.push("-c", `mcp_servers.${tomlKey(id)}.enabled=false`);
+    args.push("-c", "notify=[]", "--disable", "apps");
     args.push("--enable", "skip_host_skill_discovery", "--disable", "skill_search");
   } else {
     args.push("--ignore-user-config", "--disable", "apps");
