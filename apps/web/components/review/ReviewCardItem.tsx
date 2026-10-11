@@ -15,6 +15,7 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import { useToast } from "@/components/ui/Toast";
 import { CvPreview } from "./CvPreview";
 import {
+  approveErrorText,
   approveLabel,
   companySummary,
   cvName,
@@ -24,6 +25,7 @@ import {
   hardFailText,
   introPayload,
   isBlockedByInjection,
+  isDryRunSettled,
   jobMeta,
   languageLabel,
   roundLabel,
@@ -139,13 +141,13 @@ export function ReviewCardItem({ card, acted, onApproved, onChangesRequested, on
   const notices = flagNotices(card);
   const { job } = card;
 
-  const act = async (work: () => Promise<void>) => {
+  const act = async (work: () => Promise<void>, describe: (err: unknown) => string = errorMessage) => {
     setPending(true);
     try {
       await work();
       setDialog(null);
     } catch (err) {
-      toast({ title: errorMessage(err), tone: "err" });
+      toast({ title: describe(err), tone: "err" });
     } finally {
       setPending(false);
     }
@@ -155,7 +157,7 @@ export function ReviewCardItem({ card, acted, onApproved, onChangesRequested, on
     act(async () => {
       const result = await api.approve(job.id, { cvVersionId: option.cvVersion.id, introText: introPayload(intro), ...(dryRun ? { dryRun } : {}) });
       onApproved(card, result, dryRun);
-    });
+    }, approveErrorText);
 
   return (
     <article
@@ -322,7 +324,7 @@ export function ReviewCardItem({ card, acted, onApproved, onChangesRequested, on
           pending={pending}
           fileName={cvName(option)}
           introEdited={introPayload(intro) !== null}
-          dryRunAvailable={supportsDryRun(api.mode)}
+          dryRunAvailable={supportsDryRun(api.mode) && !isDryRunSettled(card)}
           onConfirm={(dryRun) => void approve(dryRun)}
         />
       ) : null}

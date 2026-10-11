@@ -1,5 +1,5 @@
 // Ba's master CV as the prototype shows it (version 7, seven facts), on top of the shared
-// fixture's contact block. Used by the fixture data source until the API is wired in.
+// fixture's contact block. The mock orchestrator's data/master-cv.yaml.
 import type { MasterCv } from "@bs-job-agents/shared";
 import { masterCvFixture } from "@bs-job-agents/shared/fixtures";
 

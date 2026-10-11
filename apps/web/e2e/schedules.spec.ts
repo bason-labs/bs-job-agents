@@ -112,5 +112,5 @@ test("turns a schedule off with its switch", async ({ page }) => {
 
 test("Run now opens the new run's flow (UC-21)", async ({ page }) => {
   await rows(page).first().getByRole("button", { name: "Run now" }).click();
-  await expect(page).toHaveURL(/\/flows\/run_\d+$/);
+  await expect(page).toHaveURL(/\/flows\/\d+$/);
 });

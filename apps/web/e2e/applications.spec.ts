@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
-import { open } from "./helpers";
+import { open, withMock, type MockHandle } from "./helpers";
 
 // UC-13 (status, submission record panel, file viewer) and UC-13b (export) on the
-// fixture-backed Applications screen.
+// Applications screen, on the mock orchestrator (lib/api/mock).
 
 const row = (page: Page, company: string) => page.getByTestId("application-row").filter({ has: page.getByRole("button", { name: `Open ${company}'s submission record` }) });
 const panel = (page: Page) => page.getByTestId("record-panel");
@@ -29,7 +29,7 @@ test("lists applications with imported, dry-run and needs-check states (UC-13, P
   await expect(page.getByTestId("page")).toHaveAttribute("data-width", "wide");
   await expect(page.getByTestId("application-row")).toHaveCount(7);
   await expect(page.getByTestId("applications-header")).toHaveText(
-    "7 applications · stored on this Mac in data/ · click a row to see exactly what was sent",
+    "7 applications · stored on this Mac in /Users/ba/job-agents/data · click a row to see exactly what was sent",
   );
   await expect(row(page, "DEKON")).toContainText("imported");
   await expect(row(page, "Kite Labs")).toContainText("dry run");
@@ -166,6 +166,21 @@ test("a failed application can be applied to again, after a confirmation (pm-pha
   await panel(page).getByRole("button", { name: "Apply again…" }).click();
   const confirm = page.getByTestId("confirm-dialog");
   await expect(confirm).toContainText("Apply to Bluebird Software again?");
-  await confirm.getByRole("button", { name: "Send to review" }).click();
-  await expect(page.getByTestId("toast").filter({ hasText: "Bluebird Software is back in your review queue" })).toBeVisible();
+  await confirm.getByRole("button", { name: "Apply again" }).click();
+  const toast = page.getByTestId("toast").filter({ hasText: /^Applying to Bluebird Software again \(run #\d+\)/ });
+  await expect(toast).toBeVisible();
+  // POST /applications/:id/apply-again started an apply-to-link run; its card comes back for review.
+  await toast.getByRole("button", { name: "Open flow" }).click();
+  await expect(page).toHaveURL(/\/flows\/\d+$/);
+});
+
+test("follows applications changed elsewhere: an approval in Review adds a row, a status change updates it", async ({ page }) => {
+  await expect(page.getByTestId("application-row")).toHaveCount(7);
+  await withMock(page, async (mock: MockHandle) => {
+    const card = (await mock.getReviewQueue()).find((c) => c.job.url && !c.flags.injectionFlagged)!;
+    await mock.approve(card.job.id, { cvVersionId: card.cvOptions[0]!.cvVersion.id, introText: null });
+  });
+  await expect(page.getByTestId("application-row")).toHaveCount(8);
+  await withMock(page, (mock: MockHandle) => mock.request("POST", "/applications/:id/status", { params: { id: "app_dekon" }, body: { status: "rejected", note: null } }));
+  await expect(row(page, "DEKON").getByRole("combobox", { name: "Status of DEKON" })).toHaveText("Rejected");
 });

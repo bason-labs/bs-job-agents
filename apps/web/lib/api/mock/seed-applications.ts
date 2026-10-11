@@ -1,8 +1,8 @@
 // Applications seen through the API (UC-13), built from the shared fixtures plus the
 // prototype's data: the three real TopCV applications of 2026-10-10 as imported, partial
 // records, and one application in each state the screen must show (needs_check, dry run,
-// failed). Used by the fixture data source until the orchestrator API is wired in.
-import type { ApplicationDetail, FileRef, SubmissionRecord } from "@bs-job-agents/shared";
+// failed). The mock orchestrator's seed for GET /applications and /applications/:id.
+import type { ApplicationDetail, ApplicationListItem, FileRef, SubmissionRecord } from "@bs-job-agents/shared";
 import {
   applicationFixture,
   cvOutputFixture,
@@ -10,7 +10,7 @@ import {
   researchScanFixture,
   submissionRecordFixture,
 } from "@bs-job-agents/shared/fixtures";
-import type { ApplicationRow } from "./logic";
+import type { ApplicationExtra } from "./state";
 
 const [novapayJob, saoVietJob] = researchScanFixture.jobs as [(typeof researchScanFixture.jobs)[0], (typeof researchScanFixture.jobs)[0]];
 
@@ -239,18 +239,37 @@ export const APPLICATION_DETAILS: ApplicationDetail[] = [
   imported("yaviet", "YAVIET", "Frontend Developer (ReactJS, NextJS, TS)", "https://www.topcv.vn/viec-lam/frontend-developer-reactjs-nextjs-typescript/2325969.html", "2026-10-10T15:38:00+07:00", "BA_HUYNH_YAVIET_Figma_EN.pdf"),
 ];
 
-/** The list row the API would return for a detail. */
-export function toRow(d: ApplicationDetail): ApplicationRow {
+/** What the API shows beside an application, from its full record (W3a views/applications.ts). */
+export function extraOf(d: ApplicationDetail): ApplicationExtra {
   const s = d.submission;
   const confirmation = s?.confirmationScreenshotPath ? d.files.find((f) => f.kind === "screenshot" && s.confirmationScreenshotPath?.endsWith(f.filename)) : undefined;
   const cvFile = d.files.find((f) => f.kind === "cv_pdf") ?? null;
   const missing = !s || (!s.dryRun && (!s.preSubmitScreenshotPath || !s.confirmationScreenshotPath || !s.jdSnapshot || !s.uploadedFile?.sha256));
   return {
-    application: d.application,
     job: d.job,
     cvVersion: d.cvVersion,
+    submission: d.submission,
+    files: d.files,
     confirmationScreenshotFileId: confirmation?.id ?? null,
     partialRecord: d.application.origin === "imported" || (d.submission !== null && missing),
     cvFile,
   };
+}
+
+/** The list row GET /applications returns for a detail. */
+export function toRow(d: ApplicationDetail): ApplicationListItem {
+  const { job, cvVersion, confirmationScreenshotFileId, partialRecord, cvFile } = extraOf(d);
+  return { application: d.application, job, cvVersion, confirmationScreenshotFileId, partialRecord, cvFile };
+}
+
+/** Sample files under public/dev for the viewer, by the seeded files' types. */
+export function sampleFileUrls(details: readonly ApplicationDetail[]): Record<string, string> {
+  const byMime: Record<string, string> = {
+    "application/pdf": "/dev/sample-cv.pdf",
+    "image/png": "/dev/sample-screenshot.png",
+    "text/plain": "/dev/sample-jd.txt",
+  };
+  const out: Record<string, string> = {};
+  for (const d of details) for (const f of d.files) if (byMime[f.mime]) out[f.id] = byMime[f.mime]!;
+  return out;
 }

@@ -2,7 +2,6 @@
 // body ({ error: { code, message, details } }; validation_failed 400, not_found 404, conflict /
 // already_applied 409, forbidden 403, 503 when degraded). lib/api's client may throw that body,
 // or an Error carrying it or its fields, so this reads all of those shapes.
-import type { ApiError } from "@bs-job-agents/shared";
 
 export interface ApiErrorInfo {
   message: string;
@@ -43,19 +42,4 @@ export function errorDetails(e: unknown): Record<string, unknown> | null {
   const x = e as Loose;
   const details = x.error?.details ?? x.body?.error?.details ?? x.details;
   return details && typeof details === "object" ? (details as Record<string, unknown>) : null;
-}
-
-/** What the fixture data sources throw, shaped like the API's error (status + ApiError body). */
-export class FixtureApiError extends Error {
-  readonly body: ApiError;
-  constructor(
-    readonly status: number,
-    code: ApiError["error"]["code"],
-    message: string,
-    details: Record<string, unknown> | null = null,
-  ) {
-    super(message);
-    this.name = "FixtureApiError";
-    this.body = { error: { code, message, details } };
-  }
 }

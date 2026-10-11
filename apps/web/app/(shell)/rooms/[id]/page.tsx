@@ -1,27 +1,26 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import { roomsData } from "@/components/rooms/data";
-import { RoomScreen } from "@/components/rooms/RoomScreen";
+import { RoomLive } from "@/components/rooms/RoomScreen";
 import { Page } from "@/components/shell/Page";
+import { api } from "@/lib/api";
 
 interface Props {
   params: Promise<{ id: string }>;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const room = await roomsData.getRoom((await params).id);
+  const room = await api.getRoom((await params).id).catch(() => null);
   return { title: room ? `# ${room.name}` : "Room" };
 }
 
-/** UC-15: group room with @mentions; bots answer in discussion mode (full width, like chat). */
+/**
+ * UC-15: group room with @mentions; bots answer in discussion mode (full width, like chat). Read in
+ * the browser: Ba's messages go out with POST /chat/messages, replies arrive as message.created.
+ */
 export default async function RoomPage({ params }: Props) {
   const { id } = await params;
-  const room = await roomsData.getRoom(id);
-  if (!room) notFound();
-  const [page, bots] = await Promise.all([roomsData.messages(id), roomsData.bots()]);
   return (
     <Page width="full">
-      <RoomScreen room={room} initialMessages={page.messages} initialHasMore={page.hasMore} bots={bots} />
+      <RoomLive id={id} />
     </Page>
   );
 }

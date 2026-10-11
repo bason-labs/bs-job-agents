@@ -123,6 +123,32 @@ describe("PauseCard (UC-17, UC-11 e)", () => {
     expect(screen.getByTestId("pause-card")).toHaveAttribute("data-state", "resumed");
   });
 
+  it("domain confirm: Don't allow stops Apply there (UC-11 e)", async () => {
+    const declineDomain = vi.fn(async () => {});
+    const api = setup(<PauseCard card={{ type: "pause", taskId: "t9", reason: "domain_confirm(acme.wd3.myworkdayjobs.com)" }} />, { api: { declineDomain } });
+    await userEvent.click(screen.getByRole("button", { name: "Don't allow" }));
+    expect(declineDomain).toHaveBeenCalledWith("t9");
+    expect(api.resumeTask).not.toHaveBeenCalled();
+    expect(screen.getByTestId("pause-card")).toHaveAttribute("data-state", "declined");
+    expect(screen.getByText("Not allowed — Apply stopped and won't continue on acme.wd3.myworkdayjobs.com. Nothing was sent there.")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("domain confirm: a refused Don't allow shows the server's reason and stays live", async () => {
+    const declineDomain = vi.fn(async () => {
+      throw new ApiRequestError({ status: 404, code: "not_found", message: "“Don't allow” arrives with the next orchestrator update." });
+    });
+    setup(<PauseCard card={{ type: "pause", taskId: "t9", reason: "domain_confirm(acme.wd3.myworkdayjobs.com)" }} />, { api: { declineDomain } });
+    await userEvent.click(screen.getByRole("button", { name: "Don't allow" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("arrives with the next orchestrator update");
+    expect(screen.getByTestId("pause-card")).toHaveAttribute("data-state", "live");
+  });
+
+  it("only a domain confirm offers Don't allow", () => {
+    setup(<PauseCard card={{ type: "pause", taskId: "t9", reason: "needs_login(topcv.vn)" }} />);
+    expect(screen.queryByRole("button", { name: "Don't allow" })).toBeNull();
+  });
+
   it("login: Done resumes with no domain; the bot from the task event is named", async () => {
     const api = setup(<PauseCard card={{ type: "pause", taskId: "t9", reason: "needs_login(topcv.vn)" }} />, { bot: "research" });
     expect(screen.getByText(/Research paused because topcv.vn needs you to log in/)).toBeInTheDocument();

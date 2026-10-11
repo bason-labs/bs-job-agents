@@ -35,9 +35,24 @@ export function PauseCard({ card }: { card: PauseCardData }) {
   const copy = pauseCopy(card.reason, botName ? botDisplay(bots, botName) : null);
   const [pending, setPending] = useState(false);
   const [done, setDone] = useState(false);
+  const [declined, setDeclined] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const phase = taskPhase(card.taskId);
-  const state = done || phase === "running" ? "resumed" : phase === "ended" ? "ended" : "live";
+  const state = declined ? "declined" : done || phase === "running" ? "resumed" : phase === "ended" ? "ended" : "live";
+
+  /** UC-11 e "Don't allow": Apply stops instead of filling the form on the other site. */
+  const decline = async () => {
+    setPending(true);
+    setError(null);
+    try {
+      await api.declineDomain(card.taskId);
+      setDeclined(true);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setPending(false);
+    }
+  };
 
   const resume = async () => {
     if (!copy.action) return;
@@ -71,11 +86,20 @@ export function PauseCard({ card }: { card: PauseCardData }) {
       ) : null}
       <p className="text-sm leading-relaxed">{copy.body}</p>
       {state === "live" && copy.action ? (
-        <Button variant="primary" size="sm" pill loading={pending} onClick={() => void resume()}>
-          {copy.action.label}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" size="sm" pill loading={pending} onClick={() => void resume()}>
+            {copy.action.label}
+          </Button>
+          {code === "domain_confirm" ? (
+            <Button size="sm" pill disabled={pending} onClick={() => void decline()}>
+              Don&apos;t allow
+            </Button>
+          ) : null}
+        </div>
       ) : null}
-      {state === "resumed" ? (
+      {state === "declined" ? (
+        <p className="text-xs text-muted">Not allowed — Apply stopped{copy.host ? ` and won't continue on ${copy.host}` : ""}. Nothing was sent there.</p>
+      ) : state === "resumed" ? (
         <p className="flex items-center gap-1.5 text-xs text-ok">
           <Check aria-hidden className="size-3.5" /> Resumed — {botName ? botDisplay(bots, botName) : "the bot"} picks up where it stopped.
         </p>

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { open } from "./helpers";
+import { open, withMock, type MockHandle } from "./helpers";
 
 // UC-15: group room in discussion mode with @mention autocomplete.
 
@@ -63,4 +63,33 @@ test("a message without a mention goes to no bot", async ({ page }) => {
 test("an unknown room is not found", async ({ page }) => {
   await open(page, "/rooms/nope");
   await expect(page.getByText("Not found")).toBeVisible();
+});
+
+test("a mentioned bot that isn't a member gets the server's note; the message goes out with POST /chat/messages", async ({ page }) => {
+  await withMock(page, (mock: MockHandle) => {
+    mock.state.rooms.find((r) => r.id === "cv-brainstorm")!.members = ["cv", "qa"];
+  });
+  await composer(page).fill("@Apply could you check this?");
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "@Apply is not in this room." })).toBeVisible();
+  await expect(page.getByTestId("room-waiting")).toHaveCount(0);
+});
+
+test("/rooms lists group rooms and direct threads (GET /rooms) and creates a room (UC-15)", async ({ page }) => {
+  await open(page, "/rooms");
+  await expect(page.getByTestId("page-title")).toHaveText("Rooms");
+  await expect(page.getByTestId("room-link")).toHaveText([/cv-brainstorm/]);
+  await expect(page.getByTestId("direct-room-link")).toHaveText([/Research$/, /CV$/, /QA$/, /Apply$/]);
+  await page.getByTestId("direct-room-link").filter({ hasText: "QA" }).click();
+  await expect(page).toHaveURL(/\/chat\/qa$/);
+
+  await open(page, "/rooms");
+  const form = page.getByTestId("new-room");
+  await form.getByLabel("Name").fill("salary-talk");
+  await form.getByRole("checkbox", { name: "Research" }).click();
+  await form.getByRole("checkbox", { name: "CV" }).click();
+  await form.getByRole("button", { name: "Create room" }).click();
+  await expect(page).toHaveURL(/\/rooms\/\d+$/);
+  await expect(page.getByRole("combobox", { name: "Message #salary-talk" })).toBeVisible();
+  await expect(page.getByTestId("room-members")).toHaveText(/^Members:.*Research.*CV$/);
 });

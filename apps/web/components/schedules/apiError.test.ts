@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { FixtureApiError, apiErrorInfo, errorDetails, errorReason, errorText } from "./apiError";
+import { ApiRequestError } from "@/lib/api/errors";
+import { apiErrorInfo, errorDetails, errorReason, errorText } from "./apiError";
 
 describe("apiErrorInfo: reads the shared ApiError body however the client wraps it", () => {
   it("reads a plain body", () => {
@@ -20,11 +21,11 @@ describe("apiErrorInfo: reads the shared ApiError body however the client wraps 
     expect(errorReason(new Error("x"))).toBeNull();
   });
 
-  it("FixtureApiError looks like the API's error to the screens", () => {
-    const e = new FixtureApiError(409, "conflict", "the master CV changed", { reason: "master_cv_changed", currentVersion: 9 });
+  it("reads lib/api's ApiRequestError (code, status, details.reason)", () => {
+    const e = new ApiRequestError({ status: 409, code: "conflict", message: "the master CV changed", details: { reason: "master_cv_changed", currentVersion: 9 } });
     expect(apiErrorInfo(e)).toEqual({ message: "the master CV changed", code: "conflict", reason: "master_cv_changed", status: 409 });
     expect(errorDetails(e)).toEqual({ reason: "master_cv_changed", currentVersion: 9 });
     expect(errorDetails(new Error("x"))).toBeNull();
-    expect(e).toBeInstanceOf(Error);
+    expect(apiErrorInfo(ApiRequestError.unreachable())).toMatchObject({ code: "unreachable", status: 0 });
   });
 });

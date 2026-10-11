@@ -1,6 +1,6 @@
 import { MasterCvSchema } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
-import { MASTER_CV } from "./fixtures";
+import { MASTER_CV } from "@/lib/api/mock/seed-master-cv";
 import { factFromRequest, factMeta, isMasterDirty, newFact, suggestFactId, validateMasterCv } from "./logic";
 
 describe("master CV fixture", () => {

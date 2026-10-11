@@ -26,6 +26,16 @@ describe("profileToForm / formToRequest", () => {
     expect(CriteriaUpdateRequestSchema.safeParse(formToRequest(f)).success).toBe(true);
   });
 
+  it("starts from the shared defaults before the first save; the header says the save creates v1", () => {
+    const f = profileToForm(null);
+    expect(f).toMatchObject({ roles: [], locations: [], sources: ["topcv", "itviec", "linkedin"], languages: ["en"], maxJobs: 5, fitThreshold: 60 });
+    // Not saveable until Ba adds a role and a location (the shared rules).
+    expect(CriteriaUpdateRequestSchema.safeParse(formToRequest(f)).success).toBe(false);
+    expect(CriteriaUpdateRequestSchema.safeParse(formToRequest({ ...f, roles: ["Frontend Engineer"], locations: ["Ho Chi Minh City"] })).success).toBe(true);
+    expect(isDirty(f, null)).toBe(false);
+    expect(profileHeader(null, false)).toBe("No search criteria yet · saving creates v1");
+  });
+
   it("defaults the currency to VND so amounts always have one (UC-21b b)", () => {
     expect(profileToForm({ ...profile, minSalary: null, currency: null }).currency).toBe("VND");
   });

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { open } from "./helpers";
+import { open, withMock, type MockHandle } from "./helpers";
 
-// UC-21b: edit the Search Profile on the dashboard (fixture-backed).
+// UC-21b: edit the Search Profile, on the mock orchestrator (lib/api/mock).
 
 test.beforeEach(async ({ page }) => {
   await open(page, "/criteria");
@@ -89,4 +89,50 @@ test("needs at least one role, location and source (UC-21b b)", async ({ page })
 
 test("shows CV languages as a read-only note (§6.3)", async ({ page }) => {
   await expect(page.getByText("CV languages: English for English JDs; Vietnamese + English for Vietnamese JDs.")).toBeVisible();
+});
+
+test("before the first save (GET /criteria 404) the form starts empty and Save creates v1", async ({ page }) => {
+  await open(page, "/schedules");
+  await withMock(page, (mock: MockHandle) => {
+    mock.state.profiles.length = 0;
+  });
+  await page.getByTestId("sidebar").getByRole("link", { name: "Search criteria" }).click();
+  await expect(page.getByTestId("criteria-header")).toContainText("No search criteria yet · saving creates v1");
+  await page.getByRole("textbox", { name: "Add to Roles" }).fill("Frontend Engineer");
+  await page.keyboard.press("Enter");
+  await page.getByRole("textbox", { name: "Add to Locations" }).fill("Ho Chi Minh City");
+  await page.keyboard.press("Enter");
+  await page.getByTestId("criteria-save").click();
+  await expect(page.getByTestId("toast").filter({ hasText: "Search criteria saved as v1" })).toBeVisible();
+  await expect(page.getByTestId("criteria-header")).toContainText("Active profile v1 · updated just now");
+});
+
+test("a criteria save in chat ('Save to my criteria') shows here as the next version", async ({ page }) => {
+  await withMock(page, (mock: MockHandle) =>
+    mock.request("PUT", "/criteria", {
+      body: {
+        roles: ["Frontend Engineer"],
+        locations: ["Ho Chi Minh City", "Đà Nẵng"],
+        workModes: ["onsite"],
+        minSalary: null,
+        currency: "VND",
+        seniority: [],
+        sources: ["topcv"],
+        includeKeywords: [],
+        excludeKeywords: [],
+        excludeCompanies: [],
+        companyTypes: [],
+        languages: ["en"],
+        maxJobs: 5,
+        fitThreshold: 60,
+        salaryPolicy: "blank_if_optional",
+        salaryAmount: null,
+      },
+    }),
+  );
+  await page.getByTestId("sidebar").getByRole("link", { name: "Schedules" }).click();
+  await expect(page.getByTestId("page-title")).toHaveText("Schedules");
+  await page.getByTestId("sidebar").getByRole("link", { name: "Search criteria" }).click();
+  await expect(page.getByTestId("criteria-header")).toContainText("Active profile v4");
+  await expect(page.getByTestId("criteria-locations")).toContainText("Đà Nẵng");
 });

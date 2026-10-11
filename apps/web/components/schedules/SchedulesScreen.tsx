@@ -6,24 +6,44 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, ConfirmDialog, Switch, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { schedulesData, type ProfileOption, type SchedulesData } from "./data";
+import { useLiveResource } from "@/lib/api/live-resource";
+import { readSchedules, useSchedulesData, type ProfileOption, type SchedulesData } from "./data";
+import { ResourceGate } from "./ResourceGate";
 import { formToCreateRequest, formToUpdateRequest, newScheduleForm, scheduleSummary, scheduleToForm, type ScheduleForm } from "./logic";
 import { ScheduleEditor } from "./ScheduleEditor";
 import { errorReason, errorText } from "./apiError";
 
 export interface SchedulesScreenProps {
+  /** The latest read; a newer one (a live re-read) replaces the rows. */
   initial: ScheduleView[];
   profiles: ProfileOption[];
-  /** Defaults to the app's data source; tests pass their own. */
-  data?: SchedulesData;
+  data: SchedulesData;
+}
+
+/** The page: schedules and criteria options through lib/api; re-read when a scan starts or ends. */
+export function SchedulesLive() {
+  const data = useSchedulesData();
+  const read = useLiveResource("w3c:schedules", () => readSchedules(data), {
+    refreshOn: (e) => e.type === "schedule.fired" || e.type === "run.finished",
+  });
+  return (
+    <ResourceGate resource={read} label="schedules" rows={2}>
+      {(r) => <SchedulesScreen initial={r.schedules} profiles={r.profiles} data={data} />}
+    </ResourceGate>
+  );
 }
 
 type EditorTarget = { mode: "create"; form: ScheduleForm } | { mode: "edit"; id: string; form: ScheduleForm };
 type EditorState = EditorTarget & { key: number };
 
 /** UC-21: create, edit, enable/disable, run now and delete (with Undo) schedules. */
-export function SchedulesScreen({ initial, profiles, data = schedulesData }: SchedulesScreenProps) {
+export function SchedulesScreen({ initial, profiles, data }: SchedulesScreenProps) {
   const [rows, setRows] = useState(initial);
+  const [seen, setSeen] = useState(initial);
+  if (seen !== initial) {
+    setSeen(initial);
+    setRows(initial);
+  }
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [confirm, setConfirm] = useState<ScheduleView | null>(null);

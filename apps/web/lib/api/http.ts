@@ -9,7 +9,6 @@ import {
   EnginesResponseSchema,
   HealthStatusSchema,
   MessagesResponseSchema,
-  ReviewQueueResponseSchema,
   RoomsResponseSchema,
   RunControlResponseSchema,
   RunDetailSchema,
@@ -19,11 +18,11 @@ import {
   fileUrl,
 } from "@bs-job-agents/shared";
 import type { z } from "zod";
-import { ApproveResultSchema, TranscriptResponseSchema, type EventFeed, type HealthState, type WebApi } from "./contract";
+import { ApproveResultSchema, ReviewQueueResponseExtSchema, TranscriptResponseSchema, type ApiRequestOptions, type EventFeed, type HealthState, type WebApi } from "./contract";
 import { csrfHeaders } from "./csrf";
 import { ApiRequestError, apiErrorFromResponse } from "./errors";
 import { toBotSummary, toRoomSummary, toShellData } from "./map";
-import { PROPOSED_ROUTES, apiPath, type QueryValue } from "./routes";
+import { PROPOSED_ROUTES, apiPath } from "./routes";
 
 export interface HttpClientOptions {
   /** `http://127.0.0.1:4100` on the server, `/api` in the browser. */
@@ -31,14 +30,7 @@ export interface HttpClientOptions {
   fetch?: typeof fetch;
 }
 
-interface RequestOptions<S extends z.ZodTypeAny> {
-  params?: Record<string, string>;
-  query?: Record<string, QueryValue>;
-  body?: unknown;
-  form?: FormData;
-  schema?: S;
-  signal?: AbortSignal;
-}
+type RequestOptions<S extends z.ZodTypeAny> = ApiRequestOptions<S>;
 
 export function createHttpClient(opts: HttpClientOptions) {
   const base = opts.baseUrl.replace(/\/+$/, "");
@@ -106,7 +98,8 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
   const listBots = async () => (await request("GET", API_ROUTES.bots, { schema: BotsResponseSchema })).bots;
   const listRooms = async () => (await request("GET", API_ROUTES.rooms, { schema: RoomsResponseSchema })).rooms;
   const listEngines = async () => (await request("GET", API_ROUTES.engines, { schema: EnginesResponseSchema })).engines;
-  const getReviewQueue = async () => (await request("GET", API_ROUTES.reviewQueue, { schema: ReviewQueueResponseSchema })).cards;
+  // The extended schema keeps the flags the shared one does not list yet (companyMissing, dryRunSettled).
+  const getReviewQueue = async () => (await request("GET", API_ROUTES.reviewQueue, { schema: ReviewQueueResponseExtSchema })).cards;
   const listRuns = async (q: { status?: string; limit?: number } = {}) =>
     (await request("GET", API_ROUTES.runs, { query: { status: q.status, limit: q.limit }, schema: RunsResponseSchema })).runs;
 
@@ -166,6 +159,17 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
     async resumeTask(taskId, input = { confirmDomain: null }) {
       await request("POST", API_ROUTES.taskResume, { params: { id: taskId }, body: { confirmDomain: input.confirmDomain } });
     },
+    async declineDomain(taskId) {
+      try {
+        await request("POST", PROPOSED_ROUTES.taskDeclineDomain, { params: { id: taskId }, body: {} });
+      } catch (err) {
+        // Proposed route: until the orchestrator serves it, say so instead of "no route …".
+        if (err instanceof ApiRequestError && err.code === "not_found" && /^no route/.test(err.message)) {
+          throw new ApiRequestError({ status: 404, code: "not_found", message: "“Don't allow” arrives with the next orchestrator update. For now, let Apply wait or cancel the run in Flows." });
+        }
+        throw err;
+      }
+    },
     async chooseOption(input) {
       await request("POST", PROPOSED_ROUTES.chatChoice, { body: input });
     },
@@ -210,6 +214,11 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
 
     fileUrl(id, o = {}) {
       return `${http.base}${fileUrl(id, o)}`;
+    },
+
+    request,
+    apiUrl(path) {
+      return /^[a-z][a-z0-9+.-]*:/i.test(path) ? path : `${http.base}${path.startsWith("/") ? "" : "/"}${path}`;
     },
   };
 }

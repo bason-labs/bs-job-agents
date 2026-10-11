@@ -7,6 +7,9 @@ import {
   ApproveResponseSchema,
   IdSchema,
   IsoDateTimeSchema,
+  ReviewCardFlagsSchema,
+  ReviewCardSchema,
+  ReviewQueueResponseSchema,
   type AnswerQuestionResponse,
   type AppEvent,
   type BotView,
@@ -27,9 +30,25 @@ import {
   type UploadsResponse,
 } from "@bs-job-agents/shared";
 import { z } from "zod";
+import type { QueryValue } from "./routes";
 import type { BotSummary, RoomSummary, ShellData } from "./types";
 
 export type ApiMode = "live" | "mock";
+
+// ---------------------------------------------------------------- any route
+
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+/** One call to an API_ROUTES entry: path params, query, a JSON body (or a form) and the response schema. */
+export interface ApiRequestOptions<S extends z.ZodTypeAny = z.ZodTypeAny> {
+  params?: Record<string, string>;
+  query?: Record<string, QueryValue>;
+  body?: unknown;
+  form?: FormData;
+  /** The shared response schema; without one the call resolves to undefined. */
+  schema?: S;
+  signal?: AbortSignal;
+}
 
 // ---------------------------------------------------------------- live events
 
@@ -64,6 +83,21 @@ export const ApproveResultSchema = ApproveResponseSchema.extend({
   reapproval: z.boolean().optional().default(false),
 });
 export type ApproveResult = z.infer<typeof ApproveResultSchema>;
+
+/**
+ * Review-card flags the UI reads beyond the shared schema (forward-compatible; the API adds them in
+ * Phase 3 QA, the mock has them now):
+ * - companyMissing (PM2 S16): the company research failed for good; CV tailored without a profile
+ * - dryRunSettled (PM2 S15): the card's dry run finished; Approve (without dryRun) now applies live
+ */
+export const ReviewCardFlagsExtSchema = ReviewCardFlagsSchema.extend({
+  companyMissing: z.boolean().optional(),
+  dryRunSettled: z.boolean().optional(),
+});
+export type ReviewCardFlagsExt = z.infer<typeof ReviewCardFlagsExtSchema>;
+export const ReviewQueueResponseExtSchema = ReviewQueueResponseSchema.extend({
+  cards: z.array(ReviewCardSchema.extend({ flags: ReviewCardFlagsExtSchema })),
+});
 
 /** One transcript line (the shape of a `task.progress` event), for the step drawer (UC-22). */
 export const TranscriptLineSchema = z.object({
@@ -143,6 +177,8 @@ export interface WebApi {
   /** Apply resumed, or the next question Lead now asks (one at a time). */
   answerQuestion(taskId: string, input: AnswerInput): Promise<AnswerQuestionResponse>;
   resumeTask(taskId: string, input?: { confirmDomain: string | null }): Promise<void>;
+  /** UC-11 e "Don't allow": Apply stops instead of continuing on the new site (PROPOSED_ROUTES.taskDeclineDomain). */
+  declineDomain(taskId: string): Promise<void>;
   chooseOption(input: ChoiceRequest): Promise<void>;
 
   // runs (UC-22, UC-23)
@@ -163,4 +199,13 @@ export interface WebApi {
 
   /** URL the in-app viewer loads (Download inside the viewer adds `download`). */
   fileUrl(id: string, opts?: { download?: boolean }): string;
+
+  // any route (the W3c screens' adapters in components/<area>/data.ts)
+  /**
+   * Any API_ROUTES call by its template (`API_ROUTES.application` + `params: { id }`), validated
+   * with `schema`; failures are ApiRequestError with the server's code and `details.reason`.
+   */
+  request<S extends z.ZodTypeAny = z.ZodTypeAny>(method: HttpMethod, route: string, opts?: ApiRequestOptions<S>): Promise<z.infer<S>>;
+  /** An orchestrator path the API answered with (an export's `downloadUrl`) as a URL this browser can open. */
+  apiUrl(path: string): string;
 }

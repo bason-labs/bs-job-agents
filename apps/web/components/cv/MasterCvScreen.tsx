@@ -2,11 +2,13 @@
 
 import type { Fact, MasterCv } from "@bs-job-agents/shared";
 import { CircleHelp, FileWarning, NotebookPen, RefreshCw } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Button, EmptyState, Field, Input, useToast } from "@/components/ui";
 import { errorDetails, errorReason, errorText } from "@/components/schedules/apiError";
 import { formatDateTime } from "@/components/schedules/datetime";
-import { masterCvData, type FactRequestItem, type MasterCvData, type MasterCvRead, type MasterCvVersion } from "./data";
+import { ResourceGate } from "@/components/schedules/ResourceGate";
+import { useResource } from "@/lib/api/react";
+import { readMasterCvPage, useMasterCvData, type FactRequestItem, type MasterCvData, type MasterCvRead, type MasterCvVersion } from "./data";
 import { FactCard } from "./FactCard";
 import { factFromRequest, hasErrors, isMasterDirty, newFact, validateMasterCv, type MasterCvErrors } from "./logic";
 
@@ -14,8 +16,21 @@ export interface MasterCvScreenProps {
   initial: MasterCvRead;
   initialVersions: MasterCvVersion[];
   initialRequests: FactRequestItem[];
-  /** Defaults to the app's data source; tests pass their own. */
-  data?: MasterCvData;
+  data: MasterCvData;
+}
+
+/** The page: the master CV, its history and CV's open fact requests, read through lib/api. */
+export function MasterCvLive() {
+  const data = useMasterCvData();
+  const page = useResource("w3c:master-cv", () => readMasterCvPage(data));
+  return (
+    <ResourceGate resource={page} label="master CV">
+      {(p) => (
+        // A newer version read in the background (changed in another tab) starts the editor over.
+        <MasterCvScreen key={p.read.state === "ok" ? p.read.cv.version : p.read.state} initial={p.read} initialVersions={p.versions} initialRequests={p.requests} data={data} />
+      )}
+    </ResourceGate>
+  );
 }
 
 /** A fact with a stable React key, so editing its id never remounts the editor. */
@@ -40,7 +55,7 @@ const BLANK_CV: MasterCv = {
  * UC-20: Ba's master data. Handles the API's read states: no master CV yet (404 → create one),
  * an unreadable data/master-cv.yaml (409 master_cv_invalid → fix the file, reload), or the CV.
  */
-export function MasterCvScreen({ initial, initialVersions, initialRequests, data = masterCvData }: MasterCvScreenProps) {
+export function MasterCvScreen({ initial, initialVersions, initialRequests, data }: MasterCvScreenProps) {
   const [read, setRead] = useState(initial);
   const [creating, setCreating] = useState(false);
   const [lists, setLists] = useState({ versions: initialVersions, requests: initialRequests });
@@ -138,6 +153,8 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, data
   const [saving, setSaving] = useState(false);
   /** The version on disk when a save was refused as stale (409 master_cv_changed). */
   const [conflict, setConflict] = useState<number | null>(null);
+  /** Fact requests answered with a new fact, closed on the server once it is saved. */
+  const answered = useRef(new Set<string>());
   const { toast } = useToast();
   const ids = { name: useId(), email: useId(), phone: useId(), location: useId() };
 
@@ -196,6 +213,11 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, data
       setEditing(null);
       setErrors(NO_ERRORS);
       setTried(false);
+      // Requests Ba answered with a fact are closed now that the fact is saved (the API keeps a request
+      // open until it is dismissed or its job closes).
+      const closing = answered.current;
+      answered.current = new Set();
+      await Promise.all([...closing].map((id) => data.dismissFactRequest(id).catch(() => undefined)));
       const [v, r] = await Promise.all([data.versions(), data.factRequests()]);
       setVersions(v);
       setRequests(r);
@@ -220,6 +242,7 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, data
       r,
     );
     addFact(fact);
+    answered.current.add(r.id);
     setRequests((rs) => rs.filter((x) => x.id !== r.id));
     toast({ title: `Fact ${fact.id} added — finish its text, then Save` });
   };

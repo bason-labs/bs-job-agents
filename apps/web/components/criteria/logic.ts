@@ -38,7 +38,29 @@ export const SENIORITY_OPTIONS = SenioritySchema.options.map((value) => ({ value
 export const CURRENCY_OPTIONS = CurrencySchema.options.map((value) => ({ value, label: value }));
 export const SALARY_POLICY_OPTIONS = SalaryPolicySchema.options.map((value) => ({ value, label: SALARY_POLICY_LABELS[value] }));
 
-export function profileToForm(p: SearchProfile): CriteriaForm {
+/** The form before the first save (GET /criteria answered 404): the shared defaults, no roles or locations yet. */
+export const BLANK_FORM: CriteriaForm = {
+  roles: [],
+  locations: [],
+  workModes: ["onsite", "hybrid", "remote"],
+  minSalary: null,
+  currency: "VND",
+  seniority: [],
+  sources: ["topcv", "itviec", "linkedin"],
+  includeKeywords: [],
+  excludeKeywords: [],
+  excludeCompanies: [],
+  companyTypes: [],
+  languages: ["en"],
+  maxJobs: 5,
+  fitThreshold: 60,
+  salaryPolicy: "blank_if_optional",
+  salaryAmount: null,
+};
+
+/** The form for a saved profile; null (none saved yet) gives BLANK_FORM. */
+export function profileToForm(p: SearchProfile | null): CriteriaForm {
+  if (!p) return structuredClone(BLANK_FORM);
   const { id: _id, name: _name, version: _version, active: _active, updatedAt: _updatedAt, ...fields } = p;
   return structuredClone({ ...fields, currency: fields.currency ?? "VND" });
 }
@@ -89,11 +111,12 @@ export function validateCriteria(form: CriteriaForm): CriteriaErrors {
   return errors;
 }
 
-export function isDirty(form: CriteriaForm, saved: SearchProfile): boolean {
+export function isDirty(form: CriteriaForm, saved: SearchProfile | null): boolean {
   return JSON.stringify(formToRequest(form)) !== JSON.stringify(formToRequest(profileToForm(saved)));
 }
 
 /** "Active profile v3 · updated 2026-10-10" (prototype; "just now" right after saving). */
-export function profileHeader(p: Pick<SearchProfile, "version" | "updatedAt">, justSaved: boolean): string {
+export function profileHeader(p: Pick<SearchProfile, "version" | "updatedAt"> | null, justSaved: boolean): string {
+  if (!p) return "No search criteria yet · saving creates v1";
   return `Active profile v${p.version} · updated ${justSaved ? "just now" : formatDate(p.updatedAt)}`;
 }

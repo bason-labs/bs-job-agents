@@ -21,13 +21,15 @@ describe("apiPath", () => {
     expect(apiPath(API_ROUTES.reviewQueue)).toBe("/review");
   });
 
-  it("the routes the UI proposed are now in API_ROUTES (W3a part 2 landed the handoff)", () => {
+  it("the routes the UI proposed are now in API_ROUTES (W3a part 2 landed the handoff), except Don't allow (Phase 3 QA)", () => {
     expect(PROPOSED_ROUTES).toEqual({
       chatChoice: "/chat/choices",
       taskTranscript: "/tasks/:id/transcript",
+      taskDeclineDomain: "/tasks/:id/decline-domain",
     });
-    for (const path of Object.values(PROPOSED_ROUTES)) {
-      expect(Object.values(API_ROUTES)).toContain(path);
-    }
+    const { taskDeclineDomain, ...landed } = PROPOSED_ROUTES;
+    for (const path of Object.values(landed)) expect(Object.values(API_ROUTES)).toContain(path);
+    // Pending: once W3a adds it, this fails and the proposal can be dropped.
+    expect(Object.values(API_ROUTES)).not.toContain(taskDeclineDomain);
   });
 });

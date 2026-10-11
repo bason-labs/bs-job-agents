@@ -51,6 +51,16 @@ export function ReviewScreen() {
 
   // Apply finished with an approved card: it leaves the screen.
   useAppEvents((e) => {
+    // A card that comes back (e.g. its dry run settled: Approve live, PM2 S15) is a new decision.
+    if (e.type === "review.ready" && (hidden.has(e.jobId) || acted[e.jobId])) {
+      setHidden((h) => {
+        const next = new Set(h);
+        next.delete(e.jobId);
+        return next;
+      });
+      setActed(({ [e.jobId]: _gone, ...rest }) => rest);
+      return;
+    }
     if (e.type !== "application.updated" || !["submitted", "needs_check", "failed"].includes(e.status)) return;
     const a = acted[e.jobId];
     if (!a || a.outcome.kind !== "approved") return;

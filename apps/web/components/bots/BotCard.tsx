@@ -1,6 +1,6 @@
 "use client";
 
-import type { TrustLevel } from "@bs-job-agents/shared";
+import { demotionReasonLabel, type TrustLevel } from "@bs-job-agents/shared";
 import { ChevronDown, Lightbulb, Lock, Settings, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useId, useState } from "react";
@@ -14,6 +14,7 @@ import {
   TRUST_MEANINGS,
   engineLockReason,
   lowerTarget,
+  memoryNotesOf,
   promoteAction,
   promotionText,
   raiseTarget,
@@ -54,6 +55,7 @@ export function BotCard({ bot, controller, warning, detailed = false }: BotCardP
   const restoreTo = restoreTarget(bot);
   const raiseTo = raiseTarget(bot);
   const lowerTo = lowerTarget(bot);
+  const notes = memoryNotesOf(bot);
 
   return (
     <article data-testid={`bot-card-${bot.name}`} aria-labelledby={`${ids.engine}-name`} className="space-y-3 rounded-3xl border border-border bg-surface/60 p-4">
@@ -136,7 +138,7 @@ export function BotCard({ bot, controller, warning, detailed = false }: BotCardP
           <p className="flex items-start gap-1.5">
             <ShieldAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
             <span>
-              Demoted from L{bot.demotion.fromLevel} to L{bot.trustLevel} on {formatDateTime(bot.demotion.at)}: {bot.demotion.reason}.
+              Demoted from L{bot.demotion.fromLevel} to L{bot.trustLevel} on {formatDateTime(bot.demotion.at)}: {demotionReasonLabel(bot.demotion.reason)}.
             </span>
           </p>
           {restoreTo !== null ? (
@@ -209,15 +211,23 @@ export function BotCard({ bot, controller, warning, detailed = false }: BotCardP
           className="flex items-center gap-1 text-muted hover:text-fg"
         >
           <ChevronDown aria-hidden className={cn("size-3.5 transition-transform", memoryOpen ? "rotate-0" : "-rotate-90")} />
-          Memory ({bot.memory.length} {bot.memory.length === 1 ? "note" : "notes"})
+          Memory ({notes.length} {notes.length === 1 ? "note" : "notes"})
         </button>
         {memoryOpen ? (
           <ul id={ids.memory} data-testid="bot-memory" className="mt-2 space-y-1">
-            {bot.memory.length === 0 ? <li className="text-muted italic">No notes yet.</li> : null}
-            {bot.memory.map((note) => (
-              <li key={note} className="group flex items-start justify-between gap-2 rounded-lg px-2 py-1 hover:bg-surface-2/60">
-                <span>{note}</span>
-                <IconButton size="sm" label={`Delete memory note: ${note}`} icon={<Trash2 aria-hidden />} onClick={() => controller.askDeleteMemory(bot, note)} className="hover:text-danger" />
+            {notes.length === 0 ? <li className="text-muted italic">No notes yet.</li> : null}
+            {notes.map((note, i) => (
+              <li key={note.id ?? `${i}:${note.text}`} className="group flex items-start justify-between gap-2 rounded-lg px-2 py-1 hover:bg-surface-2/60">
+                <span>{note.text}</span>
+                {note.id ? (
+                  <IconButton
+                    size="sm"
+                    label={`Delete memory note: ${note.text}`}
+                    icon={<Trash2 aria-hidden />}
+                    onClick={() => controller.askDeleteMemory(bot, { id: note.id!, text: note.text })}
+                    className="hover:text-danger"
+                  />
+                ) : null}
               </li>
             ))}
           </ul>
