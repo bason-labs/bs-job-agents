@@ -25,6 +25,8 @@ import { checkOutput, failedSelfCheckItems, repairPrompt, type OutputCheck } fro
 import { killProcessGroup, nodeSpawn, runCli, type CliExit, type KillTreeFn, type SpawnFn } from "./process.js";
 import { buildPrompt, PromptSecurityError } from "./prompt.js";
 import { conversationPlan, planTools, type ToolPlan } from "./tools.js";
+import { PageUrlCollector } from "./page-urls.js";
+import { ScreenshotCapture } from "./screenshots.js";
 import { TranscriptWriter } from "./transcript.js";
 import type { PermissionDenial, Runner, RunnerEvent, RunnerResult, RunnerTask } from "./types.js";
 
@@ -53,6 +55,10 @@ export interface PreparedTask {
   workDir: string;
   /** Claude: chosen up front (--session-id). Codex: null until thread.started. */
   sessionId: string | null;
+  /** PM2 S7: screenshots out of the stream (and base64 out of the transcript). */
+  capture: ScreenshotCapture;
+  /** PM2 S10: the page URLs Chrome reported. */
+  pages: PageUrlCollector;
 }
 
 export type Phase = "initial" | "repair";
@@ -152,6 +158,19 @@ export abstract class CliRunner implements Runner {
     } catch (err) {
       result = { status: "failed", error: `runner error: ${message(err)}`, exitCode: null, durationMs: durationMs() };
     }
+    // PM2 S7, S10: what the Chrome tools produced, whatever the result (an Apply that failed may have submitted).
+    try {
+      await prepared.capture.finish();
+    } catch (err) {
+      transcript.note({ type: "runner.screenshots", error: message(err) });
+    }
+    const screenshots = prepared.capture.captured;
+    const pageUrls = prepared.pages.urls;
+    if (screenshots.length > 0) {
+      result = { ...result, screenshots: [...screenshots] };
+      transcript.note({ type: "runner.screenshots", files: screenshots.map((s) => ({ file: s.file, screenshotId: s.screenshotId, toolUseId: s.toolUseId })) });
+    }
+    if (pageUrls.length > 0) result = { ...result, pageUrls: [...pageUrls] };
     transcript.note({ type: "runner.result", status: result.status });
     await transcript.close();
     await rm(prepared.workDir, { recursive: true, force: true }).catch(() => undefined);
@@ -210,6 +229,11 @@ export abstract class CliRunner implements Runner {
       allowedSites,
       readDirs: plan.read ? readDirs : [],
     });
+    if (task.screenshotDir !== undefined && (!isAbsolute(task.screenshotDir) || /[\s,()]/.test(task.screenshotDir))) {
+      throw new TaskSetupError(`screenshot dir ${task.screenshotDir} must be an absolute path without a space, a comma or a parenthesis`);
+    }
+    // PM2 S7: only a task that drives Chrome on Claude keeps its screenshots.
+    const capture = await ScreenshotCapture.open(plan.chrome && this.engine === "claude" ? (task.screenshotDir ?? null) : null, { now: this.now });
     const workDir = await mkdtemp(join(this.config.tmpRoot, `bsja-${bot.name}-${task.taskId}-${task.attempt}-`));
     const prepared: PreparedTask = {
       task,
@@ -222,6 +246,8 @@ export abstract class CliRunner implements Runner {
       allowedSites,
       workDir,
       sessionId: this.initialSessionId(),
+      capture,
+      pages: new PageUrlCollector(),
     };
     try {
       // Build once now so a missing MCP server or guard hook fails before anything runs.
@@ -323,7 +349,10 @@ export abstract class CliRunner implements Runner {
       onSpawn: (pid) => {
         session = this.openSession(p, phase, pid);
       },
-      onStdoutLine: (line) => {
+      onStdoutLine: (raw) => {
+        // PM2 S7: image bytes become files (or are dropped) before the line is kept anywhere.
+        const line = p.capture.process(raw);
+        p.pages.push(line);
         transcript.raw(line);
         for (const e of session?.push(line) ?? []) emit(e);
       },

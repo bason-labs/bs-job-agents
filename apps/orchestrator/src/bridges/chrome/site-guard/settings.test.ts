@@ -13,6 +13,7 @@ describe("buildSiteGuardSettings", () => {
       "mcp__claude-in-chrome__shortcuts_execute",
       "mcp__claude-in-chrome__switch_browser",
       "mcp__claude-in-chrome__select_browser",
+      "mcp__claude-in-chrome__computer",
     ]);
     expect(matchers.some((m) => m.includes("tabs_create"))).toBe(false);
     const commands = new Set(settings.hooks.PreToolUse.flatMap((m) => m.hooks.map((h) => h.command)));

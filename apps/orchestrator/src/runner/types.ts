@@ -2,6 +2,7 @@
 // and the runner (W2b: ClaudeRunner, CodexRunner). Changing this file needs the coordinator.
 import type { BotDefinition, Engine, EngineUsage } from "@bs-job-agents/shared";
 import type { ClaudeHookSettings } from "../bridges/hooks/settings.js";
+import type { CapturedScreenshot } from "./screenshots.js";
 
 /** Everything one attempt of one task needs. Built by the engine; the runner never reads the DB. */
 export interface RunnerTask {
@@ -41,6 +42,12 @@ export interface RunnerTask {
    * whose hooks do not guard `figma_execute`. Codex has no hooks and ignores them.
    */
   hookSettings?: ClaudeHookSettings;
+  /**
+   * Additive (PM2 S7): absolute folder for this attempt's screenshots (data/screenshots/<task>-<attempt>/).
+   * The runner writes each Claude in Chrome image block there with a manifest and returns them in
+   * RunnerResult.screenshots. Omitted: images are only dropped from the transcript.
+   */
+  screenshotDir?: string;
   timeoutMs: number;
   signal?: AbortSignal;
 }
@@ -64,7 +71,19 @@ export interface PermissionDenial {
   reason?: string | null;
 }
 
-export type RunnerResult =
+/**
+ * Additive (PM2 S7): the screenshots this spawn wrote to RunnerTask.screenshotDir (the folder's
+ * manifest.json also lists earlier spawns of the attempt). Additive (PM2 S10): the page URLs the
+ * Chrome tools reported (navigate targets, tab URLs), in order, for the engine's domain check.
+ */
+export interface RunnerResultExtras {
+  screenshots?: CapturedScreenshot[];
+  pageUrls?: string[];
+}
+
+export type RunnerResult = RunnerResultCore & RunnerResultExtras;
+
+export type RunnerResultCore =
   /** Output parsed by the bot's Zod output schema and every self-check item passed. */
   | { status: "ok"; output: unknown; sessionId: string | null; durationMs: number }
   /** Output still invalid after the one repair prompt (§5.5 step 4). */
