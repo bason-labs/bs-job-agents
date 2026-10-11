@@ -341,6 +341,29 @@ describe("the CV task's Figma flow (§6.2, coordinator B)", () => {
     expect(t.runner.callsFor("qa.review")[0]!.input).toMatchObject({ pdf: { onePageA4: true, pageCount: 1 } });
   });
 
+  it("QA's input carries the CV version's target language and the §6.3 expected languages (live run 1: VI JD, EN version)", async () => {
+    const t = await createTestEngine({ sources: ["topcv"] });
+    t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await t.idle();
+    const reviews = t.tasks("qa.review");
+    expect(reviews).toHaveLength(2);
+    const inputs = reviews.map(
+      (r) => r.input as { job: { language: string }; draft: { language: string }; cvLanguage: string; expectedLanguages: string[] },
+    );
+    for (const input of inputs) {
+      expect(input.job.language).toBe("vi");
+      expect(input.cvLanguage).toBe(input.draft.language);
+      expect(input.expectedLanguages).toEqual(["vi", "en"]);
+    }
+    expect(inputs.map((i) => i.cvLanguage).sort()).toEqual(["en", "vi"]);
+    // The EN version of a VI JD reaches the bot with its own target language, trusted, next to the JD's.
+    const en = t.runner
+      .callsFor("qa.review")
+      .map((c) => c.input as Record<string, unknown>)
+      .find((i) => i.cvLanguage === "en");
+    expect(en).toMatchObject({ cvLanguage: "en", expectedLanguages: ["vi", "en"], job: { language: "vi" } });
+  });
+
   it("an export that is not one A4 page fails the attempt (UC-06 a)", async () => {
     const { t } = await scan();
     t.figma.onePageA4 = false;

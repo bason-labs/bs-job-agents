@@ -9,6 +9,7 @@ import {
   JobCandidateSchema,
   LIMITS,
   UrlSchema,
+  cvLanguagesForJd,
   taskKey,
   type BotTaskKey,
   type CompanyProfile,
@@ -193,15 +194,19 @@ export function buildTaskInput(req: InputRequest): BuiltInput {
       if (!cv) throw invalidInput(`CV version ${checker.cvVersionId} not found`);
       const job = requireJob(conn, cv.jobId);
       const company = getCompany(conn, job.companyId);
+      const candidate = toJobCandidate(job, company);
       return {
         input: validate(key, {
           jobId: String(job.id),
           cvVersionId: String(cv.id),
-          job: toJobCandidate(job, company),
+          job: candidate,
           company: companyProfileOf(company),
           draft: cvDraftOf(cv),
           pdfText: checker.pdfText,
           ...(checker.pdf ? { pdf: checker.pdf } : {}),
+          // Live run 1 (F6): QA checks the version's own target language, trusted, never the JD's (§6.3).
+          cvLanguage: cv.language,
+          expectedLanguages: cvLanguagesForJd(candidate.language),
           masterCvVersion: masterVersion(ctx),
         }),
         jobId: job.id,

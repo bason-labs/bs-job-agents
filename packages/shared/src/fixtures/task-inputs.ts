@@ -76,6 +76,8 @@ export const qaReviewInputFixture: QaReviewInput = {
     sha256: "a".repeat(64),
     textChars: 52,
   },
+  cvLanguage: "en",
+  expectedLanguages: ["en"],
   masterCvVersion: 3,
 };
 

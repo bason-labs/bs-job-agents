@@ -112,6 +112,18 @@ export const QaReviewInputSchema = z.object({
   pdfText: z.string().describe("Extracted with a pdfminer/PDF.js-style extractor (§6.2)"),
   /** Additive (F5): absent on inputs stored before it. */
   pdf: VerifiedPdfFactsSchema.optional().describe("Orchestrator-verified facts about the exported PDF"),
+  /**
+   * Additive (live run 1, F6): the target language of the CV version under review, set by the
+   * orchestrator from the version itself (trusted). QA checks the CV's language against this,
+   * never against the JD's: a VI JD gets both a VI and an EN version (§6.3).
+   */
+  cvLanguage: CvLanguageSchema.optional().describe("Target language of this CV version (trusted, set by the orchestrator)"),
+  /** Additive (F6): every CV language this JD gets, from cvLanguagesForJd(job.language) (§6.3). */
+  expectedLanguages: z
+    .array(CvLanguageSchema)
+    .min(1)
+    .optional()
+    .describe("CV languages this JD gets (§6.3: VI JD → vi and en; otherwise en)"),
   masterCvVersion: z.number().int().positive(),
 });
 
