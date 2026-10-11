@@ -19,7 +19,7 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | Phase 2 QA/QC | ✅ merged (d237c99); qa-phase-2.md; 1533 tests green; 10 seam/defect fixes; live Claude + Codex runs ok |
 | 2026-10-11 | Phase 2 PM review | ✅ merged (ef140a6); pm-phase-2.md: ready after F2 (M1–M5 + S1–S6); F3 (S7–S16) runs in parallel with Phase 3; owner escalation E1 in owner-decisions.md |
 | 2026-10-11 | W3a API part 1 | ✅ merged (87becd3); 1679 tests green; reports/phase3-w3a-api-part1.md; API facts relayed to W3b/W3c |
-| 2026-10-11 | F2 fixer, W3b UI chat/flows/review + lib/api, W3c UI other screens (worktrees) | 🔄 running |
+| 2026-10-11 | F2 fixer, W3b UI chat/flows/review + lib/api, W3c UI other screens (worktrees) | ⚠️ stopped by usage limit (work kept in worktrees) → 🔄 resumed by SendMessage after reset |
 
 **Next action:**
 1. Merge each of F2, W3a part 1, W3b and W3c as it reports. Re-run `pnpm install` on lockfile conflicts.
