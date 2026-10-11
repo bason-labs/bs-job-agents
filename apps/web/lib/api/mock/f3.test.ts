@@ -148,3 +148,19 @@ describe("F3's review flags and Don't allow on the live client", () => {
     expect(isApiError(e) && [e.code, e.message]).toEqual(["conflict", "task 5 is not waiting for a domain to confirm"]);
   });
 });
+
+describe("Resume now (live run 1, POST /engines/:engine/resume)", () => {
+  it("clears a usage-limit pause, emits engine.resumed and tells Ba in Lead's room; not paused is a conflict", async () => {
+    mock.simulate("claude-limit");
+    await mock.idle();
+    expect((await mock.listEngines()).find((e) => e.engine === "claude")?.pausedUntil).not.toBeNull();
+    await mock.resumeEngine("claude");
+    await mock.idle();
+    expect((await mock.listEngines()).find((e) => e.engine === "claude")).toMatchObject({ pausedUntil: null, reason: null });
+    expect(events).toContainEqual(expect.objectContaining({ type: "engine.resumed", engine: "claude" }));
+    const texts = (await mock.listMessages(LEAD_ROOM_ID)).messages.map((m) => m.text);
+    expect(texts).toContainEqual(expect.stringMatching(/Claude resumed by you/));
+    const e = await err(mock.resumeEngine("claude"));
+    expect(isApiError(e) && e.code).toBe("conflict");
+  });
+});

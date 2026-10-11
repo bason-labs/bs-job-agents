@@ -26,6 +26,7 @@ describe("apiPath", () => {
       chatChoices: "/chat/choices",
       taskTranscript: "/tasks/:id/transcript",
       taskDeclineDomain: "/tasks/:id/decline-domain",
+      engineResume: "/engines/:engine/resume",
     });
   });
 });

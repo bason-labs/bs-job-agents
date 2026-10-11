@@ -14,6 +14,7 @@ import {
   type AppEvent,
   type BotActivity,
   type ChoiceRequest,
+  type Engine,
   type Message,
   type MessageAuthor,
   type MessageCard,
@@ -341,6 +342,14 @@ export class MockBackend implements WebApi, EventFeed {
 
   async listEngines() {
     return structuredClone(this.state.engines);
+  }
+
+  /** Like the orchestrator's POST /engines/:engine/resume ("Resume now"): not paused is a conflict. */
+  async resumeEngine(engine: Engine): Promise<void> {
+    const status = this.state.engines.find((e) => e.engine === engine);
+    if (!status) throw fail(404, "not_found", `engine ${engine} not found`);
+    if (!status.pausedUntil && !status.reason) throw fail(409, "conflict", `${engine} is not paused`);
+    await sim.resumeEngineNow(this, engine);
   }
 
   // ------------------------------------------------------------ WebApi: chat

@@ -176,6 +176,16 @@ test("UC-16: a usage limit shows the clock time and a human countdown (PM S8), a
   await expect(banner).toHaveCount(0);
 });
 
+test("Resume now on the paused banner lifts a usage-limit pause early (live run 1)", async ({ page }) => {
+  await open(page, "/chat");
+  await simulate(page, /Claude usage limit hit/);
+  const banner = page.getByTestId("paused-banner");
+  await expect(banner).toContainText("Claude paused until");
+  await banner.getByRole("button", { name: "Resume Claude now" }).click();
+  await expect(banner).toHaveCount(0);
+  await expect(lead(page).filter({ hasText: "Claude resumed by you" })).toBeVisible();
+});
+
 test("UC-24: attach files (chip → viewer, × removes, wrong type refused) and send a JD", async ({ page }) => {
   await open(page, "/chat");
   const input = page.getByTestId("file-dropzone-input");

@@ -25,6 +25,7 @@ const ASYNC_METHODS: Record<AsyncMethod, true> = {
   getRoom: true,
   listBots: true,
   listEngines: true,
+  resumeEngine: true,
   listRooms: true,
   listMessages: true,
   sendMessage: true,

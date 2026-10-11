@@ -189,6 +189,9 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
     async declineDomain(taskId) {
       await request("POST", API_ROUTES.taskDeclineDomain, { params: { id: taskId }, body: {} });
     },
+    async resumeEngine(engine) {
+      await request("POST", API_ROUTES.engineResume, { params: { engine }, body: {} });
+    },
     async chooseOption(input) {
       await request("POST", API_ROUTES.chatChoices, { body: input });
     },
