@@ -16,6 +16,7 @@ import {
   type CvLanguage,
   type JobCandidate,
   type QaFix,
+  type VerifiedPdfFacts,
 } from "@bs-job-agents/shared";
 import { scanJobLimit } from "../adapters/index.js";
 import { getCompany, getCvVersion, getJob, getUpload, upsertJobCandidate, type Company, type Conn, type CvVersion, type Job } from "../db/index.js";
@@ -45,7 +46,7 @@ export interface InputRequest {
   /** cv.tailor in a gate. */
   gate?: GateInputs;
   /** qa.review in a gate. */
-  checker?: { cvVersionId: number; pdfText: string };
+  checker?: { cvVersionId: number; pdfText: string; pdf?: VerifiedPdfFacts };
 }
 
 export interface BuiltInput {
@@ -200,6 +201,7 @@ export function buildTaskInput(req: InputRequest): BuiltInput {
           company: companyProfileOf(company),
           draft: cvDraftOf(cv),
           pdfText: checker.pdfText,
+          ...(checker.pdf ? { pdf: checker.pdf } : {}),
           masterCvVersion: masterVersion(ctx),
         }),
         jobId: job.id,

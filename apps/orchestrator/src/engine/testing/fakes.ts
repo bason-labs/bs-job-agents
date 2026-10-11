@@ -20,6 +20,7 @@ import type {
   BrowserStatusProbe,
   FigmaPort,
   FileStore,
+  FramePdfExport,
   GuardHooks,
   MasterCvSource,
   PdfTextExtractor,
@@ -184,7 +185,7 @@ export class FakeFigmaPort implements FigmaPort {
     return { id, name, url: `https://www.figma.com/design/kJFoXNrTfFOtkQ515c0jHk?node-id=${id.replace(":", "-")}` };
   }
 
-  async exportFramePdf(frameId: string, outPath: string): Promise<{ sha256: string; pageCount: number; onePageA4: boolean }> {
+  async exportFramePdf(frameId: string, outPath: string): Promise<FramePdfExport> {
     this.calls.push(`export:${frameId}`);
     this.gone("export");
     if (this.exportError) throw this.exportError;
@@ -192,7 +193,8 @@ export class FakeFigmaPort implements FigmaPort {
     this.files.write(outPath, content);
     const sha256 = MemoryFileStore.sha256Of(content);
     this.exports.push({ frameId, frameName: outPath.split("/").at(-1)!.replace(/\.pdf$/, ""), outPath, sha256 });
-    return { sha256, pageCount: this.pageCount, onePageA4: this.onePageA4 };
+    const size = this.onePageA4 ? { widthPt: 595.28, heightPt: 841.89 } : { widthPt: 612, heightPt: 792 };
+    return { sha256, pageCount: this.pageCount, onePageA4: this.onePageA4, ...size };
   }
 
   /** Simulate the CV bot (or anything) changing a protected page. */

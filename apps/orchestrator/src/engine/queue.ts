@@ -897,7 +897,8 @@ export class TaskQueue {
         };
       }
       const pdfText = await core.deps.pdf.extractText(core.paths.abs(pdfPath)).catch(() => "");
-      return { outcome, exported: { pdfPath, sha256: exp.sha256, pdfText, figmaFrameUrl: frame.url } };
+      const pdf = { pageCount: exp.pageCount, onePageA4: exp.onePageA4, widthPt: exp.widthPt ?? null, heightPt: exp.heightPt ?? null, sha256: exp.sha256, textChars: pdfText.length };
+      return { outcome, exported: { pdfPath, sha256: exp.sha256, pdfText, pdf, figmaFrameUrl: frame.url } };
     } catch (err) {
       if (err instanceof FigmaGone) {
         return { outcome: keep({ kind: "needs_figma", detail: `Figma went away after the CV task: ${err.message}`, beforeHash: before?.hash ?? null }) };

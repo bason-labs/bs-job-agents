@@ -65,6 +65,16 @@ describe("S5: the approval token never reaches a prompt", () => {
     }
   });
 
+  it("qa.review carries the orchestrator-verified PDF facts (live run 1 B), strict in the prompt", () => {
+    const schema = BOT_TASK_PROMPT_INPUT_SCHEMAS["qa.review"];
+    expect(qaReviewInputFixture.pdf).toMatchObject({ pageCount: 1, onePageA4: true });
+    expect(schema.safeParse(qaReviewInputFixture).success).toBe(true);
+    const { pdf: _pdf, ...withoutPdf } = qaReviewInputFixture;
+    expect(schema.safeParse(withoutPdf).success).toBe(true);
+    expect(schema.safeParse({ ...qaReviewInputFixture, pdf: { ...qaReviewInputFixture.pdf, pageCount: -1 } }).success).toBe(false);
+    expect(schema.safeParse({ ...qaReviewInputFixture, pdf: { ...qaReviewInputFixture.pdf, stray: 1 } }).success).toBe(false);
+  });
+
   it("a key a prompt schema does not know is an error, never silently sent to a model (QA Phase 2)", () => {
     const inputs = {
       "research.scan": researchScanInputFixture,

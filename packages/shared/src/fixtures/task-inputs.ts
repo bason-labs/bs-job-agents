@@ -68,6 +68,14 @@ export const qaReviewInputFixture: QaReviewInput = {
   company: researchCompanyFixture.company,
   draft: { ...draft, pdfPath: "data/pdf/NOVAPAY_SENIOR-FRONTEND_EN_v1.pdf" },
   pdfText: "Ba Huynh\nSoftware Engineer — React / Next.js / Node.js\n…",
+  pdf: {
+    pageCount: 1,
+    onePageA4: true,
+    widthPt: 595.28,
+    heightPt: 841.89,
+    sha256: "a".repeat(64),
+    textChars: 52,
+  },
   masterCvVersion: 3,
 };
 

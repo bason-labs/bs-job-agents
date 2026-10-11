@@ -321,6 +321,26 @@ describe("the CV task's Figma flow (§6.2, coordinator B)", () => {
     );
   });
 
+  it("QA's input carries the orchestrator-verified PDF facts from its own export (live run 1 B)", async () => {
+    const { t } = await scan();
+    await t.idle();
+    const qa = t.tasks("qa.review")[0]!;
+    const cv = t.review(1, 1)!.cvVersions[0]!;
+    const input = qa.input as { pdfText: string; pdf: unknown };
+    expect(input.pdf).toEqual({
+      pageCount: 1,
+      onePageA4: true,
+      widthPt: 595.28,
+      heightPt: 841.89,
+      sha256: t.figma.exports[0]!.sha256,
+      textChars: input.pdfText.length,
+    });
+    expect(input.pdfText.length).toBeGreaterThan(0);
+    expect(cv).toBeDefined();
+    // The bot sees it in its prompt input (strict schema).
+    expect(t.runner.callsFor("qa.review")[0]!.input).toMatchObject({ pdf: { onePageA4: true, pageCount: 1 } });
+  });
+
   it("an export that is not one A4 page fails the attempt (UC-06 a)", async () => {
     const { t } = await scan();
     t.figma.onePageA4 = false;

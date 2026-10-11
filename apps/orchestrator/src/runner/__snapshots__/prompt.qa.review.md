@@ -24,6 +24,14 @@ Task input (JSON):
   "company": "<UNTRUSTED_CONTENT id=8ee8f8d0fe7a>",
   "draft": "<UNTRUSTED_CONTENT id=af717f4a4c39>",
   "pdfText": "<UNTRUSTED_CONTENT id=129dd346dd11>",
+  "pdf": {
+    "pageCount": 1,
+    "onePageA4": true,
+    "widthPt": 595.28,
+    "heightPt": 841.89,
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "textChars": 52
+  },
   "masterCvVersion": 3
 }
 ```

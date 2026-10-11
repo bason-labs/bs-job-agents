@@ -3,7 +3,7 @@
 // back to CV as a new round; after maxRounds (3) the job is escalated to Ba ("QA not passed").
 // Rounds are separate tasks, each with its own attempts (§5.5: attempts are not QA rounds).
 // One gate row per CV language (§6.3: a VI JD gets VI and EN), branch key `<jobId>:<lang>`.
-import type { CvLanguage, CvOutput, GateStepSchema, QaFix, QaOutput } from "@bs-job-agents/shared";
+import type { CvLanguage, CvOutput, GateStepSchema, QaFix, QaOutput, VerifiedPdfFacts } from "@bs-job-agents/shared";
 import type { z } from "zod";
 import { createCvVersion, createQaReview, getJob, getStep, getTask, type Conn, type Step, type Task } from "../db/index.js";
 import { stepDef, type RunCtx, type Scope } from "./context.js";
@@ -22,6 +22,8 @@ export interface CvExport {
   pdfPath: string;
   sha256: string;
   pdfText: string;
+  /** F5: the export's verified facts, for QA's page checks. */
+  pdf: VerifiedPdfFacts;
   /** The frame's real link from the bridge, when it has one. */
   figmaFrameUrl: string | null;
 }
@@ -131,7 +133,7 @@ export function onProducerDone(core: EngineCore, conn: Conn, ctx: RunCtx, task: 
   round.cvVersionId = cv.id;
   const scope = gateScope(conn, out, row.branchKey);
   const { task: checker } = createWorkflowTask(core, conn, ctx, row, step.checker, scope, {
-    checker: { cvVersionId: cv.id, pdfText: exported.pdfText },
+    checker: { cvVersionId: cv.id, pdfText: exported.pdfText, pdf: exported.pdf },
   });
   round.checkerTaskId = checker.id;
   setStep(core, conn, row, "running", { output: out, round: round.round, preview: `CV ${LANG(out.language)} round ${round.round}: QA reviewing` });
