@@ -28,6 +28,7 @@ import {
   restoreSchedule,
   softDeleteSchedule,
   updateSchedule,
+  type Conn,
   type Db,
   type JsonObject,
   type Schedule,
@@ -39,7 +40,7 @@ import { idParam, keepValid, parseWith, respond } from "../http.js";
 
 type IdParams = { Params: { id: string } };
 
-interface ScheduleFields {
+export interface ScheduleFields {
   cron: string;
   timezone: string;
   workflowName: string;
@@ -49,7 +50,7 @@ interface ScheduleFields {
 }
 
 /** Checks a create or the result of an edit; returns its next run time. */
-function validate(db: Db, workflows: WorkflowSource | null, s: ScheduleFields, now: Date): string | null {
+export function validateScheduleFields(db: Conn, workflows: WorkflowSource | null, s: ScheduleFields, now: Date): string | null {
   const def = workflows?.get(s.workflowName);
   if (!def) throw badRequest(`workflowName: there is no workflow ${s.workflowName}`);
   if (!def.triggers.includes("schedule")) throw badRequest(`workflowName: ${s.workflowName} cannot run on a schedule`);
@@ -139,7 +140,7 @@ export function scheduleRoutes(app: FastifyInstance, ctx: ApiContext): void {
       params: body.params,
       enabled: body.enabled,
     };
-    const nextRunAt = validate(db, workflows(), fields, now);
+    const nextRunAt = validateScheduleFields(db, workflows(), fields, now);
     const row = createSchedule(db, { name: body.name, ...fields, nextRunAt }, { now });
     void reply.code(201);
     return respond(ScheduleViewSchema, view(db, workflows(), row));
@@ -169,7 +170,7 @@ export function scheduleRoutes(app: FastifyInstance, ctx: ApiContext): void {
       enabled: patch.enabled ?? row.enabled,
     };
     // S23: every edit resets the next run (the scheduler only fills it when it is null).
-    const nextRunAt = validate(db, workflows(), fields, now);
+    const nextRunAt = validateScheduleFields(db, workflows(), fields, now);
     const updated = updateSchedule(db, id, { ...(patch.name !== undefined ? { name: patch.name } : {}), ...fields, nextRunAt }, { now });
     return respond(ScheduleViewSchema, view(db, workflows(), updated));
   });

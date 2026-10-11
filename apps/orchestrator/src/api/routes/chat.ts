@@ -12,6 +12,7 @@ import {
   ChatSendRequestSchema,
   ChatSendResultSchema,
   ChoiceRequestSchema,
+  describeScheduleRepeat,
   ROOM_MENTION_CAP,
   parseMentions,
   type ChatSendResult,
@@ -19,7 +20,8 @@ import {
   type LeadChatInput,
 } from "@bs-job-agents/shared";
 import type { FastifyInstance } from "fastify";
-import { getRoom, getUpload, listRoomMembers, type Room } from "../../db/index.js";
+import { getRoom, getUpload, listRoomMembers, type Conn, type Room } from "../../db/index.js";
+import { createProposedSchedule, formatRunTime, parseProposalKey, pendingProposal, saveProposedCriteria, settleProposal } from "../chat/lead-proposals.js";
 import { EngineError, type Engine } from "../../engine/index.js";
 import { cardsOf, chatMessageView, conversationHistory, getMessage, postMessage, updateMessageCards } from "../chat/messages.js";
 import { botLabel } from "../chat/sink.js";
@@ -95,7 +97,9 @@ export function chatRoutes(app: FastifyInstance, ctx: ApiContext): void {
   });
 
   // A suggestion chip on Lead's card (UC-01 a, UC-21b a): the choice is kept on the card and its
-  // label is sent as Ba's answer in the same room.
+  // label is sent as Ba's answer in the same room. Typed keys are answers to the orchestrator:
+  // figma-change:<taskId> (PM2 S8), criteria-save:<id> and schedule-create:<id> (PM3 M3/S1, acting
+  // only on the stored proposal; "Just this run" still goes to Lead).
   app.post(API_ROUTES.chatChoices, async (req, reply) => {
     const engine = requireEngine(ctx);
     const body = parseWith(ChoiceRequestSchema, req.body);
@@ -126,6 +130,41 @@ export function chatRoutes(app: FastifyInstance, ctx: ApiContext): void {
       ctx.events?.flush();
       void reply.code(201);
       return respond(ChatSendResultSchema, { message: chatMessageView(engine.db, stored, room), taskIds: [] });
+    }
+    const proposal = parseProposalKey(body.key);
+    if (proposal) {
+      // PM3 M3 / S1: the stored proposal is the only payload; the card is single use.
+      const stored = pendingProposal(ctx.config.dataDir, proposal);
+      const settle = (tx: Conn) => updateMessageCards(tx, message, cards.map((c, i) => (i === index ? { ...card, chosen: option.id } : c)));
+      const now = ctx.now();
+      if (stored.kind === "criteria" && option.id === "just_this_run") {
+        // UC-21b a "just this run": Lead starts the run with per-run overrides, as for any answer.
+        engine.db.transaction((tx) => settle(tx));
+        settleProposal(ctx.config.dataDir, proposal.id, option.id, now);
+        void reply.code(201);
+        return respond(ChatSendResultSchema, sendChatMessage(ctx, engine, room, option.label, []));
+      }
+      const ba = engine.db.transaction((tx) => {
+        let note: string;
+        if (stored.kind === "criteria") {
+          const saved = saveProposedCriteria(tx, stored, now);
+          note = `Saved to your search criteria (now v${saved.version}).`;
+        } else if (option.id === "create") {
+          const schedule = createProposedSchedule(tx, ctx.workflows ?? engine.deps.workflows, stored, now);
+          const next = schedule.nextRunAt ? ` Next run: ${formatRunTime(schedule.nextRunAt, schedule.timezone)}.` : "";
+          note = `Created the schedule “${schedule.name}” (${describeScheduleRepeat(stored.schedule)}).${next}`;
+        } else {
+          note = "OK, no schedule was created.";
+        }
+        settle(tx);
+        const answer = postMessage(tx, { room, author: "ba", text: option.label }, now);
+        postMessage(tx, { room, author: "lead", text: note }, now);
+        return answer;
+      });
+      settleProposal(ctx.config.dataDir, proposal.id, option.id, now);
+      ctx.events?.flush();
+      void reply.code(201);
+      return respond(ChatSendResultSchema, { message: chatMessageView(engine.db, ba, room), taskIds: [] });
     }
     engine.db.transaction((tx) => updateMessageCards(tx, message, cards.map((c, i) => (i === index ? { ...card, chosen: option.id } : c))));
     void reply.code(201);

@@ -171,6 +171,7 @@ export async function createApiHarness(opts: ApiHarnessOptions = {}): Promise<Ap
   const botsDir = join(root, "bots");
   const workflowsDir = join(root, "workflows");
   for (const dir of [dataDir, botsDir, workflowsDir]) mkdirSync(dir, { recursive: true });
+  sink.bind({ dataDir, workflows: () => t.engine.deps.workflows });
   const ctx: ApiContext = {
     config: { dataDir, botsDir, workflowsDir, port: TEST_PORT, webOrigins: [WEB_ORIGIN, "http://127.0.0.1:3000"] },
     state: opts.state ?? { state: "running", startedAt: t.clock.now().toISOString(), recovered: null },

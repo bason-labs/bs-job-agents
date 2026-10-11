@@ -162,7 +162,7 @@ export async function startOrchestrator(opts: StartOptions): Promise<Orchestrato
   // bind to the engine once it exists. Without it, Lead could not run: start-up degrades instead.
   const capabilities = new CapabilityStore();
   const proposals = new ProposalStore({ dataDir: config.dataDir, now, workflows: () => workflows });
-  const sink = new ChatSink({ capabilities, now, log });
+  const sink = new ChatSink({ capabilities, now, log, dataDir: config.dataDir, workflows: () => workflows });
   let mcp: OrchestratorMcpServer | null = null;
   const custom = typeof opts.runners === "object" ? opts.runners : null;
   if (db && workflows && !state && !custom) {
