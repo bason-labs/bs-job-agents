@@ -6,7 +6,7 @@ import { useId, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/components/schedules/apiError";
 import { formatDateTime } from "@/components/schedules/datetime";
-import { Button, Field, NumberInput, Select, Slider, useToast } from "@/components/ui";
+import { Button, Field, Input, NumberInput, Select, Slider, useToast } from "@/components/ui";
 import { ChipInput, ToggleChips } from "./ChipInput";
 import { SavedAnswers } from "./SavedAnswers";
 import { ResourceGate } from "@/components/schedules/ResourceGate";
@@ -17,12 +17,14 @@ import {
   CURRENCY_OPTIONS,
   SALARY_POLICY_OPTIONS,
   SENIORITY_OPTIONS,
+  SOURCE_GROUP_OPTIONS,
   SOURCE_OPTIONS,
   WORK_MODE_OPTIONS,
   formToRequest,
   isDirty,
   profileHeader,
   profileToForm,
+  showsTimezoneOverlap,
   toggleValue,
   validateCriteria,
   type CriteriaErrors,
@@ -100,7 +102,7 @@ export function CriteriaScreen({ initial, initialVersions, initialAnswers = [], 
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const { toast } = useToast();
-  const ids = { sources: useId(), modes: useId(), seniority: useId(), salary: useId(), amount: useId(), policy: useId(), minSalary: useId() };
+  const ids = { sources: useId(), modes: useId(), seniority: useId(), salary: useId(), amount: useId(), policy: useId(), minSalary: useId(), timezone: useId() };
 
   const dirty = isDirty(form, profile);
 
@@ -164,6 +166,48 @@ export function CriteriaScreen({ initial, initialVersions, initialAnswers = [], 
         </Card>
       ))}
 
+      <Card className="space-y-3" invalid={!!errors.sources}>
+        <div>
+          <CardLabel id={ids.sources}>Sources</CardLabel>
+          <p className="mt-0.5 text-[11px] text-muted">
+            Remote OK, We Work Remotely, Remotive and Jobspresso are read from their public feeds, without a bot. Upwork is find only: you apply there yourself.
+          </p>
+        </div>
+        <div role="group" aria-labelledby={ids.sources} data-testid="criteria-sources" className="space-y-2.5">
+          {SOURCE_GROUP_OPTIONS.map((g) => (
+            <div key={g.group} className="space-y-1.5" data-testid={`criteria-sources-${g.group}`}>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{g.label}</p>
+              <ToggleChips
+                label={g.label}
+                options={g.options}
+                values={form.sources}
+                onToggle={(v) => update({ sources: toggleValue(form.sources, v, SOURCE_OPTIONS.map((o) => o.value)) })}
+                invalid={!!errors.sources}
+              />
+            </div>
+          ))}
+        </div>
+        <FieldError>{errors.sources}</FieldError>
+        {showsTimezoneOverlap(form) ? (
+          <Field
+            label="Time-zone overlap (remote boards)"
+            htmlFor={ids.timezone}
+            error={errors.timezoneOverlap}
+            hint="Remote boards ignore the city: they keep jobs whose region overlaps this, e.g. Asia or UTC+7 ±3h. Empty = any region. A USD minimum salary is compared per month; a VND one is not compared."
+            className="sm:max-w-md"
+          >
+            <Input
+              id={ids.timezone}
+              value={form.timezoneOverlap ?? ""}
+              onChange={(e) => update({ timezoneOverlap: e.target.value })}
+              placeholder="e.g. Asia or UTC+7 ±3h"
+              invalid={!!errors.timezoneOverlap}
+              data-testid="criteria-timezone-overlap"
+            />
+          </Field>
+        ) : null}
+      </Card>
+
       <div className="grid gap-4 sm:grid-cols-2">
         <Card>
           <CardLabel id={ids.minSalary}>Minimum salary</CardLabel>
@@ -186,18 +230,6 @@ export function CriteriaScreen({ initial, initialVersions, initialAnswers = [], 
               />
             </div>
           </div>
-        </Card>
-        <Card invalid={!!errors.sources}>
-          <CardLabel id={ids.sources}>Sources</CardLabel>
-          <ToggleChips
-            label="Sources"
-            options={SOURCE_OPTIONS}
-            values={form.sources}
-            onToggle={(v) => update({ sources: toggleValue(form.sources, v, SOURCE_OPTIONS.map((o) => o.value)) })}
-            invalid={!!errors.sources}
-            data-testid="criteria-sources"
-          />
-          <FieldError>{errors.sources}</FieldError>
         </Card>
         <Card>
           <CardLabel>Work mode</CardLabel>

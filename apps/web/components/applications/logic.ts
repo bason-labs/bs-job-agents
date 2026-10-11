@@ -3,6 +3,8 @@
 import {
   FIELD_SOURCE_LABELS,
   canChangeApplicationStatus,
+  isSearchSource,
+  SEARCH_SOURCES,
   type Application,
   type ApplicationDetail,
   type ApplicationListItem,
@@ -56,6 +58,7 @@ const SOURCE_LABELS: Record<string, string> = {
 
 export function sourceLabel(source: string): string {
   if (SOURCE_LABELS[source]) return SOURCE_LABELS[source];
+  if (isSearchSource(source)) return SEARCH_SOURCES[source].label;
   const s = source.replace(/_/g, " ");
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

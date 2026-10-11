@@ -17,6 +17,8 @@ import { CvPreview } from "./CvPreview";
 import {
   approveErrorText,
   approveLabel,
+  findOnlyLinkLabel,
+  isFindOnly,
   companySummary,
   cvName,
   escalationNote,
@@ -139,6 +141,7 @@ export function ReviewCardItem({ card, acted, onApproved, onChangesRequested, on
   const [pending, setPending] = useState(false);
   const option = card.cvOptions.find((o) => o.cvVersion.language === lang) ?? card.cvOptions[0]!;
   const blocked = isBlockedByInjection(card);
+  const findOnly = isFindOnly(card);
   const notices = flagNotices(card);
   const { job } = card;
 
@@ -260,6 +263,26 @@ export function ReviewCardItem({ card, acted, onApproved, onChangesRequested, on
               </>
             )}
           </p>
+        ) : findOnly ? (
+          // W5: find only (Upwork) — no Approve: the app never applies, bids or spends Connects there.
+          <div className="flex flex-wrap gap-2" data-testid="find-only-actions">
+            {job.url ? (
+              <a
+                href={job.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-gradient-brand px-5 py-1.5 text-sm font-medium text-white shadow-glow"
+              >
+                {findOnlyLinkLabel(card)} <ArrowUpRight aria-hidden className="size-3.5" />
+              </a>
+            ) : null}
+            <Button pill className="px-5" onClick={() => setDialog("changes")}>
+              Request changes…
+            </Button>
+            <Button pill className="px-5 text-muted" onClick={() => setDialog("skip")}>
+              Skip (give reason)
+            </Button>
+          </div>
         ) : (
           <>
             <Field label="Intro / cover text (optional)" htmlFor={introId} hint="Leave it empty and Apply writes one from your master CV.">

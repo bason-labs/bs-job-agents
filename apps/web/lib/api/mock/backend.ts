@@ -4,6 +4,9 @@
 // e2e tests, and `pnpm dev` when the orchestrator is not running.
 import {
   ALLOWED_UPLOAD_TYPES,
+  FIND_ONLY_NOTE,
+  FIND_ONLY_REASON,
+  findOnlySourceOf,
   NEGOTIABLE_TEXT,
   RequestChangesRequestSchema,
   SkipDecisionSchema,
@@ -581,6 +584,9 @@ export class MockBackend implements WebApi, EventFeed {
   }
 
   async approve(jobId: string, input: ApproveInput): Promise<ApproveResult> {
+    // W5: like the engine, a find-only job (Upwork) is never approved, not even as a dry run.
+    const findOnly = findOnlySourceOf(this.card(jobId).job);
+    if (findOnly) throw fail(409, "conflict", FIND_ONLY_NOTE, { reason: FIND_ONLY_REASON, source: findOnly });
     const card = this.card(jobId);
     if (isApplyBlockedByInjection(card.job)) {
       throw fail(403, "forbidden", "This job is flagged for a possible prompt injection; confirm it before approving", { reason: "injection_flagged" });

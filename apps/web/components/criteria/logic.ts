@@ -2,11 +2,15 @@
 import {
   CurrencySchema,
   SALARY_POLICY_LABELS,
+  SEARCH_SOURCES,
+  SOURCE_GROUPS,
   SalaryPolicySchema,
   SearchProfileFieldsSchema,
   SearchSourceSchema,
   SenioritySchema,
   WorkModeSchema,
+  anyRemoteSource,
+  sourcesInGroup,
   type CriteriaUpdateRequest,
   type SearchProfile,
   type SearchProfileFieldsBase,
@@ -28,11 +32,21 @@ export const CHIP_FIELDS: readonly { key: ChipField; label: string }[] = [
   { key: "companyTypes", label: "Preferred company types" },
 ];
 
-const SOURCE_LABELS = { topcv: "TopCV", itviec: "ITviec", linkedin: "LinkedIn" } as const;
 const WORK_MODE_LABELS = { onsite: "Onsite", hybrid: "Hybrid", remote: "Remote" } as const;
 const SENIORITY_LABELS = { intern: "Intern", junior: "Junior", mid: "Mid", senior: "Senior", lead: "Lead" } as const;
 
-export const SOURCE_OPTIONS = SearchSourceSchema.options.map((value) => ({ value, label: SOURCE_LABELS[value] }));
+/** Every source toggle, in SearchSourceSchema order (the order a saved list keeps). */
+export const SOURCE_OPTIONS = SearchSourceSchema.options.map((value) => ({ value, label: SEARCH_SOURCES[value].label }));
+
+/** W5: the toggles grouped as the screen shows them: Vietnam boards, Remote boards, Global. New sources are off by default. */
+export const SOURCE_GROUP_OPTIONS = SOURCE_GROUPS.map(({ group, label }) => ({
+  group,
+  label,
+  options: sourcesInGroup(group).map((value) => ({ value, label: SEARCH_SOURCES[value].label })),
+}));
+
+/** W5: the time-zone overlap field shows when any remote board is on. */
+export const showsTimezoneOverlap = (form: Pick<CriteriaForm, "sources">): boolean => anyRemoteSource(form.sources);
 export const WORK_MODE_OPTIONS = WorkModeSchema.options.map((value) => ({ value, label: WORK_MODE_LABELS[value] }));
 export const SENIORITY_OPTIONS = SenioritySchema.options.map((value) => ({ value, label: SENIORITY_LABELS[value] }));
 export const CURRENCY_OPTIONS = CurrencySchema.options.map((value) => ({ value, label: value }));
@@ -66,7 +80,10 @@ export function profileToForm(p: SearchProfile | null): CriteriaForm {
 }
 
 export function formToRequest(form: CriteriaForm): CriteriaUpdateRequest {
-  return { ...structuredClone(form), salaryAmount: form.salaryAmount ? form.salaryAmount : null };
+  // W5: the time-zone overlap is always sent (null clears it), so a profile saved before it
+  // compares equal to the same form.
+  const timezoneOverlap = form.timezoneOverlap?.trim() ? form.timezoneOverlap.trim() : null;
+  return { ...structuredClone(form), salaryAmount: form.salaryAmount ? form.salaryAmount : null, timezoneOverlap };
 }
 
 /** Adds a trimmed chip unless it is empty or already there (case-insensitive). */
@@ -97,6 +114,7 @@ const MESSAGES: Partial<Record<keyof CriteriaForm, string>> = {
   salaryAmount: "Enter the amount Apply should write",
   currency: "Pick a currency (VND or USD)",
   minSalary: "Minimum salary must be a whole number",
+  timezoneOverlap: "Use a region (Asia, APAC, Europe…) or a UTC offset with a window, e.g. UTC+7 ±3h",
 };
 
 /** UC-21b (b) and §7.5 rules, through the shared schema; one message per field. */

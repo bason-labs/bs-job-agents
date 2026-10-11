@@ -6,6 +6,7 @@ import {
   CRITERIA_SAVE_KEY_PREFIX,
   ROOM_MENTION_CAP,
   cvLanguagesForJd,
+  findOnlySourceOf,
   normalizeAnswerKey,
   parseMentions,
   type Application,
@@ -346,6 +347,7 @@ async function runLane(core: Core, r: RunState, lane: LaneInfo, opts:{ from?: "c
       noApplyLink: job.url === null,
       lowConfidenceCompany: company.confidence === "low_confidence",
       appliedBefore: appliedBefore(core, r, job),
+      findOnly: findOnlySourceOf(job) !== null,
     },
     readyAt: core.nowIso(),
   };

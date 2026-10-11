@@ -1,6 +1,6 @@
 // Pure logic behind a review card (§11 Review queue; UC-07..10; PM S24): copy for the job line,
 // QA rounds, flags and the approve button.
-import { QA_MAX_ROUNDS, type CvVersion, type Job, type QaReviewRecord, type ReviewCard } from "@bs-job-agents/shared";
+import { FIND_ONLY_NOTE, QA_MAX_ROUNDS, sourceLabel as searchSourceLabel, type CvVersion, type Job, type QaReviewRecord, type ReviewCard } from "@bs-job-agents/shared";
 import { errorMessage, isApiError } from "@/lib/api/errors";
 import { statusMeta } from "@/lib/status";
 import { formatDateTime } from "@/components/schedules/datetime";
@@ -16,7 +16,8 @@ const SOURCE_LABELS: Record<string, string> = {
   file: "Uploaded file",
 };
 
-export const sourceLabel = (source: string) => SOURCE_LABELS[source] ?? source;
+/** W5: the new boards (VietnamWorks, Remote OK, …) take their labels from shared SEARCH_SOURCES. */
+export const sourceLabel = (source: string) => SOURCE_LABELS[source] ?? searchSourceLabel(source);
 
 /** "ITviec · Ho Chi Minh City · hybrid · 2,000–2,800 USD · JD language: EN". */
 export function jobMeta(job: Job): string {
@@ -66,7 +67,8 @@ export interface FlagNotice {
     | "needsInput"
     | "approveAgain"
     | "companyMissing"
-    | "dryRunSettled";
+    | "dryRunSettled"
+    | "findOnly";
   tone: NoticeTone;
   text: string;
 }
@@ -81,6 +83,12 @@ export const needsReapproval = (card: ReviewCard) => card.flags.approveAgain ===
 /** PM2 S15: the card's dry run finished; approving now (without dry run) applies live with the same CV. */
 export const isDryRunSettled = (card: ReviewCard) => card.flags.dryRunSettled === true;
 
+/** W5: a find-only source (Upwork): Approve is refused; Ba applies on the board himself. */
+export const isFindOnly = (card: ReviewCard) => card.flags.findOnly === true;
+
+/** "Open on Upwork" (the board of a find-only job). */
+export const findOnlyLinkLabel = (card: ReviewCard) => `Open on ${card.job.source === "upwork" || /upwork\.com/i.test(card.job.url ?? "") ? "Upwork" : searchSourceLabel(card.job.source)}`;
+
 /** Toast text for a failed approval; `already_applied` on Approve live means the dry run may really have been sent. */
 export function approveErrorText(err: unknown): string {
   if (isApiError(err) && err.code === "already_applied") {
@@ -93,6 +101,8 @@ export function approveErrorText(err: unknown): string {
 export function flagNotices(card: ReviewCard): FlagNotice[] {
   const out: FlagNotice[] = [];
   const { job, flags } = card;
+  // W5: first, so Ba sees at once that this one is his to apply to.
+  if (isFindOnly(card)) out.push({ key: "findOnly", tone: "info", text: FIND_ONLY_NOTE });
   // PM3 S2, §10.2 rule 5: a second application to the same job (Lead or Ba asked to apply again).
   if (flags.appliedBefore) {
     const before = flags.appliedBefore;

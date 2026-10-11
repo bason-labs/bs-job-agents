@@ -287,6 +287,16 @@ describe("mock backend: review (UC-07..12)", () => {
     expect(cardsOf(await leadMessages(), "question").map((q) => q.question.field)).toEqual(["salary", "start_date"]);
   });
 
+  it("W5: an Upwork job is find only: Approve (live or dry run) is refused like the engine refuses it", async () => {
+    const card = api.state.queue.find((c) => c.job.id === "101")!;
+    card.job = { ...card.job, source: "upwork", url: "https://www.upwork.com/jobs/~021900000000000000001" };
+    for (const dryRun of [false, true]) {
+      const err = await errorOf(api.approve("101", { cvVersionId: "2102", introText: null, dryRun }));
+      expect(isApiError(err) && [err.code, err.reason]).toEqual(["conflict", "find_only"]);
+    }
+    expect((await api.getReviewQueue()).some((c) => c.job.id === "101")).toBe(true);
+  });
+
   it("UC-07 b: a flagged job cannot be approved until Ba confirms it", async () => {
     const err = await errorOf(api.approve("103", { cvVersionId: "2303", introText: null }));
     expect(isApiError(err) && [err.code, err.reason]).toEqual(["forbidden", "injection_flagged"]);

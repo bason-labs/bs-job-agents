@@ -40,6 +40,40 @@ test("edits lists, toggles and sliders, then saves a new version (UC-21b)", asyn
   await expect(page.getByTestId("criteria-versions").getByRole("listitem").first()).toContainText("active");
 });
 
+test("W5: sources in three groups, new ones off; a remote board shows the time-zone overlap field", async ({ page }) => {
+  const sources = page.getByTestId("criteria-sources");
+  await expect(page.getByTestId("criteria-sources-vietnam").getByRole("button")).toHaveText(["TopCV", "ITviec", "VietnamWorks"]);
+  await expect(page.getByTestId("criteria-sources-remote").getByRole("button")).toHaveText(["Remote OK", "We Work Remotely", "Remotive", "Jobspresso"]);
+  await expect(page.getByTestId("criteria-sources-global").getByRole("button")).toHaveText(["LinkedIn", "Wellfound", "Upwork"]);
+  for (const name of ["VietnamWorks", "Remote OK", "We Work Remotely", "Remotive", "Jobspresso", "Wellfound", "Upwork"]) {
+    await expect(sources.getByRole("button", { name, exact: true })).toHaveAttribute("aria-pressed", "false");
+  }
+  await expect(page.getByTestId("criteria-timezone-overlap")).toHaveCount(0);
+
+  const remoteOk = sources.getByRole("button", { name: "Remote OK", exact: true });
+  await remoteOk.click();
+  await expect(remoteOk).toHaveAttribute("aria-pressed", "true");
+  const overlap = page.getByLabel("Time-zone overlap (remote boards)");
+  await expect(overlap).toBeVisible();
+
+  // A value that is neither a region nor a UTC offset is refused.
+  await overlap.fill("somewhere");
+  await page.getByTestId("criteria-save").click();
+  await expect(page.getByRole("alert").filter({ hasText: "Use a region (Asia, APAC, Europe…)" })).toBeVisible();
+
+  await overlap.fill("UTC+7 ±3h");
+  await sources.getByRole("button", { name: "Upwork", exact: true }).click();
+  await page.getByTestId("criteria-save").click();
+  await expect(page.getByTestId("toast").filter({ hasText: "Search criteria saved as v4" })).toBeVisible();
+  await expect(overlap).toHaveValue("UTC+7 ±3h");
+  await expect(sources.getByRole("button", { name: "Upwork", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+  // Turning the remote boards off hides the field again (the saved value is kept).
+  await remoteOk.click();
+  await sources.getByRole("button", { name: "Upwork", exact: true }).click();
+  await expect(page.getByTestId("criteria-timezone-overlap")).toHaveCount(0);
+});
+
 test("the fixed salary rule needs an amount, typed with thousands separators (§7.5, UC-12)", async ({ page }) => {
   await expect(page.getByTestId("criteria-salary-note")).toContainText("If a form makes salary required");
   await expect(page.getByTestId("criteria-salary-amount")).toHaveCount(0);
