@@ -104,9 +104,11 @@ function startFailureReason(err: unknown): DegradedReason {
 export function unsafeStoredEngines(db: Db, registry: BotRegistry): string | null {
   const problems: string[] = [];
   for (const def of registry.list()) {
-    const engine = getBot(db, def.name)?.engine ?? def.engine;
+    const row = getBot(db, def.name);
+    const engine = row?.engine ?? def.engine;
     if (engine === def.engine) continue;
-    const issues = checkBotSafety({ ...def, engine });
+    // Owner decision 2026-10-11: CV on Codex is fine once Ba acknowledged the risk.
+    const issues = checkBotSafety({ ...def, engine }, { unguardedFigmaAcknowledged: (row?.engineRiskAckAt ?? null) !== null });
     if (issues.length > 0) {
       const label = def.displayName || def.name;
       problems.push(`${issues.join("; ")}. ${label} is set to ${engine === "codex" ? "Codex" : engine} on the Bots screen: switch it back to Claude, then restart the orchestrator`);
