@@ -23,6 +23,7 @@ import {
   type BotRegistry,
   type BrowserStatusProbe,
   type Engine,
+  type EngineConfig,
   type FigmaPort,
   type Logger,
 } from "../../engine/index.js";
@@ -58,6 +59,8 @@ export interface StartOptions {
   shutdownGraceMs?: number;
   /** SSE heartbeat (default 15 s). */
   heartbeatMs?: number;
+  /** Engine settings over the defaults (tests only; production uses DEFAULT_ENGINE_CONFIG, §12 gate on). */
+  engineConfig?: Partial<EngineConfig>;
 }
 
 export interface Orchestrator {
@@ -184,6 +187,7 @@ export async function startOrchestrator(opts: StartOptions): Promise<Orchestrato
         figma,
         conversations: sink,
         ...(opts.browser ? { browser: opts.browser } : {}),
+        ...(opts.engineConfig ? { config: opts.engineConfig } : {}),
         logger: log,
       });
       bots = engine.deps.bots;

@@ -105,3 +105,31 @@ test("the canvas follows the run over SSE: the Apply node unlocks when Ba approv
   await expect(flow.getByTestId(`node-record-${novaId}`)).toContainText("record saved");
   await expect(reviewBadge(page)).toContainText("2");
 });
+
+test("§12: before any dry run a live approval is refused with a clear message; after a dry run on another job it goes through", async ({ page }) => {
+  await resetOrchestrator({ dryRunGate: true });
+  await scanToReview(page);
+  await open(page, "/review");
+  const dialog = page.getByTestId("approve-dialog");
+  await reviewCard(page, "NovaPay").getByRole("button", { name: "Approve & submit" }).click();
+  await dialog.getByRole("button", { name: "Approve & submit" }).click();
+  await expect(page.getByTestId("toast").filter({ hasText: "Do a dry run first" })).toBeVisible();
+  // Nothing was approved or sent; the dialog stays open so Ba can tick "Dry run".
+  await expect(dialog).toBeVisible();
+  expect(await runnerCalls("apply.submit")).toEqual([]);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+
+  // A dry run on another job settles the gate for the whole install.
+  const other = reviewCard(page, "Mây Xanh Software");
+  await other.getByRole("button", { name: "Approve & submit" }).click();
+  await dialog.getByRole("checkbox", { name: /Dry run/ }).click();
+  await dialog.getByRole("button", { name: "Approve dry run" }).click();
+  await expect(other.getByRole("button", { name: "Approve live & submit" })).toBeVisible({ timeout: 30_000 });
+
+  await reviewCard(page, "NovaPay").getByRole("button", { name: "Approve & submit" }).click();
+  await dialog.getByRole("button", { name: "Approve & submit" }).click();
+  await expect(page.getByTestId("toast").filter({ hasText: "NovaPay submitted" })).toBeVisible({ timeout: 30_000 });
+  const calls = await runnerCalls("apply.submit");
+  expect(calls.map((c) => c.input.dryRun)).toEqual([true, false]);
+});

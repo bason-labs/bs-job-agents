@@ -152,7 +152,8 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
     pdf: new FakePdfText(),
     masterCv,
     clock,
-    config: opts.config,
+    // §12's dry-run gate is on in production; tests opt in (dry-run-gate.test.ts).
+    config: { requireDryRunFirst: false, ...opts.config },
     ...(opts.processes ? { processes: opts.processes } : {}),
     ...(opts.prompts ? { prompts: opts.prompts } : {}),
     ...(opts.memory ? { memory: opts.memory } : {}),

@@ -278,6 +278,8 @@ With an orchestrator running on 4100, run:
 
 Required before the first real submission (spec §12). It needs checks 1–4 to pass. Do it on a job you **actually want** to apply to, because the dry run is followed by the real application.
 
+The app enforces this: until one dry run has finished on your data folder, **Approve & submit** without **Dry run** is refused with "Do a dry run first …", and nothing is approved or sent. A dry run is always allowed, on any job. A dry run that reported "submitted" does not count until you have checked it and marked it Failed.
+
 1. **Start clean:** `BSJA_API_MODE=live pnpm dev`, Chrome open with Claude in Chrome connected, Figma open with the Desktop Bridge plugin running. Check that there is no **Sample data** badge.
 2. **Find the job:** ask Lead, e.g. "Find frontend jobs in HCM", or paste the job's link into Chat. Wait for its review card.
 3. **Read the card:** the fit reasons, the company profile, the QA score and, in the viewer, the CV PDF (one A4 page, your facts only). Edit the intro if you want.

@@ -6,9 +6,12 @@ import { open } from "../helpers";
 
 const CONTROL = `http://127.0.0.1:${process.env.E2E_CONTROL_PORT ?? 4198}`;
 
-/** A fresh orchestrator on a new, empty data folder (criteria and master CV seeded). */
-export async function resetOrchestrator(): Promise<void> {
-  const res = await fetch(`${CONTROL}/reset`, { method: "POST" });
+/**
+ * A fresh orchestrator on a new, empty data folder (criteria and master CV seeded). `dryRunGate`
+ * keeps §12's "dry run before the first live submission" gate on, as in production.
+ */
+export async function resetOrchestrator(opts: { dryRunGate?: boolean } = {}): Promise<void> {
+  const res = await fetch(`${CONTROL}/reset${opts.dryRunGate ? "?dryRunGate=1" : ""}`, { method: "POST" });
   if (!res.ok) throw new Error(`reset failed: ${res.status} ${await res.text()}`);
 }
 

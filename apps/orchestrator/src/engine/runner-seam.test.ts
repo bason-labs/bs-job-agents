@@ -167,6 +167,8 @@ beforeAll(async () => {
     pdf: new FakePdfText(),
     masterCv: new FakeMasterCv(join(dataDir, "master-cv.yaml"), files),
     clock,
+    // This test is about the runner seam; §12's dry-run gate has its own (dry-run-gate.test.ts).
+    config: { requireDryRunFirst: false },
   });
   await engine.start();
 

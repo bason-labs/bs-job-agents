@@ -25,6 +25,12 @@ export interface EngineConfig {
   applicantName: string;
   /** Times in Lead's messages (e.g. "paused until 14:05"): Ba's zone, as the default schedule's (§15.2). */
   displayTimeZone: string;
+  /**
+   * §12 dry-run acceptance: "required before the first live submission". While no dry run has
+   * settled on this install, a live approval is refused (a dry run is always allowed). On in
+   * production; the test harness and the live-shape lane turn it off unless a test is about it.
+   */
+  requireDryRunFirst: boolean;
 }
 
 export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
@@ -39,6 +45,7 @@ export const DEFAULT_ENGINE_CONFIG: EngineConfig = {
   catchUpAfterMs: 2 * 60_000,
   applicantName: "BA_HUYNH",
   displayTimeZone: "Asia/Ho_Chi_Minh",
+  requireDryRunFirst: true,
 };
 
 export function resolveEngineConfig(over: Partial<EngineConfig> = {}): EngineConfig {
