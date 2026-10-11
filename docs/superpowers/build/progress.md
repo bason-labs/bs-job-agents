@@ -27,7 +27,8 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | W3d wiring | ✅ merged; 2382 tests green; reports/phase3-w3d-wiring.md |
 | 2026-10-11 | Phase 3 QA/QC | ✅ merged; qa-phase-3.md; 2431 tests + 144 e2e green; API contract parity tests; live smoke (Lead + QA consult) ok |
 | 2026-10-11 | Phase 3 PM review | ✅ merged (3b5caf8); pm-phase-3.md: ready after F4 part A (M1–M3, S1, S8); E1 update + E2 in owner-decisions.md |
-| 2026-10-11 | F4 part A (M1–M3, S1, S8), W4c prompts + master CV + imports (worktrees) | 🔄 running |
+| 2026-10-11 | W4c prompts + master CV + imports | ✅ merged; 2465 tests green; reports/phase4-w4c-prompts.md |
+| 2026-10-11 | F4 part A (worktree) | 🔄 running |
 
 **Next action:**
 1. Merge F4 part A when it reports, then start W4a (source adapters) and F4 part B (S2–S7) in parallel.

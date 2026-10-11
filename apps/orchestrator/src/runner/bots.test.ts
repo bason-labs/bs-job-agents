@@ -36,7 +36,7 @@ describe("bots/<name>/bot.json (§5.1, §5.2)", () => {
     expect(defs.map((d) => d.name)).toEqual([...PHASE1_BOTS].sort());
     expect(Object.fromEntries(defs.map((d) => [d.name, `${d.engine}/${trustLevelLabel(d.trustLevel)}`]))).toEqual({
       lead: "claude/L1",
-      research: "codex/L2",
+      research: "claude/L2", // E1 option A (owner-decisions.md)
       cv: "claude/L2",
       qa: "codex/L2",
       apply: "claude/L1",

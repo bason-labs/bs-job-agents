@@ -1,0 +1,59 @@
+# Applications sent before this app existed (UC-13, pm-phase-3 S12): Ba's three TopCV
+# applications of 2026-10-10, from an earlier Codex session. Values are as the approved
+# prototype records them; anything not known is left out and shows "not captured"
+# (no pre-submit or confirmation screenshot file, no JD snapshot, JD language unknown).
+#
+# Import once (README "First run"); re-running skips rows already imported (keyed by URL):
+#   pnpm --filter @bs-job-agents/orchestrator import:applications -- --data <data dir> --file data.example/imported-applications.yaml
+#
+# pdfDir: where the PDFs below are (an absolute path, or relative to this file). The script
+# copies each one into <data>/applications/<id>/ and records its SHA-256.
+pdfDir: /Users/bason/Documents/Codex/2026-09-23/i-m-software-engineer-and-i/output/pdf
+applications:
+  - company: DEKON
+    title: Senior Developer (NodeJS, ReactJS, AI)
+    source: topcv
+    url: https://www.topcv.vn/viec-lam/senior-developer-nodejs-reactjs-ai/2316742.html
+    language: null
+    submittedAt: 2026-10-10T15:40:00+07:00
+    status: submitted
+    pdf: BA_HUYNH_DEKON_Figma_EN.pdf
+    fields:
+      - { label: CV, name: null, value: BA_HUYNH_DEKON_Figma_EN.pdf, source: generated }
+      - { label: Contact details, name: null, value: Ba Huynh · huynhthienba4@gmail.com · +84 37 247 4489, source: master_cv }
+      - { label: Preferred location, name: null, value: Ho Chi Minh City, source: search_profile }
+    introText: null
+    consent: { ticked: true, text: Employer personal-data-use agreement (TopCV) }
+    confirmationText: Ứng tuyển việc làm thành công!
+
+  - company: SMARTBIT
+    title: Frontend Developer
+    source: topcv
+    url: https://www.topcv.vn/viec-lam/frontend-developer/2298533.html
+    language: null
+    submittedAt: 2026-10-10T15:44:00+07:00
+    status: submitted
+    pdf: BA_HUYNH_SMARTBIT_Figma_EN.pdf
+    fields:
+      - { label: CV, name: null, value: BA_HUYNH_SMARTBIT_Figma_EN.pdf, source: generated }
+      - { label: Contact details, name: null, value: Ba Huynh · huynhthienba4@gmail.com · +84 37 247 4489, source: master_cv }
+      - { label: Preferred location, name: null, value: Ho Chi Minh City, source: search_profile }
+    introText: null
+    consent: { ticked: true, text: Employer personal-data-use agreement (TopCV) }
+    confirmationText: Ứng tuyển việc làm thành công!
+
+  - company: YAVIET
+    title: Frontend Developer (ReactJS, NextJS, TS)
+    source: topcv
+    url: https://www.topcv.vn/viec-lam/frontend-developer-reactjs-nextjs-typescript/2325969.html
+    language: null
+    submittedAt: 2026-10-10T15:38:00+07:00
+    status: submitted
+    pdf: BA_HUYNH_YAVIET_Figma_EN.pdf
+    fields:
+      - { label: CV, name: null, value: BA_HUYNH_YAVIET_Figma_EN.pdf, source: generated }
+      - { label: Contact details, name: null, value: Ba Huynh · huynhthienba4@gmail.com · +84 37 247 4489, source: master_cv }
+      - { label: Preferred location, name: null, value: Ho Chi Minh City, source: search_profile }
+    introText: null
+    consent: { ticked: true, text: Employer personal-data-use agreement (TopCV) }
+    confirmationText: Ứng tuyển việc làm thành công!

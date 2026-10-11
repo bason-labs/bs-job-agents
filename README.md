@@ -35,6 +35,22 @@ data.example/        example user data (copy to data/, which is gitignored)
 
   If Figma or the plugin is not running, CV tasks wait as `needs_figma`.
 
+## First run
+
+Run these from the repo root, after `pnpm install`. If you set `ORCH_DATA_DIR`, use that folder instead of `data`.
+
+1. **Master CV.** Review `data.example/master-cv.yaml` (your facts, seeded from `build_targeted_resumes.py`), then copy it into the data folder:
+   ```bash
+   mkdir -p data && cp data.example/master-cv.yaml data/master-cv.yaml
+   ```
+   After this, edit it on the Master CV screen. Bots only read it.
+2. **Earlier applications.** Import the applications you sent before this app (DEKON, SMARTBIT and YAVIET on TopCV):
+   ```bash
+   pnpm --filter @bs-job-agents/orchestrator import:applications -- --data data --file data.example/imported-applications.yaml
+   ```
+   It copies each PDF (from `pdfDir` in the YAML) into `data/applications/<id>/` with its SHA-256. Running it again changes nothing. Run it while the orchestrator is stopped.
+3. **Start the app:** `pnpm dev`, then open http://localhost:3000. Check the three imported rows on Applications (marked "imported"; missing parts show "not captured") and your facts on Master CV.
+
 ## Develop
 
 ```bash
