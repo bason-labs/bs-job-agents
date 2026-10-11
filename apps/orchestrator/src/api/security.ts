@@ -4,6 +4,9 @@
 //   a request the web app's proxy forwards names the web app in X-Forwarded-Host.
 // - Origin, when the browser sends one, is the web app's. No CORS headers are ever sent, so a
 //   cross-origin fetch can neither read a response nor pass a preflight.
+// - PM3 M2: every state change (POST/PUT/PATCH/DELETE) must carry the web app's Origin; a missing
+//   one is refused like a foreign one, so a local process cannot approve a review card with a bare
+//   POST. (Node can forge the header: this stops naive payloads; E1 option A is the real fix.)
 // - Sec-Fetch-Site: cross-site is refused even without an Origin.
 // - Every state-changing request carries the shared CSRF header, which a form cannot set and a
 //   cross-origin fetch cannot send without the preflight the API never answers.
@@ -72,6 +75,11 @@ export function checkRequest(r: RequestFacts, opts: SecurityOptions): ApiHttpErr
     return forbidden("cross-site requests are refused");
   }
   if (!MUTATIONS.has(r.method.toUpperCase())) return null;
+  // PM3 M2: a browser always sends Origin on a state change, and the web app's proxy forwards it.
+  // Without one the caller is a local process (curl, Node fetch, a bot's REPL), never Ba's click.
+  if (origin === undefined) {
+    return forbidden("a state-changing request needs the web app's Origin; only the web app may change anything");
+  }
   if (header(r.headers, CSRF_HEADER) !== CSRF_HEADER_VALUE) {
     return forbidden(`a state-changing request needs the ${CSRF_HEADER}: ${CSRF_HEADER_VALUE} header`);
   }

@@ -32,7 +32,14 @@ export interface HttpClientOptions {
   /** `http://127.0.0.1:4100` on the server, `/api` in the browser. */
   baseUrl: string;
   fetch?: typeof fetch;
+  /**
+   * PM3 M2: server components call the orchestrator directly, without the browser's Origin, which
+   * the API requires on every state change. Their client is read-only and refuses one up front.
+   */
+  readOnly?: boolean;
 }
+
+const READ_METHODS = new Set(["GET", "HEAD"]);
 
 type RequestOptions<S extends z.ZodTypeAny> = ApiRequestOptions<S>;
 
@@ -41,6 +48,9 @@ export function createHttpClient(opts: HttpClientOptions) {
   const doFetch = opts.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init));
 
   async function send(method: string, route: string, o: RequestOptions<z.ZodTypeAny>): Promise<Response> {
+    if (opts.readOnly && !READ_METHODS.has(method.toUpperCase())) {
+      throw new ApiRequestError({ status: 0, code: "internal", message: `${method} ${route}: the server-side API client is read-only; changes go through the browser.` });
+    }
     const headers: Record<string, string> = { accept: "application/json", ...csrfHeaders(method) };
     let body: BodyInit | undefined;
     if (o.form) body = o.form;

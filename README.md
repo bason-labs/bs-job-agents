@@ -63,9 +63,11 @@ All optional; set them in the shell before `pnpm dev:orchestrator` (Turbo passes
 
 **Lock file.** While it runs, the orchestrator holds `data/orchestrator.lock` (its pid), so two orchestrators never share one database. A second one waits briefly, then refuses to start. A lock left by a crashed process is taken over automatically; delete the file only if no orchestrator is running.
 
-**Degraded start.** If start-up finds a problem (a data folder path bots cannot read, a database guard failure, an invalid workflow or `bot.json`, a `ROLE.md` changed without a `promptVersion` bump), the API still serves, `/health` answers `503` with the reason, and the UI shows it.
+**Degraded start.** If start-up finds a problem (a data folder path bots cannot read, a database guard failure, an invalid workflow or `bot.json`, a `ROLE.md` changed without a `promptVersion` bump, Lead set to Codex), the API still serves, `/health` answers `503` with the reason, and the UI shows it.
 
-**Lead's tools.** Lead's only tools come from the orchestrator's own MCP server, which listens on a free `127.0.0.1` port. Each Lead run gets its own capability URL, which stops working when that run ends.
+**Only the web app changes anything.** The API refuses every state-changing request (`POST`, `PUT`, `PATCH`, `DELETE`) unless it carries the web app's `Origin` (one of `ORCH_WEB_ORIGINS`) and the CSRF header; a request with no `Origin` at all, such as `curl` or a script, gets `403`. Reads (`GET`) need no `Origin`. Use the app to approve, edit or start anything.
+
+**Lead's tools.** Lead runs on Claude only (the engine switch is locked): its only tools come from the orchestrator's own MCP server, which listens on a free `127.0.0.1` port. Each Lead run gets its own capability URL, which stops working when that run ends and never appears in a command line.
 
 ## Check
 
