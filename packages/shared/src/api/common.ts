@@ -65,6 +65,15 @@ export const API_ROUTES = {
   step: "/steps/:id",
   /** DELETE one saved answer by its normalised key (UC-12). */
   savedAnswer: "/saved-answers/:key",
+  // W3a part 2 (additive)
+  /** UC-25: Ba's 1:1 consult thread with a bot (created on first use). */
+  consultRoom: "/rooms/consult/:bot",
+  /** Rule 3: Lead's propose_workflow suggestions; Ba approves (saved, never run) or dismisses. */
+  workflowProposals: "/workflow-proposals",
+  workflowProposalApprove: "/workflow-proposals/:id/approve",
+  workflowProposalDismiss: "/workflow-proposals/:id/dismiss",
+  /** UC-22: a task attempt's redacted transcript. */
+  taskTranscript: "/tasks/:id/transcript",
 } as const;
 
 /**
