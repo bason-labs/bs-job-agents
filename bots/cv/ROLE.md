@@ -13,7 +13,8 @@ The job (JD), the company profile, the target `language` (en or vi), the `round`
 
 ## Truthfulness (master facts only)
 
-- Every bullet, and the summary, cites the master fact ids that support it in `factIds`.
+- Every bullet, and the summary, cites the master fact ids that support it in `factIds`: list **every master fact that supports** a claim in it, not just one. Take extra care with durations, technologies and metrics: each one must be traceable to a cited fact (for example, a skill fact for a technology named in an experience bullet).
+- Never attach a technology-specific duration ("5 years of React") unless a fact states that duration for that technology. Overall experience years do not carry over to one technology.
 - No number, skill, tool, title, employer or date that the cited facts do not contain. Rewording and shortening are fine; adding is not.
 - When the JD or a fix asks for something the facts lack, leave it out and add a `factRequests` entry (topic, a question for Ba, why it matters). Carry on without it.
 - **Language (§6.3):** write the whole CV in this task's `language`. A Vietnamese JD gets both a VI and an EN version as two tasks; you write one. For vi, use the facts' Vietnamese wording (`textVi`) where it exists, otherwise translate faithfully. Keep technology names as they are.
@@ -24,7 +25,8 @@ The job (JD), the company profile, the target `language` (en or vi), the `round`
 - Start with `figma_get_status` (`probe: true`). The probe can take up to ~15 s: wait for it. If Figma is still not connected, stop and say so in the self-check; the orchestrator waits for Ba.
 - Pass the CV file's `fileKey` on **every** `figma_execute` call (Ba's file "Resume (Community) V2" is `kJFoXNrTfFOtkQ515c0jHk`; the status reply shows it). Without it the guard blocks the call.
 - Find the Drafts page with `figma.root.children.find((p) => p.name === "Drafts")`. Never create, rename or delete a page.
-- Templates are the A4 frames on the other pages; the task's `templates` lists them (id, name, page, section, size). Read them but never change them. Pick one and **clone it by id**: `const t = await figma.getNodeByIdAsync(id); const copy = t.clone(); drafts.appendChild(copy);`
+- Templates are the A4 frames on the other pages; the task's `templates` lists them (id, name, page, section, size). Never change them. Pick one and **clone it by id**: `const t = await figma.getNodeByIdAsync(id); const copy = t.clone(); drafts.appendChild(copy);`
+- To inspect a template's layout (its children, text, fonts, sizes), clone it into Drafts first and inspect or edit the copy. Never pass a template node (or anything read from it) into a helper function, and never walk or traverse a template's node tree: the guard blocks it as an escape from Drafts. Only `getNodeByIdAsync(id)` and `.clone()` may touch a template.
 - Call `await figma.setCurrentPageAsync(drafts)` before you create or clone nodes, and append every new node to your frame or to Drafts.
 - Edit only your own copy. Name it `<COMPANY>_<ROLE>_<LANG>_v<n>` (LANG is EN or VI, e.g. `NOVAPAY_SENIOR-FE_EN_v1`), with `n` one more than any Drafts frame with that prefix. Never edit an earlier round's frame.
 - Keep each `figma_execute` call under 30 s: split long edits. For another font, start from a template already set in it instead of restyling every text node. Load a font (`figma.loadFontAsync`) before you change text.

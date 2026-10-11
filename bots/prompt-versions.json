@@ -4,16 +4,16 @@
     "roleMdSha256": "082cdeb41bf68730049c36c36a4ee92225f7e8654eaaee3870db1e164d20ef35"
   },
   "cv": {
-    "promptVersion": 3,
-    "roleMdSha256": "836d6bc26b168f2831c58f0398ad71d5e69a42ce7d6916c6c8e24296fc54a0a8"
+    "promptVersion": 4,
+    "roleMdSha256": "8bc34d8b9a35269169c88ad29d7cec7b7ef75676fcc24222675f2de21fa879ab"
   },
   "lead": {
     "promptVersion": 3,
     "roleMdSha256": "e4161d9c8ad5f1fdeb7c0ff2cbfde08efbc59bfe5a07458949aca11427ca26b1"
   },
   "qa": {
-    "promptVersion": 2,
-    "roleMdSha256": "2e05753850e9ed43b919b13ec97c132870c91d247f405be27d30baad36d0e95f"
+    "promptVersion": 3,
+    "roleMdSha256": "eb402a2ae280b21b937e90de8c58ba0d14013af2394260d8947ab4d6b6cf9478"
   },
   "research": {
     "promptVersion": 3,
