@@ -2,8 +2,9 @@
 
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { cn } from "@/lib/cn";
+import { useReturnFocus } from "./focus";
 
 export const Dialog = RadixDialog.Root;
 export const DialogTrigger = RadixDialog.Trigger;
@@ -19,17 +20,21 @@ export interface DialogContentProps {
   hideClose?: boolean;
   className?: string;
   "data-testid"?: string;
+  /** Element to focus on close; by default the one focused when the dialog opened. */
+  returnFocus?: RefObject<HTMLElement | null>;
 }
 
 const WIDTHS = { sm: "max-w-sm", md: "max-w-[460px]", lg: "max-w-2xl" } as const;
 
 /** Prototype modal: dim backdrop, centered rounded-3xl card. Esc and backdrop click close it. */
-export function DialogContent({ title, description, children, footer, size = "md", hideClose = false, className, "data-testid": testId }: DialogContentProps) {
+export function DialogContent({ title, description, children, footer, size = "md", hideClose = false, className, "data-testid": testId, returnFocus }: DialogContentProps) {
+  const focus = useReturnFocus(returnFocus);
   return (
     <RadixDialog.Portal>
       <RadixDialog.Overlay className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]" />
       <RadixDialog.Content
         data-testid={testId}
+        {...focus}
         className={cn(
           "fixed top-1/2 left-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto",
           "space-y-4 rounded-3xl border border-border bg-surface p-5 shadow-2xl outline-none",

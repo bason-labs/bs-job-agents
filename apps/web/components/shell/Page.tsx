@@ -5,15 +5,15 @@ import { EmptyState } from "@/components/ui/EmptyState";
 /**
  * Layout rule (spec §11): constrained pages are centered (mx-auto + max-w);
  * chat and flows use the full width.
- * - narrow: forms and lists (Search criteria, Schedules, Master CV, Bots)
- * - wide: tables and queues (Applications, Review)
+ * - narrow: forms and lists (Search criteria, Schedules, Master CV)
+ * - wide: tables, queues and grids (Applications, Review, Bots), max-w-6xl as in the prototype (PM S9)
  * - full: Chat, Flow canvas, Rooms (they manage their own scrolling)
  */
 export type PageWidth = "narrow" | "wide" | "full";
 
 const WIDTHS: Record<Exclude<PageWidth, "full">, string> = {
   narrow: "max-w-3xl",
-  wide: "max-w-5xl",
+  wide: "max-w-6xl",
 };
 
 export function Page({ width = "narrow", className, children }: { width?: PageWidth; className?: string; children: ReactNode }) {

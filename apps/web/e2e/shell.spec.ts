@@ -97,8 +97,10 @@ test("sidebar shows review badge, live dots, trust badges and usage", async ({ p
   await open(page, "/chat");
   const sidebar = page.getByTestId("sidebar");
   await expect(sidebar.getByRole("link", { name: /^Review/ })).toContainText("3");
-  await expect(sidebar.getByRole("img", { name: "Working" })).toHaveCount(1);
-  await expect(sidebar.getByLabel("Trust level L1")).toHaveCount(2);
+  // The mock's bots are idle until something runs (chat.spec.ts sees Research go "working").
+  await expect(sidebar.getByRole("img", { name: "Idle" })).toHaveCount(5);
+  // PM S9: only Apply carries the trust badge.
+  await expect(sidebar.getByLabel("Trust level L1")).toHaveCount(1);
   await expect(sidebar.getByTestId("usage-claude")).toContainText("42%");
   await expect(sidebar.getByTestId("usage-chatgpt")).toContainText("18%");
 });

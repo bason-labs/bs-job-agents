@@ -21,7 +21,7 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | W3a API part 1 | ✅ merged (87becd3); 1679 tests green; reports/phase3-w3a-api-part1.md; API facts relayed to W3b/W3c |
 | 2026-10-11 | F2 fixer | ✅ merged (6d8ad74); 1845 tests green; reports/phase3-f2-fixer.md |
 | 2026-10-11 | W3c UI | ✅ merged; 2003 tests green; reports/phase3-w3c-ui.md; requests relayed to W3a/W3b |
-| 2026-10-11 | W3b (worktree; resumed twice after usage limits) | 🔄 running |
+| 2026-10-11 | W3b UI + lib/api | ✅ merged; 2166 tests green; reports/phase3-w3b-ui.md; API gaps relayed to W3a part 2 |
 | 2026-10-11 | W3a part 2, F3 fixer (worktrees) | 🔄 running |
 
-**Next action:** merge W3b, W3c, W3a part 2 and F3 as each reports. After W3b's `lib/api` lands, swap W3c's data interfaces to it (small follow-up, or part of Phase 3 QA). When all four are merged: Phase 3 QA, then PM, then must-fix, then Phase 4. If an agent stops on a usage limit, resume it with SendMessage (its worktree keeps its work).
+**Next action:** merge W3a part 2 and F3 when they report. Then run W3d, a small follow-up agent that swaps W3c's `data.ts` singletons to lib/api adapters, makes those pages live, and moves their e2e to the mock backend. Then Phase 3 QA, then PM, then must-fix, then Phase 4. Resume any agent stopped by a usage limit with SendMessage.

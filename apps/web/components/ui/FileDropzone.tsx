@@ -1,9 +1,14 @@
 "use client";
 
 import { Upload } from "lucide-react";
-import { useId, useRef, useState, type DragEvent } from "react";
+import { forwardRef, useId, useImperativeHandle, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { ACCEPT_ATTR, ACCEPTED_LABEL, validateFile } from "@/lib/files";
+
+export interface FileDropzoneHandle {
+  /** Opens the file picker (wrap mode's own "Attach file" button). */
+  open: () => void;
+}
 
 export interface FileDropzoneProps {
   /** Receives only files that passed validation (type + ≤10 MB). */
@@ -13,24 +18,40 @@ export interface FileDropzoneProps {
   label?: string;
   hint?: string;
   className?: string;
+  /**
+   * Wrap mode: `children` become the drop target (e.g. the chat composer, UC-24) instead of the
+   * dashed zone; open the picker through the ref. Rejected files are listed the same way.
+   */
+  children?: ReactNode;
+  /** Wrap mode: classes for the drop target; it carries data-drag-over="true" while files hover. */
+  zoneClassName?: string;
+  /** Wrap mode: shown inside the target while files are dragged over it. */
+  dropHint?: ReactNode;
 }
 
 /**
  * Click or drag-and-drop file picker (UC-24). The native input is visually
  * hidden; the styled zone opens it. Rejected files are listed with a reason.
  */
-export function FileDropzone({
-  onFiles,
-  multiple = false,
-  disabled = false,
-  label = "Drop files here or choose files",
-  hint = `${ACCEPTED_LABEL} · up to 10 MB each`,
-  className,
-}: FileDropzoneProps) {
+export const FileDropzone = forwardRef<FileDropzoneHandle, FileDropzoneProps>(function FileDropzone(
+  {
+    onFiles,
+    multiple = false,
+    disabled = false,
+    label = "Drop files here or choose files",
+    hint = `${ACCEPTED_LABEL} · up to 10 MB each`,
+    className,
+    children,
+    zoneClassName,
+    dropHint,
+  },
+  ref,
+) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const errorId = useId();
+  useImperativeHandle(ref, () => ({ open: () => inputRef.current?.click() }), []);
 
   const handle = (list: FileList | File[] | null) => {
     if (!list) return;
@@ -48,31 +69,75 @@ export function FileDropzone({
   };
 
   const isFileDrag = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
+  const wrap = children !== undefined;
+
+  const dropHandlers = {
+    onDragEnter: (e: DragEvent) => {
+      if (disabled || !isFileDrag(e)) return;
+      e.preventDefault();
+      setDragOver(true);
+    },
+    onDragOver: (e: DragEvent) => {
+      if (disabled || !isFileDrag(e)) return;
+      e.preventDefault();
+    },
+    onDragLeave: (e: DragEvent<HTMLDivElement>) => {
+      // Ignore leave events fired when moving between children.
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+      setDragOver(false);
+    },
+    onDrop: (e: DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      if (!disabled) handle(e.dataTransfer?.files ?? null);
+    },
+  };
+
+  const input = (
+    <input
+      ref={inputRef}
+      data-testid="file-dropzone-input"
+      type="file"
+      tabIndex={-1}
+      aria-hidden
+      className="sr-only"
+      accept={ACCEPT_ATTR}
+      multiple={multiple}
+      disabled={disabled}
+      onChange={(e) => {
+        handle(e.target.files);
+        e.target.value = "";
+      }}
+    />
+  );
+
+  const errorList = errors.length ? (
+    <ul id={errorId} role="alert" className="mt-2 space-y-1 text-xs text-danger">
+      {errors.map((msg) => (
+        <li key={msg}>{msg}</li>
+      ))}
+    </ul>
+  ) : null;
+
+  if (wrap) {
+    return (
+      <div className={className}>
+        <div data-testid="file-dropzone" data-drag-over={dragOver ? "true" : "false"} {...dropHandlers} className={zoneClassName}>
+          {dragOver && dropHint ? <p className="px-2 pb-1 text-xs text-accent">{dropHint}</p> : null}
+          {children}
+          {input}
+        </div>
+        {errorList}
+      </div>
+    );
+  }
 
   return (
     <div className={className}>
       <div
         data-testid="file-dropzone"
         data-drag-over={dragOver ? "true" : "false"}
-        onDragEnter={(e) => {
-          if (disabled || !isFileDrag(e)) return;
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragOver={(e) => {
-          if (disabled || !isFileDrag(e)) return;
-          e.preventDefault();
-        }}
-        onDragLeave={(e) => {
-          // Ignore leave events fired when moving between children.
-          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-          setDragOver(false);
-        }}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          if (!disabled) handle(e.dataTransfer?.files ?? null);
-        }}
+        {...dropHandlers}
         className={cn(
           "flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-6 py-8 text-center transition",
           dragOver ? "border-accent bg-accent/10 shadow-glow" : "border-border bg-surface/60",
@@ -90,29 +155,9 @@ export function FileDropzone({
           {dragOver ? "Drop to attach" : label}
         </button>
         <p className="text-xs text-muted">{hint}</p>
-        <input
-          ref={inputRef}
-          data-testid="file-dropzone-input"
-          type="file"
-          tabIndex={-1}
-          aria-hidden
-          className="sr-only"
-          accept={ACCEPT_ATTR}
-          multiple={multiple}
-          disabled={disabled}
-          onChange={(e) => {
-            handle(e.target.files);
-            e.target.value = "";
-          }}
-        />
+        {input}
       </div>
-      {errors.length ? (
-        <ul id={errorId} role="alert" className="mt-2 space-y-1 text-xs text-danger">
-          {errors.map((msg) => (
-            <li key={msg}>{msg}</li>
-          ))}
-        </ul>
-      ) : null}
+      {errorList}
     </div>
   );
-}
+});
