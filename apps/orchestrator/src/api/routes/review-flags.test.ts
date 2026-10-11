@@ -111,3 +111,29 @@ describe("GET /review: dryRunSettled (PM2 S15)", () => {
     expect(ApiErrorSchema.parse(res.json()).error.code).toBe("conflict");
   });
 });
+
+describe("GET /review: appliedBefore (PM3 S2, §10.2 rule 5)", () => {
+  it("an “apply again” card names the earlier application's date and status; a first card has none", async () => {
+    const x = await toReview();
+    const [first] = await queue(x);
+    expect(first!.flags.appliedBefore).toBeNull();
+    const cvVersionId = first!.cvOptions[0]!.cvVersion.id;
+    const approved = await x.post(`/review/${first!.job.id}/approve`, { cvVersionId, introText: null });
+    expect(approved.statusCode).toBe(200);
+    await x.t.idle();
+    const earlier = getApplication(x.t.db, Number(approved.json().applicationId))!;
+    expect(earlier.status).toBe("submitted");
+
+    // Lead (or Ba's Apply again button) starts apply-to-link with applyAgain for the same job.
+    x.t.engine.startWorkflow({ workflow: "apply-to-link", params: { url: first!.job.url!, applyAgain: true, searchProfileId: null } }, { trigger: "link" });
+    await x.t.idle();
+    const [again, ...rest] = await queue(x);
+    expect(rest).toEqual([]);
+    expect(again!.job.id).toBe(first!.job.id);
+    expect(again!.flags.appliedBefore).toEqual({ applicationId: String(earlier.id), at: earlier.submittedAt, status: "submitted", origin: "app" });
+
+    // Once Ba approves again, the card's own application is not "the earlier one".
+    const second = await x.post(`/review/${again!.job.id}/approve`, { cvVersionId: again!.cvOptions[0]!.cvVersion.id, introText: null });
+    expect(second.statusCode).toBe(200);
+  });
+});

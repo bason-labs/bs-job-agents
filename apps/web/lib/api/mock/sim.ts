@@ -244,7 +244,20 @@ function laneJob(core: Core, jobId: string): CatalogJob | null {
   return { job: card.job, company: card.company!, qa };
 }
 
-async function runLane(core: Core, r: RunState, lane: LaneInfo, opts: { from?: "company" | "tailor"; comment?: string | null } = {}): Promise<void> {
+/** PM3 S2, as views/review.ts: on an "apply again" run, the latest real application to the same job. */
+function appliedBefore(core: Core, r: RunState, job: Job): ReviewCard["flags"]["appliedBefore"] {
+  if ((r.run.params as { applyAgain?: unknown }).applyAgain !== true) return null;
+  // The mock reads a pasted link into a new job id, so an earlier application matches by its URL too.
+  const urlOf = (a: { id: string; jobId: string }) =>
+    core.state.applicationExtras[a.id]?.job.url ?? core.state.queue.concat(core.acted).find((c) => c.job.id === a.jobId)?.job.url ?? null;
+  const earlier = Object.values(core.state.applications)
+    .filter((a) => !a.dryRun && (a.jobId === job.id || (job.url !== null && urlOf(a) === job.url)))
+    .sort((a, b) => Number(b.id) - Number(a.id))[0];
+  if (!earlier) return null;
+  return { applicationId: earlier.id, at: earlier.submittedAt ?? earlier.statusHistory[0]?.at ?? core.nowIso(), status: earlier.status, origin: earlier.origin };
+}
+
+async function runLane(core: Core, r: RunState, lane: LaneInfo, opts:{ from?: "company" | "tailor"; comment?: string | null } = {}): Promise<void> {
   const runId = r.run.id;
   const cat = laneJob(core, lane.jobId);
   if (!cat) return;
@@ -331,6 +344,7 @@ async function runLane(core: Core, r: RunState, lane: LaneInfo, opts: { from?: "
       masterChanged: false,
       noApplyLink: job.url === null,
       lowConfidenceCompany: company.confidence === "low_confidence",
+      appliedBefore: appliedBefore(core, r, job),
     },
     readyAt: core.nowIso(),
   };

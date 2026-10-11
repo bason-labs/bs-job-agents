@@ -17,6 +17,7 @@ import {
   getCvVersion,
   getJob,
   listActiveRuns,
+  listApplications,
   listCvVersions,
   listRuns,
   listEvents,
@@ -43,6 +44,8 @@ interface Candidate {
   approveAgain: boolean;
   /** PM2 S15: the card's dry run settled; Approve now applies live with the same CV. */
   dryRunSettled: boolean;
+  /** PM3 S2: the run says "apply again" (§10.2 rule 5). */
+  applyAgain: boolean;
 }
 
 /**
@@ -69,11 +72,27 @@ function candidates(db: Db, workflows: WorkflowSource): Candidate[] {
         const dryRunSettled =
           !approveAgain &&
           isDryRunSettled(db, { humanStatus: human.status, actionOut, jobId: Number(human.branchKey), applyAgain: run.params.applyAgain === true });
-        if (human.status === "waiting" || approveAgain || dryRunSettled) out.push({ runId: run.id, human, action, approveAgain, dryRunSettled });
+        if (human.status === "waiting" || approveAgain || dryRunSettled) {
+          out.push({ runId: run.id, human, action, approveAgain, dryRunSettled, applyAgain: run.params.applyAgain === true });
+        }
       }
     }
   }
   return out;
+}
+
+/**
+ * PM3 S2: on an "apply again" card, the latest real application to the same job other than the
+ * card's own (a re-approval keeps its own application): what Ba sees before approving a second one.
+ */
+function appliedBefore(db: Db, c: Candidate, jobId: number): ReviewCard["flags"]["appliedBefore"] {
+  if (!c.applyAgain) return null;
+  const own = (c.action?.output as ActionStepOutput | null | undefined)?.applicationId ?? null;
+  const earlier = listApplications(db, { dryRun: false })
+    .filter((a) => a.jobId === jobId && a.id !== own)
+    .sort((a, b) => b.id - a.id)[0];
+  if (!earlier) return null;
+  return { applicationId: String(earlier.id), at: earlier.submittedAt ?? earlier.createdAt, status: earlier.status, origin: earlier.origin };
 }
 
 async function buildCard(db: Db, dataDir: string, c: Candidate, readyAt: Map<number, string>, masterVersion: number | null, now: Date): Promise<ReviewCard | null> {
@@ -125,6 +144,7 @@ async function buildCard(db: Db, dataDir: string, c: Candidate, readyAt: Map<num
       approveAgain: c.approveAgain,
       companyMissing: out.companyMissing === true,
       dryRunSettled: c.dryRunSettled,
+      appliedBefore: appliedBefore(db, c, job.id),
     },
     readyAt: readyAt.get(job.id) ?? now.toISOString(),
   };

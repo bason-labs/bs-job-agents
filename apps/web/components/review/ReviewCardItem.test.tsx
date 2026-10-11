@@ -48,6 +48,11 @@ describe("ReviewCardItem on the live orchestrator", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
+  it("PM3 S2: an “apply again” card shows that Ba applied before, above the card's actions", () => {
+    setup(card({ appliedBefore: { applicationId: "4", at: "2026-10-10T08:40:00.000Z", status: "submitted", origin: "app" } }));
+    expect(screen.getByText(/You applied to this job before \(2026-10-10 15:40, Submitted\)/)).toBeVisible();
+  });
+
   it("a settled dry run offers Approve live and Skip, but not Request changes", () => {
     setup(card({ dryRunSettled: true }));
     expect(screen.getByRole("button", { name: "Approve live & submit" })).toBeInTheDocument();

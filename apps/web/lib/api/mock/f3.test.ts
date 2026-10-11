@@ -1,6 +1,6 @@
 // F3 (PM2 S8, S11, S15, S16) pieces in the mock orchestrator: Approve live after a settled dry run,
 // "Don't allow" on a domain confirm, the figma-change choice, and review flags lib/api keeps.
-import { AppEventSchema, type AppEvent, type MessageCard } from "@bs-job-agents/shared";
+import { AppEventSchema, ApplyAgainResponseSchema, type AppEvent, type MessageCard } from "@bs-job-agents/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { isApiError } from "../errors";
 import { createHttpApi } from "../http";
@@ -84,6 +84,19 @@ describe("figma-change choice (PM2 S8)", () => {
     await mock.chooseOption({ messageId: msg.id, key: card.key, optionId: "was_me" });
     await mock.idle();
     expect((await mock.listMessages(LEAD_ROOM_ID)).messages.at(-1)!.text).toMatch(/CV is tailoring again/);
+  });
+});
+
+describe("PM3 S2: an “apply again” card says Ba applied before", () => {
+  it("Apply again on a failed application: the new card names the earlier application; other cards don't", async () => {
+    const failed = Object.values(mock.state.applications).find((a) => a.status === "failed" && !a.dryRun)!;
+    const { jobId } = await mock.request("POST", "/applications/:id/apply-again", { params: { id: failed.id }, schema: ApplyAgainResponseSchema });
+    expect(jobId).toBe(failed.jobId);
+    await mock.idle();
+    const cards = await mock.getReviewQueue();
+    const again = cards.find((c) => c.flags.appliedBefore);
+    expect(again?.flags.appliedBefore).toEqual({ applicationId: failed.id, at: failed.statusHistory[0]!.at, status: "failed", origin: "app" });
+    expect(cards.filter((c) => c.flags.appliedBefore)).toHaveLength(1);
   });
 });
 

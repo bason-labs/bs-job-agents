@@ -68,6 +68,21 @@ describe("review card model", () => {
     expect(flagNotices(again).map((n) => n.key)).toEqual(["approveAgain"]);
   });
 
+  it("PM3 S2: an “apply again” card says first that Ba applied before, with the date and status", () => {
+    const again = card(
+      {},
+      { appliedBefore: { applicationId: "4", at: "2026-10-10T08:40:00.000Z", status: "submitted", origin: "app" }, lowConfidenceCompany: true },
+    );
+    const notices = flagNotices(again);
+    expect(notices.map((n) => n.key)).toEqual(["appliedBefore", "lowConfidence"]);
+    expect(notices[0]).toEqual({
+      key: "appliedBefore",
+      tone: "warn",
+      text: "You applied to this job before (2026-10-10 15:40, Submitted). Approving sends a second application to the same job.",
+    });
+    expect(flagNotices(card({}, { appliedBefore: null })).map((n) => n.key)).toEqual([]);
+  });
+
   it("F3 flags: company research failed, and a settled dry run that can go live (PM2 S15/S16)", () => {
     const missing = card({}, { companyMissing: true });
     expect(flagNotices(missing)).toEqual([{ key: "companyMissing", tone: "warn", text: "Company research failed · continuing without it. CV tailored this CV without a company profile." }]);
