@@ -1,32 +1,34 @@
-// Data access for the Applications screen and its submission record panel (UC-13, UC-13b).
-//
-// Screens import `applicationsData` from here and nothing else, so wiring the real API is a
-// one-line change: replace the fixture implementation below with an adapter over lib/api
-// (W3b's typed client). Shapes are the shared API schemas.
-//   GET  /applications             → ApplicationsResponseSchema (rows, lastExportAt, dataDir)
-//   GET  /applications/:id         → ApplicationDetailSchema (record panel); 404 → null here
-//   POST /applications/:id/status  → body ApplicationStatusChangeRequestSchema
-//                                    → ApplicationStatusChangeResponseSchema; 409 when refused
-//   POST /exports                  → 201 ExportResponseSchema ({ export, downloadUrl })
-//   GET  /files/:id[?download=1]   → the viewer's file (shared fileUrl)
-// The API's file and download URLs are orchestrator paths: the lib/api adapter prefixes its
-// same-origin proxy base (/api) in fileUrl() and in exportAll()'s downloadUrl.
-// Additive API needs (handoff): ApplicationListItem.cvFile (the PDF sent, for imported rows),
-// POST /applications/:id/apply-again (failed applications, one-application-per-job override).
+// Data access for the Applications screen and its submission record panel (UC-13, UC-13b): an
+// adapter over lib/api (the orchestrator in live mode, the mock backend otherwise). Shapes are the
+// shared API schemas:
+//   GET  /applications                  → ApplicationsResponseSchema (rows with cvFile, lastExportAt, dataDir)
+//   GET  /applications/:id              → ApplicationDetailSchema (record panel); 404 → null here
+//   POST /applications/:id/status       → body ApplicationStatusChangeRequestSchema
+//                                         → ApplicationStatusChangeResponseSchema; 409 when refused
+//   POST /applications/:id/apply-again  → 201 ApplyAgainResponseSchema { jobId, runId }; 409 unless failed
+//   POST /exports                       → 201 ExportResponseSchema ({ export, downloadUrl })
+//   GET  /files/:id[?download=1]        → the viewer's file (WebApi.fileUrl)
+// The API's file and download URLs are orchestrator paths; WebApi.fileUrl / apiUrl add the
+// browser's same-origin /api base in live mode.
+"use client";
+
 import {
-  canChangeApplicationStatus,
-  fileUrl,
+  API_ROUTES,
+  ApplicationDetailSchema,
+  ApplicationStatusChangeResponseSchema,
+  ApplicationsResponseSchema,
+  ApplyAgainResponseSchema,
+  ExportResponseSchema,
   type ApplicationDetail,
   type ApplicationStatusChangeRequest,
-  type ApplicationStatusChangeResponseSchema,
-  type ApplicationsResponseSchema,
+  type ApplyAgainResponse,
   type ExportResponse,
-  type FileRef,
 } from "@bs-job-agents/shared";
+import { useMemo } from "react";
 import type { z } from "zod";
-import { FixtureApiError } from "@/components/schedules/apiError";
-import { isoDay } from "@/components/schedules/datetime";
-import { APPLICATION_DETAILS, toRow } from "./fixtures";
+import type { WebApi } from "@/lib/api/contract";
+import { isApiError } from "@/lib/api/errors";
+import { useApi } from "@/lib/api/react";
 import { sortApplications, type ApplicationRow } from "./logic";
 
 export type ApplicationsList = Omit<z.infer<typeof ApplicationsResponseSchema>, "applications"> & { applications: ApplicationRow[] };
@@ -38,78 +40,48 @@ export interface ApplicationsData {
   get(id: string): Promise<ApplicationDetail | null>;
   /** Ba's manual status change (UC-11 c, UC-13); the server checks the shared status machine. */
   changeStatus(id: string, body: ApplicationStatusChangeRequest): Promise<ApplicationStatusChangeResponse>;
-  /** ⬇ Export all (ZIP): the server builds it; the screen downloads `downloadUrl`. */
+  /** ⬇ Export all (ZIP): the server builds it; `downloadUrl` is ready for the browser. */
   exportAll(): Promise<ExportResponse>;
-  /** "Apply again" for a failed application: the job returns to the review queue. */
-  applyAgain(id: string): Promise<{ jobId: string }>;
+  /** "Apply again" for a failed application: a new apply-to-link run; its card comes back for review. */
+  applyAgain(id: string): Promise<ApplyAgainResponse>;
   /** Where the viewer loads a file from, or downloads it (the viewer's Download button). */
   fileUrl(fileId: string, opts?: { download?: boolean }): string;
 }
 
-/** A valid, empty ZIP: the fixture export downloads a real (if empty) archive. */
-const EMPTY_ZIP = "data:application/zip;base64,UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA==";
+export type ApplicationsApi = Pick<WebApi, "request" | "fileUrl" | "apiUrl">;
 
-/** Sample files under public/dev, by type, so the viewer shows something in fixture mode. */
-const SAMPLE_FILES: Record<string, string> = {
-  "application/pdf": "/dev/sample-cv.pdf",
-  "image/png": "/dev/sample-screenshot.png",
-  "text/plain": "/dev/sample-jd.txt",
-};
-
-/** In-memory stand-in seeded from the fixtures (no orchestrator needed). */
-export function createFixtureApplicationsData(
-  opts: { seed?: ApplicationDetail[]; now?: () => Date; lastExportAt?: string | null } = {},
-): ApplicationsData {
-  const now = opts.now ?? (() => new Date());
-  const details = new Map(structuredClone(opts.seed ?? APPLICATION_DETAILS).map((d) => [d.application.id, d]));
-  const files = new Map<string, FileRef>([...details.values()].flatMap((d) => d.files.map((f) => [f.id, f] as const)));
-  let lastExportAt = opts.lastExportAt ?? null;
-  let exports = 0;
-
-  const find = (id: string) => {
-    const d = details.get(id);
-    if (!d) throw new FixtureApiError(404, "not_found", `application ${id} not found`);
-    return d;
-  };
-
+export function createApplicationsData(api: ApplicationsApi): ApplicationsData {
   return {
     async list() {
-      return { applications: sortApplications([...details.values()].map((d) => structuredClone(toRow(d)))), lastExportAt };
+      const res = await api.request("GET", API_ROUTES.applications, { schema: ApplicationsResponseSchema });
+      return { ...res, applications: sortApplications(res.applications) };
     },
     async get(id) {
-      const d = details.get(id);
-      return d ? structuredClone(d) : null;
-    },
-    async changeStatus(id, body) {
-      const d = find(id);
-      const app = d.application;
-      if (!canChangeApplicationStatus(app.status, body.status, { dryRun: app.dryRun })) {
-        throw new FixtureApiError(409, "conflict", `can't change ${app.status} to ${body.status}`);
+      try {
+        return await api.request("GET", API_ROUTES.application, { params: { id }, schema: ApplicationDetailSchema });
+      } catch (err) {
+        if (isApiError(err) && err.code === "not_found") return null;
+        throw err;
       }
-      app.status = body.status;
-      app.statusHistory = [...app.statusHistory, { status: body.status, at: now().toISOString(), note: body.note }];
-      if (body.status === "submitted" && !app.submittedAt) app.submittedAt = now().toISOString();
-      return { application: structuredClone(app) };
+    },
+    changeStatus(id, body) {
+      return api.request("POST", API_ROUTES.applicationStatus, { params: { id }, body, schema: ApplicationStatusChangeResponseSchema });
     },
     async exportAll() {
-      const at = now();
-      lastExportAt = at.toISOString();
-      const count = [...details.values()].filter((d) => !d.application.dryRun).length;
-      return {
-        export: { id: `exp_${++exports}`, createdAt: lastExportAt, path: `data/exports/job-agents-export_${isoDay(at)}.zip`, applicationCount: count },
-        downloadUrl: EMPTY_ZIP,
-      };
+      const res = await api.request("POST", API_ROUTES.exports, { body: {}, schema: ExportResponseSchema });
+      return { ...res, downloadUrl: api.apiUrl(res.downloadUrl) };
     },
-    async applyAgain(id) {
-      const d = find(id);
-      if (d.application.status !== "failed") throw new FixtureApiError(409, "conflict", "only a failed application can be applied to again");
-      return { jobId: d.application.jobId };
+    applyAgain(id) {
+      return api.request("POST", API_ROUTES.applicationApplyAgain, { params: { id }, body: {}, schema: ApplyAgainResponseSchema });
     },
-    fileUrl(id, opts = {}) {
-      const f = files.get(id);
-      return f && SAMPLE_FILES[f.mime] ? SAMPLE_FILES[f.mime]! : fileUrl(id, opts);
+    fileUrl(id, opts) {
+      return api.fileUrl(id, opts);
     },
   };
 }
 
-export const applicationsData: ApplicationsData = createFixtureApplicationsData();
+/** The screen's data source on the app's api (useApi). */
+export function useApplicationsData(): ApplicationsData {
+  const api = useApi();
+  return useMemo(() => createApplicationsData(api), [api]);
+}

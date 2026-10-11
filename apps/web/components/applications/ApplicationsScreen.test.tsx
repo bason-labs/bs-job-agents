@@ -1,17 +1,20 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { API_ROUTES } from "@bs-job-agents/shared";
 import { FileViewerProvider, ToastProvider } from "@/components/ui";
-import { ApplicationsScreen } from "./ApplicationsScreen";
-import { createFixtureApplicationsData } from "./data";
+import type { WebApi } from "@/lib/api/contract";
+import { ApiRequestError } from "@/lib/api/errors";
+import { testMock } from "@/lib/api/mock/testing";
+import { ApiProvider } from "@/lib/api/react";
+import { ApplicationsLive, ApplicationsScreen } from "./ApplicationsScreen";
+import { createApplicationsData } from "./data";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
-const NOW = new Date("2026-10-11T03:00:00Z");
-
 async function setup() {
-  const data = createFixtureApplicationsData({ now: () => NOW });
+  const data = createApplicationsData(testMock());
   const initial = await data.list();
   const user = userEvent.setup();
   render(
@@ -30,7 +33,7 @@ describe("ApplicationsScreen (UC-13)", () => {
   it("lists every application with badges, the CV file, status and proof", async () => {
     await setup();
     expect(screen.getAllByTestId("application-row")).toHaveLength(7);
-    expect(screen.getByTestId("applications-header")).toHaveTextContent("7 applications · stored on this Mac in data/");
+    expect(screen.getByTestId("applications-header")).toHaveTextContent("7 applications · stored on this Mac in /Users/ba/job-agents/data");
     expect(within(row("DEKON")).getByText("imported")).toBeInTheDocument();
     expect(within(row("Kite Labs")).getByText("dry run")).toBeInTheDocument();
     expect(within(row("NovaPay")).getByRole("button", { name: "NOVAPAY_SENIOR-FRONTEND_EN_v1.pdf" })).toBeInTheDocument();
@@ -106,9 +109,49 @@ describe("ApplicationsScreen (UC-13)", () => {
     expect(await within(panel).findByText("No submission record — nothing was sent to the employer.")).toBeInTheDocument();
     await user.click(within(panel).getByRole("button", { name: "Apply again…" }));
     const confirm = screen.getByTestId("confirm-dialog");
-    await user.click(within(confirm).getByRole("button", { name: "Send to review" }));
-    expect(await screen.findByText(/Bluebird Software is back in your review queue/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Open review" }));
-    expect(push).toHaveBeenCalledWith("/review");
+    await user.click(within(confirm).getByRole("button", { name: "Apply again" }));
+    expect(await screen.findByText(/Applying to Bluebird Software again \(run #13\)/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open flow" }));
+    expect(push).toHaveBeenCalledWith("/flows/13");
+  });
+});
+
+describe("ApplicationsLive (the page)", () => {
+  it("loads through the api, shows a skeleton first, and re-reads when an application changes", async () => {
+    const mock = testMock();
+    render(
+      <ApiProvider mode="mock" api={mock}>
+        <ToastProvider>
+          <FileViewerProvider>
+            <ApplicationsLive />
+          </FileViewerProvider>
+        </ToastProvider>
+      </ApiProvider>,
+    );
+    expect(screen.getByTestId("resource-loading")).toBeInTheDocument();
+    expect(await screen.findAllByTestId("application-row")).toHaveLength(7);
+    // Another tab (or Apply) changes a status: the table follows the application.updated event.
+    await mock.request("POST", API_ROUTES.applicationStatus, { params: { id: "app_1" }, body: { status: "offer", note: null } });
+    await waitFor(() => expect(within(row("NovaPay")).getByRole("combobox")).toHaveTextContent("Offer"));
+  });
+
+  it("shows the error with Retry when the orchestrator can't be reached", async () => {
+    const mock = testMock();
+    let down = true;
+    const api = { ...mock, mode: mock.mode, events: mock.events, fileUrl: mock.fileUrl.bind(mock), apiUrl: mock.apiUrl.bind(mock), request: (...a: Parameters<typeof mock.request>) => (down ? Promise.reject(ApiRequestError.unreachable()) : mock.request(...a)) } as unknown as WebApi;
+    const user = userEvent.setup();
+    render(
+      <ApiProvider mode="live" api={api}>
+        <ToastProvider>
+          <FileViewerProvider>
+            <ApplicationsLive />
+          </FileViewerProvider>
+        </ToastProvider>
+      </ApiProvider>,
+    );
+    expect(await screen.findByTestId("resource-error")).toHaveTextContent("Can't reach the orchestrator");
+    down = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findAllByTestId("application-row")).toHaveLength(7);
   });
 });

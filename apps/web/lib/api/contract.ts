@@ -27,9 +27,25 @@ import {
   type UploadsResponse,
 } from "@bs-job-agents/shared";
 import { z } from "zod";
+import type { QueryValue } from "./routes";
 import type { BotSummary, RoomSummary, ShellData } from "./types";
 
 export type ApiMode = "live" | "mock";
+
+// ---------------------------------------------------------------- any route
+
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+/** One call to an API_ROUTES entry: path params, query, a JSON body (or a form) and the response schema. */
+export interface ApiRequestOptions<S extends z.ZodTypeAny = z.ZodTypeAny> {
+  params?: Record<string, string>;
+  query?: Record<string, QueryValue>;
+  body?: unknown;
+  form?: FormData;
+  /** The shared response schema; without one the call resolves to undefined. */
+  schema?: S;
+  signal?: AbortSignal;
+}
 
 // ---------------------------------------------------------------- live events
 
@@ -163,4 +179,13 @@ export interface WebApi {
 
   /** URL the in-app viewer loads (Download inside the viewer adds `download`). */
   fileUrl(id: string, opts?: { download?: boolean }): string;
+
+  // any route (the W3c screens' adapters in components/<area>/data.ts)
+  /**
+   * Any API_ROUTES call by its template (`API_ROUTES.application` + `params: { id }`), validated
+   * with `schema`; failures are ApiRequestError with the server's code and `details.reason`.
+   */
+  request<S extends z.ZodTypeAny = z.ZodTypeAny>(method: HttpMethod, route: string, opts?: ApiRequestOptions<S>): Promise<z.infer<S>>;
+  /** An orchestrator path the API answered with (an export's `downloadUrl`) as a URL this browser can open. */
+  apiUrl(path: string): string;
 }

@@ -7,7 +7,9 @@ import { useState } from "react";
 import { Badge, Button, ConfirmDialog, EmptyState, useFileViewer, useToast } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/components/schedules/datetime";
-import { applicationsData, type ApplicationsData, type ApplicationsList } from "./data";
+import { ResourceGate } from "@/components/schedules/ResourceGate";
+import { useLiveResource } from "@/lib/api/live-resource";
+import { useApplicationsData, type ApplicationsData, type ApplicationsList } from "./data";
 import { applicationsHeader, cvLabel, exportFileName, sourceLabel, type ApplicationRow } from "./logic";
 import { RecordPanel } from "./RecordPanel";
 import { StatusSelect } from "./StatusSelect";
@@ -15,9 +17,22 @@ import { cvViewerFile, screenshotViewerFile } from "./viewerFiles";
 import { errorText } from "@/components/schedules/apiError";
 
 export interface ApplicationsScreenProps {
+  /** The latest read; a newer one (a live re-read) replaces the rows. */
   initial: ApplicationsList;
-  /** Defaults to the app's data source; tests pass their own. */
-  data?: ApplicationsData;
+  data: ApplicationsData;
+}
+
+/** The page: the live list (re-read when an application changes anywhere), then the screen. */
+export function ApplicationsLive() {
+  const data = useApplicationsData();
+  const list = useLiveResource("w3c:applications", () => data.list(), {
+    refreshOn: (e) => e.type === "application.updated" || e.type === "run.finished",
+  });
+  return (
+    <ResourceGate resource={list} label="applications">
+      {(initial) => <ApplicationsScreen initial={initial} data={data} />}
+    </ResourceGate>
+  );
 }
 
 /** Starts a download of `href` (the export ZIP); the browser saves it as `name`. */
@@ -31,11 +46,23 @@ function download(href: string, name: string) {
 }
 
 /** UC-13 / UC-13b: every application, its status, the submission record panel and the ZIP export. */
-export function ApplicationsScreen({ initial, data = applicationsData }: ApplicationsScreenProps) {
+export function ApplicationsScreen({ initial, data }: ApplicationsScreenProps) {
   const [rows, setRows] = useState(initial.applications);
   const [lastExportAt, setLastExportAt] = useState(initial.lastExportAt);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [details, setDetails] = useState<Record<string, ApplicationDetail>>({});
+  const [seen, setSeen] = useState(initial);
+  if (seen !== initial) {
+    // A live re-read: take its rows, and keep open records in step with their applications.
+    setSeen(initial);
+    setRows(initial.applications);
+    setLastExportAt(initial.lastExportAt);
+    setDetails((d) => {
+      const next = { ...d };
+      for (const r of initial.applications) if (next[r.application.id]) next[r.application.id] = { ...next[r.application.id]!, application: r.application };
+      return next;
+    });
+  }
   const [exporting, setExporting] = useState(false);
   const [applyAgainRow, setApplyAgainRow] = useState<ApplicationRow | null>(null);
   const { toast } = useToast();
@@ -85,11 +112,11 @@ export function ApplicationsScreen({ initial, data = applicationsData }: Applica
   const applyAgain = async (row: ApplicationRow) => {
     setApplyAgainRow(null);
     try {
-      await data.applyAgain(row.application.id);
+      const { runId } = await data.applyAgain(row.application.id);
       setSelectedId(null);
       toast({
-        title: `${row.job.company} is back in your review queue. Approving it there starts a new application.`,
-        action: { label: "Open review", onClick: () => router.push("/review") },
+        title: `Applying to ${row.job.company} again (run #${runId}). Its review card comes back to you; nothing is sent until you approve it.`,
+        action: { label: "Open flow", onClick: () => router.push(`/flows/${runId}`) },
       });
     } catch (e) {
       toast({ title: `Couldn't apply again: ${errorText(e)}`, tone: "err" });
@@ -257,8 +284,8 @@ export function ApplicationsScreen({ initial, data = applicationsData }: Applica
         onOpenChange={(open) => !open && setApplyAgainRow(null)}
         tone="brand"
         title={applyAgainRow ? `Apply to ${applyAgainRow.job.company} again?` : ""}
-        description="The job goes back to your review queue with its last CV. Nothing is sent until you approve it there; this failed attempt stays in the list."
-        confirmLabel="Send to review"
+        description="Research reads the job again, then CV and QA, and the card comes back to your review queue. Nothing is sent until you approve it there; this failed attempt stays in the list."
+        confirmLabel="Apply again"
         onConfirm={() => applyAgainRow && void applyAgain(applyAgainRow)}
       />
     </div>

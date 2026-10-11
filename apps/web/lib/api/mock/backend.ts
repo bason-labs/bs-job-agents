@@ -25,8 +25,11 @@ import {
   type Task,
   type Upload,
 } from "@bs-job-agents/shared";
+import type { z } from "zod";
 import type {
   AnswerInput,
+  ApiRequestOptions,
+  HttpMethod,
   ApproveInput,
   ApproveResult,
   EventFeed,
@@ -42,6 +45,7 @@ import type {
 import { ApiRequestError } from "../errors";
 import { toBotSummary, toRoomSummary, toShellData } from "../map";
 import type { BotSummary, RoomSummary, ShellData } from "../types";
+import { handleMockRequest } from "./routes";
 import { LEAD_ROOM_ID, createSeedState } from "./seed";
 import * as sim from "./sim";
 import type { MockState, RunState, StepRow } from "./state";
@@ -67,7 +71,9 @@ export type SimulationKind =
   | "login-expired"
   | "captcha"
   | "figma"
-  | "domain-confirm";
+  | "domain-confirm"
+  /** Lead proposes a workflow (rule 3); e2e drives it through withMock. */
+  | "workflow-proposal";
 
 const TERMINAL: readonly StepStatus[] = ["done", "failed", "skipped", "cancelled"];
 const IDLE: readonly StepStatus[] = ["pending", "locked"];
@@ -360,8 +366,9 @@ export class MockBackend implements WebApi, EventFeed {
     for (const id of uploadIds) {
       if (!this.state.uploads[id]) throw fail(400, "validation_failed", `upload ${id} not found`);
     }
-    const mentions = room.kind === "group" ? sim.mentionsIn(text, this.state.bots.map((b) => b.name)) : [];
-    const message = await this.post(room.id, { type: "ba" }, text, { uploadIds, mentions });
+    const targets = room.kind === "group" ? sim.roomTargets(this, room, text) : { answering: [], notes: [] };
+    const message = await this.post(room.id, { type: "ba" }, text, { uploadIds, mentions: targets.answering });
+    for (const note of targets.notes) await this.post(room.id, { type: "system" }, note);
     for (const id of uploadIds) this.state.uploads[id]!.messageId = message.id;
     this.background(sim.replyTo(this, room, message));
     return structuredClone(message);
@@ -423,7 +430,7 @@ export class MockBackend implements WebApi, EventFeed {
     }
     if (input.remember && value !== null && normalizeAnswerKey(q.label)) {
       const key = normalizeAnswerKey(q.label);
-      this.state.savedAnswers = [...this.state.savedAnswers.filter((a) => a.key !== key), { key, label: q.label, answer: value }];
+      this.state.savedAnswers = [...this.state.savedAnswers.filter((a) => a.key !== key), { key, label: q.label, answer: value, updatedAt: this.nowIso() }];
     }
     // The card is answered from now on (a reload shows it inert).
     for (const m of this.state.messages[LEAD_ROOM_ID] ?? []) {
@@ -577,6 +584,24 @@ export class MockBackend implements WebApi, EventFeed {
 
   fileUrl(id: string): string {
     return this.state.fileUrls[id] ?? "/dev/sample-cv.pdf";
+  }
+
+  // ------------------------------------------------------------ WebApi: any route
+
+  /** Any API_ROUTES call (routes.ts), answered like the orchestrator and checked like http.ts. */
+  async request<S extends z.ZodTypeAny = z.ZodTypeAny>(method: HttpMethod, route: string, opts: ApiRequestOptions<S> = {}): Promise<z.infer<S>> {
+    const data = await handleMockRequest(this, method, route, opts);
+    if (!opts.schema) return undefined as z.infer<S>;
+    const parsed = opts.schema.safeParse(structuredClone(data));
+    if (!parsed.success) {
+      throw fail(200, "bad_response", `${method} ${route} answered a shape the UI does not understand.`, parsed.error.issues);
+    }
+    return parsed.data;
+  }
+
+  /** Mock answers carry URLs the browser opens as they are (data: ZIPs, /dev samples). */
+  apiUrl(path: string): string {
+    return path;
   }
 
   // ------------------------------------------------------------ mock only

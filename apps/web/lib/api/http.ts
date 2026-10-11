@@ -19,11 +19,11 @@ import {
   fileUrl,
 } from "@bs-job-agents/shared";
 import type { z } from "zod";
-import { ApproveResultSchema, TranscriptResponseSchema, type EventFeed, type HealthState, type WebApi } from "./contract";
+import { ApproveResultSchema, TranscriptResponseSchema, type ApiRequestOptions, type EventFeed, type HealthState, type WebApi } from "./contract";
 import { csrfHeaders } from "./csrf";
 import { ApiRequestError, apiErrorFromResponse } from "./errors";
 import { toBotSummary, toRoomSummary, toShellData } from "./map";
-import { PROPOSED_ROUTES, apiPath, type QueryValue } from "./routes";
+import { PROPOSED_ROUTES, apiPath } from "./routes";
 
 export interface HttpClientOptions {
   /** `http://127.0.0.1:4100` on the server, `/api` in the browser. */
@@ -31,14 +31,7 @@ export interface HttpClientOptions {
   fetch?: typeof fetch;
 }
 
-interface RequestOptions<S extends z.ZodTypeAny> {
-  params?: Record<string, string>;
-  query?: Record<string, QueryValue>;
-  body?: unknown;
-  form?: FormData;
-  schema?: S;
-  signal?: AbortSignal;
-}
+type RequestOptions<S extends z.ZodTypeAny> = ApiRequestOptions<S>;
 
 export function createHttpClient(opts: HttpClientOptions) {
   const base = opts.baseUrl.replace(/\/+$/, "");
@@ -210,6 +203,11 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
 
     fileUrl(id, o = {}) {
       return `${http.base}${fileUrl(id, o)}`;
+    },
+
+    request,
+    apiUrl(path) {
+      return /^[a-z][a-z0-9+.-]*:/i.test(path) ? path : `${http.base}${path.startsWith("/") ? "" : "/"}${path}`;
     },
   };
 }

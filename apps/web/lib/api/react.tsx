@@ -16,7 +16,7 @@ import { createLiveEventFeed } from "./sse";
 
 // ---------------------------------------------------------------- the client api
 
-type AsyncMethod = Exclude<keyof WebApi, "mode" | "events" | "fileUrl">;
+type AsyncMethod = Exclude<keyof WebApi, "mode" | "events" | "fileUrl" | "apiUrl">;
 /** Every async WebApi method (the type makes a missing or extra name a compile error). */
 const ASYNC_METHODS: Record<AsyncMethod, true> = {
   getHealth: true,
@@ -43,6 +43,7 @@ const ASYNC_METHODS: Record<AsyncMethod, true> = {
   requestChanges: true,
   skip: true,
   confirmInjection: true,
+  request: true,
 };
 
 export type LazyMockApi = WebApi & { ready: Promise<MockBackend> };
@@ -73,6 +74,7 @@ export function lazyMockApi(speed: number): LazyMockApi {
     events,
     ready,
     fileUrl: (id: string) => (instance ? instance.fileUrl(id) : "/dev/sample-cv.pdf"),
+    apiUrl: (path: string) => path,
   };
   for (const name of Object.keys(ASYNC_METHODS) as AsyncMethod[]) {
     api[name] = async (...args: unknown[]) => {
@@ -88,7 +90,7 @@ let clientApi: { key: string; api: WebApi } | null = null;
 /** During SSR client components only read `mode`; requests and subscriptions start in effects. */
 function serverRenderApi(mode: ApiMode): WebApi {
   const idle: EventFeed = { subscribe: () => () => {}, getStatus: () => "idle", onStatus: () => () => {} };
-  const api: Record<string, unknown> = { mode, events: idle, fileUrl: () => "#" };
+  const api: Record<string, unknown> = { mode, events: idle, fileUrl: () => "#", apiUrl: () => "#" };
   for (const name of Object.keys(ASYNC_METHODS)) api[name] = () => new Promise(() => {});
   return api as unknown as WebApi;
 }

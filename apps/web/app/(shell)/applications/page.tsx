@@ -1,16 +1,14 @@
 import type { Metadata } from "next";
-import { ApplicationsScreen } from "@/components/applications/ApplicationsScreen";
-import { applicationsData } from "@/components/applications/data";
+import { ApplicationsLive } from "@/components/applications/ApplicationsScreen";
 import { Page } from "@/components/shell/Page";
 
 export const metadata: Metadata = { title: "Applications" };
 
-/** UC-13 / UC-13b: applications table, submission record panel, ZIP export (wide, centered). */
-export default async function ApplicationsPage() {
-  const initial = await applicationsData.list();
+/** UC-13 / UC-13b: applications table, submission record panel, ZIP export (wide, centered). Live data, read in the browser. */
+export default function ApplicationsPage() {
   return (
     <Page width="wide">
-      <ApplicationsScreen initial={initial} />
+      <ApplicationsLive />
     </Page>
   );
 }

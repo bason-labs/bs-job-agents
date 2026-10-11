@@ -1,7 +1,6 @@
 // Seed for the mock orchestrator, built from the shared fixtures and the Stage 0 prototype's demo:
 // Job scan #12 has found NovaPay, Sao Việt Tech and Kite Labs, and their cards wait for Ba.
 import {
-  canPromote,
   type BotView,
   type Company,
   type CvLanguage,
@@ -19,7 +18,6 @@ import {
   type Step,
   type TailoredCv,
   type Task,
-  type TrustLevel,
 } from "@bs-job-agents/shared";
 import {
   SAMPLE_SHA256,
@@ -31,6 +29,10 @@ import {
   researchScanFixture,
 } from "@bs-job-agents/shared/fixtures";
 import type { TranscriptLine } from "../contract";
+import { APPLICATION_DETAILS, extraOf, sampleFileUrls } from "./seed-applications";
+import { seedBotViews } from "./seed-bots";
+import { MASTER_CV } from "./seed-master-cv";
+import { seedFactRequests, seedMasterCvVersions, seedProfiles, seedProposals, seedSavedAnswers, seedSchedules } from "./seed-screens";
 import type { LaneInfo, MockState, RunState, StepRow } from "./state";
 
 // ---------------------------------------------------------------- time
@@ -41,62 +43,9 @@ export const seedTime = (min: number, sec = 0) => new Date(BASE + (min * 60 + se
 
 // ---------------------------------------------------------------- bots, engines, rooms
 
-const bot = (
-  name: string,
-  displayName: string,
-  engine: Engine,
-  trustLevel: TrustLevel,
-  promptVersion: number,
-  role: string,
-  trackRecord: string | null,
-  memory: string[],
-  extra: Partial<BotView> = {},
-): BotView => ({
-  name,
-  displayName,
-  engine,
-  model: null,
-  trustLevel,
-  promptVersion,
-  enabled: true,
-  role,
-  activity: "idle",
-  trackRecord,
-  promotionSuggested: false,
-  promoteAllowed: canPromote(name, trustLevel).allowed,
-  memory,
-  residualRisk: null,
-  ...extra,
-});
-
+/** The five bots (seed-bots.ts: the Bots screen's track records, memory notes and CV's demotion). */
 export function seedBots(): BotView[] {
-  return [
-    bot("lead", "Lead", "claude", 1, 3, "Receives every request; only divides work.", null, [
-      "Ba prefers product companies over outsourcing.",
-      "Ask one question max before starting a scan.",
-    ]),
-    bot(
-      "research",
-      "Research",
-      "codex",
-      2,
-      2,
-      "Finds jobs, scores fit, profiles companies (read-only browser).",
-      "41 tasks · 95% self-check pass",
-      ['TopCV salary often hidden: read "Mức lương" field.', "LinkedIn: stop at 40 page views."],
-      { residualRisk: "Site allowlist is prompt-only on Codex (§4.4)." },
-    ),
-    bot("cv", "CV", "claude", 2, 4, "Tailors CV in Figma from master facts; never invents.", "18 CVs · 61% pass QA first round", [
-      'Template "Refreshed" fits 1 page with max 3 projects.',
-      "Always check hidden frames before export.",
-    ]),
-    bot("qa", "QA", "codex", 2, 2, "Scores CV vs JD + company; hard-fails invented facts.", "29 reviews", [
-      "Vietnamese JDs: check diacritics in PDF text.",
-    ]),
-    bot("apply", "Apply", "claude", 1, 1, "Fills & submits forms in your Chrome after your approval.", "10 approved in a row without edits", [
-      "TopCV: upload limit 5MB.",
-    ], { promotionSuggested: true }),
-  ];
+  return seedBotViews();
 }
 
 const ROOM_AT = "2026-10-01T08:00:00+07:00";
@@ -110,7 +59,7 @@ export function seedRooms(): Room[] {
   return [
     { id: LEAD_ROOM_ID, name: "Lead", kind: "lead", botName: "lead", members: ["lead"], createdAt: ROOM_AT },
     ...direct,
-    { id: "cv-brainstorm", name: "cv-brainstorm", kind: "group", botName: null, members: ["cv", "qa", "research"], createdAt: ROOM_AT },
+    { id: "cv-brainstorm", name: "cv-brainstorm", kind: "group", botName: null, members: ["lead", "research", "cv", "qa", "apply"], createdAt: ROOM_AT },
   ];
 }
 
@@ -813,8 +762,9 @@ export function createSeedState(): MockState {
   const queue = seedQueue(jobs, companies);
   const run12 = seedRun12(jobs, queue);
   const run11 = seedRun11();
-  const fileUrls: Record<string, string> = {};
+  const fileUrls: Record<string, string> = sampleFileUrls(APPLICATION_DETAILS);
   for (const card of queue) for (const o of card.cvOptions) if (o.pdf) fileUrls[o.pdf.id] = "/dev/sample-cv.pdf";
+  const details = structuredClone(APPLICATION_DETAILS);
   return {
     bots: seedBots(),
     engines: [
@@ -833,13 +783,23 @@ export function createSeedState(): MockState {
         { field: "start_date", label: "Thời gian có thể bắt đầu làm việc", required: true, kind: "text", options: null },
       ],
     },
-    applications: {},
+    applications: Object.fromEntries(details.map((d) => [d.application.id, d.application])),
+    applicationExtras: Object.fromEntries(details.map((d) => [d.application.id, extraOf(d)])),
+    exports: [],
+    dataDir: "/Users/ba/job-agents/data",
     uploads: {},
     fileUrls,
     transcripts: { ...run11.transcripts, ...run12.transcripts },
     pauses: {},
-    savedAnswers: [{ key: "notice period", label: "Notice period", answer: "2 weeks" }],
+    savedAnswers: seedSavedAnswers(),
     criteriaVersion: 3,
+    profiles: seedProfiles(),
+    schedules: seedSchedules(),
+    masterCv: { kind: "ok", cv: structuredClone(MASTER_CV) },
+    masterCvVersions: seedMasterCvVersions(),
+    factRequests: seedFactRequests(),
+    proposals: seedProposals(),
+    savedWorkflows: {},
     seq: 9000,
   };
 }

@@ -1,12 +1,11 @@
-// The five Phase 1 bots as the Bots screen sees them (BotView), from the shared bot.json
-// fixtures plus the prototype's track records, prompt versions and memory notes. CV starts
-// demoted (§5.3) so the restore path is visible until the API reports real demotions.
-import { maxTrustLevel } from "@bs-job-agents/shared";
+// The five Phase 1 bots as GET /bots answers them (BotView), from the shared bot.json fixtures
+// plus the prototype's track records, prompt versions and memory notes. CV starts demoted (§5.3)
+// so the restore path shows; memory notes carry ids like W3a's (16 hex digits, PM S14).
+import { maxTrustLevel, type BotView } from "@bs-job-agents/shared";
 import { botDefinitionFixtures } from "@bs-job-agents/shared/fixtures";
-import type { BotScreenView } from "./logic";
 
-type Extra = Pick<BotScreenView, "role" | "trackRecord" | "promotionSuggested" | "memory" | "residualRisk" | "demotion" | "promptVersion"> &
-  Partial<Pick<BotScreenView, "trustLevel" | "activity">>;
+type Extra = Pick<BotView, "role" | "trackRecord" | "promotionSuggested" | "memory" | "residualRisk" | "demotion" | "promptVersion"> &
+  Partial<Pick<BotView, "trustLevel">>;
 
 const EXTRA: Record<string, Extra> = {
   lead: {
@@ -27,7 +26,6 @@ const EXTRA: Record<string, Extra> = {
     residualRisk:
       "On Codex, Research's site allowlist is only in its prompt: its sandbox can read any file on this Mac and it can run shell commands. A job page that injects instructions could make it leak local files. Running it on Claude limits it to its task folder (owner decision E1, pending).",
     demotion: null,
-    activity: "working",
   },
   cv: {
     role: "Tailors CV in Figma from master facts; never invents.",
@@ -63,19 +61,36 @@ const EXTRA: Record<string, Extra> = {
   },
 };
 
-export const BOT_VIEWS: BotScreenView[] = botDefinitionFixtures.map((def) => {
-  const extra = EXTRA[def.name]!;
-  const trustLevel = extra.trustLevel ?? def.trustLevel;
-  return {
-    name: def.name,
-    displayName: def.displayName,
-    engine: def.engine,
-    model: def.model,
-    enabled: def.enabled ?? true,
-    activity: extra.activity ?? "idle",
-    ...extra,
-    trustLevel,
-    // The API: below the Phase 1 cap (W3a views/bots.ts).
-    promoteAllowed: trustLevel < maxTrustLevel(def.name),
-  };
-});
+/** A stable 16-hex-digit id for a note (the orchestrator hashes the memory.md line). */
+export function noteId(bot: string, text: string): string {
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (const ch of `${bot}\u0000${text}`) {
+    const c = ch.codePointAt(0)!;
+    h1 = Math.imul(h1 ^ c, 16777619) >>> 0;
+    h2 = Math.imul(h2 ^ c, 2246822519) >>> 0;
+  }
+  return h1.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0");
+}
+
+export const withMemoryNotes = (bot: string, memory: readonly string[]) => memory.map((text) => ({ id: noteId(bot, text), text }));
+
+export function seedBotViews(): BotView[] {
+  return botDefinitionFixtures.map((def) => {
+    const extra = EXTRA[def.name]!;
+    const trustLevel = extra.trustLevel ?? def.trustLevel;
+    return {
+      name: def.name,
+      displayName: def.displayName,
+      engine: def.engine,
+      model: def.model,
+      enabled: def.enabled ?? true,
+      activity: "idle",
+      ...extra,
+      trustLevel,
+      // The API: below the Phase 1 cap (W3a views/bots.ts).
+      promoteAllowed: trustLevel < maxTrustLevel(def.name),
+      memoryNotes: withMemoryNotes(def.name, extra.memory),
+    };
+  });
+}
