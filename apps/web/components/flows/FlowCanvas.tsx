@@ -203,7 +203,7 @@ export function FlowCanvas({ runId }: { runId: string }) {
             edgesFocusable={false}
             minZoom={0.25}
             maxZoom={1.5}
-            proOptions={{ hideAttribution: true }}
+            attributionPosition="bottom-left"
           >
             <MiniMap pannable zoomable position="bottom-right" nodeClassName={(n) => `bsja-mm bsja-mm-${(n.data as FlowNodeData).status}`} />
             <ZoomControls onManual={() => (following.current = false)} onFit={refit} />

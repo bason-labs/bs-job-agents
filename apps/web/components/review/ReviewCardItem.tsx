@@ -203,8 +203,8 @@ export function ReviewCardItem({ card, acted, onApproved, onChangesRequested, on
             ) : null}
             {n.key === "needsInput" && card.factRequests.length ? (
               <ul className="list-disc space-y-0.5 pl-4 text-fg">
-                {card.factRequests.map((f) => (
-                  <li key={f.topic}>
+                {card.factRequests.map((f, i) => (
+                  <li key={`${f.topic}-${i}`}>
                     {f.question} <span className="text-muted">({f.reason})</span>{" "}
                     <Link href="/cv" className="text-accent underline">
                       Answer in Master CV

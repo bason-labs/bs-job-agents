@@ -132,7 +132,7 @@ async function buildCard(db: Db, dataDir: string, c: Candidate, readyAt: Map<num
     defaultLanguage,
     // No bot drafts the intro: empty means Apply writes one from the master CV (PM FYI e).
     introText: null,
-    factRequests,
+    factRequests: uniqueFactRequests(factRequests),
     flags: {
       qaPassed: out.qaPassed,
       escalated: out.escalated,
@@ -170,4 +170,15 @@ export async function reviewQueue(
     cards.push(card);
   }
   return keepValid(ReviewCardSchema, cards, opts.warn).sort((a, b) => b.readyAt.localeCompare(a.readyAt));
+}
+
+/** VI and EN versions of one job often ask Ba the same thing; the card lists each topic once. */
+export function uniqueFactRequests(requests: FactRequest[]): FactRequest[] {
+  const seen = new Set<string>();
+  return requests.filter((r) => {
+    const key = r.topic.trim().toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
