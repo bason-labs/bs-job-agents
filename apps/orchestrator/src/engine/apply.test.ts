@@ -249,6 +249,23 @@ describe("Apply's own pauses wait for Ba (UC-11 a/b/e, UC-12, UC-17)", () => {
     expect(getApplication(t.db, applicationId)?.status).toBe("submitted");
   });
 
+  it("UC-11 e, Don't allow (W3a request): Ba declines the domain; Apply ends, the application needs a check, the token is not widened", async () => {
+    const { t, applicationId, taskId } = await approved();
+    t.runner.script({ bot: "apply", kind: "submit", times: 1, result: fake.applyDomainConfirm("novapay.breezy.hr") });
+    await t.idle();
+    expect(() => t.engine.declineDomain(999)).toThrow(/not found/);
+    t.engine.declineDomain(taskId);
+    await t.idle();
+    expect(getTask(t.db, taskId)).toMatchObject({ status: "failed", error: expect.stringMatching(/declined novapay\.breezy\.hr/) });
+    expect(getApplication(t.db, applicationId)?.status).toBe("needs_check");
+    expect(latestApprovalForApplication(t.db, applicationId)!.allowedDomains).toEqual(["itviec.com"]);
+    expect(safety(t).at(-1)).toMatchObject({ reason: "off_allowlist", action: "apply.domain_confirm", detail: expect.stringContaining("novapay.breezy.hr") });
+    expect(t.events("application.updated").at(-1)).toMatchObject({ applicationId: String(applicationId), status: "needs_check" });
+    expect(t.runner.callsFor("apply.submit")).toHaveLength(1);
+    // Only a domain_confirm pause can be declined.
+    expect(() => t.engine.declineDomain(taskId)).toThrow(/not waiting for a domain/);
+  });
+
   it("an expired token on resume is denied; Ba approves again and Apply starts fresh (PM M2)", async () => {
     const { t, applicationId, taskId, cvVersionId } = await approved();
     t.runner.script({ bot: "apply", kind: "submit", times: 1, result: fake.applyPaused({ reason: "captcha", site: "itviec.com" }) });

@@ -30,7 +30,7 @@ import {
   type Task,
 } from "../db/index.js";
 import { rolePromptHash } from "../runner/bots.js";
-import { answerQuestion, resumePausedTask, type AnswerInput } from "./apply.js";
+import { answerQuestion, declineDomain, resumePausedTask, type AnswerInput } from "./apply.js";
 import { BridgeWatcher } from "./bridges.js";
 import { resolveEngineConfig, type EngineConfig, type EnginePaths } from "./config.js";
 import { cancelRun, pauseRun, rerunStep, resumeRun } from "./control.js";
@@ -424,6 +424,11 @@ export class Engine implements EngineCore {
 
   resumeTask(taskId: number, opts: { confirmDomain?: string | null } = {}): void {
     resumePausedTask(this, taskId, opts);
+  }
+
+  /** UC-11 e "Don't allow" (W3a request): Ba declines the domain Apply paused for; Apply ends (needs_check). */
+  declineDomain(taskId: number): void {
+    declineDomain(this, taskId);
   }
 
   runScheduleNow(scheduleId: number) {

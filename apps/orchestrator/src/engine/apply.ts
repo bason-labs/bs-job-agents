@@ -555,6 +555,29 @@ export function resumePausedTask(core: EngineCore, taskId: number, opts: { confi
   core.dispatch();
 }
 
+/**
+ * UC-11 e, "Don't allow" (W3a request): Ba declines the domain Apply paused for. The token is not
+ * widened; Apply ends without a retry, and because it already filled part of the form the
+ * application needs a check (UC-11 c). Logged as safety.denied(off_allowlist); Lead's needs_check
+ * notice goes out with the move. Not a demotion: Apply did pause for Ba as it should.
+ */
+export function declineDomain(core: EngineCore, taskId: number): void {
+  core.db.transaction((tx) => {
+    const task = getTask(tx, taskId);
+    if (!task) throw notFound("task", taskId);
+    const reason = task.status === "paused" && task.pauseReason ? parsePauseReason(task.pauseReason) : null;
+    if (reason?.code !== "domain_confirm") throw invalidState(`task ${taskId} is not waiting for a domain to confirm`);
+    const site = reason.site ?? "the new site";
+    const error = `Ba declined ${site}; Apply stopped there (UC-11 e)`;
+    failTaskNow(core, tx, task, error);
+    emitSafetyDenied(core, tx, { botName: task.botName, taskId: task.id, action: "apply.domain_confirm", reason: "off_allowlist", detail: `Ba did not allow ${site} for this application` });
+    onApplyFailedAfterSpawn(core, tx, task, error);
+  });
+  core.bus.flush();
+  core.advance(getTask(core.db, taskId)?.runId ?? null);
+  core.dispatch();
+}
+
 // ---------------------------------------------------------------- the record (§9.1)
 
 /** The screenshots the record may cite: data/-relative paths of verified files, or null (PM2 M1). */
