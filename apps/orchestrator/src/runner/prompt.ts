@@ -164,7 +164,23 @@ function boundaryLines(p: PromptParts): string[] {
   if (p.readDirs && p.readDirs.length > 0) {
     lines.push(`- Files: besides your bot folder you may read only: ${p.readDirs.join(", ")}.`);
   }
+  const skills = skillLine(p);
+  if (skills) lines.push(skills);
   return lines;
+}
+
+/**
+ * W4a handoff: a bot with `skill:<glob>` tools (Research's source adapters) is told where its skill
+ * files are, and for a task with a `source`, which one to read first, on both engines (Claude reads
+ * them with Read under ./skills/, Codex from its bot folder in the read-only sandbox).
+ */
+function skillLine(p: PromptParts): string | null {
+  const globs = p.bot.allowedTools.flatMap((t) => (/^skill:([A-Za-z0-9_.*-]+)$/.exec(t.trim())?.slice(1) ?? []));
+  if (globs.length === 0) return null;
+  const files = globs.map((g) => `skills/${g}/SKILL.md`).join(", ");
+  const source = isObj(p.input) && typeof p.input.source === "string" && /^[a-z0-9_]+$/.test(p.input.source) ? p.input.source : null;
+  const first = source ? ` Read skills/source-${source.replace(/_/g, "-")}/SKILL.md before you start, and follow it.` : "";
+  return `- Skills: your bot folder's ${files} files tell you how to read each source.${first}`;
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);

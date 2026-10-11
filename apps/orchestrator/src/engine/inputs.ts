@@ -17,6 +17,7 @@ import {
   type JobCandidate,
   type QaFix,
 } from "@bs-job-agents/shared";
+import { scanJobLimit } from "../adapters/index.js";
 import { getCompany, getCvVersion, getJob, getUpload, upsertJobCandidate, type Company, type Conn, type CvVersion, type Job } from "../db/index.js";
 import type { RunCtx, Scope } from "./context.js";
 import { invalidInput } from "./errors.js";
@@ -128,6 +129,7 @@ export function buildTaskInput(req: InputRequest): BuiltInput {
           source,
           criteria: ctx.profile,
           maxPageViews: source === "linkedin" ? LIMITS.linkedinMaxPageViews : null,
+          candidateLimit: scanJobLimit(ctx.profile.maxJobs),
         }),
       };
     }

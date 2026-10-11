@@ -23,6 +23,11 @@ export const ResearchScanInputSchema = z.object({
   source: SearchSourceSchema,
   criteria: SearchProfileFieldsBaseSchema,
   maxPageViews: z.number().int().positive().nullable(),
+  /**
+   * W4a handoff: how many postings this scan may return at most (3 × criteria.maxJobs, at most 30;
+   * the fit step keeps the best maxJobs). Optional: absent on inputs stored before it.
+   */
+  candidateLimit: z.number().int().positive().max(30).optional(),
 });
 
 /** research.single: one job URL (§7.3). PM2 M2: a public site, never Ba's Mac or LAN. */

@@ -163,6 +163,16 @@ describe("buildPrompt (§5.5 step 1)", () => {
     expect(p).toContain("/data/applications/7");
   });
 
+  it.each(["claude", "codex"] as const)("points a skill bot at its source's skill file on %s (W4a handoff)", (engine) => {
+    const scan = { source: "career_site", criteria: {}, maxPageViews: null, candidateLimit: 15 };
+    const p = buildPrompt(parts("research", "scan", scan, "ResearchScanOutput", { engine }));
+    expect(p).toContain("- Skills: your bot folder's skills/source-*/SKILL.md files tell you how to read each source.");
+    expect(p).toContain("Read skills/source-career-site/SKILL.md before you start, and follow it.");
+    // A task with no source still learns where the skills are; a bot without skills gets no line.
+    expect(buildPrompt(parts("research", "fit", researchFitInputFixture, "ResearchFitOutput", { engine }))).toContain("- Skills:");
+    expect(buildPrompt(parts("qa", "review", qaReviewInputFixture, "QaOutput", { engine }))).not.toContain("- Skills:");
+  });
+
   it.each([
     ["cv", "tailor", cvTailorInputFixture, "CvOutput", "claude"],
     ["qa", "review", qaReviewInputFixture, "QaOutput", "codex"],

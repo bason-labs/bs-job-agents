@@ -87,6 +87,8 @@ describe("job-scan from trigger to record (§7.2)", () => {
     expect(t.tasks("research.scan").map((x) => (x.input as { source: string }).source)).toEqual(["topcv", "itviec", "linkedin"]);
     // LinkedIn scans are capped (UC-03 c).
     expect(t.tasks("research.scan")[2]!.input).toMatchObject({ maxPageViews: 40 });
+    // W4a handoff: every scan names its candidate limit, 3 × maxJobs (5 by default), at most 30.
+    expect(t.tasks("research.scan").map((x) => (x.input as { candidateLimit?: number }).candidateLimit)).toEqual([15, 15, 15]);
     const saoViet = getJob(t.db, 1)!;
     expect(saoViet.title).toBe(SAO_VIET.title);
     expect(t.step(run.id, "tailor", "1:vi")?.status).toBe("done");
@@ -136,6 +138,7 @@ describe("job-scan from trigger to record (§7.2)", () => {
     });
     const run = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
     await t.idle();
+    expect(t.tasks("research.scan").map((x) => (x.input as { candidateLimit?: number }).candidateLimit)).toEqual([3, 3]);
     expect(t.step(run.id, "top")?.output).toMatchObject({ items: [expect.objectContaining({ company: "NovaPay" })], threshold: 70, take: 1 });
     expect(t.tasks("research.company")).toHaveLength(1);
   });

@@ -49,6 +49,16 @@ describe("Research's ROLE.md and engine (E1 option A, UC-03, §10.2)", () => {
     expect(text).toMatch(/at most 40 page views/);
     expect(text).toMatch(/3–8 s/);
   });
+  it("reports a layout change and an empty result as notes on a passed item, as the skills and the checker expect (W4a)", () => {
+    expect(text).toContain("`Layout changed: <what is missing> on <page URL>`");
+    expect(text).toMatch(/keep it `passed: true`/);
+    expect(text).toContain("`No results: the page says 0 jobs`");
+    expect(text).not.toMatch(/note for the failed item/);
+  });
+  it("stops at the task's candidateLimit (3 × maxJobs, at most 30)", () => {
+    expect(text).toContain("`candidateLimit`");
+    expect(text).toMatch(/3 × the criteria's maxJobs, at most 30/);
+  });
   it("reports injections and closes every tab, including the empty New Tab", () => {
     expect(text).toContain("injectionSuspected");
     expect(text).toContain("injectionNote");
