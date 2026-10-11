@@ -120,6 +120,7 @@ function extraFor(core: MockBackend, id: string): ApplicationExtra | null {
     submission: null,
     files: option?.pdf ? [option.pdf] : [],
     confirmationScreenshotFileId: null,
+    preSubmitScreenshotFileId: null,
     partialRecord: app.status !== "approved" && app.status !== "paused",
     cvFile: option?.pdf ?? null,
   };
@@ -148,7 +149,15 @@ function applicationRows(core: MockBackend): ApplicationListItem[] {
   for (const app of Object.values(core.state.applications)) {
     const x = extraFor(core, app.id);
     if (!x) continue;
-    rows.push({ application: app, job: x.job, cvVersion: x.cvVersion, confirmationScreenshotFileId: x.confirmationScreenshotFileId, partialRecord: x.partialRecord, cvFile: x.cvFile });
+    rows.push({
+      application: app,
+      job: x.job,
+      cvVersion: x.cvVersion,
+      confirmationScreenshotFileId: x.confirmationScreenshotFileId,
+      preSubmitScreenshotFileId: x.preSubmitScreenshotFileId,
+      partialRecord: x.partialRecord,
+      cvFile: x.cvFile,
+    });
   }
   return rows;
 }

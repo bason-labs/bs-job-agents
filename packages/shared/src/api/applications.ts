@@ -31,6 +31,11 @@ export const ApplicationListItemSchema = z.object({
   job: JobSummarySchema,
   cvVersion: CvVersionSummarySchema.nullable(),
   confirmationScreenshotFileId: z.string().nullable(),
+  /**
+   * Phase 4 QA, additive: the before-submit screenshot, the Proof a dry run has (it never reaches a
+   * confirmation). Null when not captured.
+   */
+  preSubmitScreenshotFileId: z.string().nullable().optional(),
   /** Imported or missing parts ("not captured"). */
   partialRecord: z.boolean(),
   /**

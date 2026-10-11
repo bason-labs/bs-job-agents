@@ -41,6 +41,8 @@ describe("GET /applications (UC-13, UC-13b)", () => {
       figmaFrameUrl: cv.figmaFrameUrl,
     });
     expect(item.confirmationScreenshotFileId).toBe(`app-${application.id}-confirmation`);
+    // W4b open issue 6: the before-submit shot too, the only proof a dry run has.
+    expect(item.preSubmitScreenshotFileId).toBe(`app-${application.id}-presubmit`);
     expect(item.partialRecord).toBe(false);
     // The CV actually sent: the record's uploaded copy.
     expect(item.cvFile).toMatchObject({ id: `app-${application.id}-cv`, kind: "cv_pdf", filename: "BA_HUYNH_NOVAPAY_EN.pdf" });

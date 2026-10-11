@@ -71,6 +71,7 @@ export async function applicationListItem(db: Db, dataDir: string, app: Applicat
     job: jobSummary(db, rec),
     cvVersion: cvSummary(rec.cvVersion, cvPdf),
     confirmationScreenshotFileId: confirmation?.id ?? null,
+    preSubmitScreenshotFileId: preSubmit?.id ?? null,
     partialRecord,
     cvFile: uploaded ?? cvPdf,
   };

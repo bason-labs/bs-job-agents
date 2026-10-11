@@ -134,6 +134,12 @@ export function ApplicationsScreen({ initial, data }: ApplicationsScreenProps) {
     if (id) openFile(screenshotViewerFile({ id, kind: "screenshot", filename: "confirmation.png", mime: "image/png" }, data.fileUrl, row.job.company, "confirmation screenshot"));
   };
 
+  // A dry run never reaches a confirmation: its proof is the filled form before submit.
+  const openPreSubmit = (row: ApplicationRow) => {
+    const id = row.preSubmitScreenshotFileId;
+    if (id) openFile(screenshotViewerFile({ id, kind: "screenshot", filename: "pre-submit.png", mime: "image/png" }, data.fileUrl, row.job.company, "before submit screenshot (dry run)"));
+  };
+
   const hasImported = rows.some((r) => r.application.origin === "imported");
   const hasDryRun = rows.some((r) => r.application.dryRun);
 
@@ -242,6 +248,17 @@ export function ApplicationsScreen({ initial, data }: ApplicationsScreenProps) {
                           className="text-accent underline"
                         >
                           screenshot
+                        </button>
+                      ) : app.dryRun && row.preSubmitScreenshotFileId ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openPreSubmit(row);
+                          }}
+                          className="whitespace-nowrap text-accent underline"
+                        >
+                          before submit
                         </button>
                       ) : (
                         <span className="whitespace-nowrap text-muted italic">not captured</span>

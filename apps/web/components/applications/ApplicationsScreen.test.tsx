@@ -39,6 +39,9 @@ describe("ApplicationsScreen (UC-13)", () => {
     expect(within(row("NovaPay")).getByRole("button", { name: "NOVAPAY_SENIOR-FRONTEND_EN_v1.pdf" })).toBeInTheDocument();
     expect(within(row("NovaPay")).getByRole("button", { name: "screenshot" })).toBeInTheDocument();
     expect(within(row("Sao Việt Tech")).getByText("not captured")).toBeInTheDocument();
+    // A dry run has no confirmation: its proof is the before-submit shot (W4b open issue 6).
+    expect(within(row("Kite Labs")).getByRole("button", { name: "before submit" })).toBeInTheDocument();
+    expect(within(row("Kite Labs")).queryByText("not captured")).toBeNull();
     // Statuses Ba can't change are read-only.
     expect(within(row("Bluebird Software")).queryByRole("combobox")).toBeNull();
     expect(within(row("Bluebird Software")).getByText("Failed")).toBeInTheDocument();
@@ -80,6 +83,15 @@ describe("ApplicationsScreen (UC-13)", () => {
     expect(within(viewer).getByText("NovaPay_JD_snapshot.txt")).toBeInTheDocument();
     expect(within(viewer).getByTestId("file-viewer-text")).toHaveTextContent("Build product features with React/Next.js");
     expect(within(viewer).getByRole("link", { name: "Download" })).toHaveAttribute("href", "/dev/sample-jd.txt");
+  });
+
+  it("a dry run's Proof opens its before-submit screenshot in the viewer, without opening the record", async () => {
+    const { user } = await setup();
+    await user.click(within(row("Kite Labs")).getByRole("button", { name: "before submit" }));
+    const viewer = await screen.findByTestId("file-viewer");
+    expect(within(viewer).getByText("KiteLabs_pre-submit.png")).toBeInTheDocument();
+    expect(viewer).toHaveTextContent("before submit screenshot (dry run)");
+    expect(screen.queryByTestId("record-panel")).toBeNull();
   });
 
   it("shows “not captured” for an imported record's missing parts", async () => {
