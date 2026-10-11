@@ -9,7 +9,7 @@ import type { ApplyOutput } from "@bs-job-agents/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { getApplication, getSubmissionRecord } from "../db/index.js";
 import { nodeFileStore } from "./system.js";
-import { fake } from "./testing/fake-runner.js";
+import { fake, fakeCaptures } from "./testing/fake-runner.js";
 import { createTestEngine, type TestEngine } from "./testing/harness.js";
 import type { RunnerTask } from "../runner/types.js";
 
@@ -24,10 +24,14 @@ async function approved() {
   return { t, run, approve: () => t.engine.approve(1, { cvVersionId, introText: null }) };
 }
 
-/** Apply's report, with the screenshots it names and the orchestrator's file name. */
-function report(t: TestEngine, over: Partial<ApplyOutput>, place?: (dir: string) => void) {
+/**
+ * Apply's report, with the screenshots it names and the orchestrator's file name. `place` gets the
+ * application folder (Apply's read folder) and the attempt's screenshot folder, where the runner
+ * writes what it captured (PM2 S7; `shoot` stands in for it).
+ */
+function report(t: TestEngine, over: Partial<ApplyOutput>, place?: (dir: string, shoot: (shots: Array<{ id: string; bytes?: Buffer }>) => void) => void) {
   return (task: RunnerTask) => {
-    place?.(task.readDirs![0]!);
+    place?.(task.readDirs![0]!, (shots) => fakeCaptures(t.files, task.screenshotDir!, shots));
     const input = task.input as { pdfPath: string; pdfSha256: string };
     return fake.ok({ ...applyOutputFixture, uploadedFile: { filename: input.pdfPath.split("/").at(-1)!, sha256: input.pdfSha256 }, ...over });
   };
@@ -55,23 +59,61 @@ describe("the record cites only the orchestrator's own image files (PM2 M1, §9.
     expect(app.statusHistory.at(-1)).toMatchObject({ status: "needs_check", note: "screenshots not captured" });
   });
 
-  it("PNG and JPEG files in data/applications/<id>/ are cited by their data/-relative path; the application is submitted", async () => {
+  it("PM2 S7: the screenshots Apply names by their tool id are copied into data/applications/<id>/ and only the copies are cited", async () => {
     const { t, approve } = await approved();
     t.runner.script({
       bot: "apply",
       kind: "submit",
-      result: report(t, { preSubmitScreenshot: "pre-submit.png", confirmationScreenshot: "/data/applications/1/shots/confirmation.jpg", jdSnapshot: { ...applyOutputFixture.jdSnapshot!, pageScreenshot: "./jd.png" } }, (dir) => {
+      result: report(
+        t,
+        { preSubmitScreenshot: "ss_pre1", confirmationScreenshot: "Confirmation page (ID: ss_conf2)", jdSnapshot: { ...applyOutputFixture.jdSnapshot!, pageScreenshot: "ss_jd3" } },
+        (_dir, shoot) => shoot([{ id: "ss_pre1" }, { id: "ss_conf2", bytes: JPEG }, { id: "ss_jd3" }, { id: "ss_unused4" }]),
+      ),
+    });
+    const { applicationId, taskId } = approve();
+    await t.idle();
+    const record = getSubmissionRecord(t.db, applicationId!)!;
+    expect(record.submission).toMatchObject({ preSubmitScreenshotPath: "applications/1/pre-submit.png", confirmationScreenshotPath: "applications/1/confirmation.jpg" });
+    expect(record.snapshot?.pageScreenshotPath).toBe("applications/1/jd.png");
+    expect(getApplication(t.db, applicationId!)?.status).toBe("submitted");
+    // Copies of what the runner captured, byte for byte; the unnamed capture is not copied.
+    expect(t.files.files.get("/data/applications/1/confirmation.jpg")).toEqual(JPEG);
+    expect(t.files.copies.filter((c) => c.from.startsWith(`/data/screenshots/${taskId}-1/`)).map((c) => c.to)).toEqual([
+      "/data/applications/1/pre-submit.png",
+      "/data/applications/1/confirmation.jpg",
+      "/data/applications/1/jd.png",
+    ]);
+  });
+
+  it("PM2 S7: an image in the application folder that the runner did not capture is never cited", async () => {
+    const { t, approve } = await approved();
+    t.runner.script({
+      bot: "apply",
+      kind: "submit",
+      result: report(t, { preSubmitScreenshot: "pre-submit.png", confirmationScreenshot: "/data/applications/1/shots/confirmation.jpg" }, (dir) => {
         t.files.write(`${dir}/pre-submit.png`, PNG);
         t.files.write(`${dir}/shots/confirmation.jpg`, JPEG);
-        t.files.write(`${dir}/jd.png`, PNG);
       }),
     });
     const { applicationId } = approve();
     await t.idle();
-    const record = getSubmissionRecord(t.db, applicationId!)!;
-    expect(record.submission).toMatchObject({ preSubmitScreenshotPath: "applications/1/pre-submit.png", confirmationScreenshotPath: "applications/1/shots/confirmation.jpg" });
-    expect(record.snapshot?.pageScreenshotPath).toBe("applications/1/jd.png");
-    expect(getApplication(t.db, applicationId!)?.status).toBe("submitted");
+    expect(getSubmissionRecord(t.db, applicationId!)!.submission).toMatchObject({ preSubmitScreenshotPath: null, confirmationScreenshotPath: null });
+    expect(getApplication(t.db, applicationId!)?.status).toBe("needs_check");
+  });
+
+  it("PM2 S7: a capture whose bytes changed after the runner wrote them is not cited", async () => {
+    const { t, approve } = await approved();
+    t.runner.script({
+      bot: "apply",
+      kind: "submit",
+      result: report(t, { preSubmitScreenshot: "ss_pre", confirmationScreenshot: null, confirmationText: "Thanks" }, (_dir, shoot) => {
+        shoot([{ id: "ss_pre" }]);
+      }),
+    });
+    t.files.tamper = (from, _to, bytes) => (from.includes("/screenshots/") ? Buffer.concat([bytes, Buffer.from("x")]) : bytes);
+    const { applicationId } = approve();
+    await t.idle();
+    expect(getSubmissionRecord(t.db, applicationId!)!.submission?.preSubmitScreenshotPath).toBeNull();
   });
 
   it("a file that is not an image (the uploaded PDF), a missing one or one outside the folder is never cited", async () => {
@@ -96,7 +138,7 @@ describe("the record cites only the orchestrator's own image files (PM2 M1, §9.
     one.t.runner.script({
       bot: "apply",
       kind: "submit",
-      result: report(one.t, { preSubmitScreenshot: "pre.png", confirmationScreenshot: null, confirmationText: "Thank you for applying" }, (dir) => one.t.files.write(`${dir}/pre.png`, PNG)),
+      result: report(one.t, { preSubmitScreenshot: "ss_pre", confirmationScreenshot: null, confirmationText: "Thank you for applying" }, (_dir, shoot) => shoot([{ id: "ss_pre" }])),
     });
     const a = one.approve();
     await one.t.idle();
@@ -107,7 +149,7 @@ describe("the record cites only the orchestrator's own image files (PM2 M1, §9.
       bot: "apply",
       kind: "submit",
       // The bot names a confirmation screenshot that was never captured, and has no confirmation text.
-      result: report(two.t, { preSubmitScreenshot: "pre.png", confirmationScreenshot: "confirmation.png", confirmationText: null, status: "submitted" }, (dir) => two.t.files.write(`${dir}/pre.png`, PNG)),
+      result: report(two.t, { preSubmitScreenshot: "ss_pre", confirmationScreenshot: "ss_never_taken", confirmationText: null, status: "submitted" }, (_dir, shoot) => shoot([{ id: "ss_pre" }])),
     });
     const b = two.approve();
     await two.t.idle();
@@ -121,11 +163,11 @@ describe("the proof must be real (PM2 M1)", () => {
     t.runner.script({
       bot: "apply",
       kind: "submit",
-      result: report(t, { preSubmitScreenshot: "pre.png", confirmationScreenshot: "./pre.png", confirmationText: "   " }, (dir) => t.files.write(`${dir}/pre.png`, PNG)),
+      result: report(t, { preSubmitScreenshot: "ss_pre", confirmationScreenshot: "ID: ss_pre", confirmationText: "   " }, (_dir, shoot) => shoot([{ id: "ss_pre" }])),
     });
     const { applicationId } = approve();
     await t.idle();
-    expect(getSubmissionRecord(t.db, applicationId!)?.submission).toMatchObject({ preSubmitScreenshotPath: "applications/1/pre.png", confirmationScreenshotPath: null });
+    expect(getSubmissionRecord(t.db, applicationId!)?.submission).toMatchObject({ preSubmitScreenshotPath: "applications/1/pre-submit.png", confirmationScreenshotPath: null });
     expect(getApplication(t.db, applicationId!)).toMatchObject({ status: "needs_check", statusHistory: expect.arrayContaining([expect.objectContaining({ note: "screenshots not captured" })]) });
   });
 });

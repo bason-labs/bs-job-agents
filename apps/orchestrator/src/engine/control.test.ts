@@ -1,6 +1,6 @@
 // UC-23: pause, cancel or re-run, on a fake clock.
 import { describe, expect, it } from "vitest";
-import { getApplication, getRun, getTask, listSteps } from "../db/index.js";
+import { getApplication, getRun, getStep, getTask, listSteps } from "../db/index.js";
 import { fake } from "./testing/fake-runner.js";
 import { createTestEngine } from "./testing/harness.js";
 
@@ -118,16 +118,17 @@ describe("pause, cancel and re-run (UC-23)", () => {
 
   it("re-run a failed step: it and the later steps of its branch run again", async () => {
     const t = await createTestEngine();
-    t.runner.script({ bot: "research", kind: "company", times: 2, result: fake.failed("site down") });
+    // (A failed company profile no longer fails a branch, PM2 S16; a CV that cannot be made does.)
+    t.runner.script({ bot: "cv", kind: "tailor", times: 2, result: fake.failed("Figma frame missing") });
     const run = await startScan(t);
     await t.idle();
-    const company = t.step(run.id, "company", "1")!;
-    expect(company.status).toBe("failed");
+    const gate = listSteps(t.db, run.id).find((s) => s.stepKey === "tailor")!;
+    expect(gate.status).toBe("failed");
     expect(getRun(t.db, run.id)?.status).toBe("failed");
 
-    t.engine.rerunStep(company.id);
+    t.engine.rerunStep(gate.id);
     await t.idle();
-    expect(t.step(run.id, "company", "1")?.status).toBe("done");
+    expect(getStep(t.db, gate.id)?.status).toBe("done");
     expect(t.review(run.id, 1)).toBeDefined();
     expect(getRun(t.db, run.id)?.status).toBe("waiting");
   });

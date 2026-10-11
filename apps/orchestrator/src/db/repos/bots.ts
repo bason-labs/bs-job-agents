@@ -1,11 +1,11 @@
 import { isTrustLevelAllowed, maxTrustLevel } from "@bs-job-agents/shared";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, lte } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { TRUST_LEVELS, type Engine, type TrustLevel } from "../enums.js";
 import { NotFoundError, TrustLevelRefusedError } from "../errors.js";
-import { bots, memoryChanges, promptVersions, workflows } from "../schema.js";
+import { botDemotions, bots, memoryChanges, promptVersions, workflows } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
-import type { Bot, MemoryChange, PromptVersion, Workflow } from "../types.js";
+import type { Bot, BotDemotion, MemoryChange, PromptVersion, Workflow } from "../types.js";
 
 // ---------------------------------------------------------------- bots
 
@@ -77,7 +77,71 @@ export function updateBot(
   if (patch.trustLevel !== undefined) assertTrustLevel(name, patch.trustLevel);
   const row = db.update(bots).set(patch).where(eq(bots.name, name)).returning().get();
   if (!row) throw new NotFoundError("bot", name);
+  // PM2 S8: raising a demoted bot back to the level it had closes that demotion.
+  if (patch.trustLevel !== undefined) restoreBotDemotions(db, name, patch.trustLevel);
   return row;
+}
+
+// ---------------------------------------------------------------- demotions (§5.3, PM2 S8)
+
+export interface RecordBotDemotionInput {
+  botName: string;
+  fromLevel: number;
+  toLevel: number;
+  reason: string;
+  detail: string | null;
+  taskId: number | null;
+  runId: number | null;
+}
+
+export function recordBotDemotion(db: Conn, input: RecordBotDemotionInput, opts?: ClockOpts): BotDemotion {
+  return db
+    .insert(botDemotions)
+    .values({ ...input, createdAt: nowIso(opts), restoredAt: null })
+    .returning()
+    .get();
+}
+
+/** Every demotion of a bot, oldest first. */
+export function listBotDemotions(db: Conn, botName: string): BotDemotion[] {
+  return db.select().from(botDemotions).where(eq(botDemotions.botName, botName)).orderBy(asc(botDemotions.id)).all();
+}
+
+/** The newest demotion Ba has not restored (the Bots screen shows it), or undefined. */
+export function latestBotDemotion(db: Conn, botName: string): BotDemotion | undefined {
+  return db
+    .select()
+    .from(botDemotions)
+    .where(and(eq(botDemotions.botName, botName), isNull(botDemotions.restoredAt)))
+    .orderBy(desc(botDemotions.id))
+    .limit(1)
+    .get();
+}
+
+/** Demotions of a task (one violation demotes once). */
+export function demotionsForTask(db: Conn, taskId: number): BotDemotion[] {
+  return db.select().from(botDemotions).where(eq(botDemotions.taskId, taskId)).orderBy(asc(botDemotions.id)).all();
+}
+
+/** Close the open demotions a bot at `level` has undone (from_level ≤ level). Returns how many. */
+export function restoreBotDemotions(db: Conn, botName: string, level: number, opts?: ClockOpts): number {
+  const rows = db
+    .update(botDemotions)
+    .set({ restoredAt: nowIso(opts) })
+    .where(and(eq(botDemotions.botName, botName), isNull(botDemotions.restoredAt), lte(botDemotions.fromLevel, level)))
+    .returning()
+    .all();
+  return rows.length;
+}
+
+/** Close one demotion by id (Ba said a protected-page change was his). */
+export function closeBotDemotion(db: Conn, id: number, opts?: ClockOpts): BotDemotion | undefined {
+  return db
+    .update(botDemotions)
+    .set({ restoredAt: nowIso(opts) })
+    .where(and(eq(botDemotions.id, id), isNull(botDemotions.restoredAt)))
+    .returning()
+    .get();
 }
 
 // ---------------------------------------------------------------- prompt versions

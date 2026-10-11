@@ -1,6 +1,6 @@
 // Protected-page fingerprint (spec §6.2 write boundary): before and after each CV task the
 // orchestrator records every protected page (all pages except Drafts): node ids, names, text,
-// structure and geometry, plus the file's local styles and variables. Any difference fails
+// structure, geometry and visual properties (PM2 S9), plus the file's local styles and variables. Any difference fails
 // the task and alerts Ba. This is the backstop for whatever the code guard cannot see.
 import { sha256Bytes } from "../pdf/hash.js";
 
@@ -19,6 +19,12 @@ export interface FingerprintNode {
   h?: number;
   /** TEXT nodes: the characters. */
   text?: string;
+  /**
+   * PM2 S9: the node's visual properties (FINGERPRINT_STYLE_PROPS: fills, strokes, effects, opacity,
+   * text style, style ids, layout, rotation, corner radius, descriptions, component properties);
+   * figma.mixed is "mixed", and mixed TEXT styles are listed per range in `segments`.
+   */
+  style?: Record<string, unknown>;
 }
 
 export interface PageSnapshot {
@@ -114,6 +120,16 @@ export interface FingerprintDiff {
 
 const NODE_FIELDS = ["type", "name", "parentId", "index", "visible", "locked", "x", "y", "w", "h", "text"] as const;
 
+/** PM2 S9: the visual properties that differ, as `style.<property>`, sorted. */
+function styleChanges(before: FingerprintNode["style"], after: FingerprintNode["style"]): string[] {
+  const b = before ?? {};
+  const a = after ?? {};
+  return [...new Set([...Object.keys(b), ...Object.keys(a)])]
+    .filter((k) => !(k in b) || !(k in a) || canonicalJson(b[k]) !== canonicalJson(a[k]))
+    .sort()
+    .map((k) => `style.${k}`);
+}
+
 function resourceCategories(resources: unknown): Record<string, string> {
   if (!resources || typeof resources !== "object") return {};
   return Object.fromEntries(Object.entries(resources as Record<string, unknown>).map(([k, v]) => [k, hashOf(v)]));
@@ -172,9 +188,9 @@ export function diffFingerprints(
         all.push({ kind: "node_removed", pageId: page.id, pageName: page.name, nodeId: n.id, nodeName: n.name });
         continue;
       }
-      const fields = NODE_FIELDS.filter((f) => n[f] !== m[f]);
+      const fields = [...NODE_FIELDS.filter((f) => n[f] !== m[f]), ...styleChanges(n.style, m.style)];
       if (fields.length > 0) {
-        all.push({ kind: "node_changed", pageId: page.id, pageName: page.name, nodeId: n.id, nodeName: m.name, fields: [...fields] });
+        all.push({ kind: "node_changed", pageId: page.id, pageName: page.name, nodeId: n.id, nodeName: m.name, fields });
       }
     }
     for (const m of match.page.nodes) {

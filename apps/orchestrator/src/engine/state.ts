@@ -106,6 +106,8 @@ export interface ReviewDecision {
   skip: { reason: SkipReason; note: string | null } | null;
   /** A second approval after the first token expired or was denied. */
   reapproval?: boolean;
+  /** PM2 S15: the live approval on a card whose dry run had settled. */
+  fromDryRun?: boolean;
 }
 
 export interface ReviewCvOption {
@@ -122,6 +124,8 @@ export interface HumanStepOutput {
   qaPassed: boolean;
   escalated: boolean;
   needsInput: boolean;
+  /** PM2 S16: the company research failed for good; CV tailored without a profile (flag on the card). */
+  companyMissing?: boolean;
   decisions: ReviewDecision[];
 }
 
@@ -154,6 +158,8 @@ export interface ActionStepOutput {
   autoResumes?: number;
   /** The §9.1 record, written when Apply reported its result (whatever the run's state). */
   record?: RecordStepOutput | null;
+  /** PM2 S15: the settled dry run this live Apply follows on the same card. */
+  dryRunApplicationId?: number;
 }
 
 export interface RecordStepOutput {

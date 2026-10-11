@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -55,6 +55,34 @@ describe("copyFileVerified", () => {
     expect(err).toBeInstanceOf(Sha256MismatchError);
     expect(err).toMatchObject({ expected: sha256Bytes("%PDF-1.7 approved"), actual: sha256Bytes("%PDF-1.7 edited after approval") });
     expect(existsSync(dest)).toBe(false);
+  });
+
+  it("PM2 S13: never follows a symbolic link at the destination; the link is replaced by the copy", async () => {
+    const src = join(dir, "cv.pdf");
+    const bytes = Buffer.from("%PDF-1.7 approved");
+    await writeFile(src, bytes);
+    const victim = join(dir, "victim.txt");
+    await writeFile(victim, "keep me");
+    const dest = join(dir, "applications", "42", "cv.pdf");
+    await mkdir(join(dir, "applications", "42"), { recursive: true });
+    await symlink(victim, dest);
+    await copyFileVerified(src, dest, sha256Bytes(bytes));
+    expect(await readFile(victim, "utf8")).toBe("keep me");
+    expect((await lstat(dest)).isSymbolicLink()).toBe(false);
+    expect(await readFile(dest)).toEqual(bytes);
+  });
+
+  it("PM2 S13: on a mismatch a destination link is removed, never written through", async () => {
+    const src = join(dir, "cv.pdf");
+    await writeFile(src, "%PDF-1.7 edited");
+    const victim = join(dir, "victim.txt");
+    await writeFile(victim, "keep me");
+    const dest = join(dir, "cv-copy.pdf");
+    await symlink(victim, dest);
+    await expect(copyFileVerified(src, dest, sha256Bytes("%PDF-1.7 approved"))).rejects.toBeInstanceOf(Sha256MismatchError);
+    expect(await readFile(victim, "utf8")).toBe("keep me");
+    expect(existsSync(dest)).toBe(false);
+    expect((await readdir(dir)).sort()).toEqual(["cv.pdf", "victim.txt"]);
   });
 
   it("refuses an expected hash that is not lowercase hex", async () => {

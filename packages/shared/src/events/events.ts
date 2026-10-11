@@ -154,6 +154,8 @@ export const AppEventSchema = z.discriminatedUnion("type", [
     /** factRequests or questions waiting for Ba (UC-09 a). */
     needsInput: z.boolean(),
     injectionFlagged: z.boolean(),
+    /** PM2 S16 (additive): the company research failed for good, so CV tailored without a profile. */
+    companyMissing: z.boolean().optional(),
   }),
   ev("application.updated", {
     applicationId: IdSchema,

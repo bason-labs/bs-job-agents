@@ -168,7 +168,9 @@ describe("Apply needs_check (S1)", () => {
     });
     t.engine.approve(1, { cvVersionId, introText: null, dryRun: true });
     await t.idle();
-    const dry = texts(t).filter((x) => /[Dd]ry run/.test(x));
+    // PM2 S8: Apply is also demoted for it, in its own message.
+    expect(texts(t)).toContainEqual(expect.stringMatching(/^I moved Apply from L1 to L0 after a dry run reported submitted/));
+    const dry = texts(t).filter((x) => /[Dd]ry run/.test(x) && !/^I moved/.test(x));
     expect(dry).toEqual([expect.stringMatching(/^Dry run for NovaPay.*reported that it submitted.*may really have been sent/)]);
     expect(dry.join(" ")).not.toMatch(/nothing was submitted/);
   });

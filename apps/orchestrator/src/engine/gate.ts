@@ -10,6 +10,7 @@ import { stepDef, type RunCtx, type Scope } from "./context.js";
 import type { EngineCore } from "./core.js";
 import { jobRef } from "./filters.js";
 import type { GateRound, GateStepOutput } from "./state.js";
+import { demoteBot } from "./demotion.js";
 import { setStep } from "./steps.js";
 import { createWorkflowTask, ensureStepRow } from "./task-factory.js";
 
@@ -176,5 +177,17 @@ export function onCheckerDone(core: EngineCore, conn: Conn, ctx: RunCtx, task: T
   }
   out.outcome = "escalated";
   out.cvVersionId = round.cvVersionId;
+  // PM2 S8 (§5.3): a CV version that leaves the gate with hard fails demotes its producer; hard
+  // fails the loop fixed earlier only reset the promotion streak.
+  if (output.hardFails.length > 0) {
+    const producer = getTask(conn, round.producerTaskId);
+    demoteBot(core, conn, {
+      botName: step.producer.bot,
+      reason: "qa_hard_fail",
+      detail: output.hardFails.map((h) => h.code).join(", "),
+      taskId: producer?.id ?? null,
+      runId: ctx.run.id,
+    });
+  }
   setStep(core, conn, row, "done", { output: out, round: round.round, preview: `QA not passed after ${step.maxRounds} rounds` });
 }

@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { parseJs } from "../js/ast.js";
 import { FIGMA_A4, makePdf } from "../pdf/test-pdfs.js";
 import { FakeFigmaApi, runPluginCode, type FakeNodeInit } from "./fake-figma-api.js";
+import { buildFingerprint, diffFingerprints, type PageSnapshot } from "./fingerprint.js";
 import {
   bridgeOpOf,
   BRIDGE_OPS,
@@ -179,6 +180,49 @@ describe("fingerprint-page", () => {
       ["459:1800", "459:1767"],
     ]);
     expect(resume.nodes[2]).toMatchObject({ text: "Senior engineer with performance focus", x: 1.23 });
+  });
+
+  it("PM2 S9: records the visual properties, so `n.fills = []` on a template is a change", async () => {
+    const MIXED = Symbol("figma.mixed");
+    const api = new FakeFigmaApi({
+      pages: [
+        {
+          id: "0:1",
+          name: "resume",
+          children: [
+            {
+              id: "459:1767",
+              name: "Template",
+              width: 595,
+              height: 842,
+              props: { fills: [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }], cornerRadius: 0, layoutMode: "VERTICAL", rotation: 0, opacity: 1, description: "" },
+              children: [{ id: "459:1800", name: "Name", characters: "BA HUYNH", props: { fontName: MIXED, fontSize: 18.123456, fills: [], letterSpacing: { unit: "PERCENT", value: 0 } } }],
+            },
+          ],
+        },
+      ],
+    });
+    const snap = async () => (await run(api, fingerprintPageCode("0:1"))) as PageSnapshot;
+    const before = await snap();
+    expect(before.nodes[0]!.style).toEqual({ fills: [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }], cornerRadius: 0, layoutMode: "VERTICAL", rotation: 0, opacity: 1, description: "" });
+    expect(before.nodes[1]!.style).toEqual({ fontName: "mixed", fontSize: 18.123, fills: [], letterSpacing: { unit: "PERCENT", value: 0 } });
+    (api.node("459:1767") as unknown as { fills: unknown[] }).fills = [];
+    const after = await snap();
+    const fp = (p: PageSnapshot) => buildFingerprint({ fileKey: null, draftsPageName: "Drafts", pages: [p], resources: null, takenAt: "2026-10-11T00:00:00.000Z" });
+    expect(diffFingerprints(fp(before), fp(after)).changes).toEqual([
+      expect.objectContaining({ kind: "node_changed", nodeId: "459:1767", fields: ["style.fills"] }),
+    ]);
+  });
+
+  it("a property that throws when read is skipped, not fatal", async () => {
+    const api = doc(true);
+    Object.defineProperty(api.node("20:1"), "componentPropertyDefinitions", {
+      get() {
+        throw new Error("Can only get component property definitions of a component set or non-variant component");
+      },
+    });
+    const snap = (await run(api, fingerprintPageCode("1:2"))) as PageSnapshot;
+    expect(snap.nodes[0]!.style).toBeUndefined();
   });
 
   it("refuses an id that is not a page", async () => {

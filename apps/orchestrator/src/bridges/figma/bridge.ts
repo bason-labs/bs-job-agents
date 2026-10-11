@@ -121,6 +121,7 @@ const PageSnapshotSchema = z.object({
       w: z.number().optional(),
       h: z.number().optional(),
       text: z.string().optional(),
+      style: z.record(z.unknown()).optional(),
     }),
   ),
 });

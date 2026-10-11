@@ -6,6 +6,7 @@ import type * as s from "./schema.js";
 export type Bot = typeof s.bots.$inferSelect;
 export type PromptVersion = typeof s.promptVersions.$inferSelect;
 export type MemoryChange = typeof s.memoryChanges.$inferSelect;
+export type BotDemotion = typeof s.botDemotions.$inferSelect;
 export type Workflow = typeof s.workflows.$inferSelect;
 export type Run = typeof s.runs.$inferSelect;
 export type Step = typeof s.steps.$inferSelect;

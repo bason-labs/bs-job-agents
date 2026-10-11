@@ -6,6 +6,7 @@
 //
 // It works at the contract level (RunnerResult / RunnerEvent). The raw stream-json and
 // exec --json captures are replayed by W2b's parser tests (src/runner/__fixtures__).
+import { createHash } from "node:crypto";
 import { basename } from "node:path";
 import {
   CONVERSATION_TASK_KINDS,
@@ -27,6 +28,7 @@ import {
   researchFitFixture,
   researchScanFixture,
 } from "@bs-job-agents/shared/fixtures";
+import { SCREENSHOT_MANIFEST, readScreenshotManifest, type CapturedScreenshot } from "../../runner/screenshots.js";
 import type { PermissionDenial, Runner, RunnerEvent, RunnerResult, RunnerTask } from "../../runner/types.js";
 
 type ResultFn = (task: RunnerTask, call: number) => RunnerResult | Promise<RunnerResult>;
@@ -55,15 +57,49 @@ interface Sleeper {
 }
 
 /** Where the fake writes the screenshots its default Apply output names (a MemoryFileStore). */
-interface ScreenshotSink {
+export interface ScreenshotSink {
   write(path: string, content: string | Buffer): void;
+  read?(path: string): string | undefined;
 }
 
-/** The screenshots the default Apply output names, relative to its application folder (PM2 M1). */
-export const FAKE_APPLY_SCREENSHOTS = { preSubmit: "pre-submit.png", confirmation: "confirmation.png", jdPage: "jd.png" } as const;
+/** The screenshot ids the default Apply output names (PM2 S7: the ids the Chrome tool showed). */
+export const FAKE_APPLY_SCREENSHOTS = { preSubmit: "ss_fake_pre", confirmation: "ss_fake_conf", jdPage: "ss_fake_jd" } as const;
 
 /** A minimal PNG header: enough for the record's magic-byte check. */
 export const FAKE_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+
+/**
+ * PM2 S7: what the runner's ScreenshotCapture leaves for one attempt: `<dir>/<n>.<ext>` files and
+ * manifest.json (earlier entries kept), returned as RunnerResult.screenshots.
+ */
+export function fakeCaptures(
+  sink: ScreenshotSink,
+  dir: string,
+  shots: Array<{ id: string | null; bytes?: Buffer; toolUseId?: string }>,
+): CapturedScreenshot[] {
+  const earlier = readScreenshotManifest(sink.read?.(`${dir}/${SCREENSHOT_MANIFEST}`) ?? null);
+  const out: CapturedScreenshot[] = [];
+  for (const [i, shot] of shots.entries()) {
+    const bytes = shot.bytes ?? FAKE_PNG;
+    const n = earlier.length + i + 1;
+    const ext = bytes[0] === 0xff ? "jpg" : "png";
+    const file = `${n}.${ext}`;
+    sink.write(`${dir}/${file}`, bytes);
+    out.push({
+      n,
+      file,
+      screenshotId: shot.id,
+      toolUseId: shot.toolUseId ?? `toolu_fake_${n}`,
+      tool: "mcp__claude-in-chrome__computer",
+      mediaType: ext === "jpg" ? "image/jpeg" : "image/png",
+      bytes: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      capturedAt: "2026-10-11T03:00:00.000Z",
+    });
+  }
+  sink.write(`${dir}/${SCREENSHOT_MANIFEST}`, JSON.stringify({ version: 1, screenshots: [...earlier, ...out] }));
+  return out;
+}
 
 const pass = (item: string) => ({ item, passed: true, note: null });
 const ms = 1200;
@@ -124,6 +160,8 @@ function blockedScan(reason: "needs_login" | "captcha", site: string): ResearchS
     jobs: [],
     pageViews: 1,
     blocked: { reason, site, detail: reason === "needs_login" ? "the site shows a sign-in wall" : "a CAPTCHA is shown" },
+    injectionSuspected: false,
+    injectionNote: null,
     selfCheck: [pass("Every job has a reachable URL")],
     memoryNotes: [],
   };
@@ -151,6 +189,8 @@ function pausedApply(
         ? { reason: "needs_answer", site: null, detail: "required fields with no saved answer" }
         : { reason: pause.reason, site: pause.site, detail: pause.detail ?? null },
     jdSnapshot: null,
+    injectionSuspected: false,
+    injectionNote: null,
     selfCheck: [pass("All required fields are filled")],
     memoryNotes: [],
   };
@@ -306,11 +346,11 @@ export class FakeRunner implements Runner {
       const result = entry?.result;
       if (result === undefined) {
         const answer = defaultFakeResult(task);
-        if (key === "apply.submit" && answer.status === "ok" && this.screenshots && task.readDirs?.[0]) {
+        // PM2 S7: like the runner, the screenshots the default Apply output names exist as captures.
+        if (key === "apply.submit" && answer.status === "ok" && this.screenshots && task.screenshotDir) {
           const out = answer.output as ApplyOutput;
-          for (const name of [out.preSubmitScreenshot, out.confirmationScreenshot, out.jdSnapshot?.pageScreenshot]) {
-            if (name) this.screenshots.write(`${task.readDirs[0]}/${name}`, FAKE_PNG);
-          }
+          const ids = [out.preSubmitScreenshot, out.confirmationScreenshot, out.jdSnapshot?.pageScreenshot].filter((x): x is string => typeof x === "string");
+          return { ...answer, screenshots: fakeCaptures(this.screenshots, task.screenshotDir, ids.map((id) => ({ id }))) };
         }
         return answer;
       }

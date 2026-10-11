@@ -5,12 +5,13 @@
 // PM2 S5: memory.md and memory.archive.md are runtime state, gitignored like data/ (Ba's lessons
 // never end up in commits). Start-up seeds a missing memory.md from MEMORY_TEMPLATE; the first
 // append creates it too.
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { appendFile, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { LIMITS } from "@bs-job-agents/shared";
+import { filterMemoryNotes, type FilteredMemoryNotes } from "./memory-hygiene.js";
 
-const NOTE_MAX = 300;
 const locks = new Map<string, Promise<unknown>>();
 
 /** Run `fn` after every earlier call for the same key has finished. */
@@ -32,7 +33,6 @@ export function formatMemoryLine(note: string, ctx: { runId: number | null; task
   return `- ${[localDate(ctx.now), ...where].join(" · ")}: ${note}`;
 }
 
-const cleanNote = (note: string): string => note.replace(/\s+/g, " ").trim().slice(0, NOTE_MAX);
 const noteOf = (line: string): string => line.replace(/^- [^:]*: /, "");
 
 export interface AppendMemoryInput {
@@ -42,6 +42,11 @@ export interface AppendMemoryInput {
   runId: number | null;
   taskId: number | null;
   now?: Date;
+  /**
+   * PM2 S14: hosts a note may name (the bot's allowlist; Apply: the task's approved domains).
+   * Omitted = none. Notes with a secret, an override or another host are dropped (memory-hygiene.ts).
+   */
+  allowedSites?: readonly string[];
   /** Called after each note is written, still inside the bot's lock (e.g. appendMemoryChange). */
   onNote?: (note: string) => void | Promise<void>;
 }
@@ -49,17 +54,18 @@ export interface AppendMemoryInput {
 export interface AppendMemoryResult {
   appended: string[];
   archived: number;
+  /** PM2 S14: notes that were not written, and why. */
+  dropped: FilteredMemoryNotes["dropped"];
 }
 
 export function appendMemoryNotes(input: AppendMemoryInput): Promise<AppendMemoryResult> {
   const botDir = resolve(input.botDir);
+  const screened = filterMemoryNotes(input.notes, { allowedSites: input.allowedSites ?? [] });
   return serialised(botDir, async () => {
     const memoryPath = join(botDir, "memory.md");
     const archivePath = join(botDir, "memory.archive.md");
-    const result: AppendMemoryResult = { appended: [], archived: 0 };
-    for (const raw of input.notes) {
-      const note = cleanNote(raw);
-      if (!note) continue;
+    const result: AppendMemoryResult = { appended: [], archived: 0, dropped: screened.dropped };
+    for (const note of screened.kept) {
       const text = await readFile(memoryPath, "utf8").catch(() => "");
       const lines = text.split("\n").filter((l) => l.trim().length > 0);
       if (lines.some((l) => noteOf(l) === note)) continue;
@@ -76,6 +82,44 @@ export function appendMemoryNotes(input: AppendMemoryInput): Promise<AppendMemor
       await input.onNote?.(note);
     }
     return result;
+  });
+}
+
+/** A note line's id for the Bots screen: the first 16 hex characters of the trimmed line's SHA-256. */
+export function memoryNoteId(line: string): string {
+  return createHash("sha256").update(line.trim()).digest("hex").slice(0, 16);
+}
+
+export interface RemoveMemoryNoteInput {
+  /** bots/<name>/ */
+  botDir: string;
+  noteId: string;
+  /** Called with the note's text after the file was rewritten, still inside the bot's lock (memory_changes). */
+  onRemoved?: (note: string) => void | Promise<void>;
+}
+
+/**
+ * PM2 S14 / W3a: Ba deletes one note (Bots screen). Under the same per-bot lock as appendMemoryNotes,
+ * so a delete never loses an append that lands at the same moment. Returns the note's text, or null
+ * when no line has that id.
+ */
+export function removeMemoryNote(input: RemoveMemoryNoteInput): Promise<string | null> {
+  const botDir = resolve(input.botDir);
+  return serialised(botDir, async () => {
+    if (!/^[0-9a-f]{16}$/.test(input.noteId)) return null;
+    const memoryPath = join(botDir, "memory.md");
+    const text = await readFile(memoryPath, "utf8").catch(() => null);
+    if (text === null) return null;
+    const lines = text.split("\n").filter((l) => l.trim().length > 0);
+    const index = lines.findIndex((l) => memoryNoteId(l) === input.noteId);
+    if (index < 0) return null;
+    const [line] = lines.splice(index, 1);
+    const tmp = `${memoryPath}.tmp`;
+    await writeFile(tmp, lines.length > 0 ? `${lines.join("\n")}\n` : "");
+    await rename(tmp, memoryPath);
+    const note = noteOf(line!.trim()).replace(/^[-*]\s+/, "");
+    await input.onRemoved?.(note);
+    return note;
   });
 }
 

@@ -5,6 +5,7 @@ import { splitApplySubmitInput } from "@bs-job-agents/shared";
 import { applyInputFixture, cvTailorInputFixture, researchFitInputFixture, researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
 import { buildSiteGuardSettings } from "../../bridges/chrome/site-guard/settings.js";
 import { claudeLines, STDERR } from "../__fixtures__/index.js";
+import { JPEG_BYTES, PNG_BYTES, navigateLines, screenshotLines } from "../__fixtures__/screenshots.js";
 import { argValue, fakeSpawn, type FakeScript } from "../__fixtures__/fake-cli.js";
 import { CONSULT_INPUT, eventLog, makeKit, type Kit } from "../__fixtures__/runner-kit.js";
 import type { RunnerResult } from "../types.js";
@@ -413,5 +414,49 @@ describe("S5: the approval token never reaches the CLI", () => {
     expect(args).toContain("--chrome");
     expect(argValue(args, "--add-dir")).toBe(appDir);
     expect(argValue(args, "--settings")).toContain("'--allow' 'itviec.com'");
+  });
+});
+
+describe("PM2 S7, S10: screenshots and page URLs from the Chrome tools", () => {
+  const applyTask = (over = {}) => {
+    const { def, cwd } = kit.realBot("apply");
+    const hookSettings = buildSiteGuardSettings({ allowedSites: ["itviec.com"] });
+    return kit.task(def, cwd, { kind: "submit", input: splitApplySubmitInput(applyInputFixture).prompt, allowedSites: ["itviec.com"], readDirs: [kit.dir("applications/7")], hookSettings, ...over });
+  };
+  const session = [
+    ...navigateLines("toolu_nav", "https://itviec.com/it-jobs/x"),
+    ...screenshotLines({ toolUseId: "toolu_s1", screenshotId: "ss_pre", bytes: JPEG_BYTES }),
+    ...screenshotLines({ toolUseId: "toolu_s2", screenshotId: "ss_conf", bytes: PNG_BYTES }),
+  ];
+
+  it("two screenshots → two files in the task's folder, listed in RunnerResult; the transcript has no base64", async () => {
+    const shots = join(kit.root, "data", "screenshots", "42-1");
+    const { r } = runner([play([...session, ...claudeLines("structuredOk")]), play(claudeLines("structuredOk"))]);
+    const result = await r.run(applyTask({ screenshotDir: shots }), () => {});
+    expect(result.screenshots?.map((s) => [s.file, s.screenshotId, s.toolUseId])).toEqual([
+      ["1.jpg", "ss_pre", "toolu_s1"],
+      ["2.png", "ss_conf", "toolu_s2"],
+    ]);
+    expect(readFileSync(join(shots, "1.jpg"))).toEqual(JPEG_BYTES);
+    expect(existsSync(join(shots, "manifest.json"))).toBe(true);
+    const transcript = readFileSync(kit.transcriptPath, "utf8");
+    expect(transcript).not.toContain(JPEG_BYTES.toString("base64"));
+    expect(transcript).not.toContain(PNG_BYTES.toString("base64"));
+    expect(kit.transcriptLines()).toContainEqual(expect.objectContaining({ type: "runner.screenshots" }));
+    expect(result.pageUrls).toEqual(["https://itviec.com/it-jobs/x"]);
+  });
+
+  it("without a screenshot folder nothing is written, and the bytes still never reach the transcript", async () => {
+    const { r } = runner([play([...session, ...claudeLines("structuredOk")]), play(claudeLines("structuredOk"))]);
+    const result = await r.run(applyTask(), () => {});
+    expect(result.screenshots).toBeUndefined();
+    expect(readFileSync(kit.transcriptPath, "utf8")).not.toContain(PNG_BYTES.toString("base64"));
+  });
+
+  it("refuses a screenshot folder that is not a plain absolute path", async () => {
+    const { r, calls } = runner([play(claudeLines("structuredOk"))]);
+    const result = await r.run(applyTask({ screenshotDir: "data/screenshots/42-1" }), () => {});
+    expect(result).toMatchObject({ status: "failed", error: expect.stringMatching(/screenshot dir/) });
+    expect(calls).toHaveLength(0);
   });
 });

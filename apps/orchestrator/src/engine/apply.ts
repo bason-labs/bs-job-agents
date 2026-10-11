@@ -8,7 +8,7 @@
 // - on the result: pauses Apply reports itself wait for Ba (UC-11 a/b/e, UC-12, UC-17); anything
 //   else after a spawn that is not a clean result goes to needs_check, never retried (PM FYI c);
 // - the record step writes the §9.1 record with the ORCHESTRATOR's hash of the uploaded copy.
-import { basename, isAbsolute, relative, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import {
   ApplyPromptInputSchema,
   BOT_TASK_INPUT_SCHEMAS,
@@ -26,6 +26,7 @@ import {
   SubmissionRefusedError,
   addApprovalDomain,
   appendMessage,
+  flagJobInjection,
   getApplication,
   getCompany,
   getCvVersion,
@@ -35,11 +36,13 @@ import {
   getSubmissionRecord,
   getTask,
   latestApprovalForApplication,
+  listMessages,
   listSavedAnswers,
   mappers,
   markSubmissionRefused,
   recordSubmission,
   saveAnswer,
+  setMessageCards,
   transitionApplication,
   updateTaskInput,
   type Application,
@@ -48,7 +51,9 @@ import {
   type Step,
   type Task,
 } from "../db/index.js";
+import type { CapturedScreenshot } from "../runner/screenshots.js";
 import { formDefaultsOf, loadRunCtx, type RunCtx, type Scope } from "./context.js";
+import { demoteBot } from "./demotion.js";
 import { noticeApplyNotStarted, noticeNeedsCheck } from "./notices.js";
 import { siteKey } from "./sites.js";
 import type { EngineCore } from "./core.js";
@@ -317,7 +322,7 @@ export async function prepareApply(core: EngineCore, task: Task): Promise<ApplyP
  * transaction as the task's result, whatever the run's state (a paused or cancelled run must not
  * lose a submission). A dry run that says submitted is a safety event (PM §7).
  */
-export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: ApplyOutput, files: RecordFiles = NO_RECORD_FILES): void {
+export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: ApplyOutput, files: RecordFiles = NO_RECORD_FILES, check: string | null = null): void {
   const row = actionRowOf(conn, task);
   const out = row?.output as ActionStepOutput | undefined;
   if (out?.dryRun && output.status === "submitted") {
@@ -328,10 +333,18 @@ export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: Ap
       reason: "dry_run_submitted",
       detail: "a dry run reported submitted; it may really have submitted, so it needs a check",
     });
+    // PM2 S8: a safety violation by Apply's own conduct.
+    demoteBot(core, conn, { botName: task.botName, reason: "dry_run_submitted", detail: "a dry run reported submitted", taskId: task.id, runId: task.runId });
   }
   if (!row || !out || out.applicationId === null) return;
-  const record = writeSubmissionRecord(core, conn, task, output, out, files);
+  const record = writeSubmissionRecord(core, conn, task, output, out, files, check);
   updateAction(core, conn, row, { outcome: record.status === "submitted" ? "submitted" : "needs_check", record });
+}
+
+/** PM2 S11: Apply reported an injection on the job's page: flag the job (Apply stays off until Ba confirms). */
+export function flagApplyJob(conn: Conn, task: Task): void {
+  const app = getApplication(conn, Number((task.input as Partial<ApplyPromptInput> | null)?.applicationId));
+  if (app) flagJobInjection(conn, app.jobId);
 }
 
 /** After a spawn, anything but a clean result or a pause: needs_check, never retried (UC-11 c, PM FYI c). */
@@ -384,6 +397,25 @@ function postQuestion(core: EngineCore, conn: Conn, task: Task, applicationId: n
     { now: core.now() },
   );
   core.bus.emit(conn, { type: "message.created", roomId: String(room.id), message: mappers.toMessage(message, room.kind, []) });
+}
+
+/**
+ * W3a request (UC-12): the question card turns answered with Ba's answer (null = left blank), in
+ * the answer's transaction (no event: the message is not new; the API's answer response tells the UI).
+ */
+function settleQuestionCard(core: EngineCore, conn: Conn, taskId: number, field: string, answer: string | null): void {
+  const room = getOrCreateLeadRoom(conn, { now: core.now() });
+  for (const message of listMessages(conn, room.id)) {
+    const cards = (message.meta?.cards as Array<Record<string, unknown>> | undefined) ?? [];
+    let changed = false;
+    const next = cards.map((c) => {
+      if (c.type !== "question" || c.taskId !== String(taskId) || (c.question as { field?: unknown } | null)?.field !== field) return c;
+      changed = true;
+      return { ...c, answered: true, answer };
+    });
+    if (!changed) continue;
+    setMessageCards(conn, message.id, next);
+  }
 }
 
 /** Apply may resume without Ba at most this often per task (each time with new automatic answers). */
@@ -470,6 +502,7 @@ export function answerQuestion(core: EngineCore, taskId: number, input: AnswerIn
     if (input.remember && v.answer.value !== null && normalizeAnswerKey(q.label) !== "") {
       saveAnswer(tx, { label: q.label, answer: v.answer.value }, { now: core.now() });
     }
+    settleQuestionCard(core, tx, task.id, q.field, v.answer.value);
     const answered = { ...out, answers: [...out.answers, v.answer] };
     const { auto, ask } = questionsForBa(core, tx, task, output, answered, app?.jobId ?? 0);
     const answers = [...answered.answers, ...auto];
@@ -525,6 +558,29 @@ export function resumePausedTask(core: EngineCore, taskId: number, opts: { confi
   core.dispatch();
 }
 
+/**
+ * UC-11 e, "Don't allow" (W3a request): Ba declines the domain Apply paused for. The token is not
+ * widened; Apply ends without a retry, and because it already filled part of the form the
+ * application needs a check (UC-11 c). Logged as safety.denied(off_allowlist); Lead's needs_check
+ * notice goes out with the move. Not a demotion: Apply did pause for Ba as it should.
+ */
+export function declineDomain(core: EngineCore, taskId: number): void {
+  core.db.transaction((tx) => {
+    const task = getTask(tx, taskId);
+    if (!task) throw notFound("task", taskId);
+    const reason = task.status === "paused" && task.pauseReason ? parsePauseReason(task.pauseReason) : null;
+    if (reason?.code !== "domain_confirm") throw invalidState(`task ${taskId} is not waiting for a domain to confirm`);
+    const site = reason.site ?? "the new site";
+    const error = `Ba declined ${site}; Apply stopped there (UC-11 e)`;
+    failTaskNow(core, tx, task, error);
+    emitSafetyDenied(core, tx, { botName: task.botName, taskId: task.id, action: "apply.domain_confirm", reason: "off_allowlist", detail: `Ba did not allow ${site} for this application` });
+    onApplyFailedAfterSpawn(core, tx, task, error);
+  });
+  core.bus.flush();
+  core.advance(getTask(core.db, taskId)?.runId ?? null);
+  core.dispatch();
+}
+
 // ---------------------------------------------------------------- the record (§9.1)
 
 /** The screenshots the record may cite: data/-relative paths of verified files, or null (PM2 M1). */
@@ -559,17 +615,60 @@ async function recordFile(core: EngineCore, applicationId: number, value: string
   return head && isImage(head) ? core.paths.rel(abs) : null;
 }
 
-/** The record's screenshots, checked before the record's transaction (the FileStore is async). */
-export async function verifyRecordFiles(core: EngineCore, applicationId: number, output: ApplyOutput): Promise<RecordFiles> {
+/** PM2 S7: the screenshot Apply named, by the id the Chrome tool showed it (exactly, or as the one id its text names). */
+export function pickCapture(value: string | null | undefined, captures: readonly CapturedScreenshot[]): CapturedScreenshot | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const v = value.trim();
+  const exact = captures.filter((c) => c.screenshotId === v);
+  if (exact.length > 0) return exact.at(-1)!;
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const named = captures.filter((c) => c.screenshotId !== null && new RegExp(`(?:^|[^A-Za-z0-9_-])${esc(c.screenshotId)}(?:$|[^A-Za-z0-9_-])`).test(v));
+  const ids = new Set(named.map((c) => c.screenshotId));
+  return ids.size === 1 ? named.at(-1)! : null;
+}
+
+/** Where an attempt's captures are: data/screenshots/<task>-<attempt>/ and what the runner listed. */
+export interface CaptureSource {
+  /** Absolute folder. */
+  dir: string;
+  captures: CapturedScreenshot[];
+}
+
+/**
+ * PM2 S7 + M1: the record's screenshots. Apply names a screenshot by the id the tool showed; the
+ * capture it names is copied (hash-checked against what the runner wrote) into
+ * data/applications/<id>/ as pre-submit / confirmation / jd, and only that copy passes M1's check.
+ * A name that is no capture (a path, prose, a file Apply claims to have saved) is null. One capture
+ * is one proof: named as both the pre-submit and the confirmation screenshot it counts once.
+ * Runs before the record's transaction (the FileStore is async).
+ */
+export async function captureRecordFiles(core: EngineCore, applicationId: number, output: ApplyOutput, source: CaptureSource | null): Promise<RecordFiles> {
+  const captures = source?.captures ?? [];
+  const pre = pickCapture(output.preSubmitScreenshot, captures);
+  const conf = pickCapture(output.confirmationScreenshot, captures);
+  const jd = pickCapture(output.jdSnapshot?.pageScreenshot, captures);
+  const copy = async (c: CapturedScreenshot | null, name: string): Promise<string | null> => {
+    if (!c || !source) return null;
+    const dest = `${core.paths.applicationDir(applicationId)}/${name}.${c.mediaType === "image/png" ? "png" : "jpg"}`;
+    try {
+      await core.deps.files.copyVerified(join(source.dir, c.file), core.paths.abs(dest), c.sha256);
+    } catch {
+      return null;
+    }
+    return recordFile(core, applicationId, core.paths.abs(dest));
+  };
   return {
-    preSubmit: await recordFile(core, applicationId, output.preSubmitScreenshot),
-    confirmation: await recordFile(core, applicationId, output.confirmationScreenshot),
-    jdPage: await recordFile(core, applicationId, output.jdSnapshot?.pageScreenshot),
+    preSubmit: await copy(pre, "pre-submit"),
+    confirmation: conf !== null && conf.file === pre?.file ? null : await copy(conf, "confirmation"),
+    jdPage: await copy(jd, "jd"),
   };
 }
 
 /** The status-history note when Apply said submitted but its proof is not on disk (PM2 M1). */
 export const SCREENSHOTS_NOT_CAPTURED = "screenshots not captured";
+
+/** The status-history note when Apply reported an injection attempt on the page (PM2 S11). */
+export const INJECTION_SUSPECTED = "injection suspected";
 
 /**
  * §9.1 / UC-11 step 9: the record from Apply's result, written right after Apply reported it,
@@ -588,6 +687,8 @@ export function writeSubmissionRecord(
   output: ApplyOutput,
   out: ActionStepOutput,
   files: RecordFiles = NO_RECORD_FILES,
+  /** PM2 S10: the engine's own reason this record needs Ba's check (e.g. the tab left the approved domains). */
+  check: string | null = null,
 ): RecordStepOutput {
   const appId = out.applicationId!;
   if (getSubmissionRecord(conn, appId)?.submission) {
@@ -630,8 +731,16 @@ export function writeSubmissionRecord(
   // One file is one proof: a confirmation screenshot that is the pre-submit one does not count; blank text is no text.
   const confirmation = files.confirmation !== null && files.confirmation !== files.preSubmit ? files.confirmation : null;
   const proofMissing = files.preSubmit === null || (confirmation === null && !output.confirmationText?.trim());
-  const status = output.status === "submitted" && !app.dryRun && sameFile && !proofMissing ? "submitted" : "needs_check";
-  const note = output.status === "submitted" && !app.dryRun && proofMissing ? SCREENSHOTS_NOT_CAPTURED : null;
+  // PM2 S11: a page that tried to instruct Apply means Ba checks what was sent.
+  const injection = output.injectionSuspected === true;
+  const status = output.status === "submitted" && !app.dryRun && sameFile && !proofMissing && !injection && check === null ? "submitted" : "needs_check";
+  const note = injection
+    ? `${INJECTION_SUSPECTED}: ${output.injectionNote?.trim() || "the page tried to instruct Apply"}`
+    : check !== null
+      ? check
+      : output.status === "submitted" && !app.dryRun && proofMissing
+        ? SCREENSHOTS_NOT_CAPTURED
+        : null;
   try {
     // recordSubmission runs in its own savepoint: a refusal writes nothing.
     const rec = recordSubmission(conn, { applicationId: appId, status, dryRun: app.dryRun, submission, snapshot, note }, { now: core.now() });

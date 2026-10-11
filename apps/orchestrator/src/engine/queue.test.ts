@@ -15,6 +15,8 @@ function manyJobs(n: number) {
     jobs: Array.from({ length: n }, (_, i) => ({ ...NOVAPAY, url: `https://itviec.com/it-jobs/frontend-${i + 1}`, title: `Frontend Engineer ${i + 1}` })),
     pageViews: n,
     blocked: null,
+    injectionSuspected: false,
+    injectionNote: null,
     selfCheck: [pass("Every job has a reachable URL")],
     memoryNotes: [],
   });
