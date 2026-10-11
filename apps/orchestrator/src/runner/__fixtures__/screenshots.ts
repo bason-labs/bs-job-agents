@@ -1,8 +1,10 @@
 // PM2 S7: stream-json lines of a Claude in Chrome session that takes screenshots.
 // SYNTHETIC: the shape of an MCP tool result as Claude Code 2.1.296 prints it (claude/
 // mcp-and-hook-denied.jsonl: `message.content[].content` and the mirrored `tool_use_result`) with
-// the `computer` tool's screenshot reply (a text block "… - ID: ss_…" and an image block). The
-// live capture that confirms it is recorded in docs/superpowers/build/reports/phase3-f3-fixer.md.
+// the `computer` tool's screenshot reply (a text block "… - ID: ss_…" and an image block).
+// NOT YET CONFIRMED LIVE: F3's live check (2026-10-11) could not reach Chrome ("Browser extension
+// is not connected"). W4b's runbook check (PM2 S27) records the real shape; the capture also reads
+// the MCP form ({type:"image", data, mimeType}) and drops any image it cannot keep.
 
 /** The smallest byte strings with real PNG / JPEG headers (enough for the magic-byte check). */
 export const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 1, 2, 3, 4]);
