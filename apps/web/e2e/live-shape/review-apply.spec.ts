@@ -8,8 +8,17 @@ import { resetOrchestrator, reviewBadge, reviewCard, runnerCalls, scanToReview }
 
 const viewer = (page: Page) => page.getByTestId("file-viewer");
 const panel = (page: Page) => page.getByTestId("record-panel");
-const appRow = (page: Page, company: string) =>
-  page.getByTestId("application-row").filter({ has: page.getByRole("button", { name: `Open ${company}'s submission record` }) });
+const appRow = (page: Page, company: string, dryRun = false) =>
+  page
+    .getByTestId("application-row")
+    .filter({ has: page.getByRole("button", { name: `Open ${company}'s submission record` }) })
+    .filter(dryRun ? { hasText: "dry run" } : { hasNotText: "dry run" });
+
+/** The viewer shows a real image (the fake Apply's 640×400 PNG, served by the orchestrator). */
+async function expectScreenshotShown(page: Page) {
+  const img = viewer(page).getByRole("img");
+  await expect.poll(() => img.evaluate((i: HTMLImageElement) => (i.complete ? i.naturalWidth : -1))).toBe(640);
+}
 
 test.beforeEach(async () => {
   await resetOrchestrator();
@@ -47,7 +56,16 @@ test("dry run → Apply fills and screenshots but never submits → Approve live
 
   // Applications: the submitted record, its screenshots and CV open in the viewer first.
   await open(page, "/applications");
-  await page.screenshot({ path: "test-results/live-applications.png" });
+  await expect(page.getByTestId("application-row")).toHaveCount(2);
+  // The dry run is labelled; its record holds the filled form's screenshot, and nothing was sent.
+  await expect(appRow(page, "NovaPay", true).getByRole("combobox")).toContainText("Needs check");
+  await appRow(page, "NovaPay", true).getByRole("button", { name: "Open NovaPay's submission record" }).click();
+  await panel(page).getByRole("button", { name: /Before submit/ }).click();
+  await expectScreenshotShown(page);
+  await viewer(page).getByRole("button", { name: "Close" }).click();
+  await expect(panel(page).getByRole("button", { name: /Confirmation/ })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(panel(page)).toBeHidden();
   await appRow(page, "NovaPay").getByRole("button", { name: "Open NovaPay's submission record" }).click();
   await expect(panel(page).getByRole("heading", { name: "NovaPay" })).toBeVisible();
   await expect(panel(page).getByTestId("record-sha")).toHaveText(/SHA-256: [0-9a-f]{64}/);
@@ -55,30 +73,38 @@ test("dry run → Apply fills and screenshots but never submits → Approve live
   await page.screenshot({ path: "test-results/live-record.png" });
   await panel(page).getByRole("button", { name: /Before submit/ }).click();
   await expect(viewer(page).getByRole("img")).toBeVisible();
-  await expect(viewer(page).getByRole("img")).toHaveJSProperty("complete", true);
-  expect(await viewer(page).getByRole("img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(640);
+  await expectScreenshotShown(page);
   await page.screenshot({ path: "test-results/live-viewer.png" });
   await viewer(page).getByRole("button", { name: "Close" }).click();
   await panel(page).getByRole("button", { name: /Confirmation/ }).click();
-  expect(await viewer(page).getByRole("img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(640);
+  await expectScreenshotShown(page);
   await viewer(page).getByRole("button", { name: "Close" }).click();
   await panel(page).getByRole("button", { name: /\.pdf$/ }).first().click();
   await expect(viewer(page).getByTestId("pdf-page").first()).toHaveAttribute("data-rendered", "true");
   await expect(viewer(page).getByRole("link", { name: "Download" })).toHaveAttribute("download", /\.pdf$/);
 });
 
-test("the Apply node unlocks on the canvas when Ba approves (SSE, no reload)", async ({ page, context }) => {
+test("the canvas follows the run over SSE: the Apply node unlocks when Ba approves, then the record is saved (no reload)", async ({ page, context }) => {
   const runId = await scanToReview(page);
+  const queue = (await (await page.request.get("/api/review")).json()) as { cards: { job: { id: string; company: string } }[] };
+  const novaId = queue.cards.find((c) => c.job.company === "NovaPay")!.job.id;
   const flow = await context.newPage();
   await open(flow, `/flows/${runId}`);
-  await flow.screenshot({ path: "test-results/live-flow.png" });
-  const applyNodes = flow.locator("[data-testid^=node-apply-]");
-  await expect(applyNodes).toHaveCount(3);
-  await expect(applyNodes.first()).toContainText("locked");
+  await expect(flow.getByTestId("node-scan")).toHaveAttribute("data-status", "done");
+  await expect(flow.locator("[data-testid^=node-apply-]")).toHaveCount(3);
+  const apply = flow.getByTestId(`node-apply-${novaId}`);
+  await expect(apply).toHaveAttribute("data-status", "locked");
+  await expect(apply).toContainText("locked");
+  await expect(flow.getByTestId(`node-review-${novaId}`)).toHaveAttribute("data-status", "waiting");
+
   await open(page, "/review");
-  await reviewCard(page, "Kite Labs").getByRole("button", { name: "Approve & submit" }).click();
+  await reviewCard(page, "NovaPay").getByRole("button", { name: "Approve & submit" }).click();
   await page.getByTestId("approve-dialog").getByRole("button", { name: "Approve & submit" }).click();
-  await expect(flow.locator("[data-testid^=node-apply-][data-status=done], [data-testid^=node-apply-][data-status=running], [data-testid^=node-apply-][data-status=waiting]")).not.toHaveCount(0);
-  await flow.screenshot({ path: "test-results/live-flow-after.png" });
+  // The other tab never reloads: every change below arrives over SSE.
+  await expect(flow.getByTestId(`node-review-${novaId}`)).toHaveAttribute("data-status", "done");
+  await expect(apply).toHaveAttribute("data-status", /^(running|done)$/);
+  await expect(apply).toHaveAttribute("data-status", "done");
+  await expect(flow.getByTestId(`node-record-${novaId}`)).toHaveAttribute("data-status", "done");
+  await expect(flow.getByTestId(`node-record-${novaId}`)).toContainText("record saved");
   await expect(reviewBadge(page)).toContainText("2");
 });
