@@ -13,6 +13,8 @@ import { NOVAPAY, T0, seedApprovedApplication, seedJob } from "../db/test-helper
 import { silentLogger } from "../engine/ports.js";
 import { createTestEngine, type TestEngine, type TestEngineOptions } from "../engine/testing/index.js";
 import { buildServer, type ServerOptions } from "../server.js";
+import { CapabilityStore } from "../mcp/capabilities.js";
+import { ChatSink } from "./chat/sink.js";
 import { engineEventHub, type ApiContext, type OrchestratorState } from "./context.js";
 
 export const TEST_PORT = 4100;
@@ -34,6 +36,9 @@ export interface ApiHarnessOptions {
 
 export interface ApiHarness {
   t: TestEngine;
+  /** The Lead capability log the sink reads (record actions to simulate MCP tool calls). */
+  capabilities: CapabilityStore;
+  sink: ChatSink;
   ctx: ApiContext;
   app: FastifyInstance;
   /** The API's real data/ folder (a temp dir; the engine's own files are in memory). */
@@ -156,7 +161,11 @@ export function webHeaders(method: Method, hasBody: boolean): Headers {
 }
 
 export async function createApiHarness(opts: ApiHarnessOptions = {}): Promise<ApiHarness> {
-  const t = await createTestEngine(opts.engine);
+  // S20: the chat flows' ConversationSink, with the capability log the MCP tools write to.
+  const capabilities = new CapabilityStore();
+  const sink = new ChatSink({ capabilities });
+  const t = await createTestEngine({ conversations: sink, ...opts.engine });
+  sink.bind({ now: () => t.clock.now() });
   const root = mkdtempSync(join(tmpdir(), "bsja-api-"));
   const dataDir = join(root, "data");
   const botsDir = join(root, "bots");
@@ -172,6 +181,7 @@ export async function createApiHarness(opts: ApiHarnessOptions = {}): Promise<Ap
     events: engineEventHub(t.engine),
     now: () => t.clock.now(),
     log: silentLogger,
+    capabilities,
     ...opts.context,
   };
   const app = buildServer(ctx, opts.server);
@@ -186,6 +196,8 @@ export async function createApiHarness(opts: ApiHarnessOptions = {}): Promise<Ap
     });
   return {
     t,
+    capabilities,
+    sink,
     ctx,
     app,
     dataDir,

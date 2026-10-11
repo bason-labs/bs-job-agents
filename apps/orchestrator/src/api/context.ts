@@ -6,7 +6,9 @@ import { max } from "drizzle-orm";
 import { appendAppEvent, listEvents, mappers, schema, type AppEventInput, type Db } from "../db/index.js";
 import { EventBus } from "../engine/events.js";
 import type { BotRegistry, Engine, Logger, WorkflowSource } from "../engine/index.js";
+import type { CapabilityStore } from "../mcp/capabilities.js";
 import { ApiHttpError } from "./errors.js";
+import { ProposalStore } from "./proposals.js";
 
 export interface ApiConfig {
   /** Absolute data/ folder (files are served from inside it only). */
@@ -50,6 +52,16 @@ export interface ApiContext {
   events: EventHub | null;
   now(): Date;
   log: Logger;
+  /** Rule 3: Lead's workflow proposals (default: data/workflow-proposals.json). */
+  proposals?: ProposalStore;
+  /** S17: the live Lead capabilities (for /status; null without the MCP server). */
+  capabilities?: CapabilityStore | null;
+}
+
+/** The proposal store of this context (created on first use). */
+export function proposalsOf(ctx: ApiContext): ProposalStore {
+  ctx.proposals ??= new ProposalStore({ dataDir: ctx.config.dataDir, now: () => ctx.now(), workflows: () => ctx.workflows ?? ctx.engine?.deps.workflows ?? null });
+  return ctx.proposals;
 }
 
 function lastEventId(db: Db): number {

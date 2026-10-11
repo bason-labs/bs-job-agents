@@ -66,8 +66,8 @@ export const API_ROUTES = {
   /** DELETE one saved answer by its normalised key (UC-12). */
   savedAnswer: "/saved-answers/:key",
   // W3a part 2 (additive)
-  /** UC-25: Ba's 1:1 consult thread with a bot (created on first use). */
-  consultRoom: "/rooms/consult/:bot",
+  /** A suggestion chip on a Lead card: kept on the card, its label sent as Ba's answer (ChoiceRequest). */
+  chatChoices: "/chat/choices",
   /** Rule 3: Lead's propose_workflow suggestions; Ba approves (saved, never run) or dismisses. */
   workflowProposals: "/workflow-proposals",
   workflowProposalApprove: "/workflow-proposals/:id/approve",

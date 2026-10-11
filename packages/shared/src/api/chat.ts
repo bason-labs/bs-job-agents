@@ -3,6 +3,7 @@ import { z } from "zod";
 import { BotNameSchema, IdSchema } from "../common/primitives.js";
 import { PendingQuestionSchema } from "../bots/apply.js";
 import { MessageSchema, RoomSchema } from "../domain/chat.js";
+import { FileRefSchema } from "./common.js";
 
 export const ChatSendRequestSchema = z
   .object({
@@ -28,7 +29,21 @@ export const MessagesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
-export const MessagesResponseSchema = z.object({ messages: z.array(MessageSchema), hasMore: z.boolean() });
+/** UC-24: what a message's attachment chip shows; `file` opens it in the viewer. W3a, additive. */
+export const MessageAttachmentSchema = z.object({
+  id: IdSchema,
+  filename: z.string(),
+  mime: z.string(),
+  size: z.number().int().nonnegative(),
+  file: FileRefSchema,
+});
+export type MessageAttachment = z.infer<typeof MessageAttachmentSchema>;
+
+/** A message as GET /rooms/:id/messages returns it: the shared Message plus its attachments. */
+export const ChatMessageSchema = MessageSchema.extend({ attachments: z.array(MessageAttachmentSchema).default([]) });
+export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+
+export const MessagesResponseSchema = z.object({ messages: z.array(ChatMessageSchema), hasMore: z.boolean() });
 
 /** UC-15: create a group room. */
 export const CreateRoomRequestSchema = z.object({
@@ -75,7 +90,7 @@ export type ChoiceRequest = z.infer<typeof ChoiceRequestSchema>;
  * chat, a consult reply, or one room reply per mentioned bot). The replies arrive as
  * `message.created` events on SSE.
  */
-export const ChatSendResultSchema = ChatSendResponseSchema.extend({ taskIds: z.array(IdSchema) });
+export const ChatSendResultSchema = z.object({ message: ChatMessageSchema, taskIds: z.array(IdSchema) });
 export type ChatSendResult = z.infer<typeof ChatSendResultSchema>;
 
 /** UC-15: one room message asks at most this many mentioned bots (the rest are named in a note). */

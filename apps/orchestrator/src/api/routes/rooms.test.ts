@@ -10,18 +10,23 @@ afterEach(async () => {
 });
 
 describe("rooms (UC-15) and room history", () => {
-  it("lists the Lead chat and group rooms with their members", async () => {
+  it("lists the Lead chat, one consult thread per bot other than Lead (UC-25) and group rooms with their members", async () => {
     h = await createApiHarness();
-    expect(RoomsResponseSchema.parse((await h.get("/rooms")).json()).rooms).toEqual([]);
     getOrCreateLeadRoom(h.t.db);
     const created = await h.post("/rooms", { name: "cv-brainstorm", members: ["qa", "cv"] });
     expect(created.statusCode).toBe(201);
     expect(RoomSchema.parse(created.json())).toMatchObject({ name: "cv-brainstorm", kind: "group", botName: null, members: ["cv", "qa"] });
     const rooms = RoomsResponseSchema.parse((await h.get("/rooms")).json()).rooms;
-    expect(rooms.map((r) => [r.name, r.kind, r.members])).toEqual([
-      ["Lead", "lead", ["lead"]],
-      ["cv-brainstorm", "group", ["cv", "qa"]],
+    expect(rooms.map((r) => [r.kind, r.botName, r.members])).toEqual([
+      ["lead", "lead", ["lead"]],
+      ["group", null, ["cv", "qa"]],
+      ["direct", "apply", ["apply"]],
+      ["direct", "cv", ["cv"]],
+      ["direct", "qa", ["qa"]],
+      ["direct", "research", ["research"]],
     ]);
+    // Listing again creates nothing new.
+    expect(RoomsResponseSchema.parse((await h.get("/rooms")).json()).rooms).toHaveLength(6);
   });
 
   it("refuses a taken name (409), an unknown bot (400) and a name that is not a slug (400)", async () => {
@@ -52,6 +57,9 @@ describe("rooms (UC-15) and room history", () => {
     expect(last.messages.map((m) => m.text)).toEqual(["message 4", "message 5"]);
     expect(last.hasMore).toBe(true);
     expect(last.messages[1]!.uploadIds).toEqual([String(upload.id)]);
+    expect(last.messages[1]!.attachments).toEqual([
+      { id: String(upload.id), filename: "jd.pdf", mime: "application/pdf", size: 10, file: { id: `upload-${upload.id}`, kind: "upload", filename: "jd.pdf", mime: "application/pdf" } },
+    ]);
     expect(last.messages[0]!.cards).toEqual([{ type: "run", runId: "7" }]);
     expect(last.messages[0]!).toMatchObject({ author: { type: "bot", bot: "lead" }, mode: "work" });
     const earlier = MessagesResponseSchema.parse((await h.get(`/rooms/${room.id}/messages?before=${ids[3]}&limit=2`)).json());

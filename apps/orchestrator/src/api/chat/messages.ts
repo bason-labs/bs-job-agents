@@ -1,11 +1,12 @@
 // Chat plumbing shared by the chat route, the ConversationSink and the MCP server's message_user:
 // post a message with its message.created event (inside the caller's transaction), and build the
 // untrusted history a conversation task sees (§10.2 rule 4: other bots wrote part of it).
-import type { MessageCard } from "@bs-job-agents/shared";
+import type { ChatMessage, MessageCard } from "@bs-job-agents/shared";
+import { eq, like } from "drizzle-orm";
 import {
+  schema,
   appendAppEvent,
   appendMessage,
-  getRoom,
   getUpload,
   listMessages,
   listUploadsForMessage,
@@ -81,8 +82,44 @@ export function conversationHistory(conn: Conn, roomId: number, beforeId: number
   return history;
 }
 
-export function roomOrThrow(conn: Conn, roomId: number): Room {
-  const room = getRoom(conn, roomId);
-  if (!room) throw new Error(`room ${roomId} not found`);
-  return room;
+/** A message with its attachments, as the REST API returns it (UC-24 chips open in the viewer). */
+export function chatMessageView(conn: Conn, message: Message, room: Pick<Room, "kind">): ChatMessage {
+  const uploads = listUploadsForMessage(conn, message.id);
+  return {
+    ...mappers.toMessage(message, room.kind, uploads.map((u) => u.id)),
+    attachments: uploads.map((u) => ({
+      id: String(u.id),
+      filename: u.filename,
+      mime: u.mime,
+      size: u.size,
+      file: { id: `upload-${u.id}`, kind: "upload" as const, filename: u.filename, mime: u.mime },
+    })),
+  };
+}
+
+export function cardsOf(message: Message): MessageCard[] {
+  return (message.meta?.cards as MessageCard[] | undefined) ?? [];
+}
+
+/** Replace a message's cards (a chosen chip, an answered question); its text and author never change. */
+export function updateMessageCards(conn: Conn, message: Message, cards: MessageCard[]): void {
+  conn
+    .update(schema.messages)
+    .set({ meta: { ...(message.meta ?? {}), cards: cards as unknown as JsonObject[] } })
+    .where(eq(schema.messages.id, message.id))
+    .run();
+}
+
+export function getMessage(conn: Conn, id: number): Message | undefined {
+  return conn.select().from(schema.messages).where(eq(schema.messages.id, id)).get();
+}
+
+/** Messages of every room whose cards include a question card for `taskId` (UC-12). */
+export function messagesWithQuestionCards(conn: Conn, taskId: number): Message[] {
+  return conn
+    .select()
+    .from(schema.messages)
+    .where(like(schema.messages.meta, `%"taskId":"${taskId}"%`))
+    .all()
+    .filter((m) => cardsOf(m).some((c) => c.type === "question" && c.taskId === String(taskId)));
 }
