@@ -33,6 +33,52 @@ test("UC-01: a find request starts a job scan; the run card traces the delegatio
   await expect(page).toHaveURL(/\/flows\/13$/);
 });
 
+/** The run card's last row is inside the chat's scroll area (not below the fold). */
+const cardBottomInView = (page: Page, runId: string) =>
+  page.evaluate((id) => {
+    const scroller = document.querySelector('[data-testid="chat-scroll"]')!.getBoundingClientRect();
+    const card = document.querySelector(`[data-testid=run-card][data-run="${id}"]`)!.getBoundingClientRect();
+    return card.bottom <= scroller.bottom + 1;
+  }, runId);
+
+test("PM3 S5/S7: Lead's turn shows a working indicator with its tool step; the chat keeps following the run card as it grows", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 640 });
+  await open(page, "/chat");
+  await say(page, "Find frontend jobs in HCM");
+  // S5: "Lead is working" while the lead.chat task runs, with its tool call as a step; gone when it ends.
+  await expect(page.getByTestId("typing")).toContainText("Lead is working");
+  await expect(page.getByTestId("working-steps")).toContainText("Starting job-scan…");
+  await expect(lead(page).filter({ hasText: "Started Job scan #13" })).toBeVisible();
+  await expect(page.getByTestId("typing")).toBeHidden();
+  // S7: the card grows row by row (Research, CV, QA) with no new message; the view follows it.
+  const card = page.locator('[data-testid=run-card][data-run="13"]');
+  await expect(card.getByTestId("trace-cv")).toBeAttached({ timeout: 30_000 });
+  await expect.poll(() => cardBottomInView(page, "13")).toBe(true);
+  await expect(card.getByTestId("trace-qa")).toBeAttached({ timeout: 30_000 });
+  await expect.poll(() => cardBottomInView(page, "13")).toBe(true);
+});
+
+test("PM3 S7: the chat follows content that grows without a new message (a run card's rows), unless Ba scrolled up", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 640 });
+  await open(page, "/chat");
+  const atBottom = () =>
+    page.getByTestId("chat-scroll").evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight < 2);
+  await expect.poll(atBottom).toBe(true);
+  // A card grows in place (as a run card does when its trace fills in): the view keeps up.
+  const grow = () =>
+    page.locator('[data-testid=run-card][data-run="12"]').evaluate((el) => {
+      const row = document.createElement("div");
+      row.style.height = "300px";
+      el.appendChild(row);
+    });
+  await grow();
+  await expect.poll(atBottom).toBe(true);
+  // Ba scrolls up to read: growth no longer pulls the view down.
+  await page.getByTestId("chat-scroll").evaluate((el) => el.scrollTo({ top: 0 }));
+  await grow();
+  await expect.poll(() => page.getByTestId("chat-scroll").evaluate((el) => el.scrollTop)).toBe(0);
+});
+
 test("UC-25: a work request in a consult chat is handed to Lead, who starts it", async ({ page }) => {
   await open(page, "/chat/research");
   await expect(page.getByTestId("consult-banner")).toContainText("Direct chat with Research · consult mode");

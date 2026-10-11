@@ -2,7 +2,7 @@
 
 import type { Message, Upload } from "@bs-job-agents/shared";
 import { MessageSquareOff } from "lucide-react";
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MessagesPage } from "@/lib/api/contract";
 import { errorMessage } from "@/lib/api/errors";
 import { useRooms } from "@/lib/api/hooks";
@@ -139,6 +139,18 @@ export function ChatScreen({ botName }: { botName: string }) {
     const el = scroller.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [messages.length, draftText, showWorking, workingSteps.length]);
+  // PM3 S7: a run card grows in place as its trace fills in (no new message); keep following it.
+  const content = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = content.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      const box = scroller.current;
+      if (box && stick.current) box.scrollTop = box.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const onScroll = () => {
     const el = scroller.current;
     if (el) stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
@@ -179,7 +191,7 @@ export function ChatScreen({ botName }: { botName: string }) {
       </div>
 
       <div ref={scroller} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto" data-testid="chat-scroll">
-        <div className="mx-auto max-w-2xl space-y-5 px-4 py-6 md:px-6">
+        <div ref={content} className="mx-auto max-w-2xl space-y-5 px-4 py-6 md:px-6">
           {roomMissing ? (
             <EmptyState
               icon={<MessageSquareOff aria-hidden />}
