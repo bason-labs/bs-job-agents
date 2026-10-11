@@ -31,6 +31,7 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | F4 part A (M1–M3, S1, S8) | ✅ merged; 2504 tests + 145 e2e green; Lead Claude-only; Origin required on mutations; criteria/schedule proposals via Ba's click; ScanOutputChecker port |
 | 2026-10-11 | W4a source adapters | ✅ merged; 2635 tests green; reports/phase4-w4a-adapters.md; engine needs relayed to F4b |
 | 2026-10-11 | F4 part B (S2–S7 + handoffs) | ✅ merged; 2674 tests + 151 e2e green; prompts v3 (Lead, Research, CV, Apply) |
-| 2026-10-11 | W4b e2e + runbook + live checks (worktree) | 🔄 running |
+| 2026-10-11 | W4b e2e + runbook + live checks | ✅ merged; 2676 unit + 151 mock e2e + 11 live-shape e2e; reports/phase4-w4b-e2e.md; Chrome/Figma live checks blocked (need Ba) |
+| 2026-10-11 | Phase 4 QA/QC (worktree) | 🔄 running |
 
 **Next action:** merge W4b, then the Phase 4 QA, then the Phase 4 PM (final), then the must-fix if any. Then the final summary to Ba with the runbook + dry-run steps (the dry run needs Ba present), delete the watchdog cron and clean up merged worktrees. Resume any agent stopped by a usage limit with SendMessage.
