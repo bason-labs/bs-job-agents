@@ -23,7 +23,7 @@ import type {
   Upload,
   WorkflowProposal,
 } from "@bs-job-agents/shared";
-import type { TranscriptLine } from "../contract";
+import type { ProgressLine } from "../contract";
 
 /** A step row plus its last preview text (the engine only sends it in step.* events; W3a handoff). */
 export interface StepRow extends Step {
@@ -90,7 +90,7 @@ export interface MockState {
   uploads: Record<string, Upload>;
   /** Viewer URLs by file id (seeded CV PDFs point at /public/dev samples). */
   fileUrls: Record<string, string>;
-  transcripts: Record<string, TranscriptLine[]>;
+  transcripts: Record<string, ProgressLine[]>;
   pauses: Record<string, MockPause>;
   savedAnswers: SavedAnswer[];
   /** The active Search Profile's version (kept equal to the active row in `profiles`). */

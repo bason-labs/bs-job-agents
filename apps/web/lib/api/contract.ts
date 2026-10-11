@@ -1,35 +1,30 @@
 // The data seam's contract: every screen talks to the orchestrator through a WebApi. Two
 // implementations: http.ts (the orchestrator, REST + SSE) and mock/ (in-memory, from the shared
-// fixtures; e2e tests and `pnpm dev` without an orchestrator). Shapes are the shared API schemas;
-// the few local extensions below are forward-compatible with additive server changes.
-import {
-  ApproveRequestSchema,
-  ApproveResponseSchema,
-  IdSchema,
-  IsoDateTimeSchema,
-  ReviewCardFlagsSchema,
-  ReviewCardSchema,
-  ReviewQueueResponseSchema,
-  type AnswerQuestionResponse,
-  type AppEvent,
-  type BotView,
-  type ChatSendRequest,
-  type ChoiceRequest,
-  type EngineStatus,
-  type Message,
-  type RequestChangesRequest,
-  type ReviewCard,
-  type Room,
-  type Run,
-  type RunControlRequest,
-  type RunControlResponse,
-  type RunDetail,
-  type RunStatus,
-  type SkipRequest,
-  type StepDetail,
-  type UploadsResponse,
+// fixtures; e2e tests and `pnpm dev` without an orchestrator). Shapes are the shared API schemas
+// (no local extensions: lib/api/parity.test.ts fails on drift).
+import type {
+  AnswerQuestionResponse,
+  AppEvent,
+  ApproveResponse,
+  TranscriptLine,
+  BotView,
+  ChatSendRequest,
+  ChoiceRequest,
+  EngineStatus,
+  Message,
+  RequestChangesRequest,
+  ReviewCard,
+  Room,
+  Run,
+  RunControlRequest,
+  RunControlResponse,
+  RunDetail,
+  RunStatus,
+  SkipRequest,
+  StepDetail,
+  UploadsResponse,
 } from "@bs-job-agents/shared";
-import { z } from "zod";
+import type { z } from "zod";
 import type { QueryValue } from "./routes";
 import type { BotSummary, RoomSummary, ShellData } from "./types";
 
@@ -75,39 +70,13 @@ export interface HealthState {
 }
 
 /**
- * POST /review/:jobId/approve. F2/S2 make `applicationId` nullable (no apply link, §7.3b) and the
- * engine reports `reapproval` (a new token for the same application after a denial or expiry).
+ * POST /review/:jobId/approve: the shared ApproveResponse (`applicationId` null without an apply
+ * link, §7.3b; `reapproval` true when it replaced a denied or expired token).
  */
-export const ApproveResultSchema = ApproveResponseSchema.extend({
-  applicationId: IdSchema.nullable(),
-  reapproval: z.boolean().optional().default(false),
-});
-export type ApproveResult = z.infer<typeof ApproveResultSchema>;
+export type ApproveResult = ApproveResponse;
 
-/**
- * Review-card flags the UI reads beyond the shared schema (forward-compatible; the API adds them in
- * Phase 3 QA, the mock has them now):
- * - companyMissing (PM2 S16): the company research failed for good; CV tailored without a profile
- * - dryRunSettled (PM2 S15): the card's dry run finished; Approve (without dryRun) now applies live
- */
-export const ReviewCardFlagsExtSchema = ReviewCardFlagsSchema.extend({
-  companyMissing: z.boolean().optional(),
-  dryRunSettled: z.boolean().optional(),
-});
-export type ReviewCardFlagsExt = z.infer<typeof ReviewCardFlagsExtSchema>;
-export const ReviewQueueResponseExtSchema = ReviewQueueResponseSchema.extend({
-  cards: z.array(ReviewCardSchema.extend({ flags: ReviewCardFlagsExtSchema })),
-});
-
-/** One transcript line (the shape of a `task.progress` event), for the step drawer (UC-22). */
-export const TranscriptLineSchema = z.object({
-  at: IsoDateTimeSchema,
-  kind: z.enum(["text", "tool_use", "tool_result", "status"]),
-  text: z.string(),
-  tool: z.string().nullable(),
-});
-export type TranscriptLine = z.infer<typeof TranscriptLineSchema>;
-export const TranscriptResponseSchema = z.object({ lines: z.array(TranscriptLineSchema) });
+/** A live transcript line from a `task.progress` event (the step drawer streams these, UC-22). */
+export type ProgressLine = Pick<Extract<AppEvent, { type: "task.progress" }>, "at" | "kind" | "text" | "tool">;
 
 // ---------------------------------------------------------------- inputs
 
@@ -126,20 +95,9 @@ export interface ApproveInput {
   cvVersionId: string;
   /** null = Apply writes the intro from the master CV (UC-08 b, PM FYI e). */
   introText: string | null;
-  /** Sent only when supportsDryRun says the backend takes it. */
+  /** §12 dry-run acceptance: fill and screenshot, never submit (sent only when true). */
   dryRun?: boolean;
 }
-
-/**
- * Dry-run approvals (§12): the mock takes them; the orchestrator once the shared contract carries
- * `dryRun` (W3a part 2; part 1 refuses the flag with 400, so it can never turn into a live one).
- */
-export function supportsDryRun(mode: ApiMode, schema: { shape: object } = ApproveRequestSchema): boolean {
-  return mode === "mock" || "dryRun" in schema.shape;
-}
-
-/** POST /review/:jobId/confirm-injection arrives with W3a part 2; the mock has it now. */
-export const supportsConfirmInjection = (mode: ApiMode) => mode === "mock";
 
 export interface RunsQuery {
   status?: RunStatus;
@@ -177,7 +135,7 @@ export interface WebApi {
   /** Apply resumed, or the next question Lead now asks (one at a time). */
   answerQuestion(taskId: string, input: AnswerInput): Promise<AnswerQuestionResponse>;
   resumeTask(taskId: string, input?: { confirmDomain: string | null }): Promise<void>;
-  /** UC-11 e "Don't allow": Apply stops instead of continuing on the new site (PROPOSED_ROUTES.taskDeclineDomain). */
+  /** UC-11 e "Don't allow": Apply stops instead of continuing on the new site (POST /tasks/:id/decline-domain). */
   declineDomain(taskId: string): Promise<void>;
   chooseOption(input: ChoiceRequest): Promise<void>;
 
@@ -188,6 +146,7 @@ export interface WebApi {
   getStep(stepId: string): Promise<StepDetail>;
   controlRun(runId: string, action: RunControlRequest["action"]): Promise<RunControlResponse>;
   rerunStep(stepId: string): Promise<void>;
+  /** UC-22: the saved transcript of the task's latest attempt (shared TranscriptResponse lines); [] when none yet. */
   getTranscript(taskId: string): Promise<TranscriptLine[]>;
 
   // review (UC-07, UC-08, UC-09, UC-10)

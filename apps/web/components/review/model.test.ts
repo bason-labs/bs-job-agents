@@ -69,9 +69,9 @@ describe("review card model", () => {
   });
 
   it("F3 flags: company research failed, and a settled dry run that can go live (PM2 S15/S16)", () => {
-    const missing = card({}, { companyMissing: true } as Partial<ReviewCard["flags"]>);
+    const missing = card({}, { companyMissing: true });
     expect(flagNotices(missing)).toEqual([{ key: "companyMissing", tone: "warn", text: "Company research failed · continuing without it. CV tailored this CV without a company profile." }]);
-    const settled = card({}, { dryRunSettled: true } as Partial<ReviewCard["flags"]>);
+    const settled = card({}, { dryRunSettled: true });
     expect(isDryRunSettled(settled)).toBe(true);
     expect(flagNotices(settled).map((n) => n.key)).toEqual(["dryRunSettled"]);
     expect(approveLabel(settled)).toBe("Approve live & submit");

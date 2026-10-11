@@ -1,9 +1,11 @@
 import {
   AnswerQuestionResponseSchema,
   AppEventSchema,
+  ApproveResponseSchema,
   BotsResponseSchema,
   RunControlResponseSchema,
   StepDetailSchema,
+  TranscriptLineSchema,
   ChatSendResponseSchema,
   EnginesResponseSchema,
   MessagesResponseSchema,
@@ -17,7 +19,6 @@ import {
   type MessageCard,
 } from "@bs-job-agents/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ApproveResultSchema, TranscriptResponseSchema } from "../contract";
 import { isApiError } from "../errors";
 import { MockBackend } from "./backend";
 import { LEAD_ROOM_ID, directRoomId } from "./seed";
@@ -58,7 +59,9 @@ describe("mock backend: parity with the shared API schemas", () => {
       expect(parsed.success, parsed.success ? "" : JSON.stringify(parsed.error.issues.slice(0, 3))).toBe(true);
     }
     const detail = await api.getRun("12");
-    expect(TranscriptResponseSchema.safeParse({ lines: await api.getTranscript(detail.tasks[0]!.id) }).success).toBe(true);
+    const lines = await api.getTranscript(detail.tasks[0]!.id);
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) expect(TranscriptLineSchema.safeParse(line).success).toBe(true);
     const step = await api.getStep(detail.steps[0]!.id);
     expect(StepDetailSchema.safeParse(step).success).toBe(true);
     expect(step.selfCheck.map((c) => c.item)).toContain("Every job has a reachable URL");
@@ -188,7 +191,7 @@ describe("mock backend: chat (UC-01, UC-24, UC-25)", () => {
 describe("mock backend: review (UC-07..12)", () => {
   it("UC-08: approve creates the application and Apply submits; the card leaves the queue", async () => {
     const res = await api.approve("101", { cvVersionId: "2102", introText: null });
-    expect(ApproveResultSchema.safeParse(res).success).toBe(true);
+    expect(ApproveResponseSchema.safeParse(res).success).toBe(true);
     expect(res.approval?.allowedDomains).toEqual(["itviec.com"]);
     expect((await api.getReviewQueue()).map((c) => c.job.id)).toEqual(["102", "103"]);
     await api.idle();

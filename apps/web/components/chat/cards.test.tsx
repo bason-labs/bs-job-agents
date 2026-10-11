@@ -136,11 +136,11 @@ describe("PauseCard (UC-17, UC-11 e)", () => {
 
   it("domain confirm: a refused Don't allow shows the server's reason and stays live", async () => {
     const declineDomain = vi.fn(async () => {
-      throw new ApiRequestError({ status: 404, code: "not_found", message: "“Don't allow” arrives with the next orchestrator update." });
+      throw new ApiRequestError({ status: 409, code: "conflict", message: "task t9 is not waiting for a domain to confirm" });
     });
     setup(<PauseCard card={{ type: "pause", taskId: "t9", reason: "domain_confirm(acme.wd3.myworkdayjobs.com)" }} />, { api: { declineDomain } });
     await userEvent.click(screen.getByRole("button", { name: "Don't allow" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("arrives with the next orchestrator update");
+    expect(await screen.findByRole("alert")).toHaveTextContent("task t9 is not waiting for a domain to confirm");
     expect(screen.getByTestId("pause-card")).toHaveAttribute("data-state", "live");
   });
 

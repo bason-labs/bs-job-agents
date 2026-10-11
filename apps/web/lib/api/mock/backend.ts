@@ -23,6 +23,7 @@ import {
   type StepDetail,
   type StepStatus,
   type Task,
+  type TranscriptLine,
   type Upload,
 } from "@bs-job-agents/shared";
 import type { z } from "zod";
@@ -32,7 +33,6 @@ import type {
   HttpMethod,
   ApproveInput,
   ApproveResult,
-  ReviewCardFlagsExt,
   EventFeed,
   EventListener,
   FeedStatus,
@@ -40,12 +40,13 @@ import type {
   MessagesPage,
   RunsQuery,
   SendMessageInput,
-  TranscriptLine,
+  ProgressLine,
   WebApi,
 } from "../contract";
 import { ApiRequestError } from "../errors";
 import { toBotSummary, toRoomSummary, toShellData } from "../map";
 import type { BotSummary, RoomSummary, ShellData } from "../types";
+import { toSavedLines } from "../transcript";
 import { handleMockRequest } from "./routes";
 import { LEAD_ROOM_ID, createSeedState } from "./seed";
 import * as sim from "./sim";
@@ -286,8 +287,8 @@ export class MockBackend implements WebApi, EventFeed {
     return task;
   }
 
-  progress(task: Task, kind: TranscriptLine["kind"], text: string, tool: string | null = null): void {
-    const line: TranscriptLine = { at: this.nowIso(), kind, text, tool };
+  progress(task: Task, kind: ProgressLine["kind"], text: string, tool: string | null = null): void {
+    const line: ProgressLine = { at: this.nowIso(), kind, text, tool };
     (this.state.transcripts[task.id] ??= []).push(line);
     this.emit({ type: "task.progress", taskId: task.id, runId: task.runId, stepId: task.stepId, botName: task.botName, kind, text, tool });
   }
@@ -551,7 +552,7 @@ export class MockBackend implements WebApi, EventFeed {
   }
 
   async getTranscript(taskId: string): Promise<TranscriptLine[]> {
-    return structuredClone(this.state.transcripts[taskId] ?? []);
+    return toSavedLines(this.state.transcripts[taskId] ?? []);
   }
 
   // ------------------------------------------------------------ WebApi: review
@@ -570,7 +571,7 @@ export class MockBackend implements WebApi, EventFeed {
     }
     const option = card.cvOptions.find((o) => o.cvVersion.id === input.cvVersionId);
     if (!option) throw fail(400, "validation_failed", `CV version ${input.cvVersionId} is not on this card`);
-    if ((card.flags as ReviewCardFlagsExt).dryRunSettled) {
+    if (card.flags.dryRunSettled) {
       // PM2 S15 "Approve live" after a settled dry run (engine approveLiveAfterDryRun).
       if (input.dryRun) throw fail(409, "conflict", "this card's dry run has finished; approve it live, or skip it");
       const dry = sim.settledDryRun(this, card.job.id);
@@ -578,7 +579,7 @@ export class MockBackend implements WebApi, EventFeed {
         throw fail(409, "already_applied", "the dry run reported that it submitted, so it may really have been sent; check it on the Applications screen first");
       }
       if (dry && dry.app.cvVersionId !== input.cvVersionId) throw fail(400, "validation_failed", "a live approval after a dry run keeps the CV version the dry run used");
-      card.flags = { ...card.flags, dryRunSettled: false } as ReviewCard["flags"];
+      card.flags = { ...card.flags, dryRunSettled: false };
     }
     return sim.approve(this, card, option, input);
   }

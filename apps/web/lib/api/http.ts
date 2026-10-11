@@ -4,25 +4,29 @@
 import {
   API_ROUTES,
   AnswerQuestionResponseSchema,
+  ApproveResponseSchema,
   BotsResponseSchema,
+  BridgesResponseSchema,
   ChatSendResponseSchema,
   EnginesResponseSchema,
   HealthStatusSchema,
   MessagesResponseSchema,
+  ReviewQueueResponseSchema,
   RoomsResponseSchema,
   RunControlResponseSchema,
   RunDetailSchema,
   RunsResponseSchema,
   StepDetailSchema,
+  TranscriptResponseSchema,
   UploadsResponseSchema,
   fileUrl,
 } from "@bs-job-agents/shared";
 import type { z } from "zod";
-import { ApproveResultSchema, ReviewQueueResponseExtSchema, TranscriptResponseSchema, type ApiRequestOptions, type EventFeed, type HealthState, type WebApi } from "./contract";
+import type { ApiRequestOptions, EventFeed, HealthState, WebApi } from "./contract";
 import { csrfHeaders } from "./csrf";
 import { ApiRequestError, apiErrorFromResponse } from "./errors";
 import { toBotSummary, toRoomSummary, toShellData } from "./map";
-import { PROPOSED_ROUTES, apiPath } from "./routes";
+import { apiPath } from "./routes";
 
 export interface HttpClientOptions {
   /** `http://127.0.0.1:4100` on the server, `/api` in the browser. */
@@ -98,8 +102,19 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
   const listBots = async () => (await request("GET", API_ROUTES.bots, { schema: BotsResponseSchema })).bots;
   const listRooms = async () => (await request("GET", API_ROUTES.rooms, { schema: RoomsResponseSchema })).rooms;
   const listEngines = async () => (await request("GET", API_ROUTES.engines, { schema: EnginesResponseSchema })).engines;
-  // The extended schema keeps the flags the shared one does not list yet (companyMissing, dryRunSettled).
-  const getReviewQueue = async () => (await request("GET", API_ROUTES.reviewQueue, { schema: ReviewQueueResponseExtSchema })).cards;
+  const getReviewQueue = async () => (await request("GET", API_ROUTES.reviewQueue, { schema: ReviewQueueResponseSchema })).cards;
+  /**
+   * §11 sidebar "Chrome extension status": not connected when an engine's extension does not
+   * answer (null = unknown, the engine is stopped). bridge.status events keep it live.
+   */
+  const chromeConnected = async () => {
+    try {
+      const { chrome } = await request("GET", API_ROUTES.bridges, { schema: BridgesResponseSchema });
+      return chrome.every((c) => c.connected !== false);
+    } catch {
+      return true;
+    }
+  };
   const listRuns = async (q: { status?: string; limit?: number } = {}) =>
     (await request("GET", API_ROUTES.runs, { query: { status: q.status, limit: q.limit }, schema: RunsResponseSchema })).runs;
 
@@ -121,9 +136,8 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
     },
 
     async getShellData() {
-      const [bots, rooms, engines, cards, runs] = await Promise.all([listBots(), listRooms(), listEngines(), getReviewQueue(), listRuns()]);
-      // No REST endpoint reports the Chrome bridge yet (handoff to W3a); `bridge.status` events update it.
-      return toShellData({ bots, rooms, engines, reviewCount: cards.length, runs, chromeConnected: true });
+      const [bots, rooms, engines, cards, runs, chrome] = await Promise.all([listBots(), listRooms(), listEngines(), getReviewQueue(), listRuns(), chromeConnected()]);
+      return toShellData({ bots, rooms, engines, reviewCount: cards.length, runs, chromeConnected: chrome });
     },
     async getBot(name) {
       const bot = (await listBots()).find((b) => b.name === name);
@@ -160,18 +174,10 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
       await request("POST", API_ROUTES.taskResume, { params: { id: taskId }, body: { confirmDomain: input.confirmDomain } });
     },
     async declineDomain(taskId) {
-      try {
-        await request("POST", PROPOSED_ROUTES.taskDeclineDomain, { params: { id: taskId }, body: {} });
-      } catch (err) {
-        // Proposed route: until the orchestrator serves it, say so instead of "no route …".
-        if (err instanceof ApiRequestError && err.code === "not_found" && /^no route/.test(err.message)) {
-          throw new ApiRequestError({ status: 404, code: "not_found", message: "“Don't allow” arrives with the next orchestrator update. For now, let Apply wait or cancel the run in Flows." });
-        }
-        throw err;
-      }
+      await request("POST", API_ROUTES.taskDeclineDomain, { params: { id: taskId }, body: {} });
     },
     async chooseOption(input) {
-      await request("POST", PROPOSED_ROUTES.chatChoice, { body: input });
+      await request("POST", API_ROUTES.chatChoices, { body: input });
     },
 
     listRuns,
@@ -189,9 +195,9 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
     },
     async getTranscript(taskId) {
       try {
-        return (await request("GET", PROPOSED_ROUTES.taskTranscript, { params: { id: taskId }, schema: TranscriptResponseSchema })).lines;
+        return (await request("GET", API_ROUTES.taskTranscript, { params: { id: taskId }, schema: TranscriptResponseSchema })).lines;
       } catch (err) {
-        // Not served yet (proposed route): the drawer shows live lines only.
+        // 404: the task has no saved transcript yet (it has not started); the drawer streams live lines.
         if (err instanceof ApiRequestError && err.code === "not_found") return [];
         throw err;
       }
@@ -200,7 +206,7 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
     getReviewQueue,
     async approve(jobId, input) {
       const body = { cvVersionId: input.cvVersionId, introText: input.introText, ...(input.dryRun ? { dryRun: true } : {}) };
-      return request("POST", API_ROUTES.reviewApprove, { params: { jobId }, body, schema: ApproveResultSchema });
+      return request("POST", API_ROUTES.reviewApprove, { params: { jobId }, body, schema: ApproveResponseSchema });
     },
     async requestChanges(jobId, input) {
       await request("POST", API_ROUTES.reviewRequestChanges, { params: { jobId }, body: input });
