@@ -15,7 +15,8 @@
     "bridges:live-check": "tsx src/bridges/live-check.ts",
     "db:generate": "drizzle-kit generate",
     "bots:schemas": "tsx src/runner/scripts/write-bot-schemas.ts",
-    "bots:lock": "tsx src/runner/scripts/write-prompt-lock.ts"
+    "bots:lock": "tsx src/runner/scripts/write-prompt-lock.ts",
+    "import:applications": "tsx scripts/import-applications.ts"
   },
   "dependencies": {
     "@bs-job-agents/shared": "workspace:*",
