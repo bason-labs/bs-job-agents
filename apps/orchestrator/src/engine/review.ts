@@ -213,6 +213,29 @@ export function announceSettledDryRun(core: EngineCore, conn: Conn, actionRow: S
   });
 }
 
+/**
+ * W4b open issue 3: Ba settled a dry run by hand (a dry run that reported "submitted": needs_check →
+ * failed on the Applications screen). If that puts its card back (Approve live), announce it like
+ * announceSettledDryRun does, so an open review screen shows it without depending on a queue reload.
+ * A no-op for a live application, or a dry run whose card is not (or no longer) its review's.
+ */
+export function announceDryRunCardForApplication(core: EngineCore, applicationId: number): void {
+  core.db.transaction((tx) => {
+    const app = getApplication(tx, applicationId);
+    if (!app?.dryRun) return;
+    let ref: ReviewRef;
+    try {
+      ref = findReview(core, tx, app.jobId);
+    } catch {
+      return; // no review card for this job
+    }
+    const out = ref.action?.output as ActionStepOutput | null | undefined;
+    if (out?.applicationId !== app.id) return;
+    announceSettledDryRun(core, tx, ref.action);
+  });
+  core.bus.flush();
+}
+
 function settledDryRunRef(conn: Conn, ref: ReviewRef): boolean {
   return isDryRunSettled(conn, {
     humanStatus: ref.human.status,

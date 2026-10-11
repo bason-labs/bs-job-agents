@@ -91,6 +91,22 @@ describe("GET /review: dryRunSettled (PM2 S15)", () => {
     expect(back!.flags.dryRunSettled).toBe(true);
   });
 
+  it("Ba marking a 'submitted' dry run failed announces its card (review.ready), so an open review screen shows it without a queue reload (W4b open issue 3)", async () => {
+    const x = await toReview();
+    const { card, dryAppId } = await dryRun(x, true);
+    const readyFor = () => x.t.events("review.ready").filter((e) => e.jobId === card.job.id);
+    const before = readyFor().length;
+    const res = await x.post(`/applications/${dryAppId}/status`, { status: "failed", note: "checked: not sent" });
+    expect(res.statusCode).toBe(200);
+    const ready = readyFor();
+    expect(ready).toHaveLength(before + 1);
+    expect(ready.at(-1)).toMatchObject({ jobId: card.job.id, cvVersionIds: [card.cvOptions[0]!.cvVersion.id] });
+    // A status change on a settled card that is already back does not announce it twice.
+    const again = await x.post(`/applications/${dryAppId}/status`, { status: "failed", note: "still not sent" });
+    expect([200, 409]).toContain(again.statusCode);
+    expect(readyFor()).toHaveLength(before + 1);
+  });
+
   it("Skip closes a settled dry-run card (the job is skipped, the dry run stays as it was)", async () => {
     const x = await toReview();
     const { card, dryAppId } = await dryRun(x);
