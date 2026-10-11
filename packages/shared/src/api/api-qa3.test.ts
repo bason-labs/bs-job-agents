@@ -2,6 +2,7 @@
 // "Don't allow" route (UC-11 e).
 import { describe, expect, it } from "vitest";
 import { API_ROUTES } from "./common.js";
+import { API_CONTRACT, apiEndpoints } from "./contract.js";
 import { ReviewCardFlagsSchema } from "./review.js";
 
 const base = { qaPassed: true, escalated: false, needsInput: false, injectionFlagged: false, masterChanged: false, noApplyLink: false, lowConfidenceCompany: false };
@@ -15,6 +16,16 @@ describe("review card flags (PM2 S15, S16)", () => {
   it("stay optional for older payloads and refuse non-booleans", () => {
     expect(ReviewCardFlagsSchema.safeParse(base).success).toBe(true);
     expect(ReviewCardFlagsSchema.safeParse({ ...base, dryRunSettled: "yes" }).success).toBe(false);
+  });
+});
+
+describe("API_CONTRACT (one row per API_ROUTES entry)", () => {
+  it("lists every route with at least one method, and nothing else", () => {
+    expect(Object.keys(API_CONTRACT).sort()).toEqual(Object.keys(API_ROUTES).sort());
+    for (const [key, methods] of Object.entries(API_CONTRACT)) expect(Object.keys(methods).length, key).toBeGreaterThan(0);
+    const pairs = apiEndpoints().map((e) => `${e.method} ${e.path}`);
+    expect(new Set(pairs).size).toBe(pairs.length);
+    expect(pairs).toContain("POST /tasks/:id/decline-domain");
   });
 });
 
