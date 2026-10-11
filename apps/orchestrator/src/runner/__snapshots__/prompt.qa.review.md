@@ -32,6 +32,10 @@ Task input (JSON):
     "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "textChars": 52
   },
+  "cvLanguage": "en",
+  "expectedLanguages": [
+    "en"
+  ],
   "masterCvVersion": 3
 }
 ```

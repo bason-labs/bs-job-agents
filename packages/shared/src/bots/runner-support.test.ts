@@ -75,6 +75,23 @@ describe("S5: the approval token never reaches a prompt", () => {
     expect(schema.safeParse({ ...qaReviewInputFixture, pdf: { ...qaReviewInputFixture.pdf, stray: 1 } }).success).toBe(false);
   });
 
+  it("qa.review carries the CV version's target language and the expected languages (live run 1, §6.3)", () => {
+    const schema = BOT_TASK_PROMPT_INPUT_SCHEMAS["qa.review"];
+    expect(qaReviewInputFixture).toMatchObject({ cvLanguage: "en", expectedLanguages: ["en"] });
+    const viJdEnCv = {
+      ...qaReviewInputFixture,
+      job: { ...qaReviewInputFixture.job, language: "vi" },
+      cvLanguage: "en",
+      expectedLanguages: ["vi", "en"],
+    };
+    expect(schema.safeParse(viJdEnCv).success).toBe(true);
+    expect(schema.safeParse({ ...qaReviewInputFixture, cvLanguage: "ja" }).success).toBe(false);
+    expect(schema.safeParse({ ...qaReviewInputFixture, expectedLanguages: [] }).success).toBe(false);
+    // Additive: inputs stored before the fields still parse.
+    const { cvLanguage: _l, expectedLanguages: _e, ...before } = qaReviewInputFixture;
+    expect(BOT_TASK_INPUT_SCHEMAS["qa.review"].safeParse(before).success).toBe(true);
+  });
+
   it("a key a prompt schema does not know is an error, never silently sent to a model (QA Phase 2)", () => {
     const inputs = {
       "research.scan": researchScanInputFixture,
