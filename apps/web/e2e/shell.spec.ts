@@ -187,4 +187,24 @@ test.describe("mobile", () => {
     // No horizontal page scroll at phone width.
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
+
+  test("PM3 S7: the page title stays readable next to the sample-data badge (no one-letter collapse)", async ({ page }) => {
+    for (const path of ["/chat", "/applications", "/criteria"]) {
+      await open(page, path);
+      const box = await title(page).boundingBox();
+      // At least a few words wide, and the whole title fits on its line (not "C…").
+      expect(box!.width, path).toBeGreaterThan(60);
+      expect(await title(page).evaluate((el) => el.scrollWidth <= el.clientWidth + 1), path).toBe(true);
+    }
+  });
+});
+
+test("PM3 S7: the app has a favicon (the J brand mark), so browsers stop asking for a missing one", async ({ page }) => {
+  await open(page, "/chat");
+  const href = await page.locator('link[rel="icon"]').first().getAttribute("href");
+  expect(href).toMatch(/icon/);
+  const res = await page.request.get(href!);
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toMatch(/svg/);
+  expect(await res.text()).toContain(">J<");
 });

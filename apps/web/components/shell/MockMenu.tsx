@@ -34,14 +34,16 @@ export function MockMenu() {
   return (
     <div className="flex items-center gap-2">
       <Tooltip content="The orchestrator is not running, so this is sample data from a built-in mock. Start it with `pnpm dev`.">
-        <Badge tone="warn" tabIndex={0} data-testid="mock-badge">
-          Sample data
+        <Badge tone="warn" tabIndex={0} data-testid="mock-badge" aria-label="Sample data">
+          {/* PM3 S7: at phone width the badge is a dot, so the page title keeps its room. */}
+          <span aria-hidden className="size-1.5 rounded-full bg-current sm:hidden" />
+          <span className="hidden sm:inline">Sample data</span>
         </Badge>
       </Tooltip>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="warn" size="sm" rightIcon={<ChevronDown aria-hidden className="size-3.5" />} data-testid="simulate-menu">
-            Simulate
+          <Button variant="warn" size="sm" rightIcon={<ChevronDown aria-hidden className="size-3.5" />} data-testid="simulate-menu" aria-label="Simulate">
+            <span className="hidden sm:inline">Simulate</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-72">

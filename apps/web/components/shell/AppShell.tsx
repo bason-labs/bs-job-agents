@@ -127,7 +127,7 @@ export function AppShell({ data: initialData, health: initialHealth = HEALTHY, c
                 {title}
               </h1>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               {api.mode === "live" && feedStatus === "reconnecting" ? (
                 <span role="status" data-testid="live-reconnecting" className="hidden items-center gap-1.5 text-xs text-warn sm:inline-flex">
                   <RefreshCw aria-hidden className="size-3.5 animate-spin" /> Reconnecting live updates…
