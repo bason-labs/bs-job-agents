@@ -24,6 +24,7 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | W3b UI + lib/api | ✅ merged; 2166 tests green; reports/phase3-w3b-ui.md; API gaps relayed to W3a part 2 |
 | 2026-10-11 | W3a API part 2 | ✅ merged; 2225 tests green; reports/phase3-w3a-api-part2.md; engine requests relayed to F3 |
 | 2026-10-11 | F3 fixer | ✅ merged; 2339 tests green; reports/phase3-f3-fixer.md; S7 live check blocked (Chrome extension not connected) |
-| 2026-10-11 | W3d (wire W3c screens to live API + F3 web follow-ups) (worktree) | 🔄 running |
+| 2026-10-11 | W3d wiring | ✅ merged; 2382 tests green; reports/phase3-w3d-wiring.md |
+| 2026-10-11 | Phase 3 QA/QC (worktree) | 🔄 running |
 
-**Next action:** merge W3d when it reports. Then Phase 3 QA: whole app; the API wiring left by F3 (demotion field, declineDomain route, memory delete via removeMemoryNote, figma-change choice); a live web+API smoke. Then PM, then must-fix, then Phase 4. Resume any agent stopped by a usage limit with SendMessage.
+**Next action:** merge Phase 3 QA when it reports, then run the Phase 3 PM, then the must-fix fixer, then Phase 4 (W4a adapters, W4b e2e + runbook + dry run, W4c prompts + master CV). Resume any agent stopped by a usage limit with SendMessage.
