@@ -67,6 +67,8 @@ export const ApproveResponseSchema = z.object({
   /** Null when there is nothing to submit (no apply link, §7.3b). */
   taskId: IdSchema.nullable(),
   approval: z.object({ expiresAt: IsoDateTimeSchema, allowedDomains: z.array(DomainSchema) }).nullable(),
+  /** This approval replaced a denied or expired token ("approve again", PM M2). W3a, additive. */
+  reapproval: z.boolean().optional(),
 });
 export type ApproveResponse = z.infer<typeof ApproveResponseSchema>;
 

@@ -2,11 +2,13 @@
 // flag) with its role from bot.json, live activity, track record and promotion suggestion (§5.3),
 // its memory (bots/<name>/memory.md) and, for a Codex bot that reads the browser, the residual risk
 // (§4.4: its site allowlist is only its prompt).
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { maxTrustLevel, type BotActivity, type BotDefinition, type BotView, type TrustLevel } from "@bs-job-agents/shared";
 import { listRuns, listSteps, listTasks, mappers, type Bot, type Db } from "../../db/index.js";
 import type { ActionStepOutput, GateStepOutput, HumanStepOutput, WorkflowSource } from "../../engine/index.js";
+import { readApiState } from "../state.js";
 
 /** §5.3: 10 consecutive tasks accepted without changes. */
 export const PROMOTION_STREAK = 10;
@@ -21,13 +23,21 @@ export function botActivity(db: Db, name: string): BotActivity {
 
 /** Memory notes, oldest first, without the list marker. */
 export function botMemory(botsDir: string, name: string): string[] {
+  return botMemoryNotes(botsDir, name).map((n) => n.text);
+}
+
+/** A note's id: a hash of its whole line in memory.md (stable while the line is). */
+export const memoryNoteId = (line: string): string => createHash("sha256").update(line.trim()).digest("hex").slice(0, 16);
+
+/** Memory notes with ids (PM S14: Ba deletes one by id), oldest first. */
+export function botMemoryNotes(botsDir: string, name: string): { id: string; text: string; line: string }[] {
   const path = join(botsDir, name, "memory.md");
   if (!existsSync(path)) return [];
   return readFileSync(path, "utf8")
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.length > 0)
-    .map((l) => l.replace(/^[-*]\s+/, ""));
+    .map((line) => ({ id: memoryNoteId(line), text: line.replace(/^[-*]\s+/, ""), line }));
 }
 
 interface Streak {
@@ -85,7 +95,12 @@ function streakOf(db: Db, workflows: WorkflowSource | null, name: string): Strea
 const RESIDUAL_RISK =
   "On Codex this bot's site allowlist is enforced only by its prompt, and its read-only sandbox can read files on this Mac (§4.4). Switch it to Claude for a site guard in code.";
 
-export function botView(db: Db, opts: { botsDir: string; workflows: WorkflowSource | null }, def: BotDefinition | undefined, row: Bot | undefined): BotView | null {
+export function botView(
+  db: Db,
+  opts: { botsDir: string; workflows: WorkflowSource | null; dataDir?: string },
+  def: BotDefinition | undefined,
+  row: Bot | undefined,
+): BotView | null {
   if (!def && !row) return null;
   const name = (row?.name ?? def?.name)!;
   const record = row
@@ -101,16 +116,28 @@ export function botView(db: Db, opts: { botsDir: string; workflows: WorkflowSour
       };
   const streak = streakOf(db, opts.workflows, name);
   const level = record.trustLevel as TrustLevel;
+  const notes = botMemoryNotes(opts.botsDir, name);
+  // UC-19: a dismissed suggestion comes back only after another full streak.
+  const dismissed = opts.dataDir ? readApiState(opts.dataDir).promotionDismissals[name] : undefined;
+  const needed = dismissed ? dismissed.count + PROMOTION_STREAK : PROMOTION_STREAK;
   return {
     ...record,
     role: def?.role ?? "",
     activity: botActivity(db, name),
     trackRecord: streak && streak.count > 0 ? streak.label(streak.count) : null,
     // UC-19: the suggestion shows even for Apply, whose promote button stays disabled.
-    promotionSuggested: streak !== null && streak.count >= PROMOTION_STREAK && level < 2,
+    promotionSuggested: streak !== null && streak.count >= needed && level < 2,
     // Promote or restore one level, up to the Phase 1 cap (Apply: L1).
     promoteAllowed: level < maxTrustLevel(name),
-    memory: botMemory(opts.botsDir, name),
+    memory: notes.map((n) => n.text),
+    memoryNotes: notes.map(({ id, text }) => ({ id, text })),
     residualRisk: record.engine === "codex" && def?.browser ? RESIDUAL_RISK : null,
+    // §5.3 demotion is F3's (in progress); it is shown once the engine records one.
+    demotion: null,
   };
+}
+
+/** The current streak count (UC-19), for a dismissal. */
+export function promotionStreak(db: Db, workflows: WorkflowSource | null, name: string): number {
+  return streakOf(db, workflows, name)?.count ?? 0;
 }

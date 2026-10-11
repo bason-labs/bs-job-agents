@@ -3,9 +3,10 @@ import {
   ApplicationDetailSchema,
   ApplicationStatusChangeResponseSchema,
   ApplicationsResponseSchema,
+  ApplyAgainResponseSchema,
 } from "@bs-job-agents/shared";
 import { afterEach, describe, expect, it } from "vitest";
-import { importApplication, recordExport, transitionApplication } from "../../db/index.js";
+import { getRun, importApplication, recordExport, transitionApplication } from "../../db/index.js";
 import { NOVAPAY, seedApprovedApplication, seedJob } from "../../db/test-helpers.js";
 import { createApiHarness, seedCvVersion, seedRecordedApplication, type ApiHarness } from "../testing.js";
 
@@ -41,6 +42,25 @@ describe("GET /applications (UC-13, UC-13b)", () => {
     });
     expect(item.confirmationScreenshotFileId).toBe(`app-${application.id}-confirmation`);
     expect(item.partialRecord).toBe(false);
+    // The CV actually sent: the record's uploaded copy.
+    expect(item.cvFile).toMatchObject({ id: `app-${application.id}-cv`, kind: "cv_pdf", filename: "BA_HUYNH_NOVAPAY_EN.pdf" });
+  });
+
+  it("POST /applications/:id/apply-again starts apply-to-link with applyAgain for a failed application only", async () => {
+    h = await createApiHarness();
+    const job = seedJob(h.t.db, NOVAPAY);
+    const cv = seedCvVersion(h.t.db, job);
+    const { application } = seedApprovedApplication(h.t.db, job, cv);
+    const notYet = await h.post(`/applications/${application.id}/apply-again`);
+    expect(notYet.statusCode).toBe(409);
+    transitionApplication(h.t.db, application.id, "failed", { by: "system" });
+    const res = await h.post(`/applications/${application.id}/apply-again`);
+    expect(res.statusCode).toBe(201);
+    expect(ApplyAgainResponseSchema.parse(res.json())).toEqual({ jobId: String(job.id), runId: "1" });
+    const run = getRun(h.t.db, 1)!;
+    expect(run).toMatchObject({ workflowName: "apply-to-link", trigger: "link" });
+    expect(run.params).toMatchObject({ url: NOVAPAY.url, applyAgain: true });
+    expect((await h.post("/applications/999/apply-again")).statusCode).toBe(404);
   });
 
   it("marks imported applications and records whose files were not captured as partial", async () => {

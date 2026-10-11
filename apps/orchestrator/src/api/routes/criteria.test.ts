@@ -1,4 +1,4 @@
-import { ApiErrorSchema, CriteriaResponseSchema, CriteriaVersionsResponseSchema, SEARCH_PROFILE_DEFAULTS } from "@bs-job-agents/shared";
+import { ApiErrorSchema, CriteriaResponseSchema, CriteriaVersionsResponseSchema, SEARCH_PROFILE_DEFAULTS, SearchProfilesResponseSchema } from "@bs-job-agents/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApiHarness, type ApiHarness } from "../testing.js";
 
@@ -47,6 +47,9 @@ describe("search criteria (UC-21b, §7.5)", () => {
       [2, true],
       [1, false],
     ]);
+    // The schedule modal lists each profile once, at its newest version.
+    const profiles = SearchProfilesResponseSchema.parse((await h.get("/criteria/profiles")).json()).profiles;
+    expect(profiles.map((p) => [p.version, p.active])).toEqual([[2, true]]);
   });
 
   it("the first save creates the profile", async () => {

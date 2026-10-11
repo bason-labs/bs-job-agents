@@ -1,12 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ApiErrorSchema, MasterCvSchema, OkResponseSchema, SavedAnswersResponseSchema } from "@bs-job-agents/shared";
-import { masterCvFixture } from "@bs-job-agents/shared/fixtures";
+import { ApiErrorSchema, FactRequestsResponseSchema, MasterCvSchema, MasterCvVersionsResponseSchema, OkResponseSchema, SavedAnswersResponseSchema } from "@bs-job-agents/shared";
+import { cvOutputFixture, masterCvFixture } from "@bs-job-agents/shared/fixtures";
 import { parse } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
-import { listSavedAnswers, saveAnswer } from "../../db/index.js";
+import { createCvVersion, listSavedAnswers, saveAnswer } from "../../db/index.js";
+import { NOVAPAY, seedJob } from "../../db/test-helpers.js";
 import { fileMasterCv } from "../../engine/index.js";
-import { createApiHarness, writeDataFile, type ApiHarness } from "../testing.js";
+import { createApiHarness, seedCvVersion, writeDataFile, type ApiHarness } from "../testing.js";
 
 let h: ApiHarness | null = null;
 afterEach(async () => {
@@ -37,6 +38,36 @@ describe("master CV (UC-20, §6.1)", () => {
     const stale = await h.put("/master-cv", edited);
     expect(stale.statusCode).toBe(409);
     expect(ApiErrorSchema.parse(stale.json()).error.details).toMatchObject({ reason: "master_cv_changed", currentVersion: 2 });
+    // UC-20 history, newest first.
+    const versions = MasterCvVersionsResponseSchema.parse((await h.get("/master-cv/versions")).json()).versions;
+    expect(versions.map((v) => [v.version, v.factCount])).toEqual([
+      [2, masterCvFixture.facts.length + 1],
+      [1, masterCvFixture.facts.length],
+    ]);
+  });
+
+  it("lists open fact requests from the newest CV version of open jobs; 'No, I don't' dismisses one", async () => {
+    h = await createApiHarness();
+    const job = seedJob(h.t.db, NOVAPAY);
+    seedCvVersion(h.t.db, job);
+    const cv = createCvVersion(h.t.db, {
+      jobId: job.id,
+      language: "en",
+      tailored: cvOutputFixture.tailored,
+      figmaFrameName: "NOVAPAY_EN_v2",
+      figmaFrameUrl: null,
+      pdfPath: null,
+      pdfSha256: null,
+      changeNotes: [],
+      masterVersion: 1,
+      promptVersion: 1,
+      factRequests: [{ topic: "Docker", question: "Have you used Docker in production?", reason: "The JD asks for it" }],
+    });
+    const list = FactRequestsResponseSchema.parse((await h.get("/master-cv/fact-requests")).json()).requests;
+    expect(list).toEqual([{ id: `${cv.id}-0`, jobId: String(job.id), company: "NovaPay", topic: "Docker", question: "Have you used Docker in production?", reason: "The JD asks for it" }]);
+    expect((await h.post(`/master-cv/fact-requests/${cv.id}-0/dismiss`)).statusCode).toBe(200);
+    expect(FactRequestsResponseSchema.parse((await h.get("/master-cv/fact-requests")).json()).requests).toEqual([]);
+    expect((await h.post(`/master-cv/fact-requests/${cv.id}-0/dismiss`)).statusCode).toBe(404);
   });
 
   it("validates the facts (duplicate ids, bad email) and reports a hand-edited file it cannot read", async () => {

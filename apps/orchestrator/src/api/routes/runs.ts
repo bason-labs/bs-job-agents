@@ -23,6 +23,7 @@ import { requireDb, requireEngine, type ApiContext } from "../context.js";
 import { badRequest, notFound } from "../errors.js";
 import { safeDataPath } from "../files.js";
 import { idParam, keepValid, parseWith, respond } from "../http.js";
+import { runDefinition, stepPreviews } from "../views/runs.js";
 
 type IdParams = { Params: { id: string } };
 
@@ -78,10 +79,14 @@ export function runRoutes(app: FastifyInstance, ctx: ApiContext): void {
     const id = idParam(req.params.id, "run");
     const run = getRun(db, id);
     if (!run) throw notFound(`run ${id} not found`);
+    const stepRows = listSteps(db, id);
+    const taskRows = listTasks(db, { runId: id });
     return respond(RunDetailSchema, {
       run: mappers.toRun(run),
-      steps: keepValid(StepSchema, listSteps(db, id).map(mappers.toStep), warn),
-      tasks: keepValid(TaskSchema, listTasks(db, { runId: id }).map(toApiTask), warn),
+      steps: keepValid(StepSchema, stepRows.map(mappers.toStep), warn),
+      tasks: keepValid(TaskSchema, taskRows.map(toApiTask), warn),
+      definition: runDefinition(ctx.workflows ?? ctx.engine?.deps.workflows, run.workflowName, run.workflowVersion),
+      previews: stepPreviews(db, id, stepRows, taskRows),
     });
   });
 

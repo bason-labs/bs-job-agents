@@ -21,13 +21,13 @@ describe("apiPath", () => {
     expect(apiPath(API_ROUTES.reviewQueue)).toBe("/review");
   });
 
-  it("lists the routes the UI needs beyond API_ROUTES (handoff to W3a)", () => {
+  it("the routes the UI proposed are now in API_ROUTES (W3a part 2 landed the handoff)", () => {
     expect(PROPOSED_ROUTES).toEqual({
       chatChoice: "/chat/choices",
       taskTranscript: "/tasks/:id/transcript",
     });
     for (const path of Object.values(PROPOSED_ROUTES)) {
-      expect(Object.values(API_ROUTES)).not.toContain(path);
+      expect(Object.values(API_ROUTES)).toContain(path);
     }
   });
 });

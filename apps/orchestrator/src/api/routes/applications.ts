@@ -8,11 +8,12 @@ import {
   ApplicationStatusChangeRequestSchema,
   ApplicationStatusChangeResponseSchema,
   ApplicationsResponseSchema,
+  ApplyAgainResponseSchema,
 } from "@bs-job-agents/shared";
 import type { FastifyInstance } from "fastify";
-import { getApplication, getLastExport, listApplications, mappers, transitionApplication } from "../../db/index.js";
-import { emitEvent, requireDb, type ApiContext } from "../context.js";
-import { notFound } from "../errors.js";
+import { getApplication, getJob, getLastExport, listApplications, mappers, transitionApplication } from "../../db/index.js";
+import { emitEvent, requireDb, requireEngine, type ApiContext } from "../context.js";
+import { conflict, notFound } from "../errors.js";
 import { idParam, keepValid, parseWith, respond } from "../http.js";
 import { applicationDetail, applicationListItem } from "../views/applications.js";
 
@@ -48,5 +49,20 @@ export function applicationRoutes(app: FastifyInstance, ctx: ApiContext): void {
     const moved = transitionApplication(db, id, body.status, { by: "manual", now: ctx.now(), ...(body.note !== null ? { note: body.note } : {}) });
     emitEvent(ctx, { type: "application.updated", applicationId: String(moved.id), jobId: String(moved.jobId), status: moved.status, origin: moved.origin });
     return respond(ApplicationStatusChangeResponseSchema, { application: mappers.toApplication(moved) });
+  });
+
+  // "Apply again" for a failed application (§10.2 rule 5, UC-14 a): a new apply-to-link run with
+  // applyAgain, through the engine. Its review card comes back; nothing is sent without Ba's approval.
+  app.post<IdParams>(API_ROUTES.applicationApplyAgain, async (req, reply) => {
+    const engine = requireEngine(ctx);
+    const id = idParam(req.params.id, "application");
+    const row = getApplication(engine.db, id);
+    if (!row) throw notFound(`application ${id} not found`);
+    if (row.status !== "failed") throw conflict(`only a failed application can be applied to again (this one is ${row.status.replace(/_/g, " ")})`);
+    const job = getJob(engine.db, row.jobId);
+    if (!job?.url) throw conflict("this job has no apply link, so it cannot be applied to again from here");
+    const run = engine.startWorkflow({ workflow: "apply-to-link", params: { url: job.url, applyAgain: true, searchProfileId: null } }, { trigger: "link" });
+    void reply.code(201);
+    return respond(ApplyAgainResponseSchema, { jobId: String(job.id), runId: String(run.id) });
   });
 }

@@ -46,6 +46,27 @@ pnpm dev:orchestrator    # orchestrator only (tsx watch)
 
 The orchestrator port defaults to `4100` (not `4318`, the OpenTelemetry collector port); override with `ORCH_PORT=5000 pnpm dev:orchestrator`. Health check: `curl http://127.0.0.1:4100/health` → `{"ok":true}`.
 
+### Orchestrator settings
+
+All optional; set them in the shell before `pnpm dev:orchestrator` (Turbo passes `ORCH_*` through).
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ORCH_PORT` | `4100` | API port. The API listens on `127.0.0.1` only. |
+| `ORCH_DATA_DIR` | `data/` at the repo root | The data folder (database, CVs, uploads, transcripts, exports). A relative path is resolved from the repo root. The path must not contain spaces, commas or parentheses (bots could not read it), so not `~/Library/Application Support`. |
+| `ORCH_BOTS_DIR` | `bots/` | Bot definitions. |
+| `ORCH_WORKFLOWS_DIR` | `workflows/` | Workflow definitions (`<name>.yaml`; bump `version` with every change). |
+| `ORCH_WEB_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Comma-separated origins allowed to call the API (the web app). Add the e2e port when it differs. |
+| `ORCH_LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`). |
+| `ORCH_NOTIFY` | on (macOS) | `0` turns off the macOS notifications for review cards and "Lead needs you". |
+| `CLAUDE_BIN`, `CODEX_BIN` | `~/.local/bin/claude`, the ChatGPT app's `codex` | The CLIs the bots run on (your subscriptions). |
+
+**Lock file.** While it runs, the orchestrator holds `data/orchestrator.lock` (its pid), so two orchestrators never share one database. A second one waits briefly, then refuses to start. A lock left by a crashed process is taken over automatically; delete the file only if no orchestrator is running.
+
+**Degraded start.** If start-up finds a problem (a data folder path bots cannot read, a database guard failure, an invalid workflow or `bot.json`, a `ROLE.md` changed without a `promptVersion` bump), the API still serves, `/health` answers `503` with the reason, and the UI shows it.
+
+**Lead's tools.** Lead's only tools come from the orchestrator's own MCP server, which listens on a free `127.0.0.1` port. Each Lead run gets its own capability URL, which stops working when that run ends.
+
 ## Check
 
 ```bash

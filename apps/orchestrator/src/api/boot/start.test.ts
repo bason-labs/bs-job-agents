@@ -6,8 +6,11 @@ import { HealthStatusSchema, OrchestratorStatusSchema } from "@bs-job-agents/sha
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FigmaBridge } from "../../bridges/index.js";
 import { findRepoRoot, resolveConfig, type OrchestratorConfig } from "../../config.js";
-import { listRooms, openDb } from "../../db/index.js";
-import { FakeBrowserProbe, FakeFigmaPort, FakeRunner, MemoryFileStore } from "../../engine/testing/index.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { listMessages, listRooms, openDb } from "../../db/index.js";
+import { LeadMcpRunner, ORCHESTRATOR_TOOLS } from "../../mcp/index.js";
+import { FakeBrowserProbe, FakeFigmaPort, FakeRunner, MemoryFileStore, defaultFakeResult } from "../../engine/testing/index.js";
 import { startOrchestrator, type Orchestrator, type StartOptions } from "./start.js";
 
 const ROOT = findRepoRoot();
@@ -28,9 +31,9 @@ function setup(over: Partial<OrchestratorConfig> = {}): OrchestratorConfig {
   return { ...resolveConfig({}), port: 0, dataDir: join(root, "data"), botsDir, workflowsDir: join(ROOT, "workflows"), ...over };
 }
 
-function fakes(): Pick<StartOptions, "runners" | "figma" | "browser" | "lockWaitMs" | "shutdownGraceMs"> {
+function fakes(): Pick<StartOptions, "runners" | "figma" | "browser" | "lockWaitMs" | "shutdownGraceMs" | "notify"> {
   const runner = new FakeRunner();
-  return { runners: { claude: runner, codex: runner }, figma: new FakeFigmaPort(new MemoryFileStore()), browser: new FakeBrowserProbe(), lockWaitMs: 0, shutdownGraceMs: 1000 };
+  return { runners: { claude: runner, codex: runner }, figma: new FakeFigmaPort(new MemoryFileStore()), browser: new FakeBrowserProbe(), lockWaitMs: 0, shutdownGraceMs: 1000, notify: null };
 }
 
 async function start(config: OrchestratorConfig, extra: Partial<StartOptions> = {}): Promise<Orchestrator> {
@@ -48,6 +51,28 @@ function httpGet(port: number, path: string): Promise<{ status: number; body: st
     });
     req.on("error", reject);
     req.end();
+  });
+}
+
+function httpPost(port: number, path: string, body: unknown): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const req = request(
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: { host: `127.0.0.1:${port}`, origin: "http://localhost:3000", "x-bsja-csrf": "1", "content-type": "application/json", "content-length": Buffer.byteLength(payload) },
+      },
+      (res) => {
+        let text = "";
+        res.on("data", (c: Buffer) => (text += c.toString("utf8")));
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: text }));
+      },
+    );
+    req.on("error", reject);
+    req.end(payload);
   });
 }
 
@@ -144,6 +169,48 @@ describe("startOrchestrator", () => {
     const stop = vi.spyOn(bridge, "stop");
     await orch.close();
     expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it("S17 + S20 end to end: a chat message runs Lead with its own capability on the live MCP server; tools work, the reply is stored", async () => {
+    const config = setup();
+    const seen: { tools: string[]; url: string } = { tools: [], url: "" };
+    const orch = await start(config, {
+      runners: ({ capabilities, server }) => {
+        const fakeRunner = new FakeRunner();
+        const lead = new LeadMcpRunner(fakeRunner, {
+          capabilities,
+          server,
+          // Stands in for `claude -p` with the per-spawn mcp.json: it calls the tools over HTTP.
+          spawnRunner: (cfg) => ({
+            engine: "claude",
+            run: async (task) => {
+              seen.url = (cfg as { url: string }).url;
+              const client = new Client({ name: "fake-claude", version: "1" });
+              await client.connect(new StreamableHTTPClientTransport(new URL(seen.url)));
+              seen.tools = (await client.listTools()).tools.map((t) => t.name);
+              await client.callTool({ name: "message_user", arguments: { text: "Looking at your criteria…" } });
+              await client.close();
+              return defaultFakeResult(task);
+            },
+          }),
+        });
+        return { claude: lead, codex: fakeRunner };
+      },
+    });
+    const port = Number(new URL(await orch.listen()).port);
+    const room = listRooms(orch.ctx.db!, { kind: "lead" })[0]!;
+    const res = await httpPost(port, "/chat/messages", { roomId: String(room.id), text: "what can you do?", uploadIds: [] });
+    expect(res.status).toBe(201);
+    await orch.ctx.engine!.idle();
+    expect(seen.tools.sort()).toEqual([...ORCHESTRATOR_TOOLS].sort());
+    expect(seen.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp\/[A-Za-z0-9_-]{43}$/);
+    expect(orch.ctx.capabilities?.size()).toBe(0);
+    const texts = listMessages(orch.ctx.db!, room.id).map((m) => [m.author, m.text]);
+    expect(texts.map(([a]) => a)).toEqual(["ba", "lead", "lead"]);
+    expect(texts[1]![1]).toBe("Looking at your criteria…");
+    // The capability died with the spawn.
+    const after = new Client({ name: "late", version: "1" });
+    await expect(after.connect(new StreamableHTTPClientTransport(new URL(seen.url)))).rejects.toThrow();
   });
 
   it("close() stops the engine, closes the database and releases the data folder", async () => {

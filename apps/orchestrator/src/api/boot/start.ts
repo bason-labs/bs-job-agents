@@ -1,5 +1,6 @@
 // Orchestrator start-up (W2a brief, PM S19 degraded start):
-//   data folder check → lock → openDb (schema guard) → workflows/*.yaml → createProductionEngine →
+//   data folder check → lock → openDb (schema guard) → workflows/*.yaml → Lead's MCP server (S17) →
+//   createProductionEngine (runners with per-spawn Lead capabilities, the chat sink, S20) →
 //   engine.start() (UC-18 recovery) → the Lead chat → HTTP + SSE on 127.0.0.1.
 // Any refusal on the way (a data folder path the bots cannot read, a missing immutability trigger,
 // an invalid workflow or bot.json, a ROLE.md changed without a promptVersion bump) leaves the
@@ -25,7 +26,11 @@ import {
   type FigmaPort,
   type Logger,
 } from "../../engine/index.js";
-import { BotDefinitionError, createRunners, type Runner } from "../../runner/index.js";
+import { CapabilityStore, createOrchestratorRunners, startMcpServer, type OrchestratorMcpServer } from "../../mcp/index.js";
+import { BotDefinitionError, type Runner } from "../../runner/index.js";
+import { ChatSink } from "../chat/sink.js";
+import { defaultNotifier, startNotifications, type Notifier } from "../notify.js";
+import { ProposalStore } from "../proposals.js";
 import { buildServer } from "../../server.js";
 import { dbEventHub, engineEventHub, type ApiContext, type OrchestratorState } from "../context.js";
 import { lockDataFolder, type DataFolderLock } from "./lock.js";
@@ -35,8 +40,13 @@ export interface StartOptions {
   config: OrchestratorConfig;
   /** Fastify's logger (pino options or true); the engine logs through it once the server exists. */
   logger?: FastifyServerOptions["logger"];
-  /** Default: createRunners() (W2b), real CLIs. Tests pass a FakeRunner. */
-  runners?: Record<EngineName, Runner>;
+  /**
+   * Default: the real CLIs, with the orchestrator MCP server for Lead (createOrchestratorRunners,
+   * S17). Tests pass a FakeRunner, or a function that wraps one around the live MCP server.
+   */
+  runners?: Record<EngineName, Runner> | ((mcp: { capabilities: CapabilityStore; server: () => OrchestratorMcpServer | null }) => Record<EngineName, Runner>);
+  /** UC-02 macOS notification (default: osascript on macOS unless ORCH_NOTIFY=0; null = off). */
+  notify?: Notifier | null;
   /** Default: W2c's FigmaBridge. */
   figma?: FigmaPort & { stop?: () => Promise<void> };
   /** Default: the Chrome probe. */
@@ -130,16 +140,31 @@ export async function startOrchestrator(opts: StartOptions): Promise<Orchestrato
       degrade("workflows_invalid", err instanceof WorkflowLoadError ? err.message : `workflows/: ${message(err)}`);
     }
   }
+  // S17: Lead's tools. Its listener starts before the engine (the runners need its URL); the tools
+  // bind to the engine once it exists. Without it, Lead could not run: start-up degrades instead.
+  const capabilities = new CapabilityStore();
+  const proposals = new ProposalStore({ dataDir: config.dataDir, now, workflows: () => workflows });
+  const sink = new ChatSink({ capabilities, now, log });
+  let mcp: OrchestratorMcpServer | null = null;
+  const custom = typeof opts.runners === "object" ? opts.runners : null;
+  if (db && workflows && !state && !custom) {
+    try {
+      mcp = await startMcpServer({ capabilities, tools: () => (engine && state?.state === "running" ? { engine, proposals, capabilities } : null), log });
+    } catch (err) {
+      degrade("engine_start_failed", `the orchestrator MCP server for Lead could not start: ${message(err)}`);
+    }
+  }
   if (db && workflows && !state) {
     try {
+      const mcpPort = { capabilities, server: () => mcp };
       engine = createProductionEngine({
         db,
         dataDir: config.dataDir,
         botsDir: config.botsDir,
-        // W3a part 2 (S17) adds the orchestrator MCP server for Lead to this config.
-        runners: opts.runners ?? createRunners(),
+        runners: custom ?? (typeof opts.runners === "function" ? opts.runners(mcpPort) : createOrchestratorRunners(mcpPort)),
         workflows,
         figma,
+        conversations: sink,
         ...(opts.browser ? { browser: opts.browser } : {}),
         logger: log,
       });
@@ -180,7 +205,11 @@ export async function startOrchestrator(opts: StartOptions): Promise<Orchestrato
     events: engine ? engineEventHub(engine) : db ? dbEventHub(db, now) : null,
     now,
     log,
+    proposals,
+    capabilities,
   };
+  const notify = opts.notify === undefined ? defaultNotifier() : opts.notify;
+  const stopNotifications = notify && ctx.events && engine ? startNotifications(ctx.events, notify) : null;
   const app = buildServer(ctx, { logger: opts.logger ?? false, ...(opts.heartbeatMs ? { heartbeatMs: opts.heartbeatMs } : {}) });
   logging.attach({
     info: (m) => app.log.info(m),
@@ -212,6 +241,8 @@ export async function startOrchestrator(opts: StartOptions): Promise<Orchestrato
           idle = await Promise.race([engine.idle().then(() => true as const), grace]);
           if (!idle) log.warn("tasks were still running at shutdown; the next start recovers them (UC-18)");
         }
+        stopNotifications?.();
+        await mcp?.close().catch(() => undefined);
         await figma.stop?.().catch(() => undefined);
         if (idle) db?.$client.close();
         lock?.release();
