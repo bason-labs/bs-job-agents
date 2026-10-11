@@ -37,6 +37,7 @@ const STATIC_TITLES: Record<string, string> = {
   "/schedules": "Schedules",
   "/bots": "Bots",
   "/cv": "Master CV",
+  "/rooms": "Rooms",
 };
 
 export function titleForPath(pathname: string, bots: readonly BotSummary[], rooms: readonly RoomSummary[]): string {

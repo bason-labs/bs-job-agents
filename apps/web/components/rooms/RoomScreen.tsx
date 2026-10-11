@@ -1,10 +1,14 @@
 "use client";
 
-import type { Message, Room } from "@bs-job-agents/shared";
+import { ROOM_MENTION_CAP, type Message, type Room } from "@bs-job-agents/shared";
+import { SearchX } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { BotAvatar, Button, useToast } from "@/components/ui";
+import { BotAvatar, Button, EmptyState, useToast } from "@/components/ui";
 import { errorText } from "@/components/schedules/apiError";
-import { roomsData, type RoomBot, type RoomsData } from "./data";
+import { ResourceGate } from "@/components/schedules/ResourceGate";
+import { useResource } from "@/lib/api/react";
+import { mentionableBots, useRoomsData, type RoomBot, type RoomsData } from "./data";
 import { roomMentions, splitMentions } from "./mentions";
 import { MentionComposer } from "./MentionComposer";
 
@@ -14,8 +18,7 @@ export interface RoomScreenProps {
   /** Older messages exist (the API pages history). */
   initialHasMore?: boolean;
   bots: RoomBot[];
-  /** Defaults to the app's data source; tests pass their own. */
-  data?: RoomsData;
+  data: RoomsData;
 }
 
 const NO_MENTION = "No bot mentioned — type @ to ask a specific bot.";
@@ -50,8 +53,40 @@ function MessageText({ text, members }: { text: string; members: readonly RoomBo
   );
 }
 
+/** The page (/rooms/[id]): the room, its latest messages and the bots, read through lib/api. */
+export function RoomLive({ id }: { id: string }) {
+  const data = useRoomsData();
+  const read = useResource(`w3c:room:${id}`, async () => {
+    const [room, page, bots] = await Promise.all([data.getRoom(id), data.messages(id).catch(() => null), data.bots()]);
+    return { room, page, bots };
+  });
+  return (
+    <ResourceGate resource={read} label="room">
+      {({ room, page, bots }) =>
+        room && page ? (
+          // One mount per room; later re-reads don't reset the conversation (live events keep it current).
+          <RoomScreen key={room.id} room={room} initialMessages={page.messages} initialHasMore={page.hasMore} bots={bots} data={data} />
+        ) : (
+          <EmptyState
+            icon={<SearchX aria-hidden />}
+            title="Not found"
+            description={
+              <>
+                There is no room “{id}”.{" "}
+                <Link href="/rooms" className="text-accent hover:underline">
+                  All rooms
+                </Link>
+              </>
+            }
+          />
+        )
+      }
+    </ResourceGate>
+  );
+}
+
 /** UC-15: group room in discussion mode. Bots answer only when @mentioned and never act here. */
-export function RoomScreen({ room, initialMessages, initialHasMore = false, bots, data = roomsData }: RoomScreenProps) {
+export function RoomScreen({ room, initialMessages, initialHasMore = false, bots, data }: RoomScreenProps) {
   const [messages, setMessages] = useState(initialMessages);
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
@@ -60,19 +95,31 @@ export function RoomScreen({ room, initialMessages, initialHasMore = false, bots
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const members = bots.filter((b) => room.members.includes(b.name));
+  const mentionable = mentionableBots(room, bots);
   const displayName = (name: string) => bots.find((b) => b.name === name)?.displayName ?? name;
 
   const append = (m: Message) => setMessages((ms) => (ms.some((x) => x.id === m.id) ? ms : [...ms, m]));
 
-  // Replies arrive as message.created events.
+  // Replies and system notes arrive as message.created events (SSE); a bot that fails stops "answering".
+  const latestBots = useRef(bots);
+  useEffect(() => {
+    latestBots.current = bots;
+  });
   useEffect(
     () =>
-      data.subscribe(room.id, (m) => {
-        append(m);
-        if (m.author.type === "bot") {
-          const bot = m.author.bot;
-          setWaiting((w) => w.filter((b) => b !== bot));
-        }
+      data.subscribe(room.id, {
+        onMessage: (m) => {
+          append(m);
+          if (m.author.type === "bot") {
+            const bot = m.author.bot;
+            setWaiting((w) => w.filter((b) => b !== bot));
+          } else if (m.author.type === "system") {
+            // "@CV will not answer: …" / "@Apply is not in this room."
+            const named = latestBots.current.filter((b) => m.text.includes(`@${b.displayName}`)).map((b) => b.name);
+            if (named.length) setWaiting((w) => w.filter((b) => !named.includes(b)));
+          }
+        },
+        onBotStopped: (bot) => setWaiting((w) => w.filter((b) => b !== bot)),
       }),
     [data, room.id],
   );
@@ -99,15 +146,17 @@ export function RoomScreen({ room, initialMessages, initialHasMore = false, bots
   };
 
   const send = async (text: string) => {
-    const mentioned = roomMentions(text, members);
+    const mentioned = roomMentions(text, mentionable).slice(0, ROOM_MENTION_CAP);
+    // Shown before the request returns: the orchestrator may post the first reply right away.
+    if (mentioned.length) setWaiting((w) => [...w, ...mentioned.filter((b) => !w.includes(b))]);
     try {
       append(await data.send(room.id, text));
     } catch (e) {
+      setWaiting((w) => w.filter((b) => !mentioned.includes(b)));
       toast({ title: `Couldn't send: ${errorText(e)}`, tone: "err" });
       throw e;
     }
     if (mentioned.length === 0) append(localNote(room.id, NO_MENTION, ++notes.current));
-    else setWaiting((w) => [...w, ...mentioned.filter((b) => !w.includes(b))]);
   };
 
   return (
@@ -140,8 +189,8 @@ export function RoomScreen({ room, initialMessages, initialHasMore = false, bots
               <li key={m.id} data-testid="room-message" data-author={m.author.type === "bot" ? m.author.bot : m.author.type}>
                 {m.author.type === "ba" ? (
                   <div className="flex justify-end">
-                    <p className="max-w-[80%] rounded-3xl rounded-br-md border border-border bg-surface-2 px-4 py-3">
-                      <MessageText text={m.text} members={members} />
+                    <p className="max-w-[80%] rounded-3xl rounded-br-md border border-border bg-surface-2 px-4 py-3 whitespace-pre-wrap">
+                      <MessageText text={m.text} members={mentionable} />
                     </p>
                   </div>
                 ) : m.author.type === "system" ? (
@@ -153,8 +202,8 @@ export function RoomScreen({ room, initialMessages, initialHasMore = false, bots
                     <BotAvatar name={displayName(m.author.bot)} lead={m.author.bot === "lead"} size="md" />
                     <div className="min-w-0">
                       <p className="font-display text-xs font-semibold">{displayName(m.author.bot)}</p>
-                      <p className="leading-relaxed">
-                        <MessageText text={m.text} members={members} />
+                      <p className="leading-relaxed whitespace-pre-wrap">
+                        <MessageText text={m.text} members={mentionable} />
                       </p>
                     </div>
                   </div>
@@ -173,7 +222,7 @@ export function RoomScreen({ room, initialMessages, initialHasMore = false, bots
       </div>
       <div className="px-4 pb-5 sm:px-6">
         <div className="mx-auto max-w-2xl">
-          <MentionComposer roomName={room.name} members={members} onSend={send} />
+          <MentionComposer roomName={room.name} members={mentionable} onSend={send} />
         </div>
       </div>
     </div>
