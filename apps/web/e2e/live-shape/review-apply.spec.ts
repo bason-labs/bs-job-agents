@@ -43,7 +43,6 @@ test("dry run → Apply fills and screenshots but never submits → Approve live
   expect(dry[0]!.input.dryRun).toBe(true);
   expect(dry[0]!.input.allowedDomains).toEqual(["itviec.com"]);
 
-  await page.screenshot({ path: "test-results/live-review-dry.png" });
   await nova.getByRole("button", { name: "Approve live & submit" }).click();
   await expect(dialog.getByRole("heading", { name: "Approve live & submit to NovaPay?" })).toBeVisible();
   await dialog.getByRole("button", { name: "Approve live & submit" }).click();
@@ -70,11 +69,9 @@ test("dry run → Apply fills and screenshots but never submits → Approve live
   await expect(panel(page).getByRole("heading", { name: "NovaPay" })).toBeVisible();
   await expect(panel(page).getByTestId("record-sha")).toHaveText(/SHA-256: [0-9a-f]{64}/);
   await expect(panel(page).getByTestId("record-approval")).toContainText("itviec.com");
-  await page.screenshot({ path: "test-results/live-record.png" });
   await panel(page).getByRole("button", { name: /Before submit/ }).click();
   await expect(viewer(page).getByRole("img")).toBeVisible();
   await expectScreenshotShown(page);
-  await page.screenshot({ path: "test-results/live-viewer.png" });
   await viewer(page).getByRole("button", { name: "Close" }).click();
   await panel(page).getByRole("button", { name: /Confirmation/ }).click();
   await expectScreenshotShown(page);

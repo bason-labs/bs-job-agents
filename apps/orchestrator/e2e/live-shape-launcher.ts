@@ -144,7 +144,7 @@ async function leadReply(task: RunnerTask, orchestrator: McpServerConfig): Promi
   await client.connect(new StreamableHTTPClientTransport(new URL((orchestrator as { url: string }).url)));
   const output: Omit<LeadOutput, "selfCheck" | "memoryNotes"> = { reply: "Hi Ba. Tell me what to look for, or ask me to scan.", actions: [] };
   try {
-    if (/\bscan\b|find .*jobs/.test(lower)) {
+    if (/\bscan\b|find .*jobs/.test(lower) && !lower.includes("every weekday")) {
       await callTool(client, "message_user", { text: "Starting a job scan on TopCV and ITviec…" });
       await realClock.sleep(STEP_MS);
       const r = await callTool(client, "start_workflow", { workflow: "job-scan", params: { searchProfileId: null, overrides: null } });
