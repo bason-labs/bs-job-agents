@@ -21,6 +21,7 @@ import {
   type ApplyPromptInput,
   type CvOutput,
   type Engine,
+  type FactDraftOutput,
   type PauseReason,
   type QaOutput,
   type ResearchCompanyOutput,
@@ -74,6 +75,7 @@ import { errorMessage } from "./errors.js";
 import { onCheckerDone, onProducerDone, type CvExport } from "./gate.js";
 import type { GuardBlock } from "./ports.js";
 import { isConversationTask, sinkContext, sinkFailed } from "./conversations.js";
+import { onFactDraftDone } from "./fact-drafts.js";
 import { injectionDetail, reportedInjection } from "./injection.js";
 import { DEMOTING_SAFETY_REASONS, demoteBot, postProtectedChangeAlert } from "./demotion.js";
 import { noticePause, noticeTaskFailed } from "./notices.js";
@@ -1053,6 +1055,10 @@ export class TaskQueue {
         return;
       case "qa.review":
         if (ctx) onCheckerDone(core, tx, ctx, task, output as QaOutput);
+        return;
+      case "cv.fact_draft":
+        // Owner request 2026-10-11: the invented-detail guard, then the API adds the facts.
+        onFactDraftDone(core, tx, task, output as FactDraftOutput);
         return;
       case "apply.submit":
         onApplyDone(core, tx, task, output as ApplyOutput, recordFiles, recordCheck ?? null);

@@ -271,7 +271,7 @@ describe("CodexRunner: failures and limits", () => {
 
   it("CV's fact_draft on Codex (Ba opted in): no Figma server, no web search, FactDraftOutput (owner request 2026-10-11)", async () => {
     const { def, cwd } = kit.realBot("cv");
-    const seen: { args: string[]; schema: unknown }[] = [];
+    const seen: { args: readonly string[]; schema: unknown }[] = [];
     const fake = fakeSpawn((_c, args) => {
       if (args[0] === "delete") return deleteOk;
       seen.push({ args, schema: JSON.parse(readFileSync(argValue(args, "--output-schema")!, "utf8")) });
