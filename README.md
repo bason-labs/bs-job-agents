@@ -2,6 +2,7 @@
 
 A local, single-user crew of bots (Lead, Research, CV, QA, Apply) that finds jobs, tailors a CV in Figma, checks it, and applies after your approval. It runs on your Mac using your existing Claude and ChatGPT subscriptions through their CLIs, so there are **no API keys**.
 
+- Runbook (setup, daily use, troubleshooting, live checks, dry run): [`docs/runbook.md`](docs/runbook.md)
 - Design spec: [`docs/superpowers/specs/2026-10-10-job-agents-design.md`](docs/superpowers/specs/2026-10-10-job-agents-design.md)
 - Build phases and agent rules: [`docs/superpowers/build/phases.md`](docs/superpowers/build/phases.md)
 
@@ -92,7 +93,8 @@ pnpm -w typecheck
 pnpm -w lint
 pnpm -w test             # Vitest in every package (no real CLIs, Chrome or Figma)
 pnpm build               # builds shared, orchestrator and web
-pnpm e2e                 # Playwright UI tests (not part of `pnpm test`)
+pnpm e2e                 # Playwright UI tests on the mock backend, incl. light/dark screenshot comparisons
+pnpm e2e:live-shape      # Playwright against the real orchestrator (built) on FakeRunner and a temp data folder
 ```
 
 First time running `pnpm e2e`, install the browser: `pnpm --filter @bs-job-agents/web e2e:install`.
