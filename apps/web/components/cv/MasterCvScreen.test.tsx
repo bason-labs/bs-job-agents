@@ -2,9 +2,12 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ToastProvider } from "@/components/ui";
-import { createFixtureMasterCvData, type MasterCvData } from "./data";
-import { MASTER_CV } from "./fixtures";
-import { MasterCvScreen } from "./MasterCvScreen";
+import { MASTER_CV } from "@/lib/api/mock/seed-master-cv";
+import type { MockMasterCv } from "@/lib/api/mock/state";
+import { testMock } from "@/lib/api/mock/testing";
+import { ApiProvider } from "@/lib/api/react";
+import { createMasterCvData, readMasterCvPage, type MasterCvData } from "./data";
+import { MasterCvLive, MasterCvScreen } from "./MasterCvScreen";
 
 async function cvOf(data: MasterCvData) {
   const read = await data.get();
@@ -12,16 +15,17 @@ async function cvOf(data: MasterCvData) {
   return read.cv;
 }
 
-async function setup(opts: Parameters<typeof createFixtureMasterCvData>[0] = {}) {
-  const data = createFixtureMasterCvData({ now: () => new Date("2026-10-11T03:00:00Z"), ...opts });
-  const [cv, versions, requests] = await Promise.all([data.get(), data.versions(), data.factRequests()]);
+async function setup(opts: { file?: MockMasterCv } = {}) {
+  const mock = testMock({ state: (s) => void (opts.file && (s.masterCv = opts.file)) });
+  const data = createMasterCvData(mock);
+  const page = await readMasterCvPage(data);
   const user = userEvent.setup();
   render(
     <ToastProvider>
-      <MasterCvScreen initial={cv} initialVersions={versions} initialRequests={requests} data={data} />
+      <MasterCvScreen initial={page.read} initialVersions={page.versions} initialRequests={page.requests} data={data} />
     </ToastProvider>,
   );
-  return { user, data };
+  return { user, data, mock };
 }
 
 describe("MasterCvScreen (UC-20)", () => {
@@ -71,6 +75,17 @@ describe("MasterCvScreen (UC-20)", () => {
     await user.click(screen.getByTestId("cv-save"));
     await screen.findByText(/Master CV saved as v8/);
     expect((await cvOf(data)).facts.at(-1)).toMatchObject({ id: "skill-2", text: "GraphQL — Apollo Client at Aegona", tags: ["graphql"] });
+    // Answered with a saved fact: closed on the server too, so it doesn't come back.
+    expect((await data.factRequests()).map((r) => r.topic)).not.toContain("GraphQL");
+    expect(screen.queryAllByTestId("fact-request").map((r) => r.textContent)).not.toContain(expect.stringMatching(/GraphQL/));
+  });
+
+  it("“No, I don't” closes CV's question on the server", async () => {
+    const { user, data } = await setup();
+    const before = (await data.factRequests()).length;
+    await user.click(within(screen.getAllByTestId("fact-request")[0]!).getByRole("button", { name: "No, I don't" }));
+    expect(await screen.findByText(/CV goes on without/)).toBeInTheDocument();
+    expect(await data.factRequests()).toHaveLength(before - 1);
   });
 
   it("asks to reload when the master CV changed since it was opened (409 master_cv_changed)", async () => {
@@ -90,7 +105,7 @@ describe("MasterCvScreen (UC-20)", () => {
   });
 
   it("offers to create a master CV when there is none (404)", async () => {
-    const { user, data } = await setup({ seed: null });
+    const { user, data } = await setup({ file: { kind: "missing" } });
     expect(screen.getByText("No master CV yet")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Create master CV" }));
     expect(screen.getByTestId("cv-header")).toHaveTextContent("New master CV — not saved yet.");
@@ -102,11 +117,13 @@ describe("MasterCvScreen (UC-20)", () => {
     expect((await cvOf(data)).facts).toHaveLength(1);
   });
 
-  it("explains an unreadable master-cv.yaml, and reloads (409 master_cv_invalid)", async () => {
-    await setup({ invalid: "facts.2.id: fact ids are lowercase slugs" });
+  it("explains an unreadable master-cv.yaml, and reloads once it is fixed (409 master_cv_invalid)", async () => {
+    const { user, mock } = await setup({ file: { kind: "invalid", detail: "facts.2.id: fact ids are lowercase slugs" } });
     expect(screen.getByText("data/master-cv.yaml can't be read")).toBeInTheDocument();
     expect(screen.getByTestId("cv-invalid")).toHaveTextContent("facts.2.id: fact ids are lowercase slugs");
-    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+    mock.state.masterCv = { kind: "ok", cv: structuredClone(MASTER_CV) };
+    await user.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(screen.getByTestId("cv-header")).toHaveTextContent("Master version v7."));
   });
 
   it("removes a fact with Undo", async () => {
@@ -116,5 +133,21 @@ describe("MasterCvScreen (UC-20)", () => {
     await user.click(screen.getByRole("button", { name: "Undo" }));
     expect(screen.getAllByTestId("fact").map((f) => f.dataset.factId)).toContain("grad-4");
     expect(screen.queryByText("unsaved changes")).toBeNull();
+  });
+});
+
+describe("MasterCvLive (the page)", () => {
+  it("reads the master CV, its history and the open fact requests through the api", async () => {
+    const mock = testMock();
+    render(
+      <ApiProvider mode="mock" api={mock}>
+        <ToastProvider>
+          <MasterCvLive />
+        </ToastProvider>
+      </ApiProvider>,
+    );
+    expect(await screen.findByTestId("cv-header")).toHaveTextContent("Master version v7.");
+    expect(screen.getAllByTestId("fact-request").length).toBeGreaterThan(0);
+    expect(within(screen.getByTestId("cv-versions")).getAllByRole("listitem")).toHaveLength(3);
   });
 });
