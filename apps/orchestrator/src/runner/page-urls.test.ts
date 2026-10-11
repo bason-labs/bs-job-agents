@@ -13,6 +13,30 @@ function collect(lines: string[]): string[] {
   return c.urls;
 }
 
+describe("PageUrlCollector page visits (W4a handoff: LinkedIn's 3–8 s pauses)", () => {
+  it("records each successful navigate with the time the bot asked for it, repeats included; blocked ones are left out", () => {
+    let t = Date.parse("2026-10-11T02:00:00.000Z");
+    const c = new PageUrlCollector(() => t);
+    c.push(use("n1", `${CHROME}navigate`, { url: "https://www.linkedin.com/jobs/search?keywords=react" }));
+    t += 1500;
+    c.push(result("n1", "Navigated to https://www.linkedin.com/jobs/search?keywords=react"));
+    t += 3500;
+    c.push(use("n2", `${CHROME}navigate`, { url: "https://www.linkedin.com/jobs/view/1" }));
+    c.push(result("n2", "Navigation complete"));
+    t += 4000;
+    c.push(use("n3", `${CHROME}navigate`, { url: "https://evil.example.org" }));
+    c.push(result("n3", "Blocked by site guard", true));
+    t += 1000;
+    c.push(use("n4", `${CHROME}navigate`, { url: "https://www.linkedin.com/jobs/search?keywords=react" }));
+    c.push(result("n4", "Navigated to https://www.linkedin.com/jobs/search?keywords=react"));
+    expect(c.visits).toEqual([
+      { url: "https://www.linkedin.com/jobs/search?keywords=react", at: "2026-10-11T02:00:00.000Z" },
+      { url: "https://www.linkedin.com/jobs/view/1", at: "2026-10-11T02:00:05.000Z" },
+      { url: "https://www.linkedin.com/jobs/search?keywords=react", at: "2026-10-11T02:00:10.000Z" },
+    ]);
+  });
+});
+
 describe("PageUrlCollector (PM2 S10)", () => {
   it("collects the page a navigate reached, including a redirect", () => {
     expect(collect(navigateLines("t1", "https://itviec.com/jobs/1", "https://acme.wd3.myworkdayjobs.com/apply"))).toEqual(["https://acme.wd3.myworkdayjobs.com/apply"]);

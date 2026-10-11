@@ -79,6 +79,8 @@ export interface PermissionDenial {
 export interface RunnerResultExtras {
   screenshots?: CapturedScreenshot[];
   pageUrls?: string[];
+  /** W4a handoff: each successful navigate (URL, time), for the scan checker's pause and page limits. */
+  pageVisits?: { url: string; at: string }[];
 }
 
 export type RunnerResult = RunnerResultCore & RunnerResultExtras;

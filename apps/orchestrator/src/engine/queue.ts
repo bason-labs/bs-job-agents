@@ -674,6 +674,7 @@ export class TaskQueue {
         input: task.input,
         output: outcome.output as ResearchScanOutput,
         screenshots: captures.map((c) => this.core.paths.rel(join(prepared.screenshotDir!, c.file))),
+        ...(result.pageVisits ? { pageVisits: result.pageVisits } : {}),
       });
     } catch (err) {
       this.core.log.warn(`scan check for task ${task.id} failed, output accepted: ${errorMessage(err)}`);

@@ -36,6 +36,20 @@ describe("ScanOutputChecker in the engine (PM3 S8)", () => {
     expect(t.runner.callsFor("research.fit").length).toBeGreaterThan(0);
   });
 
+  it("passes the runner's page visits (URL + time of each navigate), so the checker can hold LinkedIn's pauses (W4a handoff)", async () => {
+    const seen: ScanCheckInput[] = [];
+    const checker: ScanOutputChecker = { check: (i) => (seen.push(i), { ok: true }) };
+    const t = await createTestEngine({ sources: ["itviec"], scanChecker: checker });
+    const pageVisits = [
+      { url: "https://itviec.com/it-jobs?q=react", at: "2026-10-11T02:00:00.000Z" },
+      { url: "https://itviec.com/it-jobs/novapay-1", at: "2026-10-11T02:00:05.000Z" },
+    ];
+    t.runner.script({ bot: "research", kind: "scan", times: 1, result: { ...fake.ok({ ...researchScanFixture, jobs: researchScanFixture.jobs.filter((j) => j.source === "itviec") }), pageVisits } });
+    t.engine.startWorkflow(scanParams, { trigger: "chat" });
+    await t.idle();
+    expect(seen[0]!.pageVisits).toEqual(pageVisits);
+  });
+
   it("a broken adapter fails that branch for good (no retry) with UC-03 b's note; the other sources go on", async () => {
     const checker: ScanOutputChecker = {
       check: (i) => (i.source === "topcv" ? { ok: false, adapterBroken: true, reason: "no job cards on the results page (layout changed?)", screenshot: null } : { ok: true }),
