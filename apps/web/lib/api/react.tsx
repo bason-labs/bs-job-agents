@@ -31,6 +31,7 @@ const ASYNC_METHODS: Record<AsyncMethod, true> = {
   uploadFiles: true,
   answerQuestion: true,
   resumeTask: true,
+  declineDomain: true,
   chooseOption: true,
   listRuns: true,
   getRun: true,

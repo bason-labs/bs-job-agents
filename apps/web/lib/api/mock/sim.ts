@@ -602,6 +602,16 @@ async function groupRoom(core: Core, room: Room, text: string): Promise<void> {
 
 export async function afterChoice(core: Core, roomId: string, key: string, optionId: string): Promise<void> {
   await core.wait(300);
+  if (key.startsWith("figma-change:")) {
+    // PM2 S8: "That was me — retry" (protectedChangeWasBa): no safety violation, CV tries again.
+    await core.post(
+      roomId,
+      LEAD,
+      optionId === "was_me" ? "Thanks — that was your edit, so it isn't held against CV. CV is tailoring again." : "OK. CV stays stopped; I'll keep the protected page as it is now.",
+      { stream: true },
+    );
+    return;
+  }
   if (key !== "criteria") {
     await core.post(roomId, LEAD, "Noted.");
     return;
@@ -737,6 +747,7 @@ async function submit(core: Core, ctx: ApplyCtx): Promise<void> {
     core.setStep(ctx.runId, "apply", ctx.jobId, "done", { preview: "dry run · needs check" });
     core.setStep(ctx.runId, "record", ctx.jobId, "done", { preview: "recorded (dry run)" });
     await core.post(LEAD_ROOM_ID, LEAD, `🧪 Dry run for **${ctx.company}** finished: the form was filled and screenshotted, nothing was submitted. Check it in Applications.`, { runIds: [ctx.runId] });
+    requeueAfterDryRun(core, ctx);
   } else {
     moveApplication(core, ctx.app, "submitted");
     core.setStep(ctx.runId, "apply", ctx.jobId, "done", { preview: "submitted" });
@@ -745,6 +756,39 @@ async function submit(core: Core, ctx: ApplyCtx): Promise<void> {
   }
   core.acted = core.acted.filter((c) => c.job.id !== ctx.jobId);
   maybeFinishRun(core, ctx.runId);
+}
+
+/**
+ * PM2 S15: a settled dry run puts its card back with `dryRunSettled` (the API adds the flag in
+ * Phase 3 QA), keeping only the CV version the dry run used; Approve then applies live.
+ */
+function requeueAfterDryRun(core: Core, ctx: ApplyCtx): void {
+  const card = core.acted.find((c) => c.job.id === ctx.jobId);
+  if (!card) return;
+  const options = card.cvOptions.filter((o) => o.cvVersion.id === ctx.app.cvVersionId);
+  const back: ReviewCard = { ...card, cvOptions: options.length ? options : card.cvOptions, flags: { ...card.flags, dryRunSettled: true } as ReviewCard["flags"] };
+  core.state.queue = [...core.state.queue.filter((c) => c.job.id !== ctx.jobId), back];
+  core.setStep(ctx.runId, "review", ctx.jobId, "waiting", { preview: "dry run done · approve live?" });
+  core.emit({
+    type: "review.ready",
+    jobId: ctx.jobId,
+    runId: ctx.runId,
+    company: card.job.company,
+    title: card.job.title,
+    cvVersionIds: back.cvOptions.map((o) => o.cvVersion.id),
+    qaPassed: card.flags.qaPassed,
+    escalated: card.flags.escalated,
+    needsInput: card.flags.needsInput,
+    injectionFlagged: card.flags.injectionFlagged,
+  });
+}
+
+/** The dry-run application behind a settled card, and whether it blocks a live approval (it reported "submitted"). */
+export function settledDryRun(core: Core, jobId: string): { app: Application; blocking: boolean } | null {
+  const app = Object.values(core.state.applications).find((a) => a.jobId === jobId && a.dryRun);
+  if (!app) return null;
+  const blocking = app.status === "needs_check" && app.statusHistory.some((h) => h.note === "dry run reported submitted");
+  return { app, blocking };
 }
 
 export function requestChanges(core: Core, card: ReviewCard, comment: string): void {
@@ -821,6 +865,19 @@ export async function rerun(core: Core, r: RunState, step: { stepKey: string; br
 }
 
 // ---------------------------------------------------------------- answers, pauses and the Simulate menu
+
+/** UC-11 e "Don't allow" (engine.declineDomain): Apply's task fails there; nothing is sent on the other site. */
+export async function afterDecline(core: Core, pause: MockPause): Promise<void> {
+  const task = Object.values(core.state.runs)
+    .flatMap((r) => r.tasks)
+    .concat(pausedTasks.get(core) ?? [])
+    .find((t) => t.id === pause.taskId);
+  const site = pause.reason.site ?? "the new site";
+  if (task) core.finishTask(task, "failed", null, `Ba declined ${site}; Apply stopped there (UC-11 e)`);
+  const ctx = task ? applyCtx.get(task) : undefined;
+  if (ctx) moveApplication(core, ctx.app, "failed", `you did not allow ${site}`);
+  await core.post(LEAD_ROOM_ID, LEAD, `OK — Apply stopped and did not continue on **${site}**. Nothing was sent there.`, { runIds: pause.runId ? [pause.runId] : [] });
+}
 
 export async function afterResume(core: Core, pause: MockPause): Promise<void> {
   const task = Object.values(core.state.runs)
@@ -917,6 +974,25 @@ export async function simulate(core: Core, kind: SimulationKind): Promise<void> 
         `Apply paused on ${card?.job.company ?? "an application"}: the form moved to another site.`,
         { jobId: card?.job.id ?? null },
       );
+    }
+    case "figma-change": {
+      const task = core.startTask(null, null, "cv", "tailor", {});
+      core.progress(task, "status", "A protected Figma page changed during the task");
+      core.finishTask(task, "failed", null, "a protected Figma page changed during its task");
+      await core.post(LEAD_ROOM_ID, LEAD, "CV stopped: the protected **Master** page in Figma changed while CV was working. Was that you?", {
+        cards: [
+          {
+            type: "choice",
+            key: `figma-change:${task.id}`,
+            options: [
+              { id: "was_me", label: "That was me — retry" },
+              { id: "not_me", label: "Not me" },
+            ],
+            chosen: null,
+          },
+        ],
+      });
+      return;
     }
     case "workflow-proposal": {
       // Rule 3: Lead only proposes; Ba approves (saved, never run) or dismisses on the Bots screen.

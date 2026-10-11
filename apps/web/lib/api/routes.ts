@@ -7,6 +7,11 @@ export const PROPOSED_ROUTES = {
   chatChoice: "/chat/choices",
   /** GET → { lines: TranscriptLine[] }: a task's transcript for the step drawer (UC-22). */
   taskTranscript: "/tasks/:id/transcript",
+  /**
+   * POST {}: UC-11 e "Don't allow" on a domain_confirm pause (engine.declineDomain, F3). The API route
+   * lands in Phase 3 QA; until then the orchestrator answers 404 and the UI says so.
+   */
+  taskDeclineDomain: "/tasks/:id/decline-domain",
 } as const;
 
 export type QueryValue = string | number | boolean | null | undefined;

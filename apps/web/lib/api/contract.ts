@@ -7,6 +7,9 @@ import {
   ApproveResponseSchema,
   IdSchema,
   IsoDateTimeSchema,
+  ReviewCardFlagsSchema,
+  ReviewCardSchema,
+  ReviewQueueResponseSchema,
   type AnswerQuestionResponse,
   type AppEvent,
   type BotView,
@@ -80,6 +83,21 @@ export const ApproveResultSchema = ApproveResponseSchema.extend({
   reapproval: z.boolean().optional().default(false),
 });
 export type ApproveResult = z.infer<typeof ApproveResultSchema>;
+
+/**
+ * Review-card flags the UI reads beyond the shared schema (forward-compatible; the API adds them in
+ * Phase 3 QA, the mock has them now):
+ * - companyMissing (PM2 S16): the company research failed for good; CV tailored without a profile
+ * - dryRunSettled (PM2 S15): the card's dry run finished; Approve (without dryRun) now applies live
+ */
+export const ReviewCardFlagsExtSchema = ReviewCardFlagsSchema.extend({
+  companyMissing: z.boolean().optional(),
+  dryRunSettled: z.boolean().optional(),
+});
+export type ReviewCardFlagsExt = z.infer<typeof ReviewCardFlagsExtSchema>;
+export const ReviewQueueResponseExtSchema = ReviewQueueResponseSchema.extend({
+  cards: z.array(ReviewCardSchema.extend({ flags: ReviewCardFlagsExtSchema })),
+});
 
 /** One transcript line (the shape of a `task.progress` event), for the step drawer (UC-22). */
 export const TranscriptLineSchema = z.object({
@@ -159,6 +177,8 @@ export interface WebApi {
   /** Apply resumed, or the next question Lead now asks (one at a time). */
   answerQuestion(taskId: string, input: AnswerInput): Promise<AnswerQuestionResponse>;
   resumeTask(taskId: string, input?: { confirmDomain: string | null }): Promise<void>;
+  /** UC-11 e "Don't allow": Apply stops instead of continuing on the new site (PROPOSED_ROUTES.taskDeclineDomain). */
+  declineDomain(taskId: string): Promise<void>;
   chooseOption(input: ChoiceRequest): Promise<void>;
 
   // runs (UC-22, UC-23)

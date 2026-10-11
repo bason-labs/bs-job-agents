@@ -32,6 +32,7 @@ import type {
   HttpMethod,
   ApproveInput,
   ApproveResult,
+  ReviewCardFlagsExt,
   EventFeed,
   EventListener,
   FeedStatus,
@@ -73,7 +74,9 @@ export type SimulationKind =
   | "figma"
   | "domain-confirm"
   /** Lead proposes a workflow (rule 3); e2e drives it through withMock. */
-  | "workflow-proposal";
+  | "workflow-proposal"
+  /** CV's task changed a protected Figma page (PM2 S8): Lead asks whether it was Ba (figma-change:<taskId> choice). */
+  | "figma-change";
 
 const TERMINAL: readonly StepStatus[] = ["done", "failed", "skipped", "cancelled"];
 const IDLE: readonly StepStatus[] = ["pending", "locked"];
@@ -463,6 +466,13 @@ export class MockBackend implements WebApi, EventFeed {
     this.background(sim.afterResume(this, pause));
   }
 
+  async declineDomain(taskId: string): Promise<void> {
+    const pause = this.state.pauses[taskId];
+    if (!pause || pause.reason.code !== "domain_confirm") throw fail(409, "conflict", `task ${taskId} is not waiting for a domain to confirm`);
+    delete this.state.pauses[taskId];
+    this.background(sim.afterDecline(this, pause));
+  }
+
   async chooseOption(input: ChoiceRequest): Promise<void> {
     const message = Object.values(this.state.messages)
       .flat()
@@ -560,6 +570,16 @@ export class MockBackend implements WebApi, EventFeed {
     }
     const option = card.cvOptions.find((o) => o.cvVersion.id === input.cvVersionId);
     if (!option) throw fail(400, "validation_failed", `CV version ${input.cvVersionId} is not on this card`);
+    if ((card.flags as ReviewCardFlagsExt).dryRunSettled) {
+      // PM2 S15 "Approve live" after a settled dry run (engine approveLiveAfterDryRun).
+      if (input.dryRun) throw fail(409, "conflict", "this card's dry run has finished; approve it live, or skip it");
+      const dry = sim.settledDryRun(this, card.job.id);
+      if (dry?.blocking) {
+        throw fail(409, "already_applied", "the dry run reported that it submitted, so it may really have been sent; check it on the Applications screen first");
+      }
+      if (dry && dry.app.cvVersionId !== input.cvVersionId) throw fail(400, "validation_failed", "a live approval after a dry run keeps the CV version the dry run used");
+      card.flags = { ...card.flags, dryRunSettled: false } as ReviewCard["flags"];
+    }
     return sim.approve(this, card, option, input);
   }
 

@@ -1,9 +1,12 @@
 import type { ReviewCard } from "@bs-job-agents/shared";
 import { reviewCardFixture } from "@bs-job-agents/shared/fixtures";
 import { describe, expect, it } from "vitest";
+import { ApiRequestError } from "@/lib/api/errors";
 import {
+  approveErrorText,
   approveLabel,
   applyDomain,
+  isDryRunSettled,
   companySummary,
   cvName,
   escalationNote,
@@ -63,6 +66,27 @@ describe("review card model", () => {
     expect(flagNotices(cleared).map((n) => n.key)).toEqual(["injectionCleared"]);
     const again = card({}, { approveAgain: true });
     expect(flagNotices(again).map((n) => n.key)).toEqual(["approveAgain"]);
+  });
+
+  it("F3 flags: company research failed, and a settled dry run that can go live (PM2 S15/S16)", () => {
+    const missing = card({}, { companyMissing: true } as Partial<ReviewCard["flags"]>);
+    expect(flagNotices(missing)).toEqual([{ key: "companyMissing", tone: "warn", text: "Company research failed · continuing without it. CV tailored this CV without a company profile." }]);
+    const settled = card({}, { dryRunSettled: true } as Partial<ReviewCard["flags"]>);
+    expect(isDryRunSettled(settled)).toBe(true);
+    expect(flagNotices(settled).map((n) => n.key)).toEqual(["dryRunSettled"]);
+    expect(approveLabel(settled)).toBe("Approve live & submit");
+  });
+
+  it("the injection notice does not assume QA found it (Research flags scans too, PM2 S11)", () => {
+    const flagged = card({ job: { ...reviewCardFixture.job, injectionFlagged: true } }, { injectionFlagged: true });
+    expect(flagNotices(flagged)[0]!.text).toMatch(/^A bot found text in this job post that tries to instruct the bots/);
+  });
+
+  it("explains an already_applied refusal of Approve live", () => {
+    expect(approveErrorText(new ApiRequestError({ status: 409, code: "already_applied", message: "the dry run reported that it submitted" }))).toBe(
+      "The dry run reported that it submitted, so it may really have been sent. Check it on the Applications screen and mark it failed before approving live.",
+    );
+    expect(approveErrorText(new Error("boom"))).toBe("boom");
   });
 
   it("approve button label follows the card (prototype + PM S24 'approve again')", () => {

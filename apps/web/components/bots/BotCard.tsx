@@ -1,6 +1,6 @@
 "use client";
 
-import type { TrustLevel } from "@bs-job-agents/shared";
+import { demotionReasonLabel, type TrustLevel } from "@bs-job-agents/shared";
 import { ChevronDown, Lightbulb, Lock, Settings, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useId, useState } from "react";
@@ -138,7 +138,7 @@ export function BotCard({ bot, controller, warning, detailed = false }: BotCardP
           <p className="flex items-start gap-1.5">
             <ShieldAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
             <span>
-              Demoted from L{bot.demotion.fromLevel} to L{bot.trustLevel} on {formatDateTime(bot.demotion.at)}: {bot.demotion.reason}.
+              Demoted from L{bot.demotion.fromLevel} to L{bot.trustLevel} on {formatDateTime(bot.demotion.at)}: {demotionReasonLabel(bot.demotion.reason)}.
             </span>
           </p>
           {restoreTo !== null ? (

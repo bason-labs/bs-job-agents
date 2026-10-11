@@ -88,6 +88,25 @@ describe("BotsScreen (§11 Bots)", () => {
     expect(within(card("cv")).getByRole("img", { name: /Trust level L2/ })).toBeInTheDocument();
   });
 
+  it("words an engine demotion reason code (F3 DEMOTION_REASON_LABELS) and restores to the level it came from", async () => {
+    const mock = testMock({ state: (s) => (s.bots.find((b) => b.name === "qa")!.demotion = { fromLevel: 2, at: "2026-10-11T08:00:00+07:00", reason: "trust_level" }) });
+    mock.state.bots.find((b) => b.name === "qa")!.trustLevel = 1;
+    const data = createBotsData(mock);
+    const user = userEvent.setup();
+    render(
+      <TooltipProvider>
+        <ToastProvider>
+          <BotsScreen initial={await data.list()} data={data} />
+        </ToastProvider>
+      </TooltipProvider>,
+    );
+    const demotion = within(card("qa")).getByTestId("bot-demotion");
+    expect(demotion).toHaveTextContent("Demoted from L2 to L1 on 2026-10-11 08:00: a tool outside its permissions.");
+    await user.click(within(demotion).getByRole("button", { name: "Restore to L2" }));
+    expect(await screen.findByText("QA restored to L2")).toBeInTheDocument();
+    expect(mock.state.bots.find((b) => b.name === "qa")).toMatchObject({ trustLevel: 2, demotion: null });
+  });
+
   it("deletes a memory note after confirming (PM S14)", async () => {
     const { user } = await setup();
     await user.click(within(card("lead")).getByRole("button", { name: "Memory (2 notes)" }));

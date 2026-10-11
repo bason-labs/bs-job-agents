@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Dialog, DialogContent } from "@/components/ui/Dialog";
 import { Input, Textarea } from "@/components/ui/Input";
-import { applyDomain, approveLabel, needsReapproval } from "./model";
+import { applyDomain, approveLabel, isDryRunSettled, needsReapproval } from "./model";
 
 interface DialogProps {
   open: boolean;
@@ -37,7 +37,15 @@ export function ApproveDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        title={noLink ? `Approve ${company} (PDF only)?` : needsReapproval(card) ? `Approve again & submit to ${company}?` : `Approve & submit to ${company}?`}
+        title={
+          noLink
+            ? `Approve ${company} (PDF only)?`
+            : needsReapproval(card)
+              ? `Approve again & submit to ${company}?`
+              : isDryRunSettled(card)
+                ? `Approve live & submit to ${company}?`
+                : `Approve & submit to ${company}?`
+        }
         data-testid="approve-dialog"
         footer={
           <>
@@ -179,7 +187,8 @@ export function ConfirmInjectionDialog({ open, onOpenChange, card, pending, onCo
       description={
         <span className="space-y-2">
           <span className="block">
-            QA found text in this job post that tries to instruct the bots. Check the posting yourself; confirming enables Apply for this job only.
+            A bot (QA, or Research while reading the page) found text in this job post that tries to instruct the bots. Check the posting yourself;
+            confirming enables Apply for this job only.
           </span>
           {card.job.url ? (
             <a href={card.job.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent underline">

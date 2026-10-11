@@ -1,6 +1,8 @@
 // Pure logic behind a review card (§11 Review queue; UC-07..10; PM S24): copy for the job line,
 // QA rounds, flags and the approve button.
 import { QA_MAX_ROUNDS, type CvVersion, type Job, type QaReviewRecord, type ReviewCard } from "@bs-job-agents/shared";
+import type { ReviewCardFlagsExt } from "@/lib/api/contract";
+import { errorMessage, isApiError } from "@/lib/api/errors";
 
 export type CvOption = ReviewCard["cvOptions"][number];
 
@@ -53,7 +55,7 @@ export function escalationNote(option: CvOption): string {
 export type NoticeTone = "warn" | "danger" | "info";
 
 export interface FlagNotice {
-  key: "injection" | "injectionCleared" | "master" | "noApplyLink" | "lowConfidence" | "needsInput" | "approveAgain";
+  key: "injection" | "injectionCleared" | "master" | "noApplyLink" | "lowConfidence" | "needsInput" | "approveAgain" | "companyMissing" | "dryRunSettled";
   tone: NoticeTone;
   text: string;
 }
@@ -64,6 +66,20 @@ export const isBlockedByInjection = (card: ReviewCard) => card.flags.injectionFl
 /** PM S24 "approve again": Apply was denied before it ran (e.g. its token expired). Shared `flags.approveAgain`. */
 export const needsReapproval = (card: ReviewCard) => card.flags.approveAgain === true;
 
+/** The flags lib/api reads beyond the shared schema (contract.ts ReviewCardFlagsExt). */
+const extFlags = (card: ReviewCard): ReviewCardFlagsExt => card.flags;
+
+/** PM2 S15: the card's dry run finished; approving now (without dry run) applies live with the same CV. */
+export const isDryRunSettled = (card: ReviewCard) => extFlags(card).dryRunSettled === true;
+
+/** Toast text for a failed approval; `already_applied` on Approve live means the dry run may really have been sent. */
+export function approveErrorText(err: unknown): string {
+  if (isApiError(err) && err.code === "already_applied") {
+    return "The dry run reported that it submitted, so it may really have been sent. Check it on the Applications screen and mark it failed before approving live.";
+  }
+  return errorMessage(err);
+}
+
 /** The card's warnings, in the order the prototype's banners would stack. */
 export function flagNotices(card: ReviewCard): FlagNotice[] {
   const out: FlagNotice[] = [];
@@ -72,7 +88,7 @@ export function flagNotices(card: ReviewCard): FlagNotice[] {
     out.push({
       key: "injection",
       tone: "danger",
-      text: "QA found text in this job post that tries to instruct the bots (possible prompt injection). Apply stays off for this job until you check the posting and confirm it is safe.",
+      text: "A bot found text in this job post that tries to instruct the bots (possible prompt injection). Apply stays off for this job until you check the posting and confirm it is safe.",
     });
   } else if (job.injectionFlagged && job.injectionClearedAt !== null) {
     out.push({ key: "injectionCleared", tone: "info", text: "You checked the flagged posting and confirmed it is safe; Apply is enabled for this job." });
@@ -83,6 +99,16 @@ export function flagNotices(card: ReviewCard): FlagNotice[] {
       tone: "info",
       text: "The last approval expired or was refused before Apply ran. Approving again issues a new token for the same application.",
     });
+  }
+  if (isDryRunSettled(card)) {
+    out.push({
+      key: "dryRunSettled",
+      tone: "info",
+      text: "The dry run of this card has finished; its screenshots are on the Applications screen. Approve live to send it for real with the same CV.",
+    });
+  }
+  if (extFlags(card).companyMissing) {
+    out.push({ key: "companyMissing", tone: "warn", text: "Company research failed · continuing without it. CV tailored this CV without a company profile." });
   }
   if (flags.masterChanged) out.push({ key: "master", tone: "warn", text: "Your master CV changed after this CV was made. Regenerate it with Request changes?" });
   if (flags.noApplyLink) out.push({ key: "noApplyLink", tone: "info", text: "No apply link was found for this JD, so Approve only produces the PDF." });
@@ -96,6 +122,7 @@ export function flagNotices(card: ReviewCard): FlagNotice[] {
 export function approveLabel(card: ReviewCard): string {
   if (card.flags.noApplyLink) return "Approve (PDF only)";
   if (needsReapproval(card)) return "Approve again & submit";
+  if (isDryRunSettled(card)) return "Approve live & submit";
   return card.flags.qaPassed ? "Approve & submit" : "Approve anyway & submit";
 }
 
