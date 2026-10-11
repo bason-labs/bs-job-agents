@@ -25,6 +25,7 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | W3a API part 2 | ✅ merged; 2225 tests green; reports/phase3-w3a-api-part2.md; engine requests relayed to F3 |
 | 2026-10-11 | F3 fixer | ✅ merged; 2339 tests green; reports/phase3-f3-fixer.md; S7 live check blocked (Chrome extension not connected) |
 | 2026-10-11 | W3d wiring | ✅ merged; 2382 tests green; reports/phase3-w3d-wiring.md |
-| 2026-10-11 | Phase 3 QA/QC (worktree) | 🔄 running |
+| 2026-10-11 | Phase 3 QA/QC | ✅ merged; qa-phase-3.md; 2431 tests + 144 e2e green; API contract parity tests; live smoke (Lead + QA consult) ok |
+| 2026-10-11 | Phase 3 PM review (worktree) | 🔄 running |
 
 **Next action:** merge Phase 3 QA when it reports, then run the Phase 3 PM, then the must-fix fixer, then Phase 4 (W4a adapters, W4b e2e + runbook + dry run, W4c prompts + master CV). Resume any agent stopped by a usage limit with SendMessage.
