@@ -192,6 +192,16 @@ export const AppEventSchema = z.discriminatedUnion("type", [
     detail: z.string().nullable(),
   }),
   ev("export.ready", { export: ExportSchema }),
+  /**
+   * Additive (owner request 2026-10-11): data/master-cv.yaml has a new version: Ba saved it, facts
+   * drafted from his words were added (taskId = the cv.fact_draft task), or he undid that.
+   */
+  ev("master_cv.updated", {
+    version: z.number().int().positive(),
+    change: z.enum(["saved", "facts_added", "undo"]),
+    factIds: z.array(z.string()),
+    taskId: IdSchema.nullable(),
+  }),
 ]);
 export type AppEvent = z.infer<typeof AppEventSchema>;
 export type AppEventType = AppEvent["type"];

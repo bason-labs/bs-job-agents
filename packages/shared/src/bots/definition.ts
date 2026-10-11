@@ -18,10 +18,21 @@ export const BotOutputSchemaNameSchema = z.enum(
 export const BOT_TASK_KINDS = {
   lead: ["chat"],
   research: ["scan", "single", "file", "fit", "company"],
-  cv: ["tailor"],
+  // fact_draft (owner request 2026-10-11): Ba's own words → master facts on the Master CV screen; no tools.
+  cv: ["tailor", "fact_draft"],
   qa: ["review"],
   apply: ["submit"],
 } as const satisfies Record<Phase1Bot, readonly string[]>;
+
+/**
+ * Task keys that run with no tools at all (no files, MCP, browser or web search): everything they
+ * need is in the task input. cv.fact_draft drafts master facts from Ba's own words.
+ */
+export const TOOLLESS_TASK_KEYS = ["cv.fact_draft"] as const;
+
+export function isToollessTask(botName: string, kind: string): boolean {
+  return (TOOLLESS_TASK_KEYS as readonly string[]).includes(`${botName}.${kind}`);
+}
 
 /** Kinds any bot can run: 1:1 consult (UC-25) and room discussion (UC-15). Output = ConsultOutput. */
 export const CONVERSATION_TASK_KINDS = ["consult", "discussion"] as const;

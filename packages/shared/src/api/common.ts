@@ -88,6 +88,10 @@ export const API_ROUTES = {
   taskDeclineDomain: "/tasks/:id/decline-domain",
   /** Live run 1 (additive): "Resume now" on the paused banner lifts a usage-limit pause early (e.g. after switching accounts). */
   engineResume: "/engines/:engine/resume",
+  /** Owner request 2026-10-11 (additive): Ba's own words → master facts drafted by CV, added with Undo. */
+  masterCvFactDrafts: "/master-cv/facts/draft",
+  masterCvFactDraft: "/master-cv/facts/draft/:taskId",
+  masterCvFactsUndo: "/master-cv/facts/undo",
 } as const;
 
 /** GET /bridges (W3a, additive): whether each engine's Chrome extension answers; null = unknown (engine stopped). */

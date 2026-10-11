@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { botDefinitionFixtures, researchBotJson } from "../fixtures/bot-definitions.js";
 import {
   applyInputFixture,
+  cvFactDraftInputFixture,
   cvTailorInputFixture,
   qaReviewInputFixture,
   researchCompanyInputFixture,
@@ -102,6 +103,7 @@ describe("S5: the approval token never reaches a prompt", () => {
       "research.fit": researchFitInputFixture,
       "research.company": researchCompanyInputFixture,
       "cv.tailor": cvTailorInputFixture,
+      "cv.fact_draft": cvFactDraftInputFixture,
       "qa.review": qaReviewInputFixture,
       "apply.submit": splitApplySubmitInput(applyInputFixture).prompt,
     } as const;

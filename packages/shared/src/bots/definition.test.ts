@@ -10,6 +10,7 @@ import {
 import { BOT_TASK_INPUT_SCHEMAS } from "./inputs.js";
 import {
   applyInputFixture,
+  cvFactDraftInputFixture,
   cvTailorInputFixture,
   qaReviewInputFixture,
   researchCompanyInputFixture,
@@ -112,6 +113,7 @@ describe("task inputs", () => {
     ["research.fit", researchFitInputFixture],
     ["research.company", researchCompanyInputFixture],
     ["cv.tailor", cvTailorInputFixture],
+    ["cv.fact_draft", cvFactDraftInputFixture],
     ["qa.review", qaReviewInputFixture],
     ["apply.submit", applyInputFixture],
   ] as const)("%s fixture parses", (key, fixture) => {

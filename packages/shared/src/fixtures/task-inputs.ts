@@ -1,6 +1,7 @@
 // Task input fixtures (one per bot task kind).
 import type {
   ApplySubmitInput,
+  CvFactDraftInput,
   CvTailorInput,
   QaReviewInput,
   ResearchCompanyInput,
@@ -56,6 +57,17 @@ export const cvTailorInputFixture: CvTailorInput = {
   fixes: [{ section: "Summary", instruction: "Shorten to one sentence." }],
   comment: null,
   previousCvVersionId: "cvv_1",
+  masterCvVersion: 3,
+};
+
+/** cv.fact_draft: Ba answers CV's AWS question in his own words (owner request 2026-10-11). */
+export const cvFactDraftInputFixture: CvFactDraftInput = {
+  text: "Yes, at Gradion I deployed our Next.js apps to AWS ECS with Terraform.",
+  question: { topic: "AWS", question: "Have you deployed on AWS?", reason: "The JD asks for AWS deployments", company: "Hubble" },
+  existingFacts: [
+    { id: "grad-1", type: "experience", org: "Gradion", dates: "2022 – present" },
+    { id: "skill-1", type: "skill", org: null, dates: null },
+  ],
   masterCvVersion: 3,
 };
 

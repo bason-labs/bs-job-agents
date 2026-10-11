@@ -3,6 +3,7 @@
 import type { ApplyOutput } from "../bots/apply.js";
 import type { ConsultOutput } from "../bots/consult.js";
 import type { CvOutput } from "../bots/cv.js";
+import { FACT_DRAFT_SELF_CHECK, type FactDraftOutput } from "../bots/fact-draft.js";
 import type { LeadOutput } from "../bots/lead.js";
 import type { QaOutput } from "../bots/qa.js";
 import type { BotOutputSchemaName } from "../bots/registry.js";
@@ -326,7 +327,34 @@ export const consultHandoffFixture: ConsultOutput = {
   memoryNotes: [],
 };
 
+/** cv.fact_draft: Ba answered "Have you deployed on AWS?" with "Yes, at Gradion I deployed our Next.js apps to AWS ECS with Terraform." */
+export const factDraftOutputFixture: FactDraftOutput = {
+  facts: [
+    {
+      id: "grad-2",
+      type: "experience",
+      text: "Deployed the team's Next.js apps to AWS ECS with Terraform.",
+      textVi: "Triển khai các ứng dụng Next.js của nhóm lên AWS ECS bằng Terraform.",
+      tags: ["aws", "ecs", "terraform", "next.js"],
+      org: "Gradion",
+      dates: "2022 – present",
+    },
+  ],
+  notes: null,
+  selfCheck: FACT_DRAFT_SELF_CHECK.map((item) => pass(item)),
+  memoryNotes: [],
+};
+
+/** cv.fact_draft: Ba said no, so there is nothing to add. */
+export const factDraftNoneFixture: FactDraftOutput = {
+  facts: [],
+  notes: "You said you haven't used Docker, so I added nothing.",
+  selfCheck: FACT_DRAFT_SELF_CHECK.map((item) => pass(item)),
+  memoryNotes: [],
+};
+
 export const validBotOutputFixtures: Record<BotOutputSchemaName, readonly unknown[]> = {
+  FactDraftOutput: [factDraftOutputFixture, factDraftNoneFixture],
   LeadOutput: [leadOutputFixture, leadClarifyFixture, leadCriteriaProposalFixture, leadScheduleProposalFixture],
   ResearchScanOutput: [researchScanFixture, researchScanBlockedFixture],
   ResearchFitOutput: [researchFitFixture],
