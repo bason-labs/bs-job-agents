@@ -1,6 +1,7 @@
 // PM3 M3 / S1: what Lead's proposals mean. Shared by the orchestrator (which stores the proposal and
 // acts on Ba's click) and the web mock, so both compute the same profile, card text and schedule.
 // Card text is always built here from the proposal's data, never from Lead's own wording.
+import { SEARCH_SOURCES } from "../common/sources.js";
 import type { SearchProfileFieldsBase } from "../domain/search-profile.js";
 import type { CriteriaChanges, ScheduleProposal } from "./lead.js";
 
@@ -17,7 +18,8 @@ const LIST_LABELS: Record<ListField, string> = {
   companyTypes: "preferred company types",
 };
 
-const SOURCE_LABELS: Record<string, string> = { topcv: "TopCV", itviec: "ITviec", linkedin: "LinkedIn" };
+// W5: every search source's label comes from shared SEARCH_SOURCES.
+const SOURCE_LABELS: Record<string, string> = Object.fromEntries(Object.entries(SEARCH_SOURCES).map(([k, v]) => [k, v.label]));
 
 const fold = (s: string) => s.trim().toLocaleLowerCase("vi");
 

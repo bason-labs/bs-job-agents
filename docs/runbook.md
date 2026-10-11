@@ -129,6 +129,12 @@ Then `launchctl load ~/Library/LaunchAgents/com.bason.job-agents.plist`, and run
 - **Applications.** Every submission has its record: the fields Apply filled, the consent text, the uploaded CV with its SHA-256, the before-submit and confirmation screenshots, and the frozen JD. Update the status there (Interviewing, Offer, …). **Export all (ZIP)** gives you a CSV plus one folder per application; dry runs are left out.
 - **Schedules.** Create them on **Schedules**, or ask Lead ("scan every weekday at 9") and click **Create schedule** on its card. Lead never creates one by itself.
 - **Criteria from chat.** When Lead suggests a change ("also look in Đà Nẵng"), **Save to my criteria** saves a new version; **Just this run** doesn't.
+- **Sources** (Search criteria; TopCV, ITviec and LinkedIn are on by default, the rest off):
+  - *Vietnam boards*: TopCV, ITviec, VietnamWorks — Research reads them in your Chrome.
+  - *Remote boards*: Remote OK, We Work Remotely, Remotive, Jobspresso — the orchestrator reads their public feeds itself (no bot, no Claude/Codex quota; responses are cached, Remotive's for 6 h as it asks). Each posting links back to the board.
+  - *Global*: LinkedIn, plus Wellfound and Upwork, which Research reads with **your own login** (at most 30 pages per scan, 3–8 s apart). Signed out → a login card, as in UC-17.
+  - **Upwork is find only**: its jobs come as review cards with **Open on Upwork**; Approve is refused and nothing is ever bid, proposed or spent (no Connects). Apply there yourself, then Skip the card.
+  - Remote boards (and Wellfound/Upwork) ignore the city. With **Time-zone overlap** set ("Asia", "UTC+7 ±3h"), they keep jobs whose stated region overlaps it; worldwide, Vietnam and unstated regions stay. Salaries: a USD minimum is compared per month (yearly ÷ 12, hourly × 160, top of the range); a VND minimum is not compared with USD postings.
 
 ## 5. Troubleshooting
 

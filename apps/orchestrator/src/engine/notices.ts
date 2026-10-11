@@ -8,7 +8,7 @@
 // - the run summary when its cards are ready, or when it ends without cards (UC-02, UC-04 a).
 // Chat-originated messages (Lead's replies, consult and room replies, UC-25 handoffs) are W3a's,
 // through the ConversationSink.
-import { CONVERSATION_TASK_KINDS, formatPauseReason, taskKey, type Engine, type MessageCard, type PauseReason } from "@bs-job-agents/shared";
+import { CONVERSATION_TASK_KINDS, SEARCH_SOURCES, formatPauseReason, taskKey, type Engine, type MessageCard, type PauseReason } from "@bs-job-agents/shared";
 import { appendMessage, getApplication, getCompany, getJob, getOrCreateLeadRoom, getStep, listEvents, listTasks, mappers, type Conn, type Task } from "../db/index.js";
 import type { EngineCore } from "./core.js";
 
@@ -16,7 +16,8 @@ import type { EngineCore } from "./core.js";
 export const NOTICE_EVENT = "lead.notice";
 
 export const ENGINE_LABEL: Record<Engine, string> = { claude: "Claude", codex: "ChatGPT" };
-const SOURCE_LABEL: Record<string, string> = { topcv: "TopCV", itviec: "ITviec", linkedin: "LinkedIn" };
+// W5: every search source's label comes from shared SEARCH_SOURCES.
+const SOURCE_LABEL: Record<string, string> = Object.fromEntries(Object.entries(SEARCH_SOURCES).map(([k, v]) => [k, v.label]));
 const BOT_LABEL: Record<string, string> = { lead: "Lead", research: "Research", cv: "CV", qa: "QA", apply: "Apply" };
 
 export const sourceLabel = (source: string): string => SOURCE_LABEL[source] ?? source;

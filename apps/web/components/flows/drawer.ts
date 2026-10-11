@@ -1,6 +1,6 @@
 // What the step drawer shows for a node (UC-22): its tasks (one per map item, or CV and QA per
 // gate round), the selected task's self-check, an output summary, and whether it can be re-run.
-import type { SelfCheckItem, Task } from "@bs-job-agents/shared";
+import { SEARCH_SOURCES, type SelfCheckItem, type Task } from "@bs-job-agents/shared";
 import type { RunView } from "@/lib/api/runs";
 import type { FlowNodeData } from "./graph";
 
@@ -9,7 +9,8 @@ export interface DrawerTask {
   task: Task;
 }
 
-const SOURCE_LABELS: Record<string, string> = { topcv: "TopCV", itviec: "ITviec", linkedin: "LinkedIn" };
+// W5: every search source's label comes from shared SEARCH_SOURCES.
+const SOURCE_LABELS: Record<string, string> = Object.fromEntries(Object.entries(SEARCH_SOURCES).map(([k, v]) => [k, v.label]));
 const BOT_NAMES: Record<string, string> = { research: "Research", cv: "CV", qa: "QA", apply: "Apply", lead: "Lead" };
 
 function itemLabel(item: unknown): string | null {

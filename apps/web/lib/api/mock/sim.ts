@@ -4,6 +4,7 @@
 // questions (UC-12) and pauses (UC-11 e, UC-16, UC-17). Timings are short and scaled by `speed`.
 import {
   CRITERIA_SAVE_KEY_PREFIX,
+  SEARCH_SOURCES,
   ROOM_MENTION_CAP,
   cvLanguagesForJd,
   findOnlySourceOf,
@@ -42,7 +43,7 @@ export class RunCancelled extends Error {
 
 const LEAD = { type: "bot", bot: "lead" } as const;
 const LANG = (l: CvLanguage) => l.toUpperCase();
-const SOURCE_LABEL: Record<string, string> = { topcv: "TopCV", itviec: "ITviec", linkedin: "LinkedIn", link: "link", file: "file" };
+const SOURCE_LABEL: Record<string, string> = { ...Object.fromEntries(Object.entries(SEARCH_SOURCES).map(([k, v]) => [k, v.label])), link: "link", file: "file" };
 
 export const mentionsIn = (text: string, bots: readonly string[]) => parseMentions(text, bots);
 
