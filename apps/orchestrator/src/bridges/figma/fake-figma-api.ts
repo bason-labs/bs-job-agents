@@ -22,6 +22,8 @@ export interface FakeNodeInit {
   children?: FakeNodeInit[];
   /** Bytes `exportAsync({format:'PDF'})` returns for this node. */
   pdf?: Uint8Array;
+  /** Visual properties set on the node as is (fills, fontName, cornerRadius…; PM2 S9). */
+  props?: Record<string, unknown>;
 }
 
 type Parent = FakeNode | FakePage;
@@ -38,6 +40,8 @@ export class FakeNode {
   locked: boolean;
   characters?: string;
   pdf?: Uint8Array;
+  /** @internal Names of the visual properties set from `init.props`. */
+  private props: string[] = [];
   parent: Parent | null = null;
   /** Container nodes only: like Figma, TEXT nodes have no `children` property at all. */
   declare readonly children?: FakeNode[];
@@ -58,6 +62,10 @@ export class FakeNode {
     this.locked = init.locked ?? false;
     if (init.characters !== undefined) this.characters = init.characters;
     if (init.pdf) this.pdf = init.pdf;
+    if (init.props) {
+      this.props = Object.keys(init.props);
+      Object.assign(this, init.props);
+    }
     if (this.type !== "TEXT") {
       this.kids = [];
       Object.defineProperty(this, "children", { get: () => [...(this.kids ?? [])], enumerable: true });
@@ -116,6 +124,9 @@ export class FakeNode {
       locked: this.locked,
       ...(this.characters !== undefined ? { characters: this.characters } : {}),
       ...(this.pdf ? { pdf: this.pdf } : {}),
+      ...(this.props.length > 0
+        ? { props: Object.fromEntries(this.props.map((p) => [p, (this as unknown as Record<string, unknown>)[p]])) }
+        : {}),
       ...(this.kids ? { children: this.kids.map((c) => c.toInit(keepIds)) } : {}),
     };
   }

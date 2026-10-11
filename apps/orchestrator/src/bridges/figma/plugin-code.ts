@@ -22,6 +22,82 @@ export function jsLiteral(value: unknown): string {
 
 const header = (op: BridgeOp) => `// bs-bridge:op=${op}\n`;
 
+/**
+ * PM2 S9: the visual properties a protected-page fingerprint records per node (fills, strokes,
+ * effects, opacity, text style, style ids, auto layout, rotation, corner radius, descriptions and
+ * component properties), so a style change on a template is a change even when the code guard
+ * could not see it (e.g. a node id built at run time).
+ */
+export const FINGERPRINT_STYLE_PROPS = [
+  "fills",
+  "strokes",
+  "strokeWeight",
+  "strokeAlign",
+  "strokeCap",
+  "strokeJoin",
+  "dashPattern",
+  "effects",
+  "opacity",
+  "blendMode",
+  "isMask",
+  "fillStyleId",
+  "strokeStyleId",
+  "effectStyleId",
+  "gridStyleId",
+  "textStyleId",
+  "fontName",
+  "fontSize",
+  "fontWeight",
+  "lineHeight",
+  "letterSpacing",
+  "paragraphSpacing",
+  "paragraphIndent",
+  "textCase",
+  "textDecoration",
+  "textAlignHorizontal",
+  "textAlignVertical",
+  "textAutoResize",
+  "layoutMode",
+  "layoutWrap",
+  "primaryAxisSizingMode",
+  "counterAxisSizingMode",
+  "primaryAxisAlignItems",
+  "counterAxisAlignItems",
+  "itemSpacing",
+  "counterAxisSpacing",
+  "paddingLeft",
+  "paddingRight",
+  "paddingTop",
+  "paddingBottom",
+  "layoutAlign",
+  "layoutGrow",
+  "layoutPositioning",
+  "layoutSizingHorizontal",
+  "layoutSizingVertical",
+  "minWidth",
+  "maxWidth",
+  "minHeight",
+  "maxHeight",
+  "constraints",
+  "clipsContent",
+  "layoutGrids",
+  "rotation",
+  "cornerRadius",
+  "topLeftRadius",
+  "topRightRadius",
+  "bottomLeftRadius",
+  "bottomRightRadius",
+  "cornerSmoothing",
+  "description",
+  "componentPropertyDefinitions",
+  "componentProperties",
+  "variantProperties",
+  "boundVariables",
+] as const;
+
+/** TEXT nodes with mixed styles: the per-range styles (getStyledTextSegments). */
+export const FINGERPRINT_TEXT_SEGMENT_FIELDS = ["fontName", "fontSize", "fontWeight", "fills", "lineHeight", "letterSpacing", "textCase", "textDecoration", "fillStyleId", "textStyleId"] as const;
+
 /** The op marker of a snippet, or null for other code. */
 export function bridgeOpOf(code: string): string | null {
   return /^\/\/ bs-bridge:op=([a-z-]+)/.exec(code)?.[1] ?? null;
@@ -102,6 +178,34 @@ const page = await figma.getNodeByIdAsync(pageId);
 if (!page || page.type !== "PAGE") throw new Error("BRIDGE:NOT_FOUND:page " + pageId + " not found");
 await page.loadAsync();
 const r = function (v) { return Math.round(v * 100) / 100; };
+const STYLE_PROPS = ${jsLiteral(FINGERPRINT_STYLE_PROPS)};
+const clean = function (v) {
+  if (typeof v === "symbol") return "mixed";
+  if (v === undefined || typeof v === "function") return undefined;
+  if (typeof v === "number") return Math.round(v * 1000) / 1000;
+  if (Array.isArray(v)) return v.map(function (x) { const c = clean(x); return c === undefined ? null : c; });
+  if (v && typeof v === "object") {
+    const o = {};
+    for (const k in v) { const c = clean(v[k]); if (c !== undefined) o[k] = c; }
+    return o;
+  }
+  return v;
+};
+const styleOf = function (node) {
+  const s = {};
+  let n = 0;
+  for (let i = 0; i < STYLE_PROPS.length; i++) {
+    const p = STYLE_PROPS[i];
+    let v;
+    try { if (!(p in node)) continue; v = node[p]; } catch (e) { continue; }
+    const c = clean(v);
+    if (c !== undefined) { s[p] = c; n++; }
+  }
+  if (node.type === "TEXT" && typeof node.getStyledTextSegments === "function") {
+    try { s.segments = clean(node.getStyledTextSegments(${jsLiteral(FINGERPRINT_TEXT_SEGMENT_FIELDS)})); n++; } catch (e) { /* not readable */ }
+  }
+  return n > 0 ? s : null;
+};
 const nodes = [];
 const walk = function (node, parentId, index) {
   const e = { id: node.id, type: node.type, name: node.name, parentId: parentId, index: index };
@@ -110,6 +214,8 @@ const walk = function (node, parentId, index) {
   if (typeof node.x === "number") { e.x = r(node.x); e.y = r(node.y); }
   if (typeof node.width === "number") { e.w = r(node.width); e.h = r(node.height); }
   if (node.type === "TEXT") e.text = node.characters;
+  const style = styleOf(node);
+  if (style) e.style = style;
   nodes.push(e);
   if ("children" in node) {
     const kids = node.children;
