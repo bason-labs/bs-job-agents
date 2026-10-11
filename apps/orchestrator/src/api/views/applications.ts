@@ -7,10 +7,11 @@ import {
   SubmissionRecordSchema,
   type ApplicationDetail,
   type ApplicationListItem,
+  type ApprovalSummary,
   type FileRef,
   type SubmissionRecord,
 } from "@bs-job-agents/shared";
-import { getCompany, getSubmissionRecord, mappers, type Application, type CvVersion, type Db, type FullSubmissionRecord } from "../../db/index.js";
+import { getCompany, getSubmissionRecord, latestApprovalForApplication, mappers, type Application, type CvVersion, type Db, type FullSubmissionRecord } from "../../db/index.js";
 import { fileRef, fileRefs, safeDataPath, type FileId } from "../files.js";
 
 const isPostSubmit = (status: Application["status"]): boolean => (POST_SUBMIT_APPLICATION_STATUSES as readonly string[]).includes(status);
@@ -94,5 +95,21 @@ export async function applicationDetail(db: Db, dataDir: string, app: Applicatio
     cvVersion: cvSummary(rec.cvVersion, cvPdf),
     submission: panelRecord(rec, warn),
     files,
+    approval: approvalSummary(db, app),
+  };
+}
+
+/**
+ * PM3 S3, UC-13: the latest approval of the application (the record's own approval once one is
+ * written), so approved, paused and needs_check applications show it too. Never the token.
+ */
+function approvalSummary(db: Db, app: Application): ApprovalSummary | null {
+  const approval = latestApprovalForApplication(db, app.id);
+  if (!approval) return null;
+  return {
+    approvedAt: approval.createdAt,
+    cvVersionId: String(approval.cvVersionId),
+    allowedDomains: approval.allowedDomains,
+    note: app.dryRun ? "dry run" : null,
   };
 }

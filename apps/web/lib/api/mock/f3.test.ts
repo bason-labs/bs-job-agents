@@ -1,6 +1,6 @@
 // F3 (PM2 S8, S11, S15, S16) pieces in the mock orchestrator: Approve live after a settled dry run,
 // "Don't allow" on a domain confirm, the figma-change choice, and review flags lib/api keeps.
-import { AppEventSchema, ApplyAgainResponseSchema, type AppEvent, type MessageCard } from "@bs-job-agents/shared";
+import { AppEventSchema, ApplicationDetailSchema, ApplyAgainResponseSchema, type AppEvent, type MessageCard } from "@bs-job-agents/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { isApiError } from "../errors";
 import { createHttpApi } from "../http";
@@ -97,6 +97,18 @@ describe("PM3 S2: an “apply again” card says Ba applied before", () => {
     const again = cards.find((c) => c.flags.appliedBefore);
     expect(again?.flags.appliedBefore).toEqual({ applicationId: failed.id, at: failed.statusHistory[0]!.at, status: "failed", origin: "app" });
     expect(cards.filter((c) => c.flags.appliedBefore)).toHaveLength(1);
+  });
+});
+
+describe("PM3 S3: the approval before a submission record exists", () => {
+  it("an approved application with no record shows its approval", async () => {
+    const card = (await mock.getReviewQueue()).find((c) => c.job.url && !c.flags.injectionFlagged)!;
+    const cvVersionId = card.cvOptions[0]!.cvVersion.id;
+    const { applicationId } = await mock.approve(card.job.id, { cvVersionId, introText: null });
+    const detail = await mock.request("GET", "/applications/:id", { params: { id: applicationId! }, schema: ApplicationDetailSchema });
+    expect(detail.application.status).toBe("approved");
+    expect(detail.submission).toBeNull();
+    expect(detail.approval).toEqual({ approvedAt: mock.nowIso(), cvVersionId, allowedDomains: [new URL(card.job.url!).hostname.replace(/^www\./, "")], note: null });
   });
 });
 

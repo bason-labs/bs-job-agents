@@ -5,6 +5,10 @@ import { ApplicationSchema, ApplicationStatusSchema, SubmissionRecordSchema } fr
 import { ExportSchema } from "../domain/export.js";
 import { FileRefSchema } from "./common.js";
 
+/** The approval as the record panel shows it: the submission record's own approval shape. */
+export const ApprovalSummarySchema = SubmissionRecordSchema.shape.approval.unwrap();
+export type ApprovalSummary = z.infer<typeof ApprovalSummarySchema>;
+
 const JobSummarySchema = z.object({
   id: IdSchema,
   title: z.string(),
@@ -60,6 +64,12 @@ export const ApplicationDetailSchema = z.object({
   submission: SubmissionRecordSchema.nullable(),
   /** Files for the viewer (uploaded CV, screenshots, JD snapshot). */
   files: z.array(FileRefSchema),
+  /**
+   * PM3 S3, UC-13: Ba's latest approval of this application (time, CV version, allowed sites),
+   * also before a submission record exists (approved, paused, needs_check). Never the token.
+   * Null for an imported application. F4, additive.
+   */
+  approval: ApprovalSummarySchema.nullable().optional(),
 });
 export type ApplicationDetail = z.infer<typeof ApplicationDetailSchema>;
 

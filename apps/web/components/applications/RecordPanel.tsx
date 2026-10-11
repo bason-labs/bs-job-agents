@@ -75,6 +75,8 @@ export function RecordPanel({ row, detail, fileUrl, onClose, onApplyAgain }: Rec
   const app = detail?.application ?? row?.application;
   const job = detail?.job ?? row?.job;
   const submission = detail?.submission ?? null;
+  // PM3 S3: the record's own approval, else Ba's latest approval (shown before a record exists).
+  const approval = submission?.approval ?? detail?.approval ?? null;
   const files = detail ? recordFiles(detail) : null;
   const company = job?.company ?? "";
   // The row that opened the panel; it keeps focus after the panel closes (row is null by then).
@@ -146,9 +148,21 @@ export function RecordPanel({ row, detail, fileUrl, onClose, onApplyAgain }: Rec
                   <Skeleton className="h-40 w-full" />
                 </div>
               ) : !submission ? (
-                <p className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted">
-                  No submission record — nothing was sent to the employer.
-                </p>
+                <>
+                  <p className="rounded-xl border border-dashed border-border p-4 text-center text-xs text-muted">
+                    {app.status === "approved" || app.status === "paused"
+                      ? "Not sent yet — Apply hasn't submitted this application."
+                      : "No submission record — nothing was sent to the employer."}
+                  </p>
+                  {/* PM3 S3, UC-13: what Ba approved, before any record exists. */}
+                  {approval ? (
+                    <Section title="Approval">
+                      <p data-testid="record-approval" className="text-xs text-muted">
+                        {approvalLine(approval, detail.cvVersion?.label ?? null)}
+                      </p>
+                    </Section>
+                  ) : null}
+                </>
               ) : (
                 <>
                   <Section title="CV file sent">
@@ -245,7 +259,7 @@ export function RecordPanel({ row, detail, fileUrl, onClose, onApplyAgain }: Rec
 
                   <Section title="Approval">
                     <p data-testid="record-approval" className="text-xs text-muted">
-                      {submission.approval ? approvalLine(submission.approval, detail.cvVersion?.label ?? null) : "not captured"}
+                      {approval ? approvalLine(approval, detail.cvVersion?.label ?? null) : "not captured"}
                     </p>
                   </Section>
                 </>
