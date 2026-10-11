@@ -8,8 +8,8 @@
     "roleMdSha256": "e2bc28cc22a393c18479c918526b21c523cd597be49b5d80e962e9e24c666c24"
   },
   "lead": {
-    "promptVersion": 1,
-    "roleMdSha256": "5966b27349cf1205df1db333657ad755b23c59bff4539f6df462c5ff1a142a2e"
+    "promptVersion": 2,
+    "roleMdSha256": "a35a430138896d00e5a0a3c5674202dad7af54c14dad5128e22c0fa789083bc1"
   },
   "qa": {
     "promptVersion": 1,
