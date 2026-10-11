@@ -24,11 +24,12 @@ type ProfileFields = SearchProfileFieldsBase;
 function fieldsOf(p: SearchProfile): ProfileFields {
   const {
     roles, locations, workModes, minSalary, currency, seniority, sources, includeKeywords, excludeKeywords,
-    excludeCompanies, companyTypes, languages, maxJobs, fitThreshold, salaryPolicy, salaryAmount,
+    excludeCompanies, companyTypes, languages, maxJobs, fitThreshold, salaryPolicy, salaryAmount, timezoneOverlap,
   } = p;
   return {
     roles, locations, workModes, minSalary, currency, seniority, sources, includeKeywords, excludeKeywords,
     excludeCompanies, companyTypes, languages, maxJobs, fitThreshold, salaryPolicy, salaryAmount,
+    ...(timezoneOverlap !== null ? { timezoneOverlap } : {}),
   };
 }
 

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { openTestDb, type Db } from "../client.js";
+import { toSearchProfile } from "../mappers.js";
 import { NotFoundError } from "../errors.js";
 import { at, seedBots, T0 } from "../test-helpers.js";
 import { createRun, getRun, updateRunStatus } from "./runs.js";
@@ -109,6 +110,18 @@ describe("search profiles (§7.5, UC-21b)", () => {
 
   it("updateSearchProfile throws when there is no profile yet", () => {
     expect(() => updateSearchProfile(db, { maxJobs: 3 })).toThrow(NotFoundError);
+  });
+
+  it("W5: keeps the remote sources and timezoneOverlap across versions; null clears it", () => {
+    createSearchProfile(db, CRITERIA, { now: at(0) });
+    expect(toSearchProfile(getActiveSearchProfile(db)!)).not.toHaveProperty("timezoneOverlap");
+    const v2 = updateSearchProfile(db, { sources: ["topcv", "remoteok", "upwork"], timezoneOverlap: "UTC+7 ±3h" }, { now: at(60) });
+    expect(v2).toMatchObject({ version: 2, sources: ["topcv", "remoteok", "upwork"], timezoneOverlap: "UTC+7 ±3h" });
+    const v3 = updateSearchProfile(db, { maxJobs: 3 }, { now: at(120) });
+    expect(toSearchProfile(v3)).toMatchObject({ version: 3, timezoneOverlap: "UTC+7 ±3h" });
+    const v4 = updateSearchProfile(db, { timezoneOverlap: null }, { now: at(180) });
+    expect(v4.timezoneOverlap).toBeNull();
+    expect(toSearchProfile(v4)).not.toHaveProperty("timezoneOverlap");
   });
 });
 
