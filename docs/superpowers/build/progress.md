@@ -32,6 +32,7 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | W4a source adapters | ✅ merged; 2635 tests green; reports/phase4-w4a-adapters.md; engine needs relayed to F4b |
 | 2026-10-11 | F4 part B (S2–S7 + handoffs) | ✅ merged; 2674 tests + 151 e2e green; prompts v3 (Lead, Research, CV, Apply) |
 | 2026-10-11 | W4b e2e + runbook + live checks | ✅ merged; 2676 unit + 151 mock e2e + 11 live-shape e2e; reports/phase4-w4b-e2e.md; Chrome/Figma live checks blocked (need Ba) |
-| 2026-10-11 | Phase 4 QA/QC (worktree) | 🔄 running |
+| 2026-10-11 | Phase 4 QA/QC | ✅ merged; qa-phase-4.md; 2692 unit + 151 + 12 e2e; runtime proxy; dry-run gate; clean-clone check ok |
+| 2026-10-11 | Phase 4 PM review (final, worktree) | 🔄 running |
 
-**Next action:** merge W4b, then the Phase 4 QA, then the Phase 4 PM (final), then the must-fix if any. Then the final summary to Ba with the runbook + dry-run steps (the dry run needs Ba present), delete the watchdog cron and clean up merged worktrees. Resume any agent stopped by a usage limit with SendMessage.
+**Next action:** merge the final PM review, run a fixer only for genuine must-fix items, then give Ba the final summary, delete the watchdog cron, and clean up merged worktrees.
