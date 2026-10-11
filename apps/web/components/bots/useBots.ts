@@ -7,6 +7,11 @@ import { errorText } from "@/components/schedules/apiError";
 import type { BotsData } from "./data";
 import { ENGINE_LABELS, type BotScreenView } from "./logic";
 
+export interface MemoryNote {
+  id: string;
+  text: string;
+}
+
 /** A trust change waiting for Ba's confirmation (raising or lowering a level). */
 export interface PendingTrust {
   bot: BotScreenView;
@@ -20,7 +25,13 @@ const TRUST_VERB = { promote: "promoted", raise: "raised", lower: "lowered" } as
 /** State and actions shared by the Bots grid and a bot's settings page. */
 export function useBots(initial: BotScreenView[], data: BotsData) {
   const [bots, setBots] = useState(initial);
-  const [pendingMemory, setPendingMemory] = useState<{ bot: BotScreenView; note: string } | null>(null);
+  const [seen, setSeen] = useState(initial);
+  if (seen !== initial) {
+    // A live re-read (bot.updated from another tab, the engine's demotion or activity).
+    setSeen(initial);
+    setBots(initial);
+  }
+  const [pendingMemory, setPendingMemory] = useState<{ bot: BotScreenView; note: MemoryNote } | null>(null);
   const [pendingTrust, setPendingTrust] = useState<PendingTrust | null>(null);
   const { toast } = useToast();
 
@@ -61,14 +72,14 @@ export function useBots(initial: BotScreenView[], data: BotsData) {
         toast({ title: `Couldn't dismiss the suggestion: ${errorText(e)}`, tone: "err" });
       }
     },
-    askDeleteMemory: (bot: BotScreenView, note: string) => setPendingMemory({ bot, note }),
+    askDeleteMemory: (bot: BotScreenView, note: MemoryNote) => setPendingMemory({ bot, note }),
     cancelDeleteMemory: () => setPendingMemory(null),
     confirmDeleteMemory: async () => {
       if (!pendingMemory) return;
       const { bot, note } = pendingMemory;
       setPendingMemory(null);
       try {
-        put(await data.deleteMemoryNote(bot.name, note));
+        put(await data.deleteMemoryNote(bot.name, note.id));
         toast({ title: `Deleted a memory note from ${bot.displayName}` });
       } catch (e) {
         toast({ title: `Couldn't delete the note: ${errorText(e)}`, tone: "err" });

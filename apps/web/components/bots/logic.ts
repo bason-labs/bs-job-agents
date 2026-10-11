@@ -73,6 +73,14 @@ export function raiseTarget(bot: Pick<BotScreenView, "trustLevel" | "promoteAllo
   return bot.promoteAllowed && bot.trustLevel < 2 ? ((bot.trustLevel + 1) as TrustLevel) : null;
 }
 
+/**
+ * The memory notes to list: with ids (DELETE /bots/:name/memory/:noteId, PM S14) when the API sends
+ * them; an older API's plain `memory` lines are shown without a delete control (id null).
+ */
+export function memoryNotesOf(bot: Pick<BotScreenView, "memory" | "memoryNotes">): { id: string | null; text: string }[] {
+  return bot.memoryNotes ?? bot.memory.map((text) => ({ id: null, text }));
+}
+
 export function lowerTarget(bot: Pick<BotScreenView, "trustLevel">): TrustLevel | null {
   return bot.trustLevel > 0 ? ((bot.trustLevel - 1) as TrustLevel) : null;
 }

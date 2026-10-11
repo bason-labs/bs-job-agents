@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { BOT_VIEWS } from "./fixtures";
-import { engineLockReason, lowerTarget, promoteAction, promotionText, qaEngineWarning, raiseTarget, restoreTarget, type BotScreenView } from "./logic";
+import { seedBotViews } from "@/lib/api/mock/seed-bots";
+import { engineLockReason, lowerTarget, memoryNotesOf, promoteAction, promotionText, qaEngineWarning, raiseTarget, restoreTarget, type BotScreenView } from "./logic";
+
+const BOT_VIEWS = seedBotViews();
+
+describe("memoryNotesOf (PM S14)", () => {
+  it("lists the notes with ids when the API sends them, else the plain lines without ids", () => {
+    const lead = BOT_VIEWS.find((b) => b.name === "lead")!;
+    expect(memoryNotesOf(lead).map((n) => n.text)).toEqual(lead.memory);
+    expect(memoryNotesOf(lead).every((n) => /^[0-9a-f]{16}$/.test(n.id ?? ""))).toBe(true);
+    expect(memoryNotesOf({ memory: ["a"], memoryNotes: undefined })).toEqual([{ id: null, text: "a" }]);
+  });
+});
 
 const bot = (name: string, over: Partial<BotScreenView> = {}): BotScreenView => ({ ...BOT_VIEWS.find((b) => b.name === name)!, ...over });
 

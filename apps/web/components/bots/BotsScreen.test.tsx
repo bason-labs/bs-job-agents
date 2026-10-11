@@ -2,11 +2,28 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ToastProvider, TooltipProvider } from "@/components/ui";
-import { BotsScreen } from "./BotsScreen";
-import { createFixtureBotsData } from "./data";
+import { testMock } from "@/lib/api/mock/testing";
+import { ApiProvider } from "@/lib/api/react";
+import { BotsLive, BotsScreen } from "./BotsScreen";
+import { createBotsData } from "./data";
+
+function live(only?: string) {
+  const mock = testMock();
+  const user = userEvent.setup();
+  render(
+    <ApiProvider mode="mock" api={mock}>
+      <TooltipProvider>
+        <ToastProvider>
+          <BotsLive only={only} />
+        </ToastProvider>
+      </TooltipProvider>
+    </ApiProvider>,
+  );
+  return { mock, user };
+}
 
 async function setup(only?: string) {
-  const data = createFixtureBotsData();
+  const data = createBotsData(testMock());
   const initial = await data.list();
   const user = userEvent.setup();
   render(
@@ -117,5 +134,39 @@ describe("BotsScreen (§11 Bots)", () => {
     await user.click(within(card("apply")).getByRole("switch"));
     expect(await screen.findByText("Apply disabled — Lead won't assign it new tasks")).toBeInTheDocument();
     expect((await data.get("apply"))!.enabled).toBe(false);
+  });
+});
+
+describe("BotsLive (the pages)", () => {
+  it("reads the bots through the api and follows bot.updated from elsewhere", async () => {
+    const { mock } = live();
+    expect(await screen.findByTestId("bots-grid")).toBeInTheDocument();
+    await mock.request("PATCH", "/bots/:name", { params: { name: "research" }, body: { engine: "claude" } });
+    await waitFor(() => expect(within(card("research")).getByRole("radio", { name: "Claude" })).toHaveAttribute("aria-checked", "true"));
+  });
+
+  it("says so for a bot that doesn't exist", async () => {
+    live("nope");
+    expect(await screen.findByText("There is no bot named “nope”")).toBeInTheDocument();
+  });
+
+  it("lists Lead's workflow proposals: approve saves (never runs), dismiss hides the buttons", async () => {
+    const { mock, user } = live();
+    mock.simulate("workflow-proposal");
+    await mock.idle();
+    const section = await screen.findByTestId("workflow-proposals");
+    await waitFor(() => expect(within(section).getAllByTestId("workflow-proposal")).toHaveLength(2));
+    // Newest first: Lead's new suggestion, then the seeded one.
+    const [second, first] = within(section).getAllByTestId("workflow-proposal");
+    expect(second).toHaveTextContent("scan-da-nang-2");
+    expect(first).toHaveTextContent("weekly-remote-react");
+    expect(within(first!).getByTestId("workflow-proposal-summary")).toHaveTextContent("preset of job-scan · workModes: remote · includeKeywords: React, Next.js · maxJobs: 5");
+    const runs = Object.keys(mock.state.runs).length;
+    await user.click(within(first!).getByRole("button", { name: "Approve (save only)" }));
+    expect(await screen.findByText("Saved weekly-remote-react v1. Nothing was started; ask Lead to run it.")).toBeInTheDocument();
+    expect(Object.keys(mock.state.runs)).toHaveLength(runs);
+    await user.click(within(second!).getByRole("button", { name: "Dismiss" }));
+    await waitFor(() => expect(within(section).queryAllByRole("button", { name: "Dismiss" })).toHaveLength(0));
+    expect(within(section).getAllByTestId("workflow-proposal").map((p) => p.dataset.status).sort()).toEqual(["approved", "dismissed"]);
   });
 });
