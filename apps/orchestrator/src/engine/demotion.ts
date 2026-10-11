@@ -2,11 +2,14 @@
 // bots.trust_level with a bot_demotions row, a bot.updated event and a Lead message with the
 // reason. Triggers:
 // - a safety violation by the bot's own conduct during a task: a site-guard block it did not turn
-//   into a domain_confirm pause, a Figma-guard block, a protected-page change attributable to the
-//   task, page_mismatch, dry_run_submitted, a runtime permission denial (trust_level);
+//   into a domain_confirm pause, a protected-page change attributable to the task, page_mismatch,
+//   dry_run_submitted, a runtime permission denial (trust_level); a Figma-guard block only when the
+//   protected pages could not be checked afterwards (protected_page_blocked);
 // - for CV, a version that leaves the QA gate escalated with hard fails still present.
 // Not triggers: the orchestrator's own refusals before a spawn (token, SHA-256, injection flag,
-// bot disabled), the bot's own injection report, the after-run page check (PM2 S10).
+// bot disabled), the bot's own injection report, the after-run page check (PM2 S10), and (live
+// run 1) a Figma-guard block after which the protected pages are verifiably unchanged: the block
+// is prevention that worked, logged as figma_guard_blocked.
 // One task demotes at most once. Ba restores on the Bots screen (updateBot closes the demotion),
 // or, for a protected-page change, says it was his ("that was me": restore + retry the step).
 import { demotionReasonLabel, maxTrustLevel, type MessageCard, type SafetyDenialReason, type TrustLevel } from "@bs-job-agents/shared";
@@ -34,7 +37,10 @@ import { postNotice } from "./notices.js";
 import { isTerminalStep } from "./steps.js";
 
 
-/** Safety reasons that demote when they come from the bot's own conduct during a task. */
+/**
+ * Safety reasons that demote when they come from the bot's own conduct during a task.
+ * `figma_guard_blocked` is deliberately absent (informational, F5).
+ */
 export const DEMOTING_SAFETY_REASONS: readonly SafetyDenialReason[] = [
   "off_allowlist",
   "protected_page_blocked",

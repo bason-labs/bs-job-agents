@@ -126,6 +126,10 @@ describe("safety.denied for a refused submission record (PM M1)", () => {
     expect(AppEventSchema.safeParse({ ...denied, action: "apply.submit", reason: "dry_run_submitted" }).success).toBe(true);
   });
 
+  it("a Figma-guard block that left the protected pages unchanged is an informational safety event (F5)", () => {
+    expect(AppEventSchema.safeParse({ ...denied, action: "mcp__figma__figma_execute", reason: "figma_guard_blocked" }).success).toBe(true);
+  });
+
   it("the trust guard's binding denials have reasons too (PM M2)", () => {
     for (const reason of ["wrong_application", "wrong_cv", "injection_flagged", "application_closed"]) {
       expect(AppEventSchema.safeParse({ ...denied, reason }).success, reason).toBe(true);

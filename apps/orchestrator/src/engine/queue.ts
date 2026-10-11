@@ -204,6 +204,21 @@ export function parseGuardLog(text: string | null): GuardBlock[] {
   return blocks;
 }
 
+/** A PreToolUse block by the Figma guard (the Drafts-only hook, §6.2). */
+function isFigmaGuardDenial(d: PermissionDenial): boolean {
+  return d.source === "hook" && /figma/i.test(d.tool);
+}
+
+/**
+ * Live run 1 (F5): after a CV task whose protected pages are verifiably unchanged, every
+ * Figma-guard block is prevention that worked: logged as `figma_guard_blocked`, never a demotion.
+ */
+function figmaBlocksVerified(outcome: Outcome): Outcome {
+  if (!outcome.safety?.some((s) => s.reason === "protected_page_blocked")) return outcome;
+  const safety = outcome.safety.map((s): SafetyNote => (s.reason === "protected_page_blocked" ? { ...s, reason: "figma_guard_blocked", demote: false } : s));
+  return { ...outcome, safety } as Outcome;
+}
+
 function blockNote(b: GuardBlock): SafetyNote {
   const reason: SafetyDenialReason = b.guard === "site" ? "off_allowlist" : b.guard === "figma" ? "protected_page_blocked" : "trust_level";
   const detail = [b.rule, b.target, b.reason].filter((x): x is string => x !== null).join(" · ");
@@ -608,7 +623,8 @@ export class TaskQueue {
    *   needs_check and a safety event. Ba can never be asked to widen the token to a site no
    *   navigation needed.
    * - Any other attempt with a site-guard block fails the task with no retry (decision 6, §10.2
-   *   rule 7: the navigation stops the task). Figma-guard blocks keep their retry.
+   *   rule 7: the navigation stops the task). Figma-guard blocks are settled by the fingerprint
+   *   check instead (afterFigmaTask, live run 1).
    */
   private checkSiteGuard(task: Task, outcome: Outcome, blocks: readonly SiteBlock[]): Outcome {
     const domainConfirm = outcome.kind === "paused" && outcome.reason.code === "domain_confirm";
@@ -774,6 +790,17 @@ export class TaskQueue {
         return { kind: "failed", error: "timed out", retryable: true };
       case "denied": {
         const safety = result.denials.map(denialNote);
+        // Live run 1 (F5): only Figma-guard blocks on a Figma task. The block prevented the call;
+        // the bot's output decides the attempt, and afterFigmaTask's fingerprint check decides
+        // whether the block was harmless (informational) or a protected page changed (fail + demote).
+        if (task.usesFigma && result.denials.every(isFigmaGuardDenial)) {
+          if (result.output === null) {
+            const tools = [...new Set(result.denials.map((d) => d.tool))].join(", ");
+            return { kind: "failed", error: `the Figma guard blocked ${tools} and the bot returned no valid output`, retryable: true, safety };
+          }
+          const fromOutput = this.classify(task, bot, { status: "ok", output: result.output, sessionId: null, durationMs: result.durationMs });
+          return { ...fromOutput, safety: [...(fromOutput.safety ?? []), ...safety] } as Outcome;
+        }
         // UC-11 e: the site guard stopped Apply at a domain outside the approval and Apply paused for Ba.
         if (key === "apply.submit" && result.output !== null) {
           const parsed = parseBotOutput("ApplyOutput", result.output);
@@ -827,7 +854,8 @@ export class TaskQueue {
 
   /**
    * §6.2 after a CV task, still under the Figma lock: the protected pages must be unchanged
-   * (any change fails the task and alerts Ba); then the orchestrator finds the bot's Drafts frame,
+   * (any change fails the task and alerts Ba). When they are, a Figma-guard block was prevention
+   * that worked: it stays a safety event (figma_guard_blocked) but neither fails nor demotes. Then the orchestrator finds the bot's Drafts frame,
    * exports it (one A4 page), and extracts its text for QA.
    */
   private async afterFigmaTask(task: Task, prepared: Prepared, outcome: Outcome): Promise<{ outcome: Outcome; exported?: CvExport }> {
@@ -839,6 +867,7 @@ export class TaskQueue {
         // A figma_execute that timed out may still have finished inside Figma: always re-check.
         const after = await this.figmaCall(() => core.deps.figma.fingerprintProtectedPages());
         const diff = diffFingerprints(before, after);
+        if (!diff.changed) outcome = figmaBlocksVerified(outcome);
         if (diff.changed) {
           return {
             outcome: keep({

@@ -279,6 +279,7 @@ describe("a Chrome site-guard block fails the task without a retry (PM2 S3, deci
     await t.idle();
     expect(t.runner.callsFor("cv.tailor")).toHaveLength(2);
     expect(t.tasks("cv.tailor")[0]).toMatchObject({ status: "done", attempt: 2 });
-    expect(t.events("safety.denied")).toEqual([expect.objectContaining({ reason: "protected_page_blocked" })]);
+    // The pages did not change, so the block is logged as prevention that worked (no demotion).
+    expect(t.events("safety.denied")).toEqual([expect.objectContaining({ reason: "figma_guard_blocked" })]);
   });
 });

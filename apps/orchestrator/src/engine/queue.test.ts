@@ -355,7 +355,7 @@ describe("the CV task's Figma flow (§6.2, coordinator B)", () => {
     });
     await t.idle();
     expect(t.events("safety.denied")).toEqual([
-      expect.objectContaining({ reason: "protected_page_blocked", action: "mcp__figma__figma_execute", detail: "figma_page_name · resume · Only the Drafts page may be changed" }),
+      expect.objectContaining({ reason: "figma_guard_blocked", action: "mcp__figma__figma_execute", detail: "figma_page_name · resume · Only the Drafts page may be changed" }),
     ]);
     // A blocked call does not end the session: the CV still made it to the review card.
     expect(t.review(1, 1)).toBeDefined();
