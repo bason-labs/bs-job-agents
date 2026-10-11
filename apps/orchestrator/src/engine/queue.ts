@@ -72,8 +72,9 @@ import { onCheckerDone, onProducerDone, type CvExport } from "./gate.js";
 import type { GuardBlock } from "./ports.js";
 import { isConversationTask, sinkContext, sinkFailed } from "./conversations.js";
 import { injectionDetail, reportedInjection } from "./injection.js";
+import { DEMOTING_SAFETY_REASONS, demoteBot, postProtectedChangeAlert } from "./demotion.js";
 import { noticePause, noticeTaskFailed } from "./notices.js";
-import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, postLeadMessage, stillRunning } from "./task-events.js";
+import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, stillRunning } from "./task-events.js";
 import { hostOfUrl, pauseSite, siteBlocksOf, siteKey, type SiteBlock } from "./sites.js";
 import { checkTaskTrust } from "./trust-guard.js";
 
@@ -856,12 +857,21 @@ export class TaskQueue {
         emitSafetyDenied(core, tx, { botName: task.botName, taskId: task.id, action: s.action, reason: s.reason, detail: s.detail });
         // PM2 S11: Apply met an injection on the job's page: the job is flagged like QA's flag.
         if (s.reason === "injection_flagged" && key === "apply.submit") flagApplyJob(tx, task);
-        if (s.reason === "protected_page_changed") {
-          // §6.2: any change to a protected page alerts Ba; Figma's version history can restore it.
-          postLeadMessage(core, tx, `A protected Figma page changed during a CV task, so I stopped it. ${s.detail ?? ""} Please check the file and restore the page from Figma's version history.`.trim(), {
-            runId: task.runId,
-          });
-        }
+      }
+      // PM2 S8: a violation by the bot's own conduct demotes it one level (once per task).
+      const violation = (outcome.safety ?? []).find(
+        (s) =>
+          s.demote !== false &&
+          DEMOTING_SAFETY_REASONS.includes(s.reason) &&
+          !(outcome.kind === "paused" && outcome.reason.code === "domain_confirm" && s.reason === "off_allowlist"),
+      );
+      const changed = (outcome.safety ?? []).find((s) => s.reason === "protected_page_changed");
+      if (changed) {
+        // §6.2: any change to a protected page alerts Ba; it may have been his own edit (S8).
+        const demoted = demoteBot(core, tx, { botName: task.botName, reason: "protected_page_changed", detail: changed.detail, taskId: task.id, runId: task.runId, silent: true });
+        postProtectedChangeAlert(core, tx, task, `A protected Figma page changed during a CV task, by the bot or by you, so I stopped it. ${changed.detail ?? ""}`, demoted);
+      } else if (violation) {
+        demoteBot(core, tx, { botName: task.botName, reason: violation.reason, detail: violation.detail, taskId: task.id, runId: task.runId });
       }
       if (!current || current.status !== "running") {
         // Finished elsewhere while it ran (the run was cancelled). An Apply that ran may have submitted.
@@ -982,7 +992,11 @@ export class TaskQueue {
     this.core.db.transaction((tx) => {
       const failed = failTaskNow(this.core, tx, task, `denied: ${detail}`);
       emitSafetyDenied(this.core, tx, { botName: task.botName, taskId: task.id, action: taskKey(task.botName, task.kind), reason, detail });
-      if (reason === "protected_page_changed") postLeadMessage(this.core, tx, `I stopped a CV task: ${detail}.`, { runId: task.runId });
+      if (reason === "protected_page_changed") {
+        // PM2 S8: the change happened after an earlier spawn of this task, by the bot or by Ba.
+        const demoted = demoteBot(this.core, tx, { botName: task.botName, reason, detail, taskId: task.id, runId: task.runId, silent: true });
+        postProtectedChangeAlert(this.core, tx, task, `I stopped a CV task: ${detail}, by the bot or by you.`, demoted);
+      }
       else if (isRetryableTask(task.botName, task.kind)) noticeTaskFailed(this.core, tx, failed, `denied: ${detail}`);
       sinkFailed(this.core, tx, failed, `denied: ${detail}`);
       if (!isRetryableTask(task.botName, task.kind)) applyStoppedBeforeSpawn(this.core, tx, task, "denied", detail);

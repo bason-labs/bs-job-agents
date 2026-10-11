@@ -31,6 +31,7 @@ import {
 } from "../db/index.js";
 import { rolePromptHash } from "../runner/bots.js";
 import { answerQuestion, declineDomain, resumePausedTask, type AnswerInput } from "./apply.js";
+import { protectedChangeWasBa, restoreBot } from "./demotion.js";
 import { BridgeWatcher } from "./bridges.js";
 import { resolveEngineConfig, type EngineConfig, type EnginePaths } from "./config.js";
 import { cancelRun, pauseRun, rerunStep, resumeRun } from "./control.js";
@@ -429,6 +430,22 @@ export class Engine implements EngineCore {
   /** UC-11 e "Don't allow" (W3a request): Ba declines the domain Apply paused for; Apply ends (needs_check). */
   declineDomain(taskId: number): void {
     declineDomain(this, taskId);
+  }
+
+  /**
+   * §5.3 (PM2 S8): Ba restores a demoted bot to the level its latest demotion took (capped: Apply
+   * L1) and closes it. (A PATCH that raises the level through the db's updateBot closes it too.)
+   */
+  restoreBot(botName: string): void {
+    restoreBot(this, botName);
+  }
+
+  /**
+   * PM2 S8 "That was me — retry" (choice card `figma-change:<taskId>`): the protected-page change
+   * during that CV task was Ba's. Its demotion is undone and the failed step runs again.
+   */
+  protectedChangeWasBa(taskId: number): { retried: boolean } {
+    return protectedChangeWasBa(this, taskId);
   }
 
   runScheduleNow(scheduleId: number) {

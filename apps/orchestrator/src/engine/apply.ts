@@ -53,6 +53,7 @@ import {
 } from "../db/index.js";
 import type { CapturedScreenshot } from "../runner/screenshots.js";
 import { formDefaultsOf, loadRunCtx, type RunCtx, type Scope } from "./context.js";
+import { demoteBot } from "./demotion.js";
 import { noticeApplyNotStarted, noticeNeedsCheck } from "./notices.js";
 import { siteKey } from "./sites.js";
 import type { EngineCore } from "./core.js";
@@ -332,6 +333,8 @@ export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: Ap
       reason: "dry_run_submitted",
       detail: "a dry run reported submitted; it may really have submitted, so it needs a check",
     });
+    // PM2 S8: a safety violation by Apply's own conduct.
+    demoteBot(core, conn, { botName: task.botName, reason: "dry_run_submitted", detail: "a dry run reported submitted", taskId: task.id, runId: task.runId });
   }
   if (!row || !out || out.applicationId === null) return;
   const record = writeSubmissionRecord(core, conn, task, output, out, files, check);
