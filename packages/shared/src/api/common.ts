@@ -76,6 +76,14 @@ export const API_ROUTES = {
   taskTranscript: "/tasks/:id/transcript",
   /** §11 sidebar: Chrome extension status per engine (bridge.status events keep it live). */
   bridges: "/bridges",
+  /** W3c handoffs (additive). */
+  applicationApplyAgain: "/applications/:id/apply-again",
+  botMemoryNote: "/bots/:name/memory/:noteId",
+  botPromotionDismiss: "/bots/:name/promotion/dismiss",
+  masterCvVersions: "/master-cv/versions",
+  masterCvFactRequests: "/master-cv/fact-requests",
+  masterCvFactRequestDismiss: "/master-cv/fact-requests/:id/dismiss",
+  criteriaProfiles: "/criteria/profiles",
 } as const;
 
 /** GET /bridges (W3a, additive): whether each engine's Chrome extension answers; null = unknown (engine stopped). */

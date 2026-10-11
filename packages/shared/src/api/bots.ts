@@ -17,8 +17,30 @@ export const BotViewSchema = BotRecordSchema.extend({
   memory: z.array(z.string()),
   /** Codex browser bots: site allowlist is prompt-only (§4.4). */
   residualRisk: z.string().nullable(),
+  /** W3a, additive: §5.3 automatic demotion (the latest), null when none; Ba restores with PATCH trustLevel. */
+  demotion: z.object({ fromLevel: TrustLevelSchema, at: z.string(), reason: z.string() }).nullable().optional(),
+  /** W3a, additive: the memory notes with ids for DELETE /bots/:name/memory/:noteId (PM S14). */
+  memoryNotes: z.array(z.object({ id: z.string().min(1), text: z.string() })).optional(),
 });
 export type BotView = z.infer<typeof BotViewSchema>;
+
+/** W3a, additive: the master CV's saved versions (UC-20 history), newest first. */
+export const MasterCvVersionsResponseSchema = z.object({
+  versions: z.array(z.object({ version: z.number().int().positive(), savedAt: z.string(), factCount: z.number().int().nonnegative() })),
+});
+
+/** W3a, additive: a fact CV asked Ba for while tailoring (CvOutput.factRequests, §6.1) and not yet answered. */
+export const FactRequestItemSchema = z.object({
+  /** `<cvVersionId>-<index>` */
+  id: z.string().min(1),
+  jobId: z.string(),
+  company: z.string(),
+  topic: z.string(),
+  question: z.string(),
+  reason: z.string(),
+});
+export type FactRequestItem = z.infer<typeof FactRequestItemSchema>;
+export const FactRequestsResponseSchema = z.object({ requests: z.array(FactRequestItemSchema) });
 
 export const BotsResponseSchema = z.object({ bots: z.array(BotViewSchema) });
 

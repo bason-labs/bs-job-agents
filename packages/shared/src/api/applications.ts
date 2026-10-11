@@ -29,8 +29,21 @@ export const ApplicationListItemSchema = z.object({
   confirmationScreenshotFileId: z.string().nullable(),
   /** Imported or missing parts ("not captured"). */
   partialRecord: z.boolean(),
+  /**
+   * W3a, additive: the CV file actually sent (the record's uploaded copy), else the CV version's
+   * PDF; null when neither is on disk (e.g. an imported row without files).
+   */
+  cvFile: FileRefSchema.nullable().optional(),
 });
 export type ApplicationListItem = z.infer<typeof ApplicationListItemSchema>;
+
+/**
+ * POST /applications/:id/apply-again (W3a, additive): for a failed application, a new
+ * apply-to-link run with "apply again" (§10.2 rule 5, UC-14 a). Its review card comes back for
+ * Ba's approval; nothing is submitted without it.
+ */
+export const ApplyAgainResponseSchema = z.object({ jobId: IdSchema, runId: IdSchema });
+export type ApplyAgainResponse = z.infer<typeof ApplyAgainResponseSchema>;
 
 export const ApplicationsResponseSchema = z.object({
   applications: z.array(ApplicationListItemSchema),
