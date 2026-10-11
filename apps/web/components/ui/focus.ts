@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, type RefObject } from "react";
+import { useRef, type RefObject } from "react";
 
 /**
  * Focus return for layers opened from code (W3c request): Radix only refocuses a Dialog.Trigger, so a
@@ -10,12 +10,12 @@ import { useCallback, useRef, type RefObject } from "react";
  */
 export function useReturnFocus(returnFocus?: RefObject<HTMLElement | null>) {
   const opener = useRef<HTMLElement | null>(null);
-  const onOpenAutoFocus = useCallback(() => {
-    const active = typeof document === "undefined" ? null : document.activeElement;
-    opener.current = active instanceof HTMLElement && active !== document.body ? active : null;
-  }, []);
-  const onCloseAutoFocus = useCallback(
-    (event: Event) => {
+  return {
+    onOpenAutoFocus: () => {
+      const active = typeof document === "undefined" ? null : document.activeElement;
+      opener.current = active instanceof HTMLElement && active !== document.body ? active : null;
+    },
+    onCloseAutoFocus: (event: Event) => {
       const target = returnFocus?.current ?? opener.current;
       opener.current = null;
       if (target && target.isConnected) {
@@ -23,7 +23,5 @@ export function useReturnFocus(returnFocus?: RefObject<HTMLElement | null>) {
         target.focus();
       }
     },
-    [returnFocus],
-  );
-  return { onOpenAutoFocus, onCloseAutoFocus };
+  };
 }
