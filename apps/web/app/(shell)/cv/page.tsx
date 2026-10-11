@@ -7,10 +7,10 @@ export const metadata: Metadata = { title: "Master CV" };
 
 /** UC-20: the facts every tailored CV is built from (centered, max-w-3xl as in the prototype). */
 export default async function MasterCvPage() {
-  const [cv, versions, requests] = await Promise.all([masterCvData.get(), masterCvData.versions(), masterCvData.factRequests()]);
+  const [read, versions, requests] = await Promise.all([masterCvData.get(), masterCvData.versions(), masterCvData.factRequests()]);
   return (
     <Page width="narrow">
-      <MasterCvScreen initial={cv} initialVersions={versions} initialRequests={requests} />
+      <MasterCvScreen initial={read} initialVersions={versions} initialRequests={requests} />
     </Page>
   );
 }

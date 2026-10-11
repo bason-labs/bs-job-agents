@@ -2,11 +2,18 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ToastProvider } from "@/components/ui";
-import { createFixtureMasterCvData } from "./data";
+import { createFixtureMasterCvData, type MasterCvData } from "./data";
+import { MASTER_CV } from "./fixtures";
 import { MasterCvScreen } from "./MasterCvScreen";
 
-async function setup() {
-  const data = createFixtureMasterCvData(undefined, () => new Date("2026-10-11T03:00:00Z"));
+async function cvOf(data: MasterCvData) {
+  const read = await data.get();
+  if (read.state !== "ok") throw new Error(`no master CV (${read.state})`);
+  return read.cv;
+}
+
+async function setup(opts: Parameters<typeof createFixtureMasterCvData>[0] = {}) {
+  const data = createFixtureMasterCvData({ now: () => new Date("2026-10-11T03:00:00Z"), ...opts });
   const [cv, versions, requests] = await Promise.all([data.get(), data.versions(), data.factRequests()]);
   const user = userEvent.setup();
   render(
@@ -39,7 +46,7 @@ describe("MasterCvScreen (UC-20)", () => {
     await waitFor(() => expect(screen.getByTestId("cv-header")).toHaveTextContent("Master version v8."));
     expect(screen.queryByText("unsaved changes")).toBeNull();
     expect(within(screen.getByTestId("cv-versions")).getAllByRole("listitem")[0]).toHaveTextContent("v8current7 facts · 2026-10-11 10:00");
-    expect((await data.get()).facts[1]!.text).toMatch(/Cut month-end close by 2 days\.$/);
+    expect((await cvOf(data)).facts[1]!.text).toMatch(/Cut month-end close by 2 days\.$/);
   });
 
   it("won't save a fact without text, and opens it for fixing", async () => {
@@ -49,7 +56,7 @@ describe("MasterCvScreen (UC-20)", () => {
     await user.click(screen.getByTestId("cv-save"));
     expect(await screen.findByText("Fix the highlighted facts before saving")).toBeInTheDocument();
     expect(within(screen.getByTestId("fact-editor")).getByRole("alert")).toHaveTextContent("Write the fact's text");
-    expect((await data.get()).version).toBe(7);
+    expect((await cvOf(data)).version).toBe(7);
   });
 
   it("answers CV's question by adding a prefilled fact (§6.1)", async () => {
@@ -63,7 +70,43 @@ describe("MasterCvScreen (UC-20)", () => {
     await user.type(text, "Apollo Client at Aegona");
     await user.click(screen.getByTestId("cv-save"));
     await screen.findByText(/Master CV saved as v8/);
-    expect((await data.get()).facts.at(-1)).toMatchObject({ id: "skill-2", text: "GraphQL — Apollo Client at Aegona", tags: ["graphql"] });
+    expect((await cvOf(data)).facts.at(-1)).toMatchObject({ id: "skill-2", text: "GraphQL — Apollo Client at Aegona", tags: ["graphql"] });
+  });
+
+  it("asks to reload when the master CV changed since it was opened (409 master_cv_changed)", async () => {
+    const { user, data } = await setup();
+    // Another tab saves v8 meanwhile.
+    await data.save(await cvOf(data));
+    await user.click(screen.getByRole("button", { name: "Edit grad-2" }));
+    await user.type(within(screen.getByTestId("fact-editor")).getByLabelText("Text (English)"), " Edited.");
+    await user.click(screen.getByTestId("cv-save"));
+    const banner = await screen.findByTestId("cv-conflict");
+    expect(banner).toHaveTextContent("The master CV changed since you opened it (now v8)");
+    expect(screen.getByTestId("cv-save")).toBeDisabled();
+    await user.click(within(banner).getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(screen.getByTestId("cv-header")).toHaveTextContent("Master version v8."));
+    expect(screen.queryByTestId("cv-conflict")).toBeNull();
+    expect(screen.queryByText("unsaved changes")).toBeNull();
+  });
+
+  it("offers to create a master CV when there is none (404)", async () => {
+    const { user, data } = await setup({ seed: null });
+    expect(screen.getByText("No master CV yet")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create master CV" }));
+    expect(screen.getByTestId("cv-header")).toHaveTextContent("New master CV — not saved yet.");
+    await user.type(screen.getByLabelText("Name"), MASTER_CV.contact.name);
+    await user.type(screen.getByLabelText("Email"), MASTER_CV.contact.email);
+    await user.type(within(screen.getByTestId("fact-editor")).getByLabelText("Text (English)"), "TypeScript, React, Next.js");
+    await user.click(screen.getByTestId("cv-save"));
+    expect(await screen.findByText("Master CV created (v1)")).toBeInTheDocument();
+    expect((await cvOf(data)).facts).toHaveLength(1);
+  });
+
+  it("explains an unreadable master-cv.yaml, and reloads (409 master_cv_invalid)", async () => {
+    await setup({ invalid: "facts.2.id: fact ids are lowercase slugs" });
+    expect(screen.getByText("data/master-cv.yaml can't be read")).toBeInTheDocument();
+    expect(screen.getByTestId("cv-invalid")).toHaveTextContent("facts.2.id: fact ids are lowercase slugs");
+    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
   });
 
   it("removes a fact with Undo", async () => {

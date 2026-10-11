@@ -37,6 +37,14 @@ export function apiErrorInfo(e: unknown): ApiErrorInfo {
 export const errorText = (e: unknown): string => apiErrorInfo(e).message;
 export const errorReason = (e: unknown): string | null => apiErrorInfo(e).reason;
 
+/** The error body's `details` object (e.g. { reason, currentVersion }), if any. */
+export function errorDetails(e: unknown): Record<string, unknown> | null {
+  if (!e || typeof e !== "object") return null;
+  const x = e as Loose;
+  const details = x.error?.details ?? x.body?.error?.details ?? x.details;
+  return details && typeof details === "object" ? (details as Record<string, unknown>) : null;
+}
+
 /** What the fixture data sources throw, shaped like the API's error (status + ApiError body). */
 export class FixtureApiError extends Error {
   readonly body: ApiError;
