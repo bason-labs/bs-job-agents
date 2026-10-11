@@ -19,6 +19,7 @@ import { seedBots, T0 } from "../../db/test-helpers.js";
 import { EnginePaths, type EngineConfig } from "../config.js";
 import { Engine } from "../engine.js";
 import type { ConversationSink } from "../conversations.js";
+import type { ScanOutputChecker } from "../scan-check.js";
 import type { MemoryWriter, OrphanKiller, RolePromptSource } from "../ports.js";
 import type { ActionStepOutput, HumanStepOutput } from "../state.js";
 import { FakeClock } from "./fake-clock.js";
@@ -56,6 +57,8 @@ export interface TestEngineOptions {
   memory?: MemoryWriter;
   /** W3a's chat-flow port (PM2 S2). */
   conversations?: ConversationSink;
+  /** PM3 S8: the scan-output checker (default none = accept). */
+  scanChecker?: ScanOutputChecker;
 }
 
 export interface TestEngine {
@@ -146,6 +149,7 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
     ...(opts.prompts ? { prompts: opts.prompts } : {}),
     ...(opts.memory ? { memory: opts.memory } : {}),
     ...(opts.conversations ? { conversations: opts.conversations } : {}),
+    ...(opts.scanChecker ? { scanChecker: opts.scanChecker } : {}),
   });
   const delivered: AppEvent[] = [];
   engine.subscribe((event) => delivered.push(event));

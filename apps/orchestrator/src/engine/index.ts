@@ -49,6 +49,15 @@ export type { AnswerInput } from "./apply.js";
 export { LEAD_TASK_KEYS, type LeadCaller, type LeadTools } from "./lead-tools.js";
 export { computeNextRunAt, type SchedulerTick } from "./scheduler.js";
 export { resolvePendingQuestion, validateBaAnswer, type QuestionContext, type QuestionResolution } from "./questions.js";
+export {
+  acceptAllScanOutputChecker,
+  adapterBrokenError,
+  basicScanOutputChecker,
+  scanRejectedError,
+  type ScanCheckInput,
+  type ScanCheckResult,
+  type ScanOutputChecker,
+} from "./scan-check.js";
 export { checkTaskTrust, authorizeApplyToken, precheckApplyToken, checkToken, type ApplyGuardRequest, type ApplyGuardResult } from "./trust-guard.js";
 export { recruiterFileName, registrableHost } from "./apply.js";
 export type {

@@ -6,6 +6,7 @@ import type { Runner } from "../runner/types.js";
 import type { EngineConfig, EnginePaths } from "./config.js";
 import type { ConversationSink } from "./conversations.js";
 import type { EventBus } from "./events.js";
+import type { ScanOutputChecker } from "./scan-check.js";
 import type {
   BotRegistry,
   BrowserStatusProbe,
@@ -46,6 +47,8 @@ export interface EngineDeps {
   prompts?: RolePromptSource;
   /** PM2 S2: W3a's chat flows; called in the transaction that settles a conversation task. Optional. */
   conversations?: ConversationSink;
+  /** PM3 S8: checks each research.scan output where it settles (W4a: src/adapters/**). Default: accept. */
+  scanChecker?: ScanOutputChecker;
   logger?: Logger;
 }
 

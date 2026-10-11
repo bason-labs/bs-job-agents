@@ -24,6 +24,8 @@ import type {
   WorkflowSource,
 } from "./ports.js";
 import { nodeFileStore } from "./system.js";
+import type { ScanOutputChecker } from "./scan-check.js";
+import { createScanOutputChecker } from "../adapters/index.js";
 
 /** Coordinator A: per-task Claude hook settings from W2c's builders. */
 export const bridgeGuardHooks: GuardHooks = {
@@ -123,6 +125,8 @@ export interface ProductionEngineOptions {
   logger?: Logger;
   /** PM2 S2: W3a's chat flows (replies, handoffs), called in the settle transaction. */
   conversations?: ConversationSink;
+  /** PM3 S8: default: the source adapters' checker (src/adapters, W4a). */
+  scanChecker?: ScanOutputChecker;
 }
 
 export function createProductionEngine(opts: ProductionEngineOptions): Engine {
@@ -141,6 +145,8 @@ export function createProductionEngine(opts: ProductionEngineOptions): Engine {
     memory: memoryWriter(opts.db, opts.botsDir, opts.logger),
     processes: cliOrphanKiller,
     prompts: botPromptSource(opts.botsDir),
+    // PM3 S8: W4a's source adapters check each research.scan output.
+    scanChecker: opts.scanChecker ?? createScanOutputChecker(),
     ...(opts.config ? { config: opts.config } : {}),
     ...(opts.logger ? { logger: opts.logger } : {}),
     ...(opts.conversations ? { conversations: opts.conversations } : {}),
