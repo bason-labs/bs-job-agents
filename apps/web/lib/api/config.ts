@@ -6,8 +6,9 @@
 //                     live when the orchestrator answers, else the mock backend (labelled in the UI)
 //   BSJA_MOCK_SPEED   speed factor for the mock's simulated bots (e2e uses a faster one)
 // Browser requests never go to the orchestrator directly: it sends no CORS headers (PM S18), so
-// they go to /api on the web app's own origin, which next.config.ts rewrites to the orchestrator
-// (orchestratorRewrites below; ORCH_URL / ORCH_PORT are read when the Next server starts).
+// they go to /api on the web app's own origin, which proxy.ts forwards to the orchestrator
+// (orchestratorProxyTarget below; ORCH_URL / ORCH_PORT are read on every request, so `next start`
+// follows them at run time).
 import type { ApiMode } from "./contract";
 
 export const DEFAULT_ORCH_URL = "http://127.0.0.1:4100";
@@ -23,20 +24,24 @@ export function orchestratorUrl(env: Env = processEnv()): string {
   return DEFAULT_ORCH_URL;
 }
 
+/** Host header names the /api proxy serves: this Mac only, any port. */
+const LOOPBACK_HOST = /^(?:localhost|127\.0\.0\.1)(?::\d{1,5})?$/i;
+
 /**
- * next.config.ts rewrites: /api/* → the orchestrator (REST, files, SSE). Only for requests
- * addressed to this Mac: a page on another site that resolved its name to 127.0.0.1 (DNS
- * rebinding) sends its own Host and gets a 404 here, before the orchestrator's own Host and
- * X-Forwarded-Host checks.
+ * Where proxy.ts forwards a browser's /api/* request (REST, files, SSE), or null to refuse it.
+ * Only requests addressed to this Mac are forwarded: a page on another site that resolved its name
+ * to 127.0.0.1 (DNS rebinding) sends its own Host and gets a 404 here, before the orchestrator's own
+ * Host and X-Forwarded-Host checks. The path and query are kept exactly as sent (still escaped).
  */
-export function orchestratorRewrites(env: Env = processEnv()) {
-  return [
-    {
-      source: `${BROWSER_API_BASE}/:path*`,
-      destination: `${orchestratorUrl(env)}/:path*`,
-      has: [{ type: "host" as const, value: "(?:localhost|127\\.0\\.0\\.1)" }],
-    },
-  ];
+export function orchestratorProxyTarget(
+  req: { host: string | null | undefined; pathname: string; search: string },
+  env: Env = processEnv(),
+): string | null {
+  const host = req.host?.trim() ?? "";
+  if (!LOOPBACK_HOST.test(host)) return null;
+  if (req.pathname !== BROWSER_API_BASE && !req.pathname.startsWith(`${BROWSER_API_BASE}/`)) return null;
+  const rest = req.pathname.slice(BROWSER_API_BASE.length) || "/";
+  return `${orchestratorUrl(env)}${rest}${req.search}`;
 }
 
 export type ApiModeSetting = ApiMode | "auto";

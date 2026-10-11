@@ -16,7 +16,7 @@ export { apiPath } from "./routes";
 
 let browser: HttpClient | null = null;
 
-/** For client components (through the /api rewrite). */
+/** For client components (through the /api proxy, proxy.ts). */
 export function browserClient(): HttpClient {
   browser ??= createHttpClient({ baseUrl: BROWSER_API_BASE });
   return browser;
