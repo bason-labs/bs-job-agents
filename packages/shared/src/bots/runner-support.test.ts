@@ -15,8 +15,10 @@ import {
 import {
   BotDefinitionSchema,
   CONSULT_SELF_CHECK,
+  FIGMA_UNGUARDED_RISK,
   SafeBotDefinitionSchema,
   checkBotSafety,
+  engineSwitchNeedsAcknowledgement,
   resolveSelfCheckItems,
 } from "./definition.js";
 import {
@@ -190,6 +192,36 @@ describe("S6: Phase 1 bot safety rules", () => {
     expect(checkBotSafety(BotDefinitionSchema.parse(cv))).toEqual([]);
     expect(checkBotSafety(BotDefinitionSchema.parse({ ...cv, engine: "codex" })).join()).toMatch(/Figma bridge must run on Claude/);
     expect(SafeBotDefinitionSchema.safeParse({ ...cv, engine: "codex" }).success).toBe(false);
+  });
+
+  it("owner decision 2026-10-11: a Figma bot runs on Codex only with Ba's opt-in (the fingerprint is the only backstop)", () => {
+    const cv = BotDefinitionSchema.parse({ ...botDefinitionFixtures.find((d) => d.name === "cv")!, engine: "codex" });
+    expect(checkBotSafety(cv, { unguardedFigmaAcknowledged: false }).join()).toMatch(/Figma bridge must run on Claude/);
+    expect(checkBotSafety(cv, { unguardedFigmaAcknowledged: true })).toEqual([]);
+    // bot.json itself never carries the opt-in: a CV bot.json on Codex is still refused at load.
+    expect(SafeBotDefinitionSchema.safeParse({ ...botDefinitionFixtures.find((d) => d.name === "cv")!, engine: "codex" }).success).toBe(false);
+  });
+
+  it("the opt-in never lets Apply or Lead onto Codex", () => {
+    const apply = BotDefinitionSchema.parse({ ...botDefinitionFixtures.find((d) => d.name === "apply")!, engine: "codex" });
+    const lead = BotDefinitionSchema.parse({ ...botDefinitionFixtures.find((d) => d.name === "lead")!, engine: "codex" });
+    expect(checkBotSafety(apply, { unguardedFigmaAcknowledged: true }).join()).toMatch(/browser bot that writes must run on Claude/);
+    expect(checkBotSafety(lead, { unguardedFigmaAcknowledged: true })).toEqual(["lead: Lead must run on Claude, where its only tools are the orchestrator's (rule 5)"]);
+    // A Figma bot that also writes in the browser stays refused.
+    const both = BotDefinitionSchema.parse({ ...apply, mcpServers: ["figma"], allowedTools: [...apply.allowedTools, "mcp:figma:figma_execute"] });
+    expect(checkBotSafety(both, { unguardedFigmaAcknowledged: true }).join()).toMatch(/browser bot that writes/);
+  });
+
+  it("engineSwitchNeedsAcknowledgement: only a switch the opt-in makes safe asks for it", () => {
+    const def = (name: string) => BotDefinitionSchema.parse(botDefinitionFixtures.find((d) => d.name === name)!);
+    expect(engineSwitchNeedsAcknowledgement(def("cv"), "codex")).toBe(true);
+    expect(engineSwitchNeedsAcknowledgement(def("cv"), "claude")).toBe(false);
+    expect(engineSwitchNeedsAcknowledgement(def("apply"), "codex")).toBe(false);
+    expect(engineSwitchNeedsAcknowledgement(def("lead"), "codex")).toBe(false);
+    expect(engineSwitchNeedsAcknowledgement(def("qa"), "claude")).toBe(false);
+    expect(engineSwitchNeedsAcknowledgement(def("research"), "claude")).toBe(false);
+    expect(FIGMA_UNGUARDED_RISK).toMatch(/can't block edits as they happen/);
+    expect(FIGMA_UNGUARDED_RISK).toMatch(/read files on your Mac/);
   });
 
   it("Apply stays at trust level L1", () => {

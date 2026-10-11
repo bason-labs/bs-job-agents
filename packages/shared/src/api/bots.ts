@@ -23,6 +23,10 @@ export const BotViewSchema = BotRecordSchema.extend({
   memoryNotes: z.array(z.object({ id: z.string().min(1), text: z.string() })).optional(),
   /** Additive (live run 1): bot.json's model, used when Ba chose none (`model` is the effective one). */
   defaultModel: z.string().nullable().optional(),
+  /** Additive (owner decision 2026-10-11): a Figma bot (CV) on Codex, where its Drafts-only guard hook can't run. */
+  figmaGuardOff: z.boolean().optional(),
+  /** Additive: when Ba last acknowledged an engine switch's risk (CV to Codex); kept after he switches back. */
+  engineRiskAcknowledgedAt: z.string().nullable().optional(),
 });
 export type BotView = z.infer<typeof BotViewSchema>;
 
@@ -64,6 +68,12 @@ export const BotUpdateRequestSchema = z
     trustLevel: TrustLevelSchema,
     /** Additive (live run 1): Ba's model for this bot; null = bot.json's model. */
     model: BotModelNameSchema.nullable(),
+    /**
+     * Additive (owner decision 2026-10-11): Ba confirms the risk of an engine switch that is safe
+     * only with his opt-in (CV to Codex: the Figma guard hook can't run there; FIGMA_UNGUARDED_RISK).
+     * Without it that switch is refused with 409; it never unlocks Apply or Lead (403).
+     */
+    acknowledgeRisk: z.boolean(),
   })
   .partial()
   .strict();

@@ -112,7 +112,8 @@ Then `launchctl load ~/Library/LaunchAgents/com.bason.job-agents.plist`, and run
    - **Master CV** shows your facts.
 4. **Search criteria.** Open **Search criteria**. Fill in roles, locations, sources, salary floor, maximum jobs per scan and the fit threshold, then **Save**. That saves version 1. Every later save makes a new version, and a run keeps the version it started with.
 5. **Bots.** Open **Bots** and check:
-   - Lead, CV and Apply say "Locked to Claude".
+   - Lead and Apply say "Locked to Claude".
+   - CV is on Claude. Its switch is enabled: Codex is an opt-in (§6).
    - Research is on Claude, with no residual-risk note.
    - QA is on Codex.
    - Apply is at trust level **L1** (asks before every submission).
@@ -173,6 +174,7 @@ The source's page layout changed, so Research can't read it the way its skill sa
    - **Lead** only divides work. It has six orchestrator tools, no browser, no files, no shell, and it runs on Claude only.
    - **Research** reads job sites in your Chrome (read-only, TopCV / ITviec / LinkedIn only, enforced by a site guard) and its own skill files.
    - **CV** edits only the Drafts page in Figma; a guard blocks anything else, and the protected pages are fingerprinted before and after.
+   - **CV on Codex (opt-in, to save Claude quota).** On **Bots**, pick Codex on CV's card and confirm the dialog. On Codex the Figma guard can't block edits as they happen. The app still checks your protected pages before and after every CV task. If anything changed, it stops CV (one trust level down) and alerts you in Chat. Figma's version history can restore the page. Codex can also read files on your Mac. While CV runs on Codex, its card says "Figma guard off (Codex)". Switch back to Claude any time; no confirmation is needed. QA then shares CV's engine, and the Bots screen warns about it. Apply and Lead can't be moved to Codex.
    - **QA** only reads.
    - **Apply** fills forms only on the approved site and pauses when a page leads elsewhere.
 4. **Pages are untrusted.** Text on a job page is data, never instructions. A bot that notices a page trying to instruct it reports it. The card is then flagged, and Apply stays off until you confirm the page.

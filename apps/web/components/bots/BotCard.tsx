@@ -1,7 +1,7 @@
 "use client";
 
 import { demotionReasonLabel, modelSuitsEngine, type TrustLevel } from "@bs-job-agents/shared";
-import { ChevronDown, Lightbulb, Lock, Settings, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
+import { ChevronDown, Lightbulb, Lock, Settings, ShieldAlert, ShieldOff, Trash2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useId, useState } from "react";
 import { Badge, BotAvatar, Button, IconButton, Input, Switch, Tooltip, TRUST_DESCRIPTIONS } from "@/components/ui";
@@ -14,6 +14,7 @@ import {
   TRUST_MEANINGS,
   engineLockReason,
   engineSwitchDisabled,
+  figmaGuardNote,
   lowerTarget,
   memoryNotesOf,
   promoteAction,
@@ -126,6 +127,7 @@ export function BotCard({ bot, controller, warning, detailed = false }: BotCardP
   const [memoryOpen, setMemoryOpen] = useState(detailed);
   const ids = { engine: useId(), lock: useId(), memory: useId() };
   const lock = engineLockReason(bot.name);
+  const guardOff = figmaGuardNote(bot);
   const promote = promoteAction(bot);
   const restoreTo = restoreTarget(bot);
   const raiseTo = raiseTarget(bot);
@@ -178,6 +180,12 @@ export function BotCard({ bot, controller, warning, detailed = false }: BotCardP
           <p id={ids.lock} data-testid="bot-engine-lock" className="flex items-start gap-1.5 text-[11px] text-muted">
             <Lock aria-hidden className="mt-0.5 size-3 shrink-0" />
             {lock}
+          </p>
+        ) : null}
+        {guardOff ? (
+          <p data-testid="bot-figma-guard-off" className="flex items-start gap-1.5 text-[11px] text-warn">
+            <ShieldOff aria-hidden className="mt-0.5 size-3 shrink-0" />
+            {guardOff}
           </p>
         ) : null}
         {warning ? (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { seedBotViews } from "@/lib/api/mock/seed-bots";
-import { engineLockReason, engineSwitchDisabled, lowerTarget, memoryNotesOf, promoteAction, promotionText, qaEngineWarning, raiseTarget, restoreTarget, type BotScreenView } from "./logic";
+import { engineLockReason, engineSwitchDisabled, engineSwitchRisk, figmaGuardNote, lowerTarget, memoryNotesOf, promoteAction, promotionText, qaEngineWarning, raiseTarget, restoreTarget, type BotScreenView } from "./logic";
 
 const BOT_VIEWS = seedBotViews();
 
@@ -16,14 +16,28 @@ describe("memoryNotesOf (PM S14)", () => {
 const bot = (name: string, over: Partial<BotScreenView> = {}): BotScreenView => ({ ...BOT_VIEWS.find((b) => b.name === name)!, ...over });
 
 describe("engineLockReason (§4.4, §6.2, PM S10/S25)", () => {
-  it("locks Apply, CV and Lead to Claude, with the reason shown (PM3 M1 for Lead)", () => {
+  it("locks Apply and Lead to Claude, with the reason shown (PM3 M1 for Lead)", () => {
     expect(engineLockReason("apply")).toBe("Locked to Claude: Apply fills forms in your Chrome, and its site allowlist runs only on Claude.");
-    expect(engineLockReason("cv")).toBe("Locked to Claude: CV edits Figma; its Drafts-only guard runs only on Claude.");
     expect(engineLockReason("lead")).toBe("Locked to Claude: Lead only divides work, and its tool limit holds only on Claude.");
   });
 
-  it("leaves the other bots switchable", () => {
-    for (const name of ["research", "qa"]) expect(engineLockReason(name)).toBeNull();
+  it("leaves the other bots switchable; CV too, as an opt-in (owner decision 2026-10-11)", () => {
+    for (const name of ["research", "qa", "cv"]) expect(engineLockReason(name)).toBeNull();
+    expect(engineSwitchDisabled({ name: "cv", engine: "claude" })).toBe(false);
+  });
+
+  it("CV to Codex asks Ba to confirm the risk in plain words; other switches don't", () => {
+    expect(engineSwitchRisk("cv", "codex")).toBe(
+      "On Codex the Figma guard can't block edits as they happen. The app still checks your protected pages before and after every CV task and alerts you (and stops CV) if anything changed; Figma's version history can restore it. Codex can also read files on your Mac.",
+    );
+    expect(engineSwitchRisk("cv", "claude")).toBeNull();
+    for (const name of ["research", "qa", "apply", "lead"]) expect(engineSwitchRisk(name, "codex")).toBeNull();
+  });
+
+  it("notes CV's Figma guard is off while it runs on Codex", () => {
+    expect(figmaGuardNote({ figmaGuardOff: true })).toBe("Figma guard off (Codex)");
+    expect(figmaGuardNote({ figmaGuardOff: false })).toBeNull();
+    expect(figmaGuardNote({})).toBeNull();
   });
 
   it("a locked bot stored on Codex (before the rule) can still be switched back to Claude", () => {

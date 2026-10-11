@@ -1,5 +1,5 @@
 // Bots screen rules (§5.3 trust levels, UC-19 promotion, §4.4/§6.2 engine locks, PM S21/S25).
-import { canPromote, maxTrustLevel, type BotView, type Engine, type TrustLevel } from "@bs-job-agents/shared";
+import { FIGMA_UNGUARDED_RISK, canPromote, maxTrustLevel, type BotView, type Engine, type TrustLevel } from "@bs-job-agents/shared";
 
 /** §5.3 automatic demotion, when the API reports it (additive API need, see data.ts). */
 export interface Demotion {
@@ -23,18 +23,34 @@ export const ENGINE_OPTIONS = (["claude", "codex"] as const).map((value) => ({ v
 
 /**
  * Bots whose engine switch is disabled, and why (§4.4: a browser bot that writes runs on
- * Claude, where the site allowlist is a hook; §6.2: the Figma guard is a Claude hook; §3 rule 5:
- * Lead's six-tool limit holds only on Claude).
+ * Claude, where the site allowlist is a hook; §3 rule 5: Lead's six-tool limit holds only on
+ * Claude). CV is not locked (owner decision 2026-10-11): Codex is an opt-in Ba confirms.
  */
 const ENGINE_LOCKS: Record<string, string> = {
   apply: "Locked to Claude: Apply fills forms in your Chrome, and its site allowlist runs only on Claude.",
-  cv: "Locked to Claude: CV edits Figma; its Drafts-only guard runs only on Claude.",
   // PM3 M1 (rule 5): on Codex every session also has a shell and file tools.
   lead: "Locked to Claude: Lead only divides work, and its tool limit holds only on Claude.",
 };
 
 export function engineLockReason(botName: string): string | null {
   return ENGINE_LOCKS[botName] ?? null;
+}
+
+/**
+ * Engine switches Ba must confirm first, with what he accepts (owner decision 2026-10-11): CV on
+ * Codex runs without its Figma guard hook. Confirming sends acknowledgeRisk (PATCH /bots/:name).
+ */
+const ENGINE_RISKS: Record<string, Partial<Record<Engine, string>>> = {
+  cv: { codex: FIGMA_UNGUARDED_RISK },
+};
+
+export function engineSwitchRisk(botName: string, to: Engine): string | null {
+  return ENGINE_RISKS[botName]?.[to] ?? null;
+}
+
+/** The short note on CV's card and settings while it runs on Codex (the API's figmaGuardOff). */
+export function figmaGuardNote(bot: Pick<BotView, "figmaGuardOff">): string | null {
+  return bot.figmaGuardOff ? "Figma guard off (Codex)" : null;
 }
 
 /**

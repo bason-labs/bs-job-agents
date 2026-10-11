@@ -2,10 +2,13 @@
 // lib/api (the orchestrator in live mode, the mock backend otherwise). Shapes are the shared API schemas:
 //   GET    /bots                              → BotsResponseSchema (BotView[] with demotion, memoryNotes)
 //   GET    /bots/:name                        → BotView; 404 → null here
-//   PATCH  /bots/:name                        → body BotUpdateRequestSchema (engine, enabled, trustLevel, model) → BotView.
+//   PATCH  /bots/:name                        → body BotUpdateRequestSchema (engine, enabled, trustLevel, model,
+//                                               acknowledgeRisk) → BotView (figmaGuardOff, engineRiskAcknowledgedAt).
 //                                               400 for a model meant for the other engine (live run 1)
-//                                               403 for Apply/CV on Codex (checkBotSafety) and for a trust level
-//                                               that rises more than one step or above the Phase 1 cap
+//                                               403 for Apply/Lead on Codex (checkBotSafety, whatever acknowledgeRisk
+//                                               says) and for a trust level that rises more than one step or above
+//                                               the Phase 1 cap; 409 for CV on Codex without acknowledgeRisk: true
+//                                               (owner decision 2026-10-11: Ba's opt-in, no Figma guard hook there)
 //   DELETE /bots/:name/memory/:noteId         → BotView without the note (PM S14); 404 when it is gone
 //   POST   /bots/:name/promotion/dismiss      → BotView; 409 when there is no suggestion (UC-19)
 //   GET    /workflow-proposals                → Lead's suggestions (rule 3), newest first

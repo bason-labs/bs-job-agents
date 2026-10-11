@@ -79,14 +79,17 @@ describe("memory notes and promotion suggestions (PM S14, UC-19)", () => {
 });
 
 describe("PATCH /bots/:name (S21)", () => {
-  it("keeps Apply, CV and Lead on Claude (guards are hooks; Lead's tool limit, PM3 M1), and lets Research or QA switch", async () => {
+  it("keeps Apply and Lead on Claude (site guard hook; Lead's tool limit, PM3 M1), CV only with Ba's opt-in, and lets Research or QA switch", async () => {
     h = await createApiHarness();
-    for (const name of ["apply", "cv", "lead"]) {
+    for (const name of ["apply", "lead"]) {
       const res = await h.patch(`/bots/${name}`, { engine: "codex" });
       expect(res.statusCode, name).toBe(403);
       expect(ApiErrorSchema.parse(res.json()).error.message).toMatch(/must run on Claude/);
       expect(getBot(h.t.db, name)?.engine).toBe("claude");
     }
+    // Owner decision 2026-10-11 (bots-cv-codex.test.ts): CV needs acknowledgeRisk.
+    expect((await h.patch("/bots/cv", { engine: "codex" })).statusCode).toBe(409);
+    expect(getBot(h.t.db, "cv")?.engine).toBe("claude");
     const research = await h.patch("/bots/research", { engine: "claude" });
     expect(research.statusCode).toBe(200);
     expect(BotViewSchema.parse(research.json())).toMatchObject({ engine: "claude", residualRisk: null });

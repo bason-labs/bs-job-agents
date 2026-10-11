@@ -186,7 +186,9 @@ export abstract class CliRunner implements Runner {
   private async prepare(task: RunnerTask): Promise<PreparedTask> {
     const bot = task.bot;
     if (bot.engine !== this.engine) throw new TaskSetupError(`bot ${bot.name} runs on ${bot.engine}, not ${this.engine}`);
-    assertRunnableBot(bot);
+    // Owner decision 2026-10-11: a Figma bot runs on Codex only with Ba's opt-in (the engine
+    // passes it from bots.engine_risk_ack_at); Codex has no hooks, so none is required there.
+    assertRunnableBot(bot, bot.name, { unguardedFigmaAcknowledged: this.engine === "codex" && task.unguardedFigmaAcknowledged === true });
     const forbidden = findForbiddenPromptKeys(task.input);
     if (forbidden.length > 0) {
       throw new PromptSecurityError(`task input carries guard-only fields that must never reach a model: ${forbidden.join(", ")}`);

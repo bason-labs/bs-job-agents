@@ -120,22 +120,40 @@ export const LEAD_ENGINE_RULE = "lead: Lead must run on Claude, where its only t
 export const FIGMA_MCP_SERVER_NAME = "figma";
 
 /**
+ * Owner decision 2026-10-11: Ba may run a Figma bot (CV) on Codex, as an explicit opt-in recorded
+ * per bot (bots.engine_risk_ack_at), to save Claude quota. The Drafts-only hook cannot run there;
+ * the protected-page fingerprint before and after every CV task is the only backstop. bot.json
+ * never carries the opt-in: only Ba's acknowledgement on the Bots screen does.
+ */
+export interface BotSafetyOptions {
+  /** Ba acknowledged running this bot's Figma bridge without the Drafts-only guard hook. */
+  unguardedFigmaAcknowledged?: boolean;
+}
+
+/** What Ba confirms before CV runs on Codex (Bots screen dialog; the API's 409 repeats it). */
+export const FIGMA_UNGUARDED_RISK =
+  "On Codex the Figma guard can't block edits as they happen. The app still checks your protected pages before and after every CV task and alerts you (and stops CV) if anything changed; Figma's version history can restore it. Codex can also read files on your Mac.";
+
+type SafetyFields = Pick<BotDefinition, "name" | "engine" | "trustLevel" | "browser" | "allowedTools" | "mcpServers">;
+
+/**
  * Phase 1 safety rules for a bot definition (PM S6). Empty = safe.
  * - §4.4: a browser bot that writes runs on Claude, where the site allowlist is a hook.
  * - §6.2 (QA Phase 2): a bot with the Figma bridge runs on Claude, where a PreToolUse hook rejects
- *   figma_execute code that reaches outside the Drafts page (Codex has no hooks).
+ *   figma_execute code that reaches outside the Drafts page (Codex has no hooks), unless Ba opted in
+ *   to Codex for it (owner decision 2026-10-11, `opts.unguardedFigmaAcknowledged`).
  * - UC-19: Apply stays at L1 (every submit needs Ba's approval token).
  * - §3 rule 5: Lead has only orchestrator MCP tools: no browser, Figma, shell or file tools.
  */
-export function checkBotSafety(
-  def: Pick<BotDefinition, "name" | "engine" | "trustLevel" | "browser" | "allowedTools" | "mcpServers">,
-): string[] {
+export function checkBotSafety(def: SafetyFields, opts: BotSafetyOptions = {}): string[] {
   const issues: string[] = [];
   if (def.browser?.mode === "write" && def.engine !== "claude") {
     issues.push(`${def.name}: a browser bot that writes must run on Claude, where the site allowlist is enforced by a hook (§4.4)`);
   }
-  if (def.mcpServers.includes(FIGMA_MCP_SERVER_NAME) && def.engine !== "claude") {
-    issues.push(`${def.name}: a bot with the Figma bridge must run on Claude, where the Drafts-only guard is a hook (§6.2)`);
+  if (def.mcpServers.includes(FIGMA_MCP_SERVER_NAME) && def.engine !== "claude" && opts.unguardedFigmaAcknowledged !== true) {
+    issues.push(
+      `${def.name}: a bot with the Figma bridge must run on Claude, where the Drafts-only guard is a hook (§6.2), unless Ba opts in to Codex on the Bots screen`,
+    );
   }
   if (def.name === "apply" && def.trustLevel !== 1) {
     issues.push("apply: Apply stays at trust level L1 in Phase 1, so every submit needs Ba's approval (UC-19)");
@@ -154,6 +172,15 @@ export function checkBotSafety(
     if (servers.length > 0) issues.push(`lead: only the orchestrator MCP server is allowed (rule 5), not ${servers.join(", ")}`);
   }
   return issues;
+}
+
+/**
+ * Whether moving `def` to `engine` is refused without Ba's opt-in and allowed with it (CV to
+ * Codex): the Bots screen asks him to confirm the risk, and PATCH /bots/:name needs acknowledgeRisk.
+ */
+export function engineSwitchNeedsAcknowledgement(def: SafetyFields, engine: BotDefinition["engine"]): boolean {
+  const moved = { ...def, engine };
+  return checkBotSafety(moved).length > 0 && checkBotSafety(moved, { unguardedFigmaAcknowledged: true }).length === 0;
 }
 
 /** BotDefinitionSchema plus the Phase 1 safety rules; use it wherever a bot.json is loaded or changed. */

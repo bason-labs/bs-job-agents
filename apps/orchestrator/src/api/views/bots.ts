@@ -5,7 +5,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { maxTrustLevel, type BotActivity, type BotDefinition, type BotView, type TrustLevel } from "@bs-job-agents/shared";
+import { FIGMA_MCP_SERVER_NAME, maxTrustLevel, type BotActivity, type BotDefinition, type BotView, type TrustLevel } from "@bs-job-agents/shared";
 import { latestBotDemotion, listRuns, listSteps, listTasks, mappers, type Bot, type Db } from "../../db/index.js";
 import type { ActionStepOutput, GateStepOutput, HumanStepOutput, WorkflowSource } from "../../engine/index.js";
 import { readApiState } from "../state.js";
@@ -95,6 +95,10 @@ function streakOf(db: Db, workflows: WorkflowSource | null, name: string): Strea
 const RESIDUAL_RISK =
   "On Codex this bot's site allowlist is enforced only by its prompt, and its read-only sandbox can read files on this Mac (§4.4). Switch it to Claude for a site guard in code.";
 
+/** Owner decision 2026-10-11: CV on Codex (Ba's opt-in). */
+const FIGMA_GUARD_OFF_RISK =
+  "On Codex the Figma guard can't block edits as they happen: the app checks your protected pages before and after every CV task and stops CV if anything changed, and Codex can read files on this Mac (§6.2). Switch it to Claude for the guard.";
+
 export function botView(
   db: Db,
   opts: { botsDir: string; workflows: WorkflowSource | null; dataDir?: string },
@@ -120,6 +124,7 @@ export function botView(
   // UC-19: a dismissed suggestion comes back only after another full streak.
   const dismissed = opts.dataDir ? readApiState(opts.dataDir).promotionDismissals[name] : undefined;
   const needed = dismissed ? dismissed.count + PROMOTION_STREAK : PROMOTION_STREAK;
+  const figmaGuardOff = record.engine !== "claude" && (def?.mcpServers.includes(FIGMA_MCP_SERVER_NAME) ?? false);
   return {
     ...record,
     role: def?.role ?? "",
@@ -131,7 +136,10 @@ export function botView(
     promoteAllowed: level < maxTrustLevel(name),
     memory: notes.map((n) => n.text),
     memoryNotes: notes.map(({ id, text }) => ({ id, text })),
-    residualRisk: record.engine === "codex" && def?.browser ? RESIDUAL_RISK : null,
+    residualRisk: record.engine === "codex" && def?.browser ? RESIDUAL_RISK : figmaGuardOff ? FIGMA_GUARD_OFF_RISK : null,
+    // Owner decision 2026-10-11: CV on Codex, Ba's opt-in (the fingerprint is the only backstop).
+    figmaGuardOff,
+    engineRiskAcknowledgedAt: row?.engineRiskAckAt ?? null,
     // §5.3 / PM2 S8: the newest demotion Ba has not restored (the engine records it).
     demotion: demotionOf(db, name),
     defaultModel: def?.model ?? row?.model ?? null,

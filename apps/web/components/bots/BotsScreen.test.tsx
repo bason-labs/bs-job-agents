@@ -51,14 +51,44 @@ describe("BotsScreen (§11 Bots)", () => {
     expect(within(research).queryByTestId("bot-residual-risk")).toBeNull();
   });
 
-  it("disables Apply's, CV's and Lead's engine switch and says why (PM S25, PM3 M1)", async () => {
+  it("disables Apply's and Lead's engine switch and says why (PM S25, PM3 M1)", async () => {
     await setup();
-    for (const name of ["apply", "cv", "lead"]) {
+    for (const name of ["apply", "lead"]) {
       const radios = within(card(name)).getAllByRole("radio");
       for (const r of radios) expect(r).toBeDisabled();
       expect(within(card(name)).getByTestId("bot-engine-lock")).toHaveTextContent(/^Locked to Claude/);
     }
     expect(within(card("research")).getByRole("radio", { name: "Codex" })).toBeEnabled();
+    expect(within(card("cv")).getByRole("radio", { name: "Codex" })).toBeEnabled();
+    expect(within(card("cv")).queryByTestId("bot-engine-lock")).toBeNull();
+  });
+
+  it("CV to Codex asks Ba to confirm the risk first; cancel changes nothing (owner decision 2026-10-11)", async () => {
+    const { user, data } = await setup();
+    await user.click(within(card("cv")).getByRole("radio", { name: "Codex" }));
+    const confirm = screen.getByTestId("confirm-dialog");
+    expect(confirm).toHaveTextContent("Run CV on Codex?");
+    expect(confirm).toHaveTextContent(
+      "On Codex the Figma guard can't block edits as they happen. The app still checks your protected pages before and after every CV task and alerts you (and stops CV) if anything changed; Figma's version history can restore it. Codex can also read files on your Mac.",
+    );
+    await user.click(within(confirm).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByTestId("confirm-dialog")).toBeNull());
+    expect((await data.get("cv"))!.engine).toBe("claude");
+    expect(within(card("cv")).getByRole("radio", { name: "Claude" })).toHaveAttribute("aria-checked", "true");
+    expect(within(card("cv")).queryByTestId("bot-figma-guard-off")).toBeNull();
+  });
+
+  it("confirming sends acknowledgeRisk: CV runs on Codex with a 'Figma guard off (Codex)' note; back to Claude needs no confirm", async () => {
+    const { user, data } = await setup();
+    await user.click(within(card("cv")).getByRole("radio", { name: "Codex" }));
+    await user.click(within(screen.getByTestId("confirm-dialog")).getByRole("button", { name: "Run CV on Codex" }));
+    expect(await screen.findByText("CV now runs on Codex. Queued tasks keep their engine.")).toBeInTheDocument();
+    expect(await data.get("cv")).toMatchObject({ engine: "codex", figmaGuardOff: true });
+    expect(within(card("cv")).getByTestId("bot-figma-guard-off")).toHaveTextContent("Figma guard off (Codex)");
+    await user.click(within(card("cv")).getByRole("radio", { name: "Claude" }));
+    expect(await screen.findByText("CV now runs on Claude. Queued tasks keep their engine.")).toBeInTheDocument();
+    expect(screen.queryByTestId("confirm-dialog")).toBeNull();
+    expect(within(card("cv")).queryByTestId("bot-figma-guard-off")).toBeNull();
   });
 
   it("switches an unlocked bot's engine, and warns when QA would share CV's engine", async () => {

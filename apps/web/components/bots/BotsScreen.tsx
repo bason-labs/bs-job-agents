@@ -7,7 +7,7 @@ import { useLiveResource } from "@/lib/api/live-resource";
 import { BotCard } from "./BotCard";
 import { useBotsData, type BotsData } from "./data";
 import { WorkflowProposals } from "./WorkflowProposals";
-import { TRUST_MEANINGS, qaEngineWarning, type BotScreenView } from "./logic";
+import { ENGINE_LABELS, TRUST_MEANINGS, qaEngineWarning, type BotScreenView } from "./logic";
 import { useBots, type BotsController } from "./useBots";
 
 export interface BotsScreenProps {
@@ -84,6 +84,23 @@ function TrustConfirm({ controller }: { controller: BotsController }) {
   );
 }
 
+/** Owner decision 2026-10-11: CV on Codex is an opt-in Ba confirms in plain words. */
+function EngineConfirm({ controller }: { controller: BotsController }) {
+  const p = controller.pendingEngine;
+  const label = p ? `Run ${p.bot.displayName} on ${ENGINE_LABELS[p.engine]}` : "";
+  return (
+    <ConfirmDialog
+      open={p !== null}
+      onOpenChange={(open) => !open && controller.cancelEngine()}
+      tone="danger"
+      title={p ? `${label}?` : ""}
+      description={p?.risk}
+      confirmLabel={label}
+      onConfirm={() => void controller.confirmEngine()}
+    />
+  );
+}
+
 /** §11 Bots: one card per bot in a two-column grid, or one bot's settings page. */
 export function BotsScreen({ initial, only, data }: BotsScreenProps) {
   const controller = useBots(initial, data);
@@ -110,6 +127,7 @@ export function BotsScreen({ initial, only, data }: BotsScreenProps) {
       )}
       <MemoryConfirm controller={controller} />
       <TrustConfirm controller={controller} />
+      <EngineConfirm controller={controller} />
     </>
   );
 }

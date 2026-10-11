@@ -17,7 +17,7 @@ import {
   ExportResponseSchema,
   ExportsResponseSchema,
 } from "./applications.js";
-import { BotUpdateRequestSchema, canPromote, type CanPromoteResult } from "./bots.js";
+import { BotUpdateRequestSchema, BotViewSchema, canPromote, type CanPromoteResult } from "./bots.js";
 import { AnswerQuestionRequestSchema, AnswerQuestionResponseSchema, ChatSendRequestSchema, CreateRoomRequestSchema } from "./chat.js";
 import {
   ApiErrorSchema,
@@ -171,6 +171,16 @@ describe("runs and bots", () => {
   it("bot update accepts engine switch and trust level", () => {
     expect(BotUpdateRequestSchema.safeParse({ engine: "codex" }).success).toBe(true);
     expect(BotUpdateRequestSchema.safeParse({ trustLevel: 3 }).success).toBe(false);
+    // Owner decision 2026-10-11: CV on Codex is an opt-in Ba confirms with acknowledgeRisk.
+    expect(BotUpdateRequestSchema.safeParse({ engine: "codex", acknowledgeRisk: true }).success).toBe(true);
+    expect(BotUpdateRequestSchema.safeParse({ engine: "codex", acknowledgeRisk: "yes" }).success).toBe(false);
+  });
+
+  it("a bot view may say that its Figma guard is off (CV on Codex) and when Ba acknowledged that", () => {
+    const base = { name: "cv", displayName: "CV", engine: "codex", model: null, trustLevel: 2, promptVersion: 4, enabled: true, role: "r", activity: "idle", trackRecord: null, promotionSuggested: false, promoteAllowed: false, memory: [], residualRisk: null };
+    expect(BotViewSchema.safeParse(base).success).toBe(true);
+    expect(BotViewSchema.safeParse({ ...base, figmaGuardOff: true, engineRiskAcknowledgedAt: "2026-10-11T09:00:00.000Z" }).success).toBe(true);
+    expect(BotViewSchema.safeParse({ ...base, engineRiskAcknowledgedAt: null }).success).toBe(true);
   });
 
   it("Apply can never be promoted to L2 in Phase 1 (UC-19)", () => {

@@ -1,12 +1,25 @@
 // Bots screen (§11 Bots, UC-19, PM S21). Ba's changes are refused when they break a Phase 1 rule:
 // - engine: checkBotSafety (§4.4 a browser bot that writes runs on Claude, where the site guard is a
-//   hook; §6.2 a Figma bot runs on Claude, where the Drafts-only guard is a hook) — so Apply and CV
-//   stay on Claude; §3 rule 5 (PM3 M1): Lead stays on Claude, where its only tools are the
-//   orchestrator's. A queued task keeps the engine it was queued on; the runner checks again.
+//   hook; §6.2 a Figma bot runs on Claude, where the Drafts-only guard is a hook) — so Apply stays
+//   on Claude; §3 rule 5 (PM3 M1): Lead stays on Claude, where its only tools are the
+//   orchestrator's (403). Owner decision 2026-10-11: CV may move to Codex as Ba's explicit opt-in
+//   (acknowledgeRisk: true on every switch, else 409), stored in bots.engine_risk_ack_at and kept
+//   when he switches back. A queued task keeps the engine it was queued on; the runner checks again.
 // - trust level: never above the Phase 1 cap (Apply: L1, every submit needs Ba's token), and up one
 //   level at a time (a promotion, or restoring a demoted bot); lowering is always allowed.
 import { join } from "node:path";
-import { API_ROUTES, BotUpdateRequestSchema, BotViewSchema, BotsResponseSchema, checkBotSafety, maxTrustLevel, type BotDefinition, type BotView } from "@bs-job-agents/shared";
+import {
+  API_ROUTES,
+  BotUpdateRequestSchema,
+  BotViewSchema,
+  BotsResponseSchema,
+  FIGMA_UNGUARDED_RISK,
+  checkBotSafety,
+  engineSwitchNeedsAcknowledgement,
+  maxTrustLevel,
+  type BotDefinition,
+  type BotView,
+} from "@bs-job-agents/shared";
 import type { FastifyInstance } from "fastify";
 import { appendMemoryChange, getBot, latestBotDemotion, listBots, syncBotFromDefinition, updateBot, type Bot, type Db } from "../../db/index.js";
 import { removeMemoryNote } from "../../runner/index.js";
@@ -58,10 +71,22 @@ export function botRoutes(app: FastifyInstance, ctx: ApiContext): void {
     const def = defOf(name);
     let row = getBot(db, name);
     if (!def && !row) throw notFound(`bot ${name} not found`);
+    let engineRiskAckAt: string | undefined;
     if (patch.engine !== undefined && patch.engine !== (row?.engine ?? def?.engine)) {
       if (!def) throw conflict(`bots/${name}/bot.json is not loaded, so its engine cannot be checked`);
-      const issues = checkBotSafety({ ...def, engine: patch.engine });
+      // Apply and Lead (and anything else the opt-in can't make safe) stay refused: 403.
+      const issues = checkBotSafety({ ...def, engine: patch.engine }, { unguardedFigmaAcknowledged: true });
       if (issues.length > 0) throw forbidden(issues.join("; "));
+      // Owner decision 2026-10-11: CV on Codex only when Ba confirms the risk, on every switch.
+      if (engineSwitchNeedsAcknowledgement(def, patch.engine)) {
+        if (patch.acknowledgeRisk !== true) {
+          throw conflict(
+            `${def.displayName} on ${patch.engine === "codex" ? "Codex" : patch.engine} runs without its Figma guard (a Claude hook): confirm the risk with acknowledgeRisk: true to switch`,
+            { reason: "risk_not_acknowledged", risk: FIGMA_UNGUARDED_RISK },
+          );
+        }
+        engineRiskAckAt = ctx.now().toISOString();
+      }
     }
     // Live run 1: Ba's model must suit the engine the bot runs on after this change; an engine
     // switch drops a chosen model that no longer suits it (the runner would ignore it anyway).
@@ -84,8 +109,13 @@ export function botRoutes(app: FastifyInstance, ctx: ApiContext): void {
     const demotion = row && patch.trustLevel !== undefined && patch.trustLevel > row.trustLevel ? latestBotDemotion(db, name) : undefined;
     const restore = ctx.engine && demotion && patch.trustLevel === Math.min(demotion.fromLevel, maxTrustLevel(name));
     if (restore) ctx.engine!.restoreBot(name);
-    const { model: _model, ...settings } = patch;
-    const rest = { ...settings, ...(restore ? { trustLevel: undefined } : {}), ...(modelOverride !== undefined ? { modelOverride } : {}) };
+    const { model: _model, acknowledgeRisk: _ack, ...settings } = patch;
+    const rest = {
+      ...settings,
+      ...(restore ? { trustLevel: undefined } : {}),
+      ...(modelOverride !== undefined ? { modelOverride } : {}),
+      ...(engineRiskAckAt !== undefined ? { engineRiskAckAt } : {}),
+    };
     row = db.transaction((tx) => {
       // A bot.json the engine has not synced yet (degraded start) gets its row first.
       if (!getBot(tx, name) && def) {

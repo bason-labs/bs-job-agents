@@ -12,6 +12,7 @@ import {
   checkBotSafety,
   resolveOutputSchemaName,
   type BotDefinition,
+  type BotSafetyOptions,
 } from "@bs-job-agents/shared";
 import { planTools, ToolConfigError } from "./tools.js";
 
@@ -30,10 +31,11 @@ export function botTaskKinds(def: Pick<BotDefinition, "name" | "outputSchema">):
 
 /**
  * The checks a definition must pass to run, at load time and again before every spawn
- * (the engine may hand the runner a definition changed in the UI or the DB).
+ * (the engine may hand the runner a definition changed in the UI or the DB). `safety` carries
+ * Ba's opt-in for a spawn (CV on Codex, RunnerTask.unguardedFigmaAcknowledged); never at load time.
  */
-export function assertRunnableBot(def: BotDefinition, where: string = def.name): void {
-  const unsafe = checkBotSafety(def);
+export function assertRunnableBot(def: BotDefinition, where: string = def.name, safety: BotSafetyOptions = {}): void {
+  const unsafe = checkBotSafety(def, safety);
   if (unsafe.length > 0) throw new BotDefinitionError(where, unsafe.join("; "));
   try {
     planTools(def);

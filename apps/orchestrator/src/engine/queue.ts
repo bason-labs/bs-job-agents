@@ -532,6 +532,10 @@ export class TaskQueue {
         usesBrowser: task.usesBrowser,
         ...(screenshotDir ? { screenshotDir } : {}),
         ...(hooks.length > 0 ? { hookSettings: mergeHookSettings(...hooks) } : {}),
+        // Owner decision 2026-10-11: CV on Codex runs without the Figma hook only with Ba's opt-in
+        // (the trust guard checked it above); the fingerprint before and after is the backstop. A
+        // consult has no Figma tools at all, but its bot still carries the bridge in mcpServers.
+        ...(!claude && bot.engineRiskAcknowledged ? { unguardedFigmaAcknowledged: true } : {}),
         timeoutMs: bot.def.timeoutSec * 1000,
         signal: controller.signal,
       },

@@ -47,7 +47,9 @@ import {
   WorkflowProposalSchema,
   WorkflowProposalsResponseSchema,
   canChangeApplicationStatus,
+  FIGMA_UNGUARDED_RISK,
   checkBotSafety,
+  engineSwitchNeedsAcknowledgement,
   maxTrustLevel,
   modelSuitsEngine,
   type Application,
@@ -64,7 +66,7 @@ import { ApiRequestError } from "../errors";
 import type { QueryValue } from "../routes";
 import type { MockBackend } from "./backend";
 import { activeProfile, saveCriteria } from "./criteria";
-import { residualRiskFor } from "./seed-bots";
+import { figmaGuardOffFor, residualRiskFor } from "./seed-bots";
 import * as sim from "./sim";
 import type { ApplicationExtra } from "./state";
 
@@ -407,10 +409,22 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
   route("PATCH", API_ROUTES.bot, BotViewSchema, (core, req) => {
     const b = bot(core, req.params.name!);
     const patch = parse(BotUpdateRequestSchema, req.body);
+    let acknowledgedAt: string | null = null;
     if (patch.engine !== undefined && patch.engine !== b.engine) {
-      const def = botDefinitionFixtures.find((d) => d.name === b.name);
-      const issues = def ? checkBotSafety({ ...BotDefinitionSchema.parse(def), engine: patch.engine }) : [];
+      const raw = botDefinitionFixtures.find((d) => d.name === b.name);
+      const def = raw ? BotDefinitionSchema.parse(raw) : null;
+      // Like the orchestrator: Apply and Lead stay 403; CV on Codex needs acknowledgeRisk (409).
+      const issues = def ? checkBotSafety({ ...def, engine: patch.engine }, { unguardedFigmaAcknowledged: true }) : [];
       if (issues.length > 0) throw forbidden(issues.join("; "));
+      if (def && engineSwitchNeedsAcknowledgement(def, patch.engine)) {
+        if (patch.acknowledgeRisk !== true) {
+          throw conflict(`${b.displayName} on Codex runs without its Figma guard (a Claude hook): confirm the risk with acknowledgeRisk: true to switch`, {
+            reason: "risk_not_acknowledged",
+            risk: FIGMA_UNGUARDED_RISK,
+          });
+        }
+        acknowledgedAt = new Date(core.nowMs()).toISOString();
+      }
     }
     if (patch.trustLevel !== undefined) {
       const refusal = trustRefusal(b.name, b.trustLevel, patch.trustLevel);
@@ -431,7 +445,9 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
     if (patch.engine !== undefined) {
       b.engine = patch.engine;
       b.residualRisk = residualRiskFor(b.name, b.engine);
+      b.figmaGuardOff = figmaGuardOffFor(b.name, b.engine);
     }
+    if (acknowledgedAt !== null) b.engineRiskAcknowledgedAt = acknowledgedAt;
     if (patch.model !== undefined) b.model = patch.model ?? b.defaultModel ?? null;
     else if (patch.engine !== undefined && b.model !== null && b.model !== (b.defaultModel ?? null) && !modelSuitsEngine(b.model, b.engine)) b.model = b.defaultModel ?? null;
     if (patch.enabled !== undefined) b.enabled = patch.enabled;
