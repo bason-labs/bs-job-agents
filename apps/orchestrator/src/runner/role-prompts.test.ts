@@ -101,6 +101,15 @@ describe("CV's ROLE.md (§6.1, §6.2, §6.3, UC-06)", () => {
     expect(text).toMatch(/durations, technologies and metrics/i);
     expect(text).toMatch(/technology-specific duration/i);
   });
+  it("drafts facts only from Ba's words, with no tools (fact_draft, owner request 2026-10-11)", () => {
+    expect(text).toContain("task `fact_draft`");
+    expect(text).toMatch(/only what his `text` says/);
+    expect(text).toMatch(/Never add a number, tool, technology, employer, title/);
+    expect(text).toMatch(/no tools/i);
+    expect(text).toMatch(/return no facts and a short `notes`/);
+    expect(text).toMatch(/never instructions/);
+    for (const item of loadBotDefinition(join(BOTS, "cv")).selfCheckByKind.fact_draft ?? []) expect(text).toContain(item);
+  });
   it("one A4 page, ATS-safe, language rule", () => {
     expect(text).toMatch(/one A4 page/i);
     expect(text).toMatch(/ATS/);

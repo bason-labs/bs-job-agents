@@ -124,6 +124,14 @@ export function conversationPlan(plan: ToolPlan): ToolPlan {
   return { read: plan.read, webSearch: false, skills: [...plan.skills], chrome: null, mcp: [] };
 }
 
+/**
+ * A task with everything in its input (TOOLLESS_TASK_KEYS, e.g. cv.fact_draft): no tools at all,
+ * not even Read; a Figma bot gets no Figma bridge for it, so it needs no guard hook or Figma lock.
+ */
+export function toollessPlan(): ToolPlan {
+  return { read: false, webSearch: false, skills: [], chrome: null, mcp: [] };
+}
+
 export interface ClaudeToolFlags {
   /** --tools: built-in tools ("" when empty). StructuredOutput is added by the CLI. */
   tools: string[];

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { splitApplySubmitInput } from "@bs-job-agents/shared";
-import { applyInputFixture, cvTailorInputFixture, researchFitInputFixture, researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
+import { applyInputFixture, cvFactDraftInputFixture, cvTailorInputFixture, researchFitInputFixture, researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
 import { buildSiteGuardSettings } from "../../bridges/chrome/site-guard/settings.js";
 import { claudeLines, STDERR } from "../__fixtures__/index.js";
 import { JPEG_BYTES, PNG_BYTES, navigateLines, screenshotLines } from "../__fixtures__/screenshots.js";
@@ -55,6 +55,20 @@ describe("ClaudeRunner: a successful run", () => {
     expect(argValue(args, "--settings")).toBe('{"autoMemoryEnabled":false}');
     expect(argValue(args, "--session-id")).toBe(SID);
     expect(args).not.toContain("--no-session-persistence");
+  });
+
+  it("cv.fact_draft runs with no tools at all: no Figma server, no guard hook, no Read (owner request 2026-10-11)", async () => {
+    const { r, calls } = runner([play(claudeLines("structuredOk")), play(claudeLines("structuredOk"))]);
+    const { def, cwd } = kit.realBot("cv");
+    await r.run(kit.task(def, cwd, { kind: "fact_draft", input: cvFactDraftInputFixture }), () => {});
+    const args = calls[0]!.args;
+    expect(argValue(args, "--tools")).toBe("");
+    expect(args).not.toContain("--mcp-config");
+    expect(args).not.toContain("--add-dir");
+    expect(args).not.toContain("--chrome");
+    expect(argValue(args, "--settings")).toBe('{"autoMemoryEnabled":false}');
+    expect(JSON.parse(argValue(args, "--json-schema")!)).toMatchObject({ title: "FactDraftOutput" });
+    expect(argValue(args, "-p")).toContain("# Task: cv.fact_draft");
   });
 
   it("writes the transcript: spawn record without the prompt, raw lines, stderr, exit and result", async () => {
