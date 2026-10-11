@@ -26,17 +26,28 @@ export function outputPreview(output: unknown): string | null {
   return null;
 }
 
+/**
+ * Per step id: the running task's latest progress line, else the engine's own preview from its
+ * step.updated / step.finished events (e.g. "34 JobCandidate (21 new)"), else the step's error or a
+ * summary of its output.
+ */
 export function stepPreviews(db: Db, runId: number, steps: readonly Step[], tasks: readonly Task[]): Record<string, string> {
   const latest = new Map<string, string>();
-  for (const row of listEvents(db, { types: ["task.progress"], runId })) {
-    const p = row.payload as { taskId?: unknown; text?: unknown };
-    if (typeof p.taskId === "string" && typeof p.text === "string" && p.text.trim() !== "") latest.set(p.taskId, p.text);
+  const engine = new Map<string, string>();
+  for (const row of listEvents(db, { types: ["task.progress", "step.updated", "step.finished"], runId })) {
+    const p = row.payload as { taskId?: unknown; stepId?: unknown; text?: unknown; preview?: unknown };
+    if (row.type === "task.progress") {
+      if (typeof p.taskId === "string" && typeof p.text === "string" && p.text.trim() !== "") latest.set(p.taskId, p.text);
+    } else if (typeof p.stepId === "string" && typeof p.preview === "string" && p.preview.trim() !== "") {
+      engine.set(p.stepId, p.preview);
+    }
   }
   const out: Record<string, string> = {};
   for (const step of steps) {
     const running = tasks.filter((t) => t.stepId === step.id && t.status === "running").at(-1);
     const live = running ? latest.get(String(running.id)) : undefined;
-    const text = live ? clip(live) : step.error ? clip(step.error) : outputPreview(step.output);
+    const own = engine.get(String(step.id));
+    const text = live ? clip(live) : own ? clip(own) : step.error ? clip(step.error) : outputPreview(step.output);
     if (text) out[String(step.id)] = text;
   }
   return out;

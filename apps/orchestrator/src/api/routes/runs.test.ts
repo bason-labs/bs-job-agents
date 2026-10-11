@@ -75,7 +75,7 @@ describe("runs (UC-01, UC-22, UC-23)", () => {
     expect(detail.definition).toMatchObject({ name: "job-scan", version: detail.run.workflowVersion });
     expect(detail.definition!.steps.map((s) => s.key)).toContain("scan");
     const scanStep = detail.steps.find((s) => s.stepKey === "scan")!;
-    expect(detail.previews?.[scanStep.id]).toMatch(/\d+ items?|\d+ jobs?/);
+    expect(detail.previews?.[scanStep.id]).toMatch(/\d/);
     expect((await h.get("/runs/999")).statusCode).toBe(404);
     expect((await h.get("/runs/abc")).statusCode).toBe(404);
     expect((await h.get("/runs/1e3")).statusCode).toBe(404);
