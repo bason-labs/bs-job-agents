@@ -1,12 +1,12 @@
 "use client";
 
 import type { SavedAnswer } from "@bs-job-agents/shared";
-import { Pencil, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useState } from "react";
-import { Button, IconButton, Input, useToast } from "@/components/ui";
+import { ConfirmDialog, IconButton, useToast } from "@/components/ui";
+import { errorText } from "@/components/schedules/apiError";
 import { formatDate } from "@/components/schedules/datetime";
 import type { CriteriaData } from "./data";
-import { errorText } from "@/components/schedules/apiError";
 
 export interface SavedAnswersProps {
   initial: SavedAnswer[];
@@ -16,33 +16,19 @@ export interface SavedAnswersProps {
 /**
  * Answers Ba told Apply to remember (UC-12). Apply reuses them on every form that asks the
  * same question, so a wrong one (or a planted label, PM M4) must be easy to see and remove.
+ * The API can only forget an answer (DELETE /saved-answers/:key); Apply asks again next time.
  */
 export function SavedAnswers({ initial, data }: SavedAnswersProps) {
   const [answers, setAnswers] = useState(initial);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
+  const [pending, setPending] = useState<SavedAnswer | null>(null);
   const { toast } = useToast();
 
-  const upsert = (saved: SavedAnswer) => setAnswers((as) => [saved, ...as.filter((a) => a.key !== saved.key)]);
-
-  const save = async (a: SavedAnswer) => {
-    try {
-      upsert(await data.saveAnswer({ label: a.label, answer: draft }));
-      setEditing(null);
-      toast({ title: `Updated the answer for “${a.label}”` });
-    } catch (e) {
-      toast({ title: `Couldn't save the answer: ${errorText(e)}`, tone: "err" });
-    }
-  };
-
   const remove = async (a: SavedAnswer) => {
+    setPending(null);
     try {
       await data.deleteAnswer(a.key);
       setAnswers((as) => as.filter((x) => x.key !== a.key));
-      toast({
-        title: `Forgot the answer for “${a.label}”`,
-        action: { label: "Undo", onClick: () => void data.saveAnswer({ label: a.label, answer: a.answer }).then(upsert) },
-      });
+      toast({ title: `Forgot the answer for “${a.label}”` });
     } catch (e) {
       toast({ title: `Couldn't delete the answer: ${errorText(e)}`, tone: "err" });
     }
@@ -63,51 +49,23 @@ export function SavedAnswers({ initial, data }: SavedAnswersProps) {
           {answers.map((a) => (
             <li key={a.key} className="flex items-center gap-3 px-3 py-2 text-xs">
               <span className="w-2/5 shrink-0 text-muted">{a.label}</span>
-              {editing === a.key ? (
-                <span className="flex min-w-0 flex-1 items-center gap-2">
-                  <Input
-                    aria-label={`Answer for ${a.label}`}
-                    value={draft}
-                    autoFocus
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void save(a);
-                      if (e.key === "Escape") {
-                        e.stopPropagation();
-                        setEditing(null);
-                      }
-                    }}
-                    className="py-1 text-xs"
-                  />
-                  <Button size="sm" pill variant="primary" disabled={!draft.trim()} onClick={() => void save(a)}>
-                    Save
-                  </Button>
-                  <Button size="sm" pill variant="ghost" onClick={() => setEditing(null)}>
-                    Cancel
-                  </Button>
-                </span>
-              ) : (
-                <>
-                  <span className="min-w-0 flex-1">
-                    <span className="block">{a.answer}</span>
-                    <span className="text-[10px] text-muted">saved {formatDate(a.updatedAt)}</span>
-                  </span>
-                  <IconButton
-                    size="sm"
-                    label={`Edit the answer for ${a.label}`}
-                    icon={<Pencil aria-hidden />}
-                    onClick={() => {
-                      setDraft(a.answer);
-                      setEditing(a.key);
-                    }}
-                  />
-                  <IconButton size="sm" label={`Delete the answer for ${a.label}`} icon={<Trash2 aria-hidden />} onClick={() => void remove(a)} className="hover:text-danger" />
-                </>
-              )}
+              <span className="min-w-0 flex-1">
+                <span className="block">{a.answer}</span>
+                <span className="text-[10px] text-muted">saved {formatDate(a.updatedAt)}</span>
+              </span>
+              <IconButton size="sm" label={`Forget the answer for ${a.label}`} icon={<Trash2 aria-hidden />} onClick={() => setPending(a)} className="hover:text-danger" />
             </li>
           ))}
         </ul>
       )}
+      <ConfirmDialog
+        open={pending !== null}
+        onOpenChange={(open) => !open && setPending(null)}
+        title={pending ? `Forget the answer for “${pending.label}”?` : ""}
+        description="Apply stops using it. The next form that asks will ask you again in chat."
+        confirmLabel="Forget answer"
+        onConfirm={() => pending && void remove(pending)}
+      />
     </section>
   );
 }

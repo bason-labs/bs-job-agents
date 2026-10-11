@@ -7,8 +7,7 @@
 //   PUT  /criteria           → body CriteriaUpdateRequestSchema; a new active version
 //   GET  /criteria/versions  → CriteriaVersionsResponseSchema
 //   GET  /saved-answers      → SavedAnswersResponseSchema (UC-12 "remember this answer")
-// Additive API needs (handoff): PUT /saved-answers/:key { label, answer } (upsert, also the
-// Undo of a delete) and DELETE /saved-answers/:key.
+//   DELETE /saved-answers/:key → { ok: true }; 404 when there is no such answer
 import {
   CriteriaUpdateRequestSchema,
   normalizeAnswerKey,
@@ -17,6 +16,7 @@ import {
   type SavedAnswer,
   type SearchProfile,
 } from "@bs-job-agents/shared";
+import { FixtureApiError } from "@/components/schedules/apiError";
 import { searchProfileFixture } from "@bs-job-agents/shared/fixtures";
 import type { z } from "zod";
 
@@ -31,8 +31,6 @@ export interface CriteriaData {
   versions(): Promise<CriteriaVersions>;
   /** Answers Ba told Apply to remember (UC-12), newest first. */
   savedAnswers(): Promise<SavedAnswer[]>;
-  /** Creates or replaces the answer for this label (key = shared normalizeAnswerKey). */
-  saveAnswer(answer: { label: string; answer: string }): Promise<SavedAnswer>;
   deleteAnswer(key: string): Promise<void>;
 }
 
@@ -70,14 +68,8 @@ export function createFixtureCriteriaData(seed: SearchProfile = searchProfileFix
     async savedAnswers() {
       return [...answers.values()].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)).map((a) => ({ ...a }));
     },
-    async saveAnswer({ label, answer }) {
-      if (!label.trim() || !answer.trim()) throw new Error("an answer needs a label and text");
-      const saved: SavedAnswer = { key: normalizeAnswerKey(label), label: label.trim(), answer: answer.trim(), updatedAt: now().toISOString() };
-      answers.set(saved.key, saved);
-      return { ...saved };
-    },
     async deleteAnswer(key) {
-      answers.delete(key);
+      if (!answers.delete(key)) throw new FixtureApiError(404, "not_found", `there is no saved answer for "${key}"`);
     },
   };
 }

@@ -48,25 +48,19 @@ describe("CriteriaScreen (UC-21b)", () => {
     expect((await data.get()).version).toBe(3);
   });
 
-  it("shows, edits and forgets saved answers, with Undo (UC-12)", async () => {
+  it("shows saved answers and forgets one after confirming (UC-12)", async () => {
     const { user, data } = await setup();
     const list = screen.getByTestId("saved-answers");
     expect(within(list).getAllByRole("listitem")).toHaveLength(3);
     expect(list).toHaveTextContent("Notice period2 weeks");
 
-    await user.click(screen.getByRole("button", { name: "Edit the answer for Notice period" }));
-    const input = screen.getByRole("textbox", { name: "Answer for Notice period" });
-    await user.clear(input);
-    await user.type(input, "1 month{Enter}");
-    expect(await screen.findByText("Updated the answer for “Notice period”")).toBeInTheDocument();
-    expect(list).toHaveTextContent("Notice period1 month");
-    expect((await data.savedAnswers()).find((a) => a.key === "notice period")!.answer).toBe("1 month");
-
-    await user.click(screen.getByRole("button", { name: "Delete the answer for Work permit" }));
-    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
-    await user.click(screen.getByRole("button", { name: "Undo" }));
-    await waitFor(() => expect(within(screen.getByTestId("saved-answers")).getAllByRole("listitem")).toHaveLength(3));
-    expect((await data.savedAnswers()).map((a) => a.label)).toContain("Work permit");
+    await user.click(screen.getByRole("button", { name: "Forget the answer for Work permit" }));
+    const confirm = screen.getByTestId("confirm-dialog");
+    expect(confirm).toHaveTextContent("Forget the answer for “Work permit”?");
+    await user.click(within(confirm).getByRole("button", { name: "Forget answer" }));
+    expect(await screen.findByText("Forgot the answer for “Work permit”")).toBeInTheDocument();
+    expect(within(screen.getByTestId("saved-answers")).getAllByRole("listitem")).toHaveLength(2);
+    expect((await data.savedAnswers()).map((a) => a.label)).not.toContain("Work permit");
   });
 
   it("needs an amount for the fixed salary rule, then saves a new version", async () => {
