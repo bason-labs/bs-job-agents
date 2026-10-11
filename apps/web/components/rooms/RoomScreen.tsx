@@ -2,7 +2,7 @@
 
 import type { Message, Room } from "@bs-job-agents/shared";
 import { useEffect, useRef, useState } from "react";
-import { BotAvatar, useToast } from "@/components/ui";
+import { BotAvatar, Button, useToast } from "@/components/ui";
 import { errorText } from "@/components/schedules/apiError";
 import { roomsData, type RoomBot, type RoomsData } from "./data";
 import { roomMentions, splitMentions } from "./mentions";
@@ -11,6 +11,8 @@ import { MentionComposer } from "./MentionComposer";
 export interface RoomScreenProps {
   room: Room;
   initialMessages: Message[];
+  /** Older messages exist (the API pages history). */
+  initialHasMore?: boolean;
   bots: RoomBot[];
   /** Defaults to the app's data source; tests pass their own. */
   data?: RoomsData;
@@ -49,8 +51,10 @@ function MessageText({ text, members }: { text: string; members: readonly RoomBo
 }
 
 /** UC-15: group room in discussion mode. Bots answer only when @mentioned and never act here. */
-export function RoomScreen({ room, initialMessages, bots, data = roomsData }: RoomScreenProps) {
+export function RoomScreen({ room, initialMessages, initialHasMore = false, bots, data = roomsData }: RoomScreenProps) {
   const [messages, setMessages] = useState(initialMessages);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [waiting, setWaiting] = useState<string[]>([]);
   const notes = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -73,10 +77,26 @@ export function RoomScreen({ room, initialMessages, bots, data = roomsData }: Ro
     [data, room.id],
   );
 
+  // Follow the newest message (not older pages loaded at the top).
+  const newestId = messages.at(-1)?.id;
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length, waiting.length]);
+  }, [newestId, waiting.length]);
+
+  const loadEarlier = async () => {
+    const oldest = messages.find((m) => !m.id.startsWith("local_"));
+    setLoadingEarlier(true);
+    try {
+      const page = await data.messages(room.id, { before: oldest?.id, limit: 50 });
+      setMessages((ms) => [...page.messages.filter((m) => !ms.some((x) => x.id === m.id)), ...ms]);
+      setHasMore(page.hasMore);
+    } catch (e) {
+      toast({ title: `Couldn't load earlier messages: ${errorText(e)}`, tone: "err" });
+    } finally {
+      setLoadingEarlier(false);
+    }
+  };
 
   const send = async (text: string) => {
     const mentioned = roomMentions(text, members);
@@ -106,6 +126,14 @@ export function RoomScreen({ room, initialMessages, bots, data = roomsData }: Ro
               ))}
             </p>
           </div>
+
+          {hasMore ? (
+            <div className="text-center">
+              <Button size="sm" pill variant="ghost" loading={loadingEarlier} onClick={() => void loadEarlier()}>
+                Load earlier messages
+              </Button>
+            </div>
+          ) : null}
 
           <ol aria-label={`# ${room.name} messages`} className="space-y-4">
             {messages.map((m) => (

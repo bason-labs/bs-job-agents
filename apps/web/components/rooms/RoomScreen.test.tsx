@@ -5,13 +5,13 @@ import { ToastProvider } from "@/components/ui";
 import { createFixtureRoomsData } from "./data";
 import { RoomScreen } from "./RoomScreen";
 
-async function setup() {
+async function setup(limit = 50) {
   const data = createFixtureRoomsData({ replyDelayMs: 30 });
-  const [room, messages, bots] = await Promise.all([data.getRoom("cv-brainstorm"), data.messages("cv-brainstorm"), data.bots()]);
+  const [room, page, bots] = await Promise.all([data.getRoom("cv-brainstorm"), data.messages("cv-brainstorm", { limit }), data.bots()]);
   const user = userEvent.setup();
   render(
     <ToastProvider>
-      <RoomScreen room={room!} initialMessages={messages} bots={bots} data={data} />
+      <RoomScreen room={room!} initialMessages={page.messages} initialHasMore={page.hasMore} bots={bots} data={data} />
     </ToastProvider>,
   );
   return { user, data };
@@ -58,6 +58,14 @@ describe("RoomScreen (UC-15)", () => {
     await user.type(composer(), "@");
     await user.keyboard("{Escape}");
     expect(screen.queryByTestId("mention-list")).toBeNull();
+  });
+
+  it("loads earlier messages when the history has more (paged API)", async () => {
+    const { user } = await setup(1);
+    expect(authors()).toEqual(["qa"]);
+    await user.click(screen.getByRole("button", { name: "Load earlier messages" }));
+    await waitFor(() => expect(authors()).toEqual(["ba", "cv", "qa"]));
+    expect(screen.queryByRole("button", { name: "Load earlier messages" })).toBeNull();
   });
 
   it("chooses a suggestion with the mouse", async () => {

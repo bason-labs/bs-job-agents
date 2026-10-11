@@ -18,10 +18,10 @@ export default async function RoomPage({ params }: Props) {
   const { id } = await params;
   const room = await roomsData.getRoom(id);
   if (!room) notFound();
-  const [messages, bots] = await Promise.all([roomsData.messages(id), roomsData.bots()]);
+  const [page, bots] = await Promise.all([roomsData.messages(id), roomsData.bots()]);
   return (
     <Page width="full">
-      <RoomScreen room={room} initialMessages={messages} bots={bots} />
+      <RoomScreen room={room} initialMessages={page.messages} initialHasMore={page.hasMore} bots={bots} />
     </Page>
   );
 }

@@ -4,13 +4,16 @@
 // change: replace the fixture implementation below with an adapter over lib/api (W3b's typed
 // client and SSE subscription). Shapes are the shared schemas.
 //   GET  /rooms                → RoomsResponseSchema (find the room by id)
-//   GET  /rooms/:id/messages   → MessagesResponseSchema
+//   GET  /rooms/:id/messages?before=&limit= → MessagesResponseSchema { messages, hasMore }
 //   POST /chat/messages        → body ChatSendRequestSchema { roomId, text, uploadIds } → { message }
 //   SSE  message.created       → bot replies (discussion mode), filtered by roomId
 //   GET  /bots                 → display names and roles for the member list
-import { ChatSendRequestSchema, type Message, type Room } from "@bs-job-agents/shared";
+import { ChatSendRequestSchema, type Message, type MessagesResponseSchema, type Room } from "@bs-job-agents/shared";
+import type { z } from "zod";
 import { BOT_VIEWS } from "@/components/bots/fixtures";
 import { roomMentions, type RoomMember } from "./mentions";
+
+export type MessagesPage = z.infer<typeof MessagesResponseSchema>;
 
 export interface RoomBot extends RoomMember {
   role: string;
@@ -20,7 +23,8 @@ export interface RoomsData {
   getRoom(id: string): Promise<Room | null>;
   /** Display names and roles of the bots (members and @mention suggestions). */
   bots(): Promise<RoomBot[]>;
-  messages(roomId: string): Promise<Message[]>;
+  /** A page of history, oldest first; `before` pages back from a message id. */
+  messages(roomId: string, query?: { before?: string; limit?: number }): Promise<MessagesPage>;
   /** Posts Ba's message; mentioned bots answer later through `subscribe`. */
   send(roomId: string, text: string): Promise<Message>;
   /** New messages in the room (SSE message.created). Returns an unsubscribe function. */
@@ -97,8 +101,13 @@ export function createFixtureRoomsData(opts: { replyDelayMs?: number; now?: () =
     async bots() {
       return bots.map((b) => ({ ...b }));
     },
-    async messages(roomId) {
-      return structuredClone(log.get(roomId) ?? []);
+    async messages(roomId, query = {}) {
+      const all = log.get(roomId) ?? [];
+      const end = query.before ? all.findIndex((m) => m.id === query.before) : all.length;
+      const upTo = end < 0 ? all.length : end;
+      const limit = query.limit ?? 50;
+      const start = Math.max(0, upTo - limit);
+      return { messages: structuredClone(all.slice(start, upTo)), hasMore: start > 0 };
     },
     async send(roomId, text) {
       ChatSendRequestSchema.parse({ roomId, text, uploadIds: [] });

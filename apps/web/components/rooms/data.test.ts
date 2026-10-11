@@ -10,7 +10,8 @@ describe("fixture rooms store (UC-15)", () => {
     const data = createFixtureRoomsData();
     const room = RoomSchema.parse(await data.getRoom("cv-brainstorm"));
     expect(room).toMatchObject({ kind: "group", members: ["lead", "research", "cv", "qa", "apply"] });
-    const messages = await data.messages("cv-brainstorm");
+    const { messages, hasMore } = await data.messages("cv-brainstorm");
+    expect(hasMore).toBe(false);
     expect(messages.map((m) => (m.author.type === "bot" ? m.author.bot : m.author.type))).toEqual(["ba", "cv", "qa"]);
     for (const m of messages) expect(() => MessageSchema.parse(m)).not.toThrow();
     expect(await data.getRoom("nope")).toBeNull();
@@ -26,7 +27,7 @@ describe("fixture rooms store (UC-15)", () => {
     expect(replies).toEqual(["research"]);
     await vi.advanceTimersByTimeAsync(100);
     expect(replies).toEqual(["research", "apply"]);
-    expect((await data.messages("cv-brainstorm")).at(-1)!.text).toMatch(/discussion mode/);
+    expect((await data.messages("cv-brainstorm")).messages.at(-1)!.text).toMatch(/discussion mode/);
   });
 
   it("sends a message without a mention to no bot", async () => {
@@ -36,6 +37,15 @@ describe("fixture rooms store (UC-15)", () => {
     expect((await data.send("cv-brainstorm", "just thinking out loud")).mentions).toEqual([]);
     await vi.advanceTimersByTimeAsync(1000);
     expect(seen).not.toHaveBeenCalled();
+  });
+
+  it("pages back through the history, oldest first, like GET /rooms/:id/messages", async () => {
+    const data = createFixtureRoomsData();
+    const last = await data.messages("cv-brainstorm", { limit: 2 });
+    expect(last.messages.map((m) => m.id)).toEqual(["msg_r2", "msg_r3"]);
+    expect(last.hasMore).toBe(true);
+    const older = await data.messages("cv-brainstorm", { before: "msg_r2", limit: 2 });
+    expect(older).toMatchObject({ messages: [{ id: "msg_r1" }], hasMore: false });
   });
 
   it("rejects an empty message", async () => {
