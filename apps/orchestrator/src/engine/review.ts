@@ -157,6 +157,37 @@ function awaitingReapproval(ref: ReviewRef): boolean {
   );
 }
 
+/**
+ * PM2 S15: the card's dry run has settled and a live approval would be accepted: the review step is
+ * done, its action step holds a dry run whose Apply task ended, the dry run is not one that reported
+ * "submitted" and waits for Ba's check, the job has an apply link, is not skipped, and has no live
+ * application (unless the run says "apply again"). Mirrors approveLiveAfterDryRun's checks, so the
+ * API offers the card back in the queue only when Approve would work (Phase 3 QA).
+ */
+export function isDryRunSettled(
+  conn: Conn,
+  ref: { humanStatus: string; actionOut: ActionStepOutput | null | undefined; jobId: number; applyAgain: boolean },
+): boolean {
+  const out = ref.actionOut;
+  if (ref.humanStatus !== "done" || out?.dryRun !== true || out.applicationId === null) return false;
+  const task = out.taskId === null ? undefined : getTask(conn, out.taskId);
+  if (task && !["done", "failed", "interrupted"].includes(task.status)) return false;
+  const dry = getApplication(conn, out.applicationId);
+  if (!dry || !dry.dryRun || dry.status === "approved" || dry.status === "paused" || isBlockingDryRun(conn, dry)) return false;
+  const job = getJob(conn, ref.jobId);
+  if (!job || !job.url || job.status === "skipped") return false;
+  return getApplicationByJob(conn, job.id) === undefined || ref.applyAgain;
+}
+
+function settledDryRunRef(conn: Conn, ref: ReviewRef): boolean {
+  return isDryRunSettled(conn, {
+    humanStatus: ref.human.status,
+    actionOut: ref.action?.output as ActionStepOutput | null | undefined,
+    jobId: Number(ref.scope.branchKey),
+    applyAgain: ref.ctx.params.applyAgain === true,
+  });
+}
+
 function decision(core: EngineCore, d: Partial<ReviewDecision> & Pick<ReviewDecision, "decision">): ReviewDecision {
   return { at: core.now().toISOString(), cvVersionId: null, introText: null, introEdited: false, comment: null, skip: null, ...d };
 }
@@ -399,10 +430,16 @@ export function skip(core: EngineCore, jobId: number, input: SkipDecision): void
   const runId = core.db.transaction((tx) => {
     const ref = findReview(core, tx, jobId);
     const afterDenial = awaitingReapproval(ref);
-    if (ref.human.status !== "waiting" && !afterDenial) throw invalidState(`the review card for job ${jobId} is not waiting for a decision`);
+    const afterDryRun = !afterDenial && settledDryRunRef(tx, ref);
+    if (ref.human.status !== "waiting" && !afterDenial && !afterDryRun) throw invalidState(`the review card for job ${jobId} is not waiting for a decision`);
     skipJob(tx, jobId, { reason: parsed.data.reason, note: parsed.data.note });
     const out = ref.human.output as HumanStepOutput;
     const d = decision(core, { decision: "skip", skip: { reason: parsed.data.reason, note: parsed.data.note } });
+    if (afterDryRun) {
+      // PM2 S15: Ba does not take the settled dry run live. The dry run and its steps stay as they were.
+      recordDecision(tx, ref.human, d);
+      return ref.ctx.run.id;
+    }
     if (afterDenial) {
       // Ba gives up after Apply was denied: the approved application never ran.
       recordDecision(tx, ref.human, d);
