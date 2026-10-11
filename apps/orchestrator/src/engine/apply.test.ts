@@ -195,6 +195,9 @@ describe("Apply's own pauses wait for Ba (UC-11 a/b/e, UC-12, UC-17)", () => {
     expect(() => t.engine.answerQuestion(taskId, { field: "notice", mode: "skip", value: null, remember: false })).toThrow(/required/);
     expect(t.engine.answerQuestion(taskId, { field: "notice", mode: "answer", value: "2 weeks", remember: true })).toEqual({ resumed: true, next: null });
     expect(getSavedAnswer(t.db, "Notice period")?.answer).toBe("2 weeks");
+    // W3a request: the question card settles with Ba's answer, in the same transaction.
+    const card = (listMessages(t.db, lead.id).find((m) => m.id === asked[0]!.id)!.meta?.cards as Array<Record<string, unknown>>)[0];
+    expect(card).toMatchObject({ type: "question", answered: true, answer: "2 weeks" });
     await t.idle();
 
     const calls = t.runner.callsFor("apply.submit");
@@ -214,6 +217,9 @@ describe("Apply's own pauses wait for Ba (UC-11 a/b/e, UC-12, UC-17)", () => {
     expect(t.engine.answerQuestion(taskId, { field: "salary", mode: "negotiable", value: null, remember: false }).resumed).toBe(true);
     await t.idle();
     expect(t.runner.callsFor("apply.submit")[1]!.input).toMatchObject({ answers: [{ field: "salary", value: NEGOTIABLE_TEXT.vi }] });
+    const lead = listRooms(t.db, { kind: "lead" })[0]!;
+    const cards = listMessages(t.db, lead.id).flatMap((m) => (m.meta?.cards as Array<Record<string, unknown>> | undefined) ?? []);
+    expect(cards.find((c) => c.type === "question")).toMatchObject({ answered: true, answer: NEGOTIABLE_TEXT.vi });
   });
 
   it("UC-17: a login wall pauses Apply; Ba clicks Done in the app; Apply resumes", async () => {

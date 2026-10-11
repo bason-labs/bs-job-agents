@@ -107,6 +107,18 @@ export function appendMessage(db: Conn, input: AppendMessageInput, opts?: ClockO
   });
 }
 
+/** Additive (W3a request): replace a message's cards (an answered question); its text and author never change. */
+export function setMessageCards(db: Conn, messageId: number, cards: unknown[]): Message | undefined {
+  const current = db.select().from(messages).where(eq(messages.id, messageId)).get();
+  if (!current) return undefined;
+  return db
+    .update(messages)
+    .set({ meta: { ...(current.meta ?? {}), cards: cards as never } })
+    .where(eq(messages.id, messageId))
+    .returning()
+    .get();
+}
+
 /**
  * Messages in chronological order. With `limit`, the latest `limit` messages
  * (before `beforeId` when paging back).

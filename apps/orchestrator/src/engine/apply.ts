@@ -36,11 +36,13 @@ import {
   getSubmissionRecord,
   getTask,
   latestApprovalForApplication,
+  listMessages,
   listSavedAnswers,
   mappers,
   markSubmissionRefused,
   recordSubmission,
   saveAnswer,
+  setMessageCards,
   transitionApplication,
   updateTaskInput,
   type Application,
@@ -394,6 +396,25 @@ function postQuestion(core: EngineCore, conn: Conn, task: Task, applicationId: n
   core.bus.emit(conn, { type: "message.created", roomId: String(room.id), message: mappers.toMessage(message, room.kind, []) });
 }
 
+/**
+ * W3a request (UC-12): the question card turns answered with Ba's answer (null = left blank), in
+ * the answer's transaction (no event: the message is not new; the API's answer response tells the UI).
+ */
+function settleQuestionCard(core: EngineCore, conn: Conn, taskId: number, field: string, answer: string | null): void {
+  const room = getOrCreateLeadRoom(conn, { now: core.now() });
+  for (const message of listMessages(conn, room.id)) {
+    const cards = (message.meta?.cards as Array<Record<string, unknown>> | undefined) ?? [];
+    let changed = false;
+    const next = cards.map((c) => {
+      if (c.type !== "question" || c.taskId !== String(taskId) || (c.question as { field?: unknown } | null)?.field !== field) return c;
+      changed = true;
+      return { ...c, answered: true, answer };
+    });
+    if (!changed) continue;
+    setMessageCards(conn, message.id, next);
+  }
+}
+
 /** Apply may resume without Ba at most this often per task (each time with new automatic answers). */
 export const MAX_AUTO_RESUMES = 3;
 
@@ -478,6 +499,7 @@ export function answerQuestion(core: EngineCore, taskId: number, input: AnswerIn
     if (input.remember && v.answer.value !== null && normalizeAnswerKey(q.label) !== "") {
       saveAnswer(tx, { label: q.label, answer: v.answer.value }, { now: core.now() });
     }
+    settleQuestionCard(core, tx, task.id, q.field, v.answer.value);
     const answered = { ...out, answers: [...out.answers, v.answer] };
     const { auto, ask } = questionsForBa(core, tx, task, output, answered, app?.jobId ?? 0);
     const answers = [...answered.answers, ...auto];
