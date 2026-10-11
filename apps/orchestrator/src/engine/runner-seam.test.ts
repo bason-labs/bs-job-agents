@@ -333,6 +333,7 @@ describe("flags per task (§4.4, §5.5, spike S1/S2/S4)", () => {
     expect(existsSync(join(taskDir, "figma-guard.json"))).toBe(false);
     // The templates from the "before" fingerprint reach the bot (coordinator B).
     expect(r.task.input).toMatchObject({ templates: [expect.objectContaining({ id: "459:1767" })] });
+    expect(prompt(r)).toContain('"459:1767"');
   });
 
   it("apply.submit (Claude): Chrome with the write tools, its application folder only, the site guard merged", () => {
@@ -340,9 +341,14 @@ describe("flags per task (§4.4, §5.5, spike S1/S2/S4)", () => {
     const appDir = join(dataDir, "applications", String((r.task.input as { applicationId: string }).applicationId));
     const { args, files } = spawned("apply.submit");
     expect(args).toContain("--chrome");
-    expect(argValue(args, "--add-dir")).toBe(appDir);
-    expect(r.task.readDirs).toEqual([appDir]);
+    const taskDir = join(dataDir, "tasks", String(r.task.taskId));
+    expect(args.slice(args.indexOf("--add-dir") + 1, args.indexOf("--add-dir") + 3)).toEqual([appDir, taskDir]);
+    expect(r.task.readDirs).toEqual([appDir, taskDir]);
     expect(args).toContain(`Read(/${appDir}/**)`);
+    // W4c handoff: Ba's master facts, as a per-task copy named in the input.
+    expect(args).toContain(`Read(/${taskDir}/**)`);
+    expect(r.task.input).toMatchObject({ masterCvPath: join(taskDir, "master-cv.yaml") });
+    expect(prompt(r)).toContain(join(taskDir, "master-cv.yaml"));
     const allowed = args.slice(args.indexOf("--allowedTools") + 1, args.indexOf("--disallowedTools"));
     expect(allowed).toContain("mcp__claude-in-chrome__file_upload");
     // §4.4: Apply runs without javascript_tool (hidden from the model, never allowed).

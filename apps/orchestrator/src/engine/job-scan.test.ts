@@ -52,7 +52,12 @@ describe("job-scan from trigger to record (§7.2)", () => {
 
     const apply = t.runner.callsFor("apply.submit");
     expect(apply).toHaveLength(1);
-    expect(apply[0]!.readDirs).toEqual(["/data/applications/1"]);
+    // W4c handoff: Apply reads its application folder plus its own task folder with a copy of
+    // Ba's master facts (as CV and QA do), and its input names that copy.
+    const applyDir = `/data/tasks/${apply[0]!.taskId}`;
+    expect(apply[0]!.readDirs).toEqual(["/data/applications/1", applyDir]);
+    expect(apply[0]!.input).toMatchObject({ masterCvPath: `${applyDir}/master-cv.yaml` });
+    expect(t.files.read(`${applyDir}/master-cv.yaml`)).toBe(t.files.read("/data/master-cv.yaml"));
     expect(apply[0]!.allowedSites).toEqual(["itviec.com"]);
     expect(apply[0]!.input).toMatchObject({ pdfPath: "/data/applications/1/BA_HUYNH_NOVAPAY_EN.pdf", pdfSha256: cv.pdfSha256 });
     expect(apply[0]!.hookSettings).toBeDefined();

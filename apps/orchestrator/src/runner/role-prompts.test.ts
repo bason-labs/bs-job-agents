@@ -71,6 +71,9 @@ describe("CV's ROLE.md (§6.1, §6.2, §6.3, UC-06)", () => {
     expect(text).toContain("factRequests");
     expect(text).toMatch(/never invent/i);
   });
+  it("clones one of the templates the task lists (W4c handoff: `templates` in the input)", () => {
+    expect(text).toMatch(/`templates`/);
+  });
   it("one A4 page, ATS-safe, language rule", () => {
     expect(text).toMatch(/one A4 page/i);
     expect(text).toMatch(/ATS/);
@@ -89,6 +92,10 @@ describe("QA's ROLE.md (§5.2 QA, UC-07)", () => {
 
 describe("Apply's ROLE.md (UC-11, UC-12, §7.5, pm-phase-2 S7/S11/S28)", () => {
   const text = role("apply");
+  it("reads Ba's master facts from the task's copy (W4c handoff: `masterCvPath`)", () => {
+    expect(text).toContain("masterCvPath");
+    expect(text).toContain("master-cv.yaml");
+  });
   it("names screenshots by the tool's id and never saves to disk", () => {
     expect(text).toMatch(/ss_/);
     expect(text).toContain("save_to_disk");

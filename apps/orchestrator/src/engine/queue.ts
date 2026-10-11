@@ -443,7 +443,7 @@ export class TaskQueue {
       const prep = await prepareApply(core, task);
       if (prep.kind === "stopped") return null;
       input = prep.input;
-      readDirs = [prep.readDir];
+      readDirs = prep.readDirs;
       allowedSites = prep.allowedSites;
       authorize = prep.authorize;
     } else if (task.usesBrowser && bot.def.browser && !bot.def.browser.sitesFromApproval) {

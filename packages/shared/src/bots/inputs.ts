@@ -111,6 +111,11 @@ export const ApplySubmitInputSchema = z.object({
   allowedDomains: z.array(DomainSchema).min(1),
   pdfPath: z.string().min(1),
   pdfSha256: Sha256Schema,
+  /**
+   * Ba's master facts (§6.1) for the form's values: the orchestrator's copy of master-cv.yaml in
+   * this task's own read folder (W4c handoff). Optional: absent on inputs stored before the copy.
+   */
+  masterCvPath: z.string().min(1).optional(),
   introText: z.string().nullable(),
   savedAnswers: z.array(z.object({ key: z.string().min(1), label: z.string().min(1), answer: z.string() })),
   answers: z.array(QuestionAnswerSchema),
