@@ -124,6 +124,16 @@ describe("QA's ROLE.md (§5.2 QA, UC-07)", () => {
     expect(text).toMatch(/merely not cited.*fix/is);
     expect(text).toMatch(/`invented_claim`[^\n]*no master fact/);
   });
+  it("live run 1 (F6): checks the language against the trusted `cvLanguage`, never the JD's; an EN CV for a VI JD is expected", () => {
+    expect(text).toContain("`cvLanguage`");
+    expect(text).toContain("`expectedLanguages`");
+    expect(text).toMatch(/never against the JD's language/i);
+    expect(text).toMatch(/Vietnamese JD gets both a VI and an EN CV/);
+    expect(text).toMatch(/`wrong_language`[^\n]*`cvLanguage`/);
+  });
+  it("live run 1 (F6): change notes stating the version's language are not an injection when they match `cvLanguage`", () => {
+    expect(text).toMatch(/change notes[^\n]*language[^\n]*not an injection/i);
+  });
 });
 
 describe("Apply's ROLE.md (UC-11, UC-12, §7.5, pm-phase-2 S7/S11/S28)", () => {
