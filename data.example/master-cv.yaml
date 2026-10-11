@@ -1,0 +1,205 @@
+# Ba's master CV facts (spec §6.1). Edited on the Master CV screen; bots only read it.
+#
+# Seed (pm-phase-3 S13): every fact comes from build_targeted_resumes.py (the base resume, its
+# job-specific variants and the Vietnamese versions). Nothing was added. textVi is the
+# Vietnamese wording where that script has one. Ba reviews this once, then copies it to
+# data/master-cv.yaml (README "First run").
+version: 1
+contact:
+  name: Ba Huynh
+  email: huynhthienba4@gmail.com
+  phone: +84 37 247 4489
+  location: Ho Chi Minh City, Vietnam
+  links:
+    - https://www.linkedin.com/in/bahuynh
+headlineOptions:
+  - en: Software Engineer | React, Node.js & AI Workflows
+    vi: null
+  - en: Frontend Engineer | React, Next.js & TypeScript
+    vi: null
+  - en: Frontend Developer | React, Next.js & TypeScript
+    vi: Lập trình viên Frontend | React, Next.js & TypeScript
+  - en: Frontend Developer | React, TypeScript & Workflow UI
+    vi: null
+  - en: Frontend Developer | AngularJS, Responsive Web & APIs
+    vi: Lập trình viên Frontend | AngularJS, Responsive Web & API
+facts:
+  # ---------------------------------------------------------------- summary-level facts
+  - id: metric-years
+    type: metric
+    text: 4+ years of web development experience.
+    textVi: Hơn 4 năm kinh nghiệm phát triển ứng dụng web.
+    tags: [experience-years, web]
+    org: null
+    dates: null
+
+  # ---------------------------------------------------------------- Gradion
+  - id: gradion-role
+    type: experience
+    text: Software Engineer at Gradion.
+    textVi: null
+    tags: [software-engineer, fullstack]
+    org: Gradion
+    dates: Sep 2025 – Present
+  - id: gradion-perf-review
+    type: experience
+    text: Owned a React/Node.js performance review application used by about 300 employees across Vietnam, Thailand, Singapore and Germany; embedded it in an internal workspace.
+    textVi: Phụ trách toàn bộ ứng dụng đánh giá hiệu suất React/Node.js cho khoảng 300 nhân viên tại Việt Nam, Thái Lan, Singapore và Đức; tích hợp trong workspace nội bộ.
+    tags: [react, nodejs, internal-tools, ownership, role-based-ui]
+    org: Gradion
+    dates: Sep 2025 – Present
+  - id: gradion-perf-review-users
+    type: metric
+    text: The performance review application is used by about 300 employees in four countries.
+    textVi: Ứng dụng đánh giá hiệu suất phục vụ khoảng 300 nhân viên tại bốn quốc gia.
+    tags: [scale, internal-tools]
+    org: Gradion
+    dates: Sep 2025 – Present
+  - id: gradion-finance
+    type: experience
+    text: Owned a multi-country purchase order system and invoice extraction workflow that turns scanned invoices into structured data for finance teams.
+    textVi: Phụ trách hệ thống đơn mua hàng đa quốc gia và quy trình trích xuất hóa đơn thành dữ liệu có cấu trúc cho bộ phận tài chính.
+    tags: [finance, document-extraction, ownership, workflow-ui]
+    org: Gradion
+    dates: Sep 2025 – Present
+  - id: gradion-invoice-review
+    type: experience
+    text: The finance application includes review interfaces for structured invoice data.
+    textVi: Ứng dụng tài chính gồm giao diện kiểm tra dữ liệu hóa đơn có cấu trúc.
+    tags: [finance, frontend, workflow-ui]
+    org: Gradion
+    dates: Sep 2025 – Present
+  - id: gradion-workspace-monorepo
+    type: project
+    text: "Internal workspace applications: delivered React/Node.js performance and finance apps in one monorepo, embedded in the company workspace through iframes."
+    textVi: "Ứng dụng trong workspace nội bộ: xây dựng ứng dụng React/Node.js cho nhân sự và tài chính trong một monorepo, nhúng vào workspace qua iframe."
+    tags: [react, nodejs, monorepo, iframe, internal-tools]
+    org: Gradion
+    dates: Sep 2025 – Present
+  - id: gradion-ai-lab
+    type: experience
+    text: Built AI workflows in Gradion's first AI lab and contributed to hospital semantic search.
+    textVi: null
+    tags: [ai, ai-workflows, semantic-search]
+    org: Gradion
+    dates: Sep 2025 – Present
+  - id: gradion-cv-screening
+    type: project
+    text: "AI-assisted CV screening: built n8n scoring of CVs against job requirements and a Genkit flow that uses reviewer feedback to refine prompts and screening output."
+    textVi: null
+    tags: [ai, n8n, genkit, prompt-engineering]
+    org: Gradion
+    dates: Sep 2025 – Present
+  - id: gradion-api
+    type: experience
+    text: Worked with backend services and API integrations.
+    textVi: Tích hợp API và xử lý các luồng nghiệp vụ.
+    tags: [api, backend, integration]
+    org: Gradion
+    dates: Sep 2025 – Present
+  - id: gradion-ops
+    type: experience
+    text: Investigated production logs in Grafana, managed application runtime with Kubernetes, and checked builds in Jenkins.
+    textVi: Kiểm tra log vận hành qua Grafana, quản lý runtime bằng Kubernetes và theo dõi build trên Jenkins.
+    tags: [grafana, kubernetes, jenkins, devops, delivery]
+    org: Gradion
+    dates: Sep 2025 – Present
+
+  # ---------------------------------------------------------------- Aegona
+  - id: aegona-role
+    type: experience
+    text: Frontend Engineer at Aegona.
+    textVi: null
+    tags: [frontend-engineer]
+    org: Aegona
+    dates: Feb 2024 – Sep 2025
+  - id: aegona-booking
+    type: experience
+    text: Built responsive booking, dynamic pricing and loyalty flows for an enterprise web/mobile platform; coordinated REST API integration with backend and mobile engineers.
+    textVi: Xây dựng giao diện responsive cho đặt chỗ, định giá linh hoạt và chương trình khách hàng thân thiết; phối hợp tích hợp REST API với backend và mobile.
+    tags: [frontend, responsive, booking, loyalty, rest-api, collaboration]
+    org: Aegona
+    dates: Feb 2024 – Sep 2025
+  - id: aegona-angularjs
+    type: experience
+    text: Built responsive AngularJS web interfaces for booking, dynamic pricing and loyalty features.
+    textVi: Phát triển giao diện web AngularJS responsive cho đặt chỗ, định giá linh hoạt và khách hàng thân thiết.
+    tags: [angularjs, frontend, responsive]
+    org: Aegona
+    dates: Feb 2024 – Sep 2025
+  - id: aegona-platform
+    type: project
+    text: "Enterprise web/mobile platform for accommodation and entertainment: built AngularJS customer and admin interfaces, including booking, dynamic pricing and loyalty."
+    textVi: "Nền tảng web/mobile doanh nghiệp: phát triển luồng người dùng và quản trị bằng AngularJS cho đặt chỗ, định giá linh hoạt và khách hàng thân thiết."
+    tags: [angularjs, admin-ui, booking, loyalty]
+    org: Aegona
+    dates: Feb 2024 – Sep 2025
+  - id: aegona-super-app
+    type: project
+    text: "Enterprise super app: developed booking and loyalty features across web and mobile using AngularJS, Flutter, Firebase and Vendure."
+    textVi: null
+    tags: [angularjs, flutter, firebase, vendure, mobile]
+    org: Aegona
+    dates: Feb 2024 – Sep 2025
+
+  # ---------------------------------------------------------------- Apps Cyclone
+  - id: appscyclone-role
+    type: experience
+    text: Frontend Engineer at Apps Cyclone.
+    textVi: null
+    tags: [frontend-engineer]
+    org: Apps Cyclone
+    dates: Sep 2022 – Jan 2024
+  - id: appscyclone-portal
+    type: experience
+    text: Built role-based education management screens and payment flows using Next.js 14, Tailwind CSS, Ant Design and REST APIs.
+    textVi: Phát triển màn hình quản lý giáo dục theo vai trò và luồng thanh toán bằng Next.js 14, Tailwind CSS, Ant Design và REST API.
+    tags: [nextjs, tailwind, ant-design, rest-api, role-based-ui, payments]
+    org: Apps Cyclone
+    dates: Sep 2022 – Jan 2024
+  - id: appscyclone-portal-project
+    type: project
+    text: "Education management portal: built responsive, multi-role screens and payment flows with Next.js 14, Tailwind CSS, Ant Design and REST APIs."
+    textVi: "Cổng quản lý giáo dục: xây dựng giao diện responsive cho nhiều vai trò, luồng thanh toán và tích hợp REST API bằng Next.js 14, Tailwind CSS, Ant Design."
+    tags: [nextjs, tailwind, ant-design, responsive, payments]
+    org: Apps Cyclone
+    dates: Sep 2022 – Jan 2024
+
+  # ---------------------------------------------------------------- skills
+  - id: skill-frontend
+    type: skill
+    text: "Frontend: JavaScript, TypeScript, React, Next.js, Vue/Nuxt, Angular, AngularJS, Tailwind CSS, Ant Design, HTML, CSS, responsive design."
+    textVi: "Frontend: JavaScript, TypeScript, React, Next.js, Vue/Nuxt, Angular, AngularJS, Tailwind CSS, Ant Design, HTML, CSS, thiết kế responsive."
+    tags: [frontend, javascript, typescript, react, nextjs, vue, angular, angularjs, tailwind]
+    org: null
+    dates: null
+  - id: skill-integration
+    type: skill
+    text: "Integrations and architecture: Node.js, REST APIs, PostgreSQL, Git, monorepo applications, iframe embedding."
+    textVi: "Kiến trúc và tích hợp: Node.js, REST API, PostgreSQL, Git, ứng dụng monorepo, nhúng iframe."
+    tags: [nodejs, rest-api, postgresql, git, monorepo, iframe]
+    org: null
+    dates: null
+  - id: skill-testing-delivery
+    type: skill
+    text: "Testing and delivery: Vitest, Playwright, Grafana, Kubernetes, Jenkins."
+    textVi: "Kiểm thử và vận hành: Vitest, Playwright, Grafana, Kubernetes, Jenkins."
+    tags: [testing, vitest, playwright, grafana, kubernetes, jenkins]
+    org: null
+    dates: null
+  - id: skill-ai
+    type: skill
+    text: "AI tools and workflows: n8n, Genkit, vector search, Cursor, Claude, Codex."
+    textVi: null
+    tags: [ai, n8n, genkit, vector-search]
+    org: null
+    dates: null
+
+  # ---------------------------------------------------------------- education
+  - id: edu-ctim
+    type: education
+    text: CTIM College, Information Technology.
+    textVi: Cao đẳng CTIM, Công nghệ thông tin.
+    tags: [education, information-technology]
+    org: CTIM College
+    dates: 2020 – 2023
