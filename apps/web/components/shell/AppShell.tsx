@@ -11,6 +11,7 @@ import type { ShellData } from "@/lib/api/types";
 import { titleForPath } from "@/lib/routes";
 import { useHydrated } from "@/lib/useHydrated";
 import { IconButton } from "@/components/ui/IconButton";
+import { useReturnFocus } from "@/components/ui/focus";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { MockMenu } from "./MockMenu";
 import { ShellContext } from "./ShellContext";
@@ -39,6 +40,7 @@ export function AppShell({ data: initialData, health: initialHealth = HEALTHY, c
   const [health, setHealth] = useState(initialHealth);
   const feedStatus = useFeedStatus();
   const hydrated = useHydrated();
+  const drawerFocus = useReturnFocus();
 
   useEffect(() => subscribeShellEvents(api.events, dispatch), [api]);
 
@@ -94,6 +96,7 @@ export function AppShell({ data: initialData, health: initialHealth = HEALTHY, c
             <RadixDialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden" />
             <RadixDialog.Content
               data-testid="sidebar-drawer"
+              {...drawerFocus}
               aria-describedby={undefined}
               className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col border-r border-border bg-surface text-sm shadow-2xl outline-none md:hidden"
             >

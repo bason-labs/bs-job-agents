@@ -34,3 +34,4 @@ export { TIME_SLOTS, TimePicker } from "./TimePicker";
 export { ToastProvider, useToast, type ToastOptions } from "./Toast";
 export { Tooltip, TooltipProvider } from "./Tooltip";
 export { TRUST_DESCRIPTIONS, TrustBadge } from "./TrustBadge";
+export { useReturnFocus } from "./focus";

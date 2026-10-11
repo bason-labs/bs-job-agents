@@ -4,6 +4,7 @@ import * as RadixDialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { useReturnFocus } from "./focus";
 
 export interface DrawerProps {
   open: boolean;
@@ -25,12 +26,14 @@ const WIDTHS = { md: "sm:w-[420px]", lg: "sm:w-[480px]" } as const;
  * panel, UC-13). Modal: dim backdrop, Esc / ✕ / backdrop click close it, focus stays inside.
  */
 export function Drawer({ open, onOpenChange, title, eyebrow, children, size = "md", className, "data-testid": testId }: DrawerProps) {
+  const focus = useReturnFocus();
   return (
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="fixed inset-0 z-40 bg-black/30" />
         <RadixDialog.Content
           data-testid={testId}
+          {...focus}
           aria-describedby={undefined}
           className={cn(
             "fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-hidden border-l border-border bg-surface shadow-2xl outline-none",
