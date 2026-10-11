@@ -17,6 +17,10 @@ export const WORKFLOW_TITLES: Record<string, string> = {
 
 export const workflowTitle = (name: string) => WORKFLOW_TITLES[name] ?? name.replace(/-/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 
+/** PM3 S4: a run started from a saved preset is named after it ("danang-react · Job scan"). */
+export const runTitle = (workflowName: string, presetName?: string | null) =>
+  presetName ? `${presetName} · ${workflowTitle(workflowName)}` : workflowTitle(workflowName);
+
 const DOT: Record<string, string> = {
   done: "bg-ok",
   running: "bg-accent animate-pulse",
@@ -57,7 +61,7 @@ export function RunCard({ runId }: { runId: string }) {
         <span className="flex min-w-0 items-center gap-2">
           <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", running ? "animate-pulse bg-accent" : data ? DOT[data.run.status] ?? "bg-ok" : "bg-surface-3")} />
           <b className="truncate">
-            {data ? workflowTitle(data.run.workflowName) : "Run"} #{runId}
+            {data ? runTitle(data.run.workflowName, data.presetName) : "Run"} #{runId}
           </b>
           <span className="text-muted">· delegated tasks</span>
           {data && !running ? <span className="text-muted">· {RUN_STATE[data.run.status] ?? data.run.status}</span> : null}

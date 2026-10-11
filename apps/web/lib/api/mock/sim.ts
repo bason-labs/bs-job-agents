@@ -144,7 +144,7 @@ function nextRunId(core: Core): string {
   return String(Math.max(12, ...ids) + 1);
 }
 
-function createRun(core: Core, workflowName: string, trigger: Run["trigger"], params: unknown, scheduleId: string | null = null): RunState {
+function createRun(core: Core, workflowName: string, trigger: Run["trigger"], params: unknown, scheduleId: string | null = null, presetName: string | null = null): RunState {
   const id = nextRunId(core);
   const run: Run = {
     id,
@@ -158,7 +158,7 @@ function createRun(core: Core, workflowName: string, trigger: Run["trigger"], pa
     createdAt: core.nowIso(),
     finishedAt: null,
   };
-  const state: RunState = { run, steps: [], tasks: [], lanes: [] };
+  const state: RunState = { run, steps: [], tasks: [], lanes: [], presetName };
   core.state.runs[id] = state;
   core.emit({ type: "run.started", runId: id, workflowName, trigger, scheduleId });
   return state;
@@ -244,7 +244,20 @@ function laneJob(core: Core, jobId: string): CatalogJob | null {
   return { job: card.job, company: card.company!, qa };
 }
 
-async function runLane(core: Core, r: RunState, lane: LaneInfo, opts: { from?: "company" | "tailor"; comment?: string | null } = {}): Promise<void> {
+/** PM3 S2, as views/review.ts: on an "apply again" run, the latest real application to the same job. */
+function appliedBefore(core: Core, r: RunState, job: Job): ReviewCard["flags"]["appliedBefore"] {
+  if ((r.run.params as { applyAgain?: unknown }).applyAgain !== true) return null;
+  // The mock reads a pasted link into a new job id, so an earlier application matches by its URL too.
+  const urlOf = (a: { id: string; jobId: string }) =>
+    core.state.applicationExtras[a.id]?.job.url ?? core.state.queue.concat(core.acted).find((c) => c.job.id === a.jobId)?.job.url ?? null;
+  const earlier = Object.values(core.state.applications)
+    .filter((a) => !a.dryRun && (a.jobId === job.id || (job.url !== null && urlOf(a) === job.url)))
+    .sort((a, b) => Number(b.id) - Number(a.id))[0];
+  if (!earlier) return null;
+  return { applicationId: earlier.id, at: earlier.submittedAt ?? earlier.statusHistory[0]?.at ?? core.nowIso(), status: earlier.status, origin: earlier.origin };
+}
+
+async function runLane(core: Core, r: RunState, lane: LaneInfo, opts:{ from?: "company" | "tailor"; comment?: string | null } = {}): Promise<void> {
   const runId = r.run.id;
   const cat = laneJob(core, lane.jobId);
   if (!cat) return;
@@ -331,6 +344,7 @@ async function runLane(core: Core, r: RunState, lane: LaneInfo, opts: { from?: "
       masterChanged: false,
       noApplyLink: job.url === null,
       lowConfidenceCompany: company.confidence === "low_confidence",
+      appliedBefore: appliedBefore(core, r, job),
     },
     readyAt: core.nowIso(),
   };
@@ -425,7 +439,6 @@ async function readyMessage(core: Core, r: RunState, found: CatalogJob[]): Promi
   await core.post(LEAD_ROOM_ID, LEAD, `🎯 **${found.length} ${found.length === 1 ? "job" : "jobs"} ready for review**: ${list}.`, {
     cards: [{ type: "review_link", count: core.state.queue.length }],
     runIds: [r.run.id],
-    stream: true,
   });
 }
 
@@ -437,7 +450,7 @@ async function jobScan(core: Core, r: RunState): Promise<void> {
     r.run.status = "done";
     r.run.finishedAt = core.nowIso();
     core.emit({ type: "run.finished", runId: r.run.id, status: "done", summary: "no strong matches" });
-    await core.post(LEAD_ROOM_ID, LEAD, "No strong matches this time: every new job scored below your fit threshold (60). Want me to widen the search?", { runIds: [r.run.id], stream: true });
+    await core.post(LEAD_ROOM_ID, LEAD, "No strong matches this time: every new job scored below your fit threshold (60). Want me to widen the search?", { runIds: [r.run.id] });
     return;
   }
   await runLanes(core, r, found, "top", `${found.length} jobs ≥ 60`);
@@ -494,36 +507,61 @@ const ROOM_ANSWERS: Record<string, string> = {
 };
 
 export async function replyTo(core: Core, room: Room, message: { text: string; uploadIds: string[] }): Promise<void> {
-  if (room.kind === "lead") return leadBrain(core, message.text, message.uploadIds);
-  if (room.kind === "direct") return consult(core, room, message.text, message.uploadIds);
+  if (room.kind === "lead") return leadTurn(core, message.text, message.uploadIds);
+  if (room.kind === "direct") return conversationTask(core, room.botName ?? "research", "consult", () => consult(core, room, message.text, message.uploadIds));
   return groupRoom(core, room, message.text);
 }
 
-async function leadBrain(core: Core, text: string, uploadIds: string[]): Promise<void> {
+/**
+ * PM3 S5: a chat turn runs as a conversation task, as on the orchestrator (lead.chat, <bot>.consult):
+ * task.started → one task.progress per tool call → the reply, posted whole → task.finished. The chat's
+ * "is working" indicator follows it. A workflow Lead starts runs on after the turn ends.
+ */
+async function conversationTask(core: Core, botName: string, kind: string, turn: (task: Task) => Promise<void>): Promise<void> {
+  const task = core.startTask(null, null, botName, kind, {});
+  try {
+    await turn(task);
+    core.finishTask(task, "done");
+  } catch (err) {
+    core.finishTask(task, "failed", null, err instanceof Error ? err.message : String(err));
+    throw err;
+  }
+}
+
+const leadTurn = (core: Core, text: string, uploadIds: string[]) => conversationTask(core, "lead", "chat", (task) => leadBrain(core, task, text, uploadIds));
+
+/** Lead's orchestrator tool call, as the runner reports it (the chat shows "Starting job-scan…"). */
+async function leadTool(core: Core, task: Task, tool: string, input: Record<string, unknown>): Promise<void> {
+  core.progress(task, "tool_use", JSON.stringify(input), `mcp__orchestrator__${tool}`);
+  await core.wait(400);
+  core.progress(task, "tool_result", "ok", `mcp__orchestrator__${tool}`);
+}
+
+async function leadBrain(core: Core, task: Task, text: string, uploadIds: string[]): Promise<void> {
   await core.wait(500);
   const files = uploadIds.map((id) => core.state.uploads[id]?.filename).filter((n): n is string => !!n);
   const url = URL_RE.exec(text)?.[0];
   if (files.length) {
+    await leadTool(core, task, "start_workflow", { workflow: "apply-to-file", params: { uploadId: uploadIds[0] } });
     const r = createRun(core, "apply-to-file", "chat", { uploadId: uploadIds[0], searchProfileId: null });
     await core.post(LEAD_ROOM_ID, LEAD, `Got **${files.join(", ")}**. Research will read the job description from the file, then company → CV → QA → your review.`, {
       cards: [{ type: "run", runId: r.run.id }],
       runIds: [r.run.id],
-      stream: true,
     });
-    return applyToFile(core, r, files[0]!);
+    return core.background(applyToFile(core, r, files[0]!));
   }
   if (url) {
+    await leadTool(core, task, "start_workflow", { workflow: "apply-to-link", params: { url, applyAgain: false } });
     const r = createRun(core, "apply-to-link", "link", { url, applyAgain: false, searchProfileId: null });
     await core.post(LEAD_ROOM_ID, LEAD, "Got the link. Starting **apply-to-link**: Research reads the JD, then company → CV → QA → your review.", {
       cards: [{ type: "run", runId: r.run.id }],
       runIds: [r.run.id],
-      stream: true,
     });
-    return applyToLink(core, r, url);
+    return core.background(applyToLink(core, r, url));
   }
   if (/\b(also|include)\b/i.test(text) && /(đà nẵng|da nang)/i.test(text)) {
     // PM3 M3: Lead proposes (propose_criteria_change); the backend words the card and saves on Ba's click.
-    await core.post(LEAD_ROOM_ID, LEAD, "Add **Đà Nẵng** just for this run, or save it to your search criteria?", { stream: true });
+    await core.post(LEAD_ROOM_ID, LEAD, "Add **Đà Nẵng** just for this run, or save it to your search criteria?");
     await proposeCriteria(core, { ...NO_CRITERIA_CHANGE, locations: { add: ["Đà Nẵng"], remove: [] } });
     return;
   }
@@ -537,37 +575,48 @@ async function leadBrain(core: Core, text: string, uploadIds: string[]): Promise
     const day = unit === "weekday" || unit === "day" ? null : (`${unit.charAt(0).toUpperCase()}${unit.slice(1, 3)}` as ScheduleProposal["day"]);
     const repeat = unit === "weekday" ? "weekdays" : unit === "day" ? "daily" : "weekly";
     const name = repeat === "weekdays" ? "Weekday morning scan" : repeat === "daily" ? "Daily scan" : `${day} scan`;
-    await core.post(LEAD_ROOM_ID, LEAD, `I can run a job scan ${repeat === "weekly" ? `every ${day}` : repeat === "daily" ? "every day" : "every weekday"} at ${time} with your search criteria. Create the schedule?`, { stream: true });
+    await core.post(LEAD_ROOM_ID, LEAD, `I can run a job scan ${repeat === "weekly" ? `every ${day}` : repeat === "daily" ? "every day" : "every weekday"} at ${time} with your search criteria. Create the schedule?`);
     await proposeSchedule(core, { name, repeat, day, time, searchProfileId: null });
     return;
   }
   if (/\b(status|progress|where)\b/i.test(text)) {
+    await leadTool(core, task, "get_status", {});
     const active = Object.values(core.state.runs).map((r) => r.run).filter((r) => ["running", "waiting", "paused"].includes(r.status)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
     const reply = active
       ? `Run #${active.id} is **${active.status}**. ${core.state.queue.length} ${core.state.queue.length === 1 ? "card is" : "cards are"} waiting for you in Review.`
       : `No run is in progress. ${core.state.queue.length} ${core.state.queue.length === 1 ? "card is" : "cards are"} waiting for you in Review.`;
-    await core.post(LEAD_ROOM_ID, LEAD, reply, { stream: true });
+    await core.post(LEAD_ROOM_ID, LEAD, reply);
     return;
+  }
+  // PM3 S4: a saved preset named in Ba's message → its base workflow with its params (Lead's start_workflow by name).
+  const preset = core.state.proposals.find((p) => p.status === "approved" && p.basedOn === "job-scan" && text.toLowerCase().includes(p.name.toLowerCase()));
+  if (preset) {
+    await leadTool(core, task, "start_workflow", { workflow: preset.name, params: {} });
+    const r = createRun(core, "job-scan", "chat", { searchProfileId: null, overrides: null, ...(preset.params ?? {}) }, null, preset.name);
+    await core.post(LEAD_ROOM_ID, LEAD, `Started your saved workflow **${preset.name}** (Job scan #${r.run.id}) with its own settings. Delegating now.`, {
+      cards: [{ type: "run", runId: r.run.id }],
+      runIds: [r.run.id],
+    });
+    return core.background(jobScan(core, r));
   }
   if (/\b(find|scan|search|look for|jobs?)\b/i.test(text)) {
     const scanning = Object.values(core.state.runs).find((r) => r.run.workflowName === "job-scan" && r.run.status === "running");
     if (scanning) {
-      await core.post(LEAD_ROOM_ID, LEAD, `Job scan #${scanning.run.id} is still running — I'll fold this into the next one.`, { stream: true });
+      await core.post(LEAD_ROOM_ID, LEAD, `Job scan #${scanning.run.id} is still running — I'll fold this into the next one.`);
       return;
     }
+    await leadTool(core, task, "start_workflow", { workflow: "job-scan", params: { searchProfileId: null, overrides: null } });
     const r = createRun(core, "job-scan", "chat", { searchProfileId: null, overrides: null });
     await core.post(LEAD_ROOM_ID, LEAD, `Started **Job scan #${r.run.id}** using search criteria v${core.state.criteriaVersion}. Delegating now.`, {
       cards: [{ type: "run", runId: r.run.id }],
       runIds: [r.run.id],
-      stream: true,
     });
-    return jobScan(core, r);
+    return core.background(jobScan(core, r));
   }
   await core.post(
     LEAD_ROOM_ID,
     LEAD,
     "I can find jobs, apply to a link or a JD file, or change your search criteria. Try: “Find frontend jobs in HCM, React/Next.js, ≥ 25M”.",
-    { stream: true },
   );
 }
 
@@ -580,14 +629,14 @@ async function consult(core: Core, room: Room, text: string, uploadIds: string[]
     const request = text || files.join(", ");
     await core.post(room.id, { type: "bot", bot: botName }, "That's a work request, so I've passed it to Lead — Lead assigns all work (rule 1 & 5). You'll see the progress in the Lead chat.", {
       cards: [{ type: "handoff", fromBot: botName, request }],
-      stream: true,
     });
     await core.post(LEAD_ROOM_ID, LEAD, `📨 Handed over from **@${display}**: Ba asked “${request}”. I'll plan it and assign the work.`, {
       cards: [{ type: "handoff", fromBot: botName, request }],
     });
-    return leadBrain(core, text, uploadIds);
+    core.background(leadTurn(core, text, uploadIds));
+    return;
   }
-  await core.post(room.id, { type: "bot", bot: botName }, CONSULT_ANSWERS[botName] ?? "Happy to explain anything within my role.", { stream: true });
+  await core.post(room.id, { type: "bot", bot: botName }, CONSULT_ANSWERS[botName] ?? "Happy to explain anything within my role.");
 }
 
 /**
@@ -611,7 +660,7 @@ async function groupRoom(core: Core, room: Room, text: string): Promise<void> {
   const { answering: mentions } = roomTargets(core, room, text);
   for (const bot of mentions) {
     await core.wait(500);
-    await core.post(room.id, { type: "bot", bot }, ROOM_ANSWERS[bot] ?? "Noted.", { stream: true });
+    await core.post(room.id, { type: "bot", bot }, ROOM_ANSWERS[bot] ?? "Noted.");
   }
 }
 
@@ -623,20 +672,22 @@ export async function afterChoice(core: Core, roomId: string, key: string, optio
       roomId,
       LEAD,
       optionId === "was_me" ? "Thanks — that was your edit, so it isn't held against CV. CV is tailoring again." : "OK. CV stays stopped; I'll keep the protected page as it is now.",
-      { stream: true },
     );
     return;
   }
   if (key.startsWith(CRITERIA_SAVE_KEY_PREFIX) && optionId === "just_this_run") {
     // "Just this run" went back to Lead, who starts the scan with per-run overrides (UC-21b a).
-    const active = core.state.profiles.find((p) => p.active);
-    const r = createRun(core, "job-scan", "chat", { searchProfileId: null, overrides: { locations: [...new Set([...(active?.locations ?? []), "Đà Nẵng"])] } });
-    await core.post(roomId, LEAD, `OK — Đà Nẵng only for this run. Started **Job scan #${r.run.id}**; your saved criteria stay the same.`, {
-      cards: [{ type: "run", runId: r.run.id }],
-      runIds: [r.run.id],
-      stream: true,
+    return conversationTask(core, "lead", "chat", async (task) => {
+      const active = core.state.profiles.find((p) => p.active);
+      const overrides = { locations: [...new Set([...(active?.locations ?? []), "Đà Nẵng"])] };
+      await leadTool(core, task, "start_workflow", { workflow: "job-scan", params: { searchProfileId: null, overrides } });
+      const r = createRun(core, "job-scan", "chat", { searchProfileId: null, overrides });
+      await core.post(roomId, LEAD, `OK — Đà Nẵng only for this run. Started **Job scan #${r.run.id}**; your saved criteria stay the same.`, {
+        cards: [{ type: "run", runId: r.run.id }],
+        runIds: [r.run.id],
+      });
+      core.background(jobScan(core, r));
     });
-    return jobScan(core, r);
   }
   await core.post(roomId, LEAD, "Noted.");
 }

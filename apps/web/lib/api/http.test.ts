@@ -293,3 +293,18 @@ describe("createHttpApi: errors", () => {
     expect(isApiError(err) && err.code).toBe("bad_response");
   });
 });
+
+describe("saved presets on runs (PM3 S4)", () => {
+  it("listRuns gives each run its preset's name from presetNames; getRun keeps presetName", async () => {
+    const other = { ...runFixture, id: "run_14" };
+    const { api: a } = api({
+      "GET /runs": () => json({ runs: [runFixture, other], presetNames: { [runFixture.id]: "danang-react" } }),
+      [`GET /runs/${runFixture.id}`]: () => json({ run: runFixture, steps: [], tasks: [], presetName: "danang-react" }),
+    });
+    expect((await a.listRuns()).map((r) => [r.id, r.presetName ?? null])).toEqual([
+      [runFixture.id, "danang-react"],
+      ["run_14", null],
+    ]);
+    expect((await a.getRun(runFixture.id)).presetName).toBe("danang-react");
+  });
+});

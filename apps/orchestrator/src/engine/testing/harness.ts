@@ -95,6 +95,14 @@ export interface TestEngine {
   checkEvents(): void;
 }
 
+/**
+ * For tests that move the clock a day or more (an approval token expiring): the scheduler's 30 s
+ * poll would otherwise fire thousands of times inside one FakeClock.advance, which made those
+ * tests ~10x slower than the rest and let them hit the test timeout under load. Nothing else
+ * changes: the poll still fires, just every 6 hours.
+ */
+export const LONG_WAIT_CONFIG: Partial<EngineConfig> = { schedulerPollMs: 6 * 3600_000 };
+
 export const DATA_DIR = "/data";
 export const BOTS_DIR = "/bots";
 

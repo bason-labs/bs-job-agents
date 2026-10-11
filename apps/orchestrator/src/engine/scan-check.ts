@@ -28,6 +28,11 @@ export interface ScanCheckInput {
   output: ResearchScanOutput;
   /** Screenshots captured in this attempt, data/-relative, oldest first (empty when none: Codex, or no capture). */
   screenshots: string[];
+  /**
+   * W4a handoff: each page a navigate call opened in this spawn, with the time the bot asked for it
+   * (the runner's clock), in order. Absent when the runner reported none (Codex, or no navigate).
+   */
+  pageVisits?: readonly { url: string; at: string }[];
 }
 
 export type ScanCheckResult =

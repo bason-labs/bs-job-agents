@@ -5,7 +5,7 @@ import Link from "next/link";
 import { errorMessage } from "@/lib/api/errors";
 import { useRuns } from "@/lib/api/hooks";
 import { formatElapsed, formatWhen } from "@/lib/datetime";
-import { workflowTitle } from "@/components/chat/RunCard";
+import { runTitle } from "@/components/chat/RunCard";
 import { Page } from "@/components/shell/Page";
 import { StatusPill } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -50,7 +50,7 @@ export function FlowsList() {
                   <span className="min-w-0">
                     <span className="flex flex-wrap items-center gap-2">
                       <b className="font-display">
-                        {workflowTitle(r.workflowName)} #{r.id}
+                        {runTitle(r.workflowName, r.presetName)} #{r.id}
                       </b>
                       <StatusPill status={r.status} />
                     </span>

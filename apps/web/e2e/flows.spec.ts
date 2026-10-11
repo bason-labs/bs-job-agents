@@ -6,6 +6,12 @@ import { open } from "./helpers";
 
 const node = (page: Page, testId: string) => page.getByTestId(testId);
 
+/**
+ * Opens a step's drawer. PM3 S6 keeps the canvas at a readable zoom, so on a wide run some steps
+ * sit off-screen until Ba pans; the click is dispatched on the node instead of panning in the test.
+ */
+const openNode = (page: Page, testId: string) => node(page, testId).dispatchEvent("click");
+
 test("the runs list opens a run's canvas", async ({ page }) => {
   await open(page, "/flows");
   const rows = page.getByTestId("run-row");
@@ -32,7 +38,7 @@ test("the canvas shows each step's status, per-job lanes, QA rounds and the lock
 
 test("UC-22: a node opens the drawer with input, output, self-check, transcript, attempts, engine and prompt version", async ({ page }) => {
   await open(page, "/flows/12");
-  await node(page, "node-scan").click();
+  await openNode(page, "node-scan");
   const drawer = page.getByTestId("step-drawer");
   await expect(drawer.getByRole("heading", { name: "Scan sources" })).toBeVisible();
   await expect(drawer).toContainText("Research ×3 · Claude");
@@ -51,11 +57,11 @@ test("UC-22: a node opens the drawer with input, output, self-check, transcript,
   await expect(drawer).toBeHidden();
 
   // A gate lists CV and QA per round; Apply can never be re-run (UC-23).
-  await node(page, "node-tailor-102").click();
+  await openNode(page, "node-tailor-102");
   await expect(drawer.getByRole("radio", { name: "VI · Round 2 · QA" })).toBeVisible();
   await expect(drawer.getByRole("button", { name: /SAOVIETTECH_FRONTEND_VI_v2\.pdf/ })).toBeVisible();
   await page.keyboard.press("Escape");
-  await node(page, "node-apply-101").click();
+  await openNode(page, "node-apply-101");
   await expect(drawer.getByRole("button", { name: "Re-run step" })).toBeDisabled();
   await expect(drawer).toContainText("Apply is never re-run; approve the card again instead.");
 });
@@ -68,11 +74,55 @@ test("a run started from chat fills its canvas live; the drawer streams the tran
   await expect(page).toHaveURL(/\/flows\/13$/);
   // The mock scan takes under a second at e2e speed: it may already be done when the canvas opens.
   await expect(node(page, "node-scan")).toHaveAttribute("data-status", /^(running|done)$/);
-  await node(page, "node-scan").click();
+  await openNode(page, "node-scan");
   await expect(page.getByTestId("transcript")).toContainText("search results");
   await page.keyboard.press("Escape");
   await expect(node(page, "node-review-201")).toHaveAttribute("data-status", "waiting", { timeout: 30_000 });
   await expect(node(page, "node-scan")).toHaveAttribute("data-status", "done");
+});
+
+/** How large a node's title is on screen (its CSS size × the canvas zoom). */
+const titlePx = (page: Page, testId: string) =>
+  node(page, testId)
+    .locator("p.font-medium")
+    .evaluate((el) => (parseFloat(getComputedStyle(el).fontSize) * el.getBoundingClientRect().height) / (el as HTMLElement).offsetHeight);
+
+/** True when the node with this status (the step the run is on) lies inside the canvas. */
+const activeNodeInView = (page: Page) =>
+  page.evaluate(() => {
+    const canvas = document.querySelector('[data-testid="flow-canvas"]')!.getBoundingClientRect();
+    const active = [...document.querySelectorAll<HTMLElement>("[data-status=running], [data-status=waiting]")].filter((n) => n.dataset.testid?.startsWith("node-"));
+    return active.some((n) => {
+      const r = n.getBoundingClientRect();
+      return r.left >= canvas.left - 1 && r.right <= canvas.right + 1 && r.top >= canvas.top - 1 && r.bottom <= canvas.bottom + 1;
+    });
+  });
+
+test("PM3 S6: the canvas follows a live run as branches appear, at a zoom where node titles stay readable", async ({ page }) => {
+  await open(page, "/chat");
+  await page.getByRole("textbox", { name: "Message Lead" }).fill("Find frontend jobs in HCM");
+  await page.keyboard.press("Enter");
+  await page.locator('[data-testid=run-card][data-run="13"]').getByRole("link", { name: /Open flow/ }).click();
+  await expect(page).toHaveURL(/\/flows\/13$/);
+  // Branches appear (one lane per selected job); the step the run is on stays in view.
+  await expect(node(page, "node-company-201")).toBeAttached({ timeout: 30_000 });
+  await expect.poll(() => activeNodeInView(page), { timeout: 10_000 }).toBe(true);
+  await expect(node(page, "node-review-201")).toHaveAttribute("data-status", "waiting", { timeout: 30_000 });
+  await expect.poll(() => activeNodeInView(page), { timeout: 10_000 }).toBe(true);
+  // Never the old ~6 px text: the follow never zooms below the readable floor.
+  expect(await titlePx(page, "node-review-201")).toBeGreaterThanOrEqual(11);
+});
+
+test("PM3 S6: a finished multi-branch run opens at a readable zoom; Ba can pan, and Fit to screen follows again", async ({ page }) => {
+  await open(page, "/flows/12");
+  await expect(node(page, "node-review-101")).toBeVisible();
+  await expect.poll(() => titlePx(page, "node-review-101")).toBeGreaterThanOrEqual(11);
+  await expect.poll(() => activeNodeInView(page)).toBe(true);
+  await page.getByRole("button", { name: "Zoom out" }).click();
+  await page.getByRole("button", { name: "Zoom out" }).click();
+  await expect.poll(() => titlePx(page, "node-review-101")).toBeLessThan(11);
+  await page.getByRole("button", { name: "Fit to screen" }).click();
+  await expect.poll(() => titlePx(page, "node-review-101")).toBeGreaterThanOrEqual(11);
 });
 
 test("UC-23: pause and resume a run; cancel asks first", async ({ page }) => {

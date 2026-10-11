@@ -1,22 +1,22 @@
 {
   "apply": {
-    "promptVersion": 2,
-    "roleMdSha256": "b6760bab66fa5e1591c940618da88445b328c42248adf05983f51cdb3bdfcd2c"
+    "promptVersion": 3,
+    "roleMdSha256": "082cdeb41bf68730049c36c36a4ee92225f7e8654eaaee3870db1e164d20ef35"
   },
   "cv": {
-    "promptVersion": 2,
-    "roleMdSha256": "4f13ab7fba7d9fea0b3543e94a7bb7b39200c76a5b43abed2efb4cab8868198e"
+    "promptVersion": 3,
+    "roleMdSha256": "836d6bc26b168f2831c58f0398ad71d5e69a42ce7d6916c6c8e24296fc54a0a8"
   },
   "lead": {
-    "promptVersion": 2,
-    "roleMdSha256": "a35a430138896d00e5a0a3c5674202dad7af54c14dad5128e22c0fa789083bc1"
+    "promptVersion": 3,
+    "roleMdSha256": "e4161d9c8ad5f1fdeb7c0ff2cbfde08efbc59bfe5a07458949aca11427ca26b1"
   },
   "qa": {
     "promptVersion": 2,
     "roleMdSha256": "2e05753850e9ed43b919b13ec97c132870c91d247f405be27d30baad36d0e95f"
   },
   "research": {
-    "promptVersion": 2,
-    "roleMdSha256": "548a0d4efc2708d51f5e2fe115aa523a7f5e5a657358d76f8d0053b0f146a737"
+    "promptVersion": 3,
+    "roleMdSha256": "0a62761f92c931c883243335829fafff700808d31ba2f15d1a6788161a3c17db"
   }
 }

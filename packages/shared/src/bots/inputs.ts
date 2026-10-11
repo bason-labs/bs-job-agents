@@ -23,6 +23,11 @@ export const ResearchScanInputSchema = z.object({
   source: SearchSourceSchema,
   criteria: SearchProfileFieldsBaseSchema,
   maxPageViews: z.number().int().positive().nullable(),
+  /**
+   * W4a handoff: how many postings this scan may return at most (3 × criteria.maxJobs, at most 30;
+   * the fit step keeps the best maxJobs). Optional: absent on inputs stored before it.
+   */
+  candidateLimit: z.number().int().positive().max(30).optional(),
 });
 
 /** research.single: one job URL (§7.3). PM2 M2: a public site, never Ba's Mac or LAN. */
@@ -111,6 +116,11 @@ export const ApplySubmitInputSchema = z.object({
   allowedDomains: z.array(DomainSchema).min(1),
   pdfPath: z.string().min(1),
   pdfSha256: Sha256Schema,
+  /**
+   * Ba's master facts (§6.1) for the form's values: the orchestrator's copy of master-cv.yaml in
+   * this task's own read folder (W4c handoff). Optional: absent on inputs stored before the copy.
+   */
+  masterCvPath: z.string().min(1).optional(),
   introText: z.string().nullable(),
   savedAnswers: z.array(z.object({ key: z.string().min(1), label: z.string().min(1), answer: z.string() })),
   answers: z.array(QuestionAnswerSchema),

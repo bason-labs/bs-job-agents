@@ -32,10 +32,21 @@ function withScheme(raw: unknown): string | null {
   return /^https?:\/\//i.test(url) ? url : null;
 }
 
+/** One page a navigate call opened, and when the bot asked for it (W4a: LinkedIn's 3–8 s pauses). */
+export interface PageVisit {
+  url: string;
+  /** ISO time the runner saw the navigate call. */
+  at: string;
+}
+
 export class PageUrlCollector {
   private readonly seen = new Set<string>();
   readonly urls: string[] = [];
-  private readonly calls = new Map<string, { tool: string; input: unknown }>();
+  /** Every successful navigate, in order, repeats included. */
+  readonly visits: PageVisit[] = [];
+  private readonly calls = new Map<string, { tool: string; input: unknown; at: number }>();
+
+  constructor(private readonly now: () => number = Date.now) {}
 
   push(line: string): void {
     if (!line.includes("tool_use") && !line.includes("tool_result")) return;
@@ -49,7 +60,7 @@ export class PageUrlCollector {
     for (const c of e.message.content) {
       if (!isObj(c)) continue;
       if (c.type === "tool_use" && typeof c.id === "string" && typeof c.name === "string" && c.name.startsWith(CHROME)) {
-        this.calls.set(c.id, { tool: c.name.slice(CHROME.length), input: c.input });
+        this.calls.set(c.id, { tool: c.name.slice(CHROME.length), input: c.input, at: this.now() });
       } else if (c.type === "tool_result" && typeof c.tool_use_id === "string") {
         const call = this.calls.get(c.tool_use_id);
         if (!call || c.is_error === true) continue;
@@ -65,14 +76,14 @@ export class PageUrlCollector {
     this.urls.push(u);
   }
 
-  private fromResult(call: { tool: string; input: unknown }, text: string): void {
+  private fromResult(call: { tool: string; input: unknown; at: number }, text: string): void {
     if (call.tool === "navigate") {
       const found = [...text.matchAll(URL_RE)].map((m) => m[0]);
+      const target = withScheme((call.input as { url?: unknown } | null)?.url);
       if (found.length > 0) found.forEach((u) => this.add(u));
-      else {
-        const target = withScheme((call.input as { url?: unknown } | null)?.url);
-        if (target) this.add(target);
-      }
+      else if (target) this.add(target);
+      const reached = found.length > 0 ? trimUrl(found[0]!) : target;
+      if (reached) this.visits.push({ url: reached, at: new Date(call.at).toISOString() });
       return;
     }
     if (TAB_TOOLS.includes(call.tool)) {

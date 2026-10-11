@@ -4,6 +4,7 @@ import { CvLanguageSchema, DomainSchema, IdSchema, IsoDateTimeSchema } from "../
 import { FactRequestSchema } from "../bots/cv.js";
 import { CvVersionSchema, QaReviewRecordSchema } from "../domain/cv-version.js";
 import { CompanySchema, JobSchema, SkipDecisionSchema } from "../domain/job.js";
+import { ApplicationOriginSchema, ApplicationStatusSchema } from "../domain/application.js";
 import { FileRefSchema } from "./common.js";
 
 export const ReviewCardFlagsSchema = z.object({
@@ -32,6 +33,21 @@ export const ReviewCardFlagsSchema = z.object({
    * check); Approve without dryRun now applies live with the same CV. Phase 3 QA, additive.
    */
   dryRunSettled: z.boolean().optional(),
+  /**
+   * PM3 S2, §10.2 rule 5: this card is an "apply again" (started by Lead or by Ba's Apply again
+   * button) and Ba applied to the job before: that earlier application's date and status, so Ba
+   * knows before approving a second one. Null on every other card. F4, additive.
+   */
+  appliedBefore: z
+    .object({
+      applicationId: IdSchema,
+      /** When it was sent, or when it was approved if it never was. */
+      at: IsoDateTimeSchema,
+      status: ApplicationStatusSchema,
+      origin: ApplicationOriginSchema,
+    })
+    .nullable()
+    .optional(),
 });
 
 export const ReviewCvOptionSchema = z.object({

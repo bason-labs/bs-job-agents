@@ -103,18 +103,30 @@ export function DraftItem({ bot, consult, text }: { bot: string; consult: boolea
 }
 
 /** "Lead is typing…" after Ba sent something and before the reply arrives. */
-export function TypingItem({ bot, consult }: { bot: string; consult: boolean }) {
+/** PM3 S5: "<Bot> is working" while its conversation task runs, with its latest tool steps. */
+export function TypingItem({ bot, consult, steps = [] }: { bot: string; consult: boolean; steps?: readonly string[] }) {
   const { bots } = useChat();
   return (
     <BotBlock bot={bot} consult={consult}>
-      <p className="flex items-center gap-1 text-xs text-muted" role="status" data-testid="typing">
-        {botDisplay(bots, bot)} is typing
-        <span aria-hidden className="inline-flex gap-0.5">
-          {[0, 1, 2].map((i) => (
-            <span key={i} className="size-1 animate-pulse rounded-full bg-muted" style={{ animationDelay: `${i * 150}ms` }} />
-          ))}
-        </span>
-      </p>
+      <div role="status" data-testid="typing" className="space-y-1">
+        <p className="flex items-center gap-1 text-xs text-muted">
+          {botDisplay(bots, bot)} is working
+          <span aria-hidden className="inline-flex gap-0.5">
+            {[0, 1, 2].map((i) => (
+              <span key={i} className="size-1 animate-pulse rounded-full bg-muted" style={{ animationDelay: `${i * 150}ms` }} />
+            ))}
+          </span>
+        </p>
+        {steps.length ? (
+          <ul data-testid="working-steps" className="space-y-0.5 text-[11px] text-muted">
+            {steps.map((s, i) => (
+              <li key={`${i}-${s}`} className={i === steps.length - 1 ? "text-fg/80" : undefined}>
+                {s}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
     </BotBlock>
   );
 }

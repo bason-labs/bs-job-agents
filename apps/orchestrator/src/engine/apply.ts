@@ -137,7 +137,7 @@ export function buildApplyPromptInput(
   core: EngineCore,
   conn: Conn,
   ctx: RunCtx | null,
-  args: { application: Application; approval: Approval; introText: string | null; answers: QuestionAnswer[] },
+  args: { application: Application; approval: Approval; introText: string | null; answers: QuestionAnswer[]; masterCvPath?: string },
 ): ApplyPromptInput {
   const app = args.application;
   const job = getJob(conn, app.jobId);
@@ -156,6 +156,7 @@ export function buildApplyPromptInput(
     allowedDomains: args.approval.allowedDomains,
     pdfPath: core.paths.abs(`${core.paths.applicationDir(app.id)}/${file}`),
     pdfSha256: cv.pdfSha256,
+    ...(args.masterCvPath ? { masterCvPath: args.masterCvPath } : {}),
     introText: args.introText,
     // A bad row (empty key or label) must never make every Apply input invalid.
     savedAnswers: listSavedAnswers(conn)
@@ -174,7 +175,8 @@ export type ApplyPrep =
       kind: "ready";
       /** The prompt input, already validated (no token). */
       input: ApplyPromptInput;
-      readDir: string;
+      /** The application folder (the approved PDF copy) and the task's own folder (master-cv.yaml). */
+      readDirs: string[];
       allowedSites: string[];
       /**
        * The last step before runner.run, with nothing fallible after it: consume the token (first
@@ -271,15 +273,20 @@ export async function prepareApply(core: EngineCore, task: Task): Promise<ApplyP
   }
   if (!stillRunning(db, task.id)) return { kind: "stopped" };
 
+  // W4c handoff: Ba's master facts, as a copy in the task's own read folder (as CV and QA get).
+  const taskDir = core.paths.abs(core.paths.taskDir(task.id));
+  const masterCvPath = join(taskDir, "master-cv.yaml");
   // Build and check the prompt input before the token is touched.
   let prompt: ApplyPromptInput;
   try {
+    await core.deps.files.copy(core.deps.masterCv.path, masterCvPath);
     prompt = db.transaction((tx) =>
       buildApplyPromptInput(core, tx, task.runId === null ? null : loadRunCtx(core, task.runId, tx), {
         application: app,
         approval: pre.approval,
         introText: stored.introText ?? null,
         answers: (actionRowOf(tx, task)?.output as ActionStepOutput | null)?.answers ?? [],
+        masterCvPath,
       }),
     );
   } catch (err) {
@@ -294,7 +301,7 @@ export async function prepareApply(core: EngineCore, task: Task): Promise<ApplyP
   return {
     kind: "ready",
     input: prompt,
-    readDir: core.paths.abs(dirRel),
+    readDirs: [core.paths.abs(dirRel), taskDir],
     allowedSites: pre.approval.allowedDomains,
     authorize: () =>
       db.transaction((tx) => {

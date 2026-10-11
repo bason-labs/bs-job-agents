@@ -24,7 +24,7 @@
 export * from "./client.js";
 export * from "./schema-guard.js";
 export * as schema from "./schema.js";
-export type { JsonObject, SubmittedField, StatusHistoryEntry } from "./schema.js";
+export type { JsonObject, SubmittedField, StatusHistoryEntry, WorkflowPresetData } from "./schema.js";
 export * from "./enums.js";
 export * from "./types.js";
 export * from "./errors.js";

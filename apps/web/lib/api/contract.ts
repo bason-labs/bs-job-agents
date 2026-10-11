@@ -28,6 +28,9 @@ import type { z } from "zod";
 import type { QueryValue } from "./routes";
 import type { BotSummary, RoomSummary, ShellData } from "./types";
 
+/** A run as the Flows list shows it: PM3 S4 adds the saved preset it was started from (GET /runs presetNames). */
+export type RunRow = Run & { presetName?: string | null };
+
 export type ApiMode = "live" | "mock";
 
 // ---------------------------------------------------------------- any route
@@ -140,7 +143,7 @@ export interface WebApi {
   chooseOption(input: ChoiceRequest): Promise<void>;
 
   // runs (UC-22, UC-23)
-  listRuns(query?: RunsQuery): Promise<Run[]>;
+  listRuns(query?: RunsQuery): Promise<RunRow[]>;
   getRun(runId: string): Promise<RunDetail>;
   /** UC-22 step drawer detail (GET /steps/:id). */
   getStep(stepId: string): Promise<StepDetail>;

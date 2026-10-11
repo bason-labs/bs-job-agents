@@ -443,7 +443,7 @@ export class TaskQueue {
       const prep = await prepareApply(core, task);
       if (prep.kind === "stopped") return null;
       input = prep.input;
-      readDirs = [prep.readDir];
+      readDirs = prep.readDirs;
       allowedSites = prep.allowedSites;
       authorize = prep.authorize;
     } else if (task.usesBrowser && bot.def.browser && !bot.def.browser.sitesFromApproval) {
@@ -674,6 +674,7 @@ export class TaskQueue {
         input: task.input,
         output: outcome.output as ResearchScanOutput,
         screenshots: captures.map((c) => this.core.paths.rel(join(prepared.screenshotDir!, c.file))),
+        ...(result.pageVisits ? { pageVisits: result.pageVisits } : {}),
       });
     } catch (err) {
       this.core.log.warn(`scan check for task ${task.id} failed, output accepted: ${errorMessage(err)}`);

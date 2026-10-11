@@ -21,6 +21,14 @@ describe("Lead's ROLE.md (rule 5, UC-01, UC-21, UC-21b, UC-24, pm-phase-3 M3/S1/
     expect(text).toContain("propose_schedule");
     expect(text).toMatch(/just this run, or save to your criteria\?/);
   });
+  it("starts saved presets by name, found through get_status (PM3 S4)", () => {
+    expect(text).toMatch(/saved preset by name/);
+    expect(text).toMatch(/`get_status` lists the saved presets/);
+  });
+  it("fills propose_schedule's day (weekly only) and searchProfileId (null = active criteria)", () => {
+    expect(text).toMatch(/`day` is the weekday for `weekly` and null otherwise/);
+    expect(text).toMatch(/`searchProfileId` is null for Ba's active search criteria/);
+  });
   it("sets applyAgain only on Ba's explicit words", () => {
     expect(text).toMatch(/`applyAgain: true` \*\*only\*\* when Ba's own words/);
   });
@@ -49,6 +57,16 @@ describe("Research's ROLE.md and engine (E1 option A, UC-03, §10.2)", () => {
     expect(text).toMatch(/at most 40 page views/);
     expect(text).toMatch(/3–8 s/);
   });
+  it("reports a layout change and an empty result as notes on a passed item, as the skills and the checker expect (W4a)", () => {
+    expect(text).toContain("`Layout changed: <what is missing> on <page URL>`");
+    expect(text).toMatch(/keep it `passed: true`/);
+    expect(text).toContain("`No results: the page says 0 jobs`");
+    expect(text).not.toMatch(/note for the failed item/);
+  });
+  it("stops at the task's candidateLimit (3 × maxJobs, at most 30)", () => {
+    expect(text).toContain("`candidateLimit`");
+    expect(text).toMatch(/3 × the criteria's maxJobs, at most 30/);
+  });
   it("reports injections and closes every tab, including the empty New Tab", () => {
     expect(text).toContain("injectionSuspected");
     expect(text).toContain("injectionNote");
@@ -71,6 +89,9 @@ describe("CV's ROLE.md (§6.1, §6.2, §6.3, UC-06)", () => {
     expect(text).toContain("factRequests");
     expect(text).toMatch(/never invent/i);
   });
+  it("clones one of the templates the task lists (W4c handoff: `templates` in the input)", () => {
+    expect(text).toMatch(/`templates`/);
+  });
   it("one A4 page, ATS-safe, language rule", () => {
     expect(text).toMatch(/one A4 page/i);
     expect(text).toMatch(/ATS/);
@@ -89,6 +110,10 @@ describe("QA's ROLE.md (§5.2 QA, UC-07)", () => {
 
 describe("Apply's ROLE.md (UC-11, UC-12, §7.5, pm-phase-2 S7/S11/S28)", () => {
   const text = role("apply");
+  it("reads Ba's master facts from the task's copy (W4c handoff: `masterCvPath`)", () => {
+    expect(text).toContain("masterCvPath");
+    expect(text).toContain("master-cv.yaml");
+  });
   it("names screenshots by the tool's id and never saves to disk", () => {
     expect(text).toMatch(/ss_/);
     expect(text).toContain("save_to_disk");

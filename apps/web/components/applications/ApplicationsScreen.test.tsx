@@ -107,6 +107,9 @@ describe("ApplicationsScreen (UC-13)", () => {
     await user.click(screen.getByRole("button", { name: "Open Bluebird Software's submission record" }));
     const panel = await screen.findByTestId("record-panel");
     expect(await within(panel).findByText("No submission record — nothing was sent to the employer.")).toBeInTheDocument();
+    // PM3 S3: the approval shows even though no record was written.
+    expect(within(panel).getByTestId("record-approval")).toHaveTextContent("2026-10-10 17:02");
+    expect(within(panel).getByTestId("record-approval")).toHaveTextContent("allowed sites: itviec.com");
     await user.click(within(panel).getByRole("button", { name: "Apply again…" }));
     const confirm = screen.getByTestId("confirm-dialog");
     await user.click(within(confirm).getByRole("button", { name: "Apply again" }));

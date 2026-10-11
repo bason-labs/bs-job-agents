@@ -49,7 +49,9 @@ import {
   canChangeApplicationStatus,
   checkBotSafety,
   maxTrustLevel,
+  type Application,
   type ApplicationListItem,
+  type ApprovalSummary,
   type BotView,
   type ScheduleView,
   type SearchProfile,
@@ -121,6 +123,24 @@ function extraFor(core: MockBackend, id: string): ApplicationExtra | null {
     partialRecord: app.status !== "approved" && app.status !== "paused",
     cvFile: option?.pdf ?? null,
   };
+}
+
+/**
+ * PM3 S3, as views/applications.ts: Ba's approval (time, CV version, the job's site), also before a
+ * record exists. None for an imported application.
+ */
+function approvalOf(app: Application, x: ApplicationExtra): ApprovalSummary | null {
+  if (x.submission?.approval) return x.submission.approval;
+  if (app.origin === "imported") return null;
+  const approvedAt = app.statusHistory.find((h) => h.status === "approved")?.at;
+  if (!approvedAt) return null;
+  let host: string | null = null;
+  try {
+    host = x.job.url ? new URL(x.job.url).hostname.replace(/^(www\.|m\.)/, "") : null;
+  } catch {
+    host = null;
+  }
+  return { approvedAt, cvVersionId: app.cvVersionId, allowedDomains: host ? [host] : [], note: app.dryRun ? "dry run" : null };
 }
 
 function applicationRows(core: MockBackend): ApplicationListItem[] {
@@ -262,7 +282,7 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
     const app = application(core, req.params.id!);
     const x = extraFor(core, app.id);
     if (!x) throw notFound(`application ${app.id} not found`);
-    return { application: app, job: x.job, cvVersion: x.cvVersion, submission: x.submission, files: x.files };
+    return { application: app, job: x.job, cvVersion: x.cvVersion, submission: x.submission, files: x.files, approval: approvalOf(app, x) };
   }),
   route("POST", API_ROUTES.applicationStatus, ApplicationStatusChangeResponseSchema, (core, req) => {
     const app = application(core, req.params.id!);

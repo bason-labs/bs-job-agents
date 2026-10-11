@@ -171,6 +171,7 @@ export abstract class CliRunner implements Runner {
       transcript.note({ type: "runner.screenshots", files: screenshots.map((s) => ({ file: s.file, screenshotId: s.screenshotId, toolUseId: s.toolUseId })) });
     }
     if (pageUrls.length > 0) result = { ...result, pageUrls: [...pageUrls] };
+    if (prepared.pages.visits.length > 0) result = { ...result, pageVisits: [...prepared.pages.visits] };
     transcript.note({ type: "runner.result", status: result.status });
     await transcript.close();
     await rm(prepared.workDir, { recursive: true, force: true }).catch(() => undefined);
@@ -247,7 +248,7 @@ export abstract class CliRunner implements Runner {
       workDir,
       sessionId: this.initialSessionId(),
       capture,
-      pages: new PageUrlCollector(),
+      pages: new PageUrlCollector(this.now),
     };
     try {
       // Build once now so a missing MCP server or guard hook fails before anything runs.

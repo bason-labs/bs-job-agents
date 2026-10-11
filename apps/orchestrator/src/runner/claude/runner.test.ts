@@ -444,6 +444,8 @@ describe("PM2 S7, S10: screenshots and page URLs from the Chrome tools", () => {
     expect(transcript).not.toContain(PNG_BYTES.toString("base64"));
     expect(kit.transcriptLines()).toContainEqual(expect.objectContaining({ type: "runner.screenshots" }));
     expect(result.pageUrls).toEqual(["https://itviec.com/it-jobs/x"]);
+    // W4a handoff: the navigate, with when it was asked for (the scan checker's pauses).
+    expect(result.pageVisits).toEqual([{ url: "https://itviec.com/it-jobs/x", at: expect.stringMatching(/^\d{4}-\d\d-\d\dT/) }]);
   });
 
   it("without a screenshot folder nothing is written, and the bytes still never reach the transcript", async () => {

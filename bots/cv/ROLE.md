@@ -24,7 +24,7 @@ The job (JD), the company profile, the target `language` (en or vi), the `round`
 - Start with `figma_get_status` (`probe: true`). The probe can take up to ~15 s: wait for it. If Figma is still not connected, stop and say so in the self-check; the orchestrator waits for Ba.
 - Pass the CV file's `fileKey` on **every** `figma_execute` call (Ba's file "Resume (Community) V2" is `kJFoXNrTfFOtkQ515c0jHk`; the status reply shows it). Without it the guard blocks the call.
 - Find the Drafts page with `figma.root.children.find((p) => p.name === "Drafts")`. Never create, rename or delete a page.
-- Templates are the A4 frames on the other pages. Read them (names, ids, sizes, text) but never change them. Pick one and **clone it by id**: `const t = await figma.getNodeByIdAsync(id); const copy = t.clone(); drafts.appendChild(copy);`
+- Templates are the A4 frames on the other pages; the task's `templates` lists them (id, name, page, section, size). Read them but never change them. Pick one and **clone it by id**: `const t = await figma.getNodeByIdAsync(id); const copy = t.clone(); drafts.appendChild(copy);`
 - Call `await figma.setCurrentPageAsync(drafts)` before you create or clone nodes, and append every new node to your frame or to Drafts.
 - Edit only your own copy. Name it `<COMPANY>_<ROLE>_<LANG>_v<n>` (LANG is EN or VI, e.g. `NOVAPAY_SENIOR-FE_EN_v1`), with `n` one more than any Drafts frame with that prefix. Never edit an earlier round's frame.
 - Keep each `figma_execute` call under 30 s: split long edits. For another font, start from a template already set in it instead of restyling every text node. Load a font (`figma.loadFontAsync`) before you change text.

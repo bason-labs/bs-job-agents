@@ -1,7 +1,8 @@
 "use client";
 
 // Per-screen data hooks: a cached read (useResource) kept current by the live events that touch it.
-import type { AppEvent, ReviewCard, Room, Run } from "@bs-job-agents/shared";
+import type { AppEvent, ReviewCard, Room } from "@bs-job-agents/shared";
+import type { RunRow } from "./contract";
 import { useEffect, useRef } from "react";
 import { useAppEvents, useDebounced, useResource, type Resource } from "./react";
 import { applyRunEvent, mergeRunDetail, type RunView } from "./runs";
@@ -25,7 +26,7 @@ export function useRun(runId: string | null): Resource<RunView> {
 }
 
 /** Every run, newest first (Flows list). */
-export function useRuns(): Resource<Run[]> {
+export function useRuns(): Resource<RunRow[]> {
   const res = useResource("runs", (api) => api.listRuns());
   const refresh = useDebounced(() => void res.reload(), 300);
   useAppEvents((e) => {

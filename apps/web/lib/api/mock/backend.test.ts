@@ -102,7 +102,7 @@ describe("mock backend: parity with the shared API schemas", () => {
 });
 
 describe("mock backend: chat (UC-01, UC-24, UC-25)", () => {
-  it("UC-01: a find request starts a job scan whose cards reach review; Lead streams its replies", async () => {
+  it("UC-01: a find request starts a job scan whose cards reach review; Lead works as a lead.chat task (PM3 S5)", async () => {
     const sent = await api.sendMessage({ roomId: LEAD_ROOM_ID, text: "Find frontend jobs in HCM, React/Next.js, ≥ 25M" });
     expect(ChatSendResponseSchema.safeParse({ message: sent }).success).toBe(true);
     await api.idle();
@@ -110,7 +110,15 @@ describe("mock backend: chat (UC-01, UC-24, UC-25)", () => {
     const runCards = cardsOf(messages, "run");
     expect(runCards.at(-1)!.runId).toBe("13");
     expect(messages.some((m) => m.text.includes("Started **Job scan #13**"))).toBe(true);
-    expect(events.some((e) => e.type === "message.delta")).toBe(true);
+    // PM3 S5: no fake token stream; the turn is a lead.chat task whose tool call shows as a step.
+    expect(events.some((e) => e.type === "message.delta")).toBe(false);
+    const turn = events.find((e): e is Extract<AppEvent, { type: "task.started" }> => e.type === "task.started" && e.botName === "lead" && e.kind === "chat")!;
+    expect(events.filter((e) => "taskId" in e && e.taskId === turn.taskId).map((e) => (e.type === "task.progress" ? `${e.kind}:${e.tool}` : e.type))).toEqual([
+      "task.started",
+      "tool_use:mcp__orchestrator__start_workflow",
+      "tool_result:mcp__orchestrator__start_workflow",
+      "task.finished",
+    ]);
     const detail = await api.getRun("13");
     expect(detail.run.status).toBe("waiting");
     expect(detail.steps.find((s) => s.stepKey === "scan")!.status).toBe("done");

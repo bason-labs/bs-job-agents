@@ -145,6 +145,26 @@ describe("orchestrator MCP server (S17)", () => {
     expect(b.caps.takeActions(taskId)).toEqual([{ type: "start_workflow", workflow: "job-scan", runId: 1 }]);
   });
 
+  it("PM3 S4: get_status lists a saved preset and start_workflow starts it by name with its params", async () => {
+    const b = await createBed();
+    const p = b.proposals.propose(
+      { name: "danang-react", description: "React jobs in Đà Nẵng", basedOn: "job-scan", params: { searchProfileId: null, overrides: { locations: ["Đà Nẵng"] } } },
+      { taskId: null },
+    );
+    b.proposals.approve(p.id, b.t.db);
+    let taskId = 0;
+    await b.duringLead(async ({ client, task }) => {
+      taskId = task.taskId;
+      const status = json(await client.callTool({ name: "get_status", arguments: {} })) as { presets: Array<{ name: string }> };
+      expect(status.presets.map((x) => x.name)).toEqual(["danang-react"]);
+      const r = await client.callTool({ name: "start_workflow", arguments: { workflow: "danang-react", params: {} } });
+      expect(r.isError).toBeFalsy();
+      expect(json(r)).toEqual({ started: true, runId: "1" });
+    });
+    expect(getRun(b.t.db, 1)).toMatchObject({ workflowName: "job-scan", presetName: "danang-react", params: { overrides: { locations: ["Đà Nẵng"] } } });
+    expect(b.caps.takeActions(taskId)).toEqual([{ type: "start_workflow", workflow: "danang-react", runId: 1 }]);
+  });
+
   it("start_workflow input is validated (a private URL is refused); nothing starts", async () => {
     const b = await createBed();
     await b.duringLead(async ({ client }) => {

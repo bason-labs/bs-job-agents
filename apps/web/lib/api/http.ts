@@ -22,7 +22,7 @@ import {
   fileUrl,
 } from "@bs-job-agents/shared";
 import type { z } from "zod";
-import type { ApiRequestOptions, EventFeed, HealthState, WebApi } from "./contract";
+import type { ApiRequestOptions, EventFeed, HealthState, RunRow, WebApi } from "./contract";
 import { csrfHeaders } from "./csrf";
 import { ApiRequestError, apiErrorFromResponse } from "./errors";
 import { toBotSummary, toRoomSummary, toShellData } from "./map";
@@ -125,8 +125,11 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
       return true;
     }
   };
-  const listRuns = async (q: { status?: string; limit?: number } = {}) =>
-    (await request("GET", API_ROUTES.runs, { query: { status: q.status, limit: q.limit }, schema: RunsResponseSchema })).runs;
+  const listRuns = async (q: { status?: string; limit?: number } = {}): Promise<RunRow[]> => {
+    const body = await request("GET", API_ROUTES.runs, { query: { status: q.status, limit: q.limit }, schema: RunsResponseSchema });
+    // PM3 S4: a run started from a saved preset carries the preset's name.
+    return body.runs.map((r) => ({ ...r, presetName: body.presetNames?.[r.id] ?? null }));
+  };
 
   return {
     mode: "live",

@@ -83,6 +83,32 @@ describe("GET /applications (UC-13, UC-13b)", () => {
   });
 });
 
+describe("GET /applications/:id: the approval before a submission exists (PM3 S3, UC-13)", () => {
+  it.each(["approved", "paused", "needs_check"] as const)("%s with no record: the approval's time, CV version and sites, never the token", async (status) => {
+    h = await createApiHarness();
+    const job = seedJob(h.t.db, NOVAPAY);
+    const cv = seedCvVersion(h.t.db, job);
+    const { application, approval } = seedApprovedApplication(h.t.db, job, cv);
+    if (status === "paused") transitionApplication(h.t.db, application.id, "paused", { by: "system" });
+    if (status === "needs_check") transitionApplication(h.t.db, application.id, "needs_check", { by: "system" });
+    const res = await h.get(`/applications/${application.id}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain(approval.token);
+    const d = ApplicationDetailSchema.parse(res.json());
+    expect(d.application.status).toBe(status);
+    expect(d.submission).toBeNull();
+    expect(d.approval).toEqual({ approvedAt: approval.createdAt, cvVersionId: String(cv.id), allowedDomains: ["itviec.com"], note: null });
+  });
+
+  it("an imported application has no approval", async () => {
+    h = await createApiHarness();
+    const job = seedJob(h.t.db, NOVAPAY);
+    const { application } = importApplication(h.t.db, { jobId: job.id, submittedAt: "2026-10-10T03:00:00.000Z" });
+    const d = ApplicationDetailSchema.parse((await h.get(`/applications/${application.id}`)).json());
+    expect(d.approval).toBeNull();
+  });
+});
+
 describe("GET /applications/:id (the submission record panel)", () => {
   it("shows exactly what was sent, the approval's time, CV version and sites, files by id, and never the token", async () => {
     h = await createApiHarness();

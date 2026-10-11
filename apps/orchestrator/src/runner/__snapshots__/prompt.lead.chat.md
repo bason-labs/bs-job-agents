@@ -51,7 +51,7 @@ Fields:
 - actions: array of one of these objects
   - variant type = "start_workflow":
     - type: one of "start_workflow"
-    - workflow: one of "job-scan", "apply-to-link", "apply-to-file"
+    - workflow: string — A shipped workflow (job-scan, apply-to-link, apply-to-file) or a saved preset's name
     - runId: string or null — Run id returned by start_workflow
     - summary: string — One line for the delegation trace
   - variant type = "create_task":

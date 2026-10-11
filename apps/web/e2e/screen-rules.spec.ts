@@ -57,7 +57,8 @@ test("cards, dialogs, drawer and menus follow the rules too", async ({ page }) =
   await page.keyboard.press("Escape");
 
   await open(page, "/flows/12");
-  await page.getByTestId("node-scan").click();
+  // Off-screen at the readable zoom (PM3 S6) until Ba pans: dispatch the click on the node.
+  await page.getByTestId("node-scan").dispatchEvent("click");
   await page.getByTestId("step-drawer").waitFor();
   expect(await cursorOffenders(page)).toEqual([]);
 });

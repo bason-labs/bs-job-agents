@@ -58,7 +58,9 @@ export function runRoutes(app: FastifyInstance, ctx: ApiContext): void {
     const db = requireDb(ctx);
     const q = parseWith(RunsQuerySchema, req.query);
     const rows = listRuns(db, { ...(q.status ? { status: q.status } : {}), limit: q.limit });
-    return respond(RunsResponseSchema, { runs: keepValid(RunSchema, rows.map(mappers.toRun), warn) });
+    // PM3 S4: the Flows screen names a run after the saved preset Lead started it from.
+    const presetNames = Object.fromEntries(rows.flatMap((r) => (r.presetName ? [[String(r.id), r.presetName] as const] : [])));
+    return respond(RunsResponseSchema, { runs: keepValid(RunSchema, rows.map(mappers.toRun), warn), presetNames });
   });
 
   app.post(API_ROUTES.runs, async (req, reply) => {
@@ -88,6 +90,7 @@ export function runRoutes(app: FastifyInstance, ctx: ApiContext): void {
       tasks: keepValid(TaskSchema, taskRows.map(toApiTask), warn),
       definition: runDefinition(ctx.workflows ?? ctx.engine?.deps.workflows, run.workflowName, run.workflowVersion),
       previews: stepPreviews(db, id, stepRows, taskRows),
+      presetName: run.presetName,
     });
   });
 

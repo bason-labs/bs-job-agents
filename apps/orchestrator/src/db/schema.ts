@@ -70,6 +70,13 @@ const boolCol = (name: string) => integer(name, { mode: "boolean" });
 export type JsonObject = Record<string, unknown>;
 export type { StatusHistoryEntry, SubmittedField };
 
+/** PM3 S4: a saved preset's base (a shipped workflow's name), its stored params and description. */
+export interface WorkflowPresetData {
+  basedOn: string;
+  params: JsonObject;
+  description: string;
+}
+
 // ---------------------------------------------------------------------------
 // Bots, prompts, memory, workflows
 
@@ -151,6 +158,9 @@ export const workflows = sqliteTable(
     version: integer("version").notNull(),
     definitionYaml: text("definition_yaml").notNull(),
     createdAt: createdAt(),
+    // Extra (not in §9, PM3 S4): a saved preset (rule 3 in Phase 1) is a shipped workflow plus
+    // stored params; Lead starts it by name. Null for a full definition. Added with ADD COLUMN (0008).
+    preset: text("preset_json", { mode: "json" }).$type<WorkflowPresetData>(),
   },
   (t) => [primaryKey({ columns: [t.name, t.version] })],
 );
@@ -180,6 +190,9 @@ export const runs = sqliteTable(
     // Extra (not in §9, Phase 2): the Search Profile version row the run started with, so it
     // keeps that version after later edits (UC-21b). Added with ADD COLUMN (0006).
     searchProfileId: integer("search_profile_id").references((): AnySQLiteColumn => searchProfiles.id),
+    // Extra (not in §9, PM3 S4): the saved preset Lead started this run from (its workflow is the
+    // preset's base). Added with ADD COLUMN (0008).
+    presetName: text("preset_name"),
   },
   (t) => [
     oneOf("runs_trigger_check", "trigger", RUN_TRIGGERS),

@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { getBot, getTask, latestBotDemotion, listBotDemotions } from "../db/index.js";
 import type { RunnerTask } from "../runner/types.js";
 import { defaultFakeResult, fake } from "./testing/fake-runner.js";
-import { createTestEngine, type TestEngine, type TestEngineOptions } from "./testing/harness.js";
+import { LONG_WAIT_CONFIG, createTestEngine, type TestEngine, type TestEngineOptions } from "./testing/harness.js";
 
 const scan = { workflow: "job-scan", params: { searchProfileId: null, overrides: null } } as const;
 
@@ -146,7 +146,7 @@ describe("not demotion triggers (PM2 S8)", () => {
   });
 
   it("the orchestrator's own refusal before a spawn (an expired token)", async () => {
-    const { t, cvVersionId } = await toReview();
+    const { t, cvVersionId } = await toReview({ config: LONG_WAIT_CONFIG });
     t.runner.script({ bot: "apply", kind: "submit", times: 1, result: fake.applyPaused({ reason: "captcha", site: "itviec.com" }) });
     const { taskId } = t.engine.approve(1, { cvVersionId, introText: null });
     await t.idle();

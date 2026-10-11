@@ -18,7 +18,7 @@ import {
 } from "../db/index.js";
 import { MAX_AUTO_RESUMES } from "./apply.js";
 import { fake } from "./testing/fake-runner.js";
-import { createTestEngine, type TestEngineOptions } from "./testing/harness.js";
+import { LONG_WAIT_CONFIG, createTestEngine, type TestEngineOptions } from "./testing/harness.js";
 
 const HOUR = 3600_000;
 
@@ -217,7 +217,7 @@ describe("nothing fallible runs after the token is consumed", () => {
 
 describe("re-run never wipes a started Apply (UC-23)", () => {
   it("after a denied resume, the branch still counts as applied", async () => {
-    const { t, run, cvVersionId } = await review();
+    const { t, run, cvVersionId } = await review({ config: LONG_WAIT_CONFIG });
     t.runner.script({ bot: "apply", kind: "submit", times: 1, result: fake.applyPaused({ reason: "captcha", site: "itviec.com" }) });
     const { taskId } = t.engine.approve(1, { cvVersionId, introText: null });
     await t.idle();

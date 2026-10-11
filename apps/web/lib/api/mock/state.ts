@@ -43,6 +43,8 @@ export interface RunState {
   tasks: Task[];
   /** Jobs selected for per-job branches, in order. */
   lanes: LaneInfo[];
+  /** PM3 S4: the saved preset Lead started this run from. */
+  presetName?: string | null;
 }
 
 /** A task that waits for Ba: a question card (UC-12) or a pause card (UC-17, UC-11 e). */

@@ -53,6 +53,8 @@ import { advanceRun } from "./workflow.js";
 export interface StartWorkflowOptions {
   trigger: RunTrigger;
   scheduleId?: number | null;
+  /** PM3 S4: the saved preset this run starts from (Lead started it by name). */
+  presetName?: string | null;
 }
 
 export interface StartReport {
@@ -372,6 +374,7 @@ export class Engine implements EngineCore {
           searchProfileVersion: profile?.version ?? null,
           searchProfileId: profile?.id ?? null,
           scheduleId: opts.scheduleId ?? null,
+          presetName: opts.presetName ?? null,
         },
         { now: this.now() },
       );

@@ -2,6 +2,8 @@
 // QA rounds, flags and the approve button.
 import { QA_MAX_ROUNDS, type CvVersion, type Job, type QaReviewRecord, type ReviewCard } from "@bs-job-agents/shared";
 import { errorMessage, isApiError } from "@/lib/api/errors";
+import { statusMeta } from "@/lib/status";
+import { formatDateTime } from "@/components/schedules/datetime";
 
 export type CvOption = ReviewCard["cvOptions"][number];
 
@@ -54,7 +56,17 @@ export function escalationNote(option: CvOption): string {
 export type NoticeTone = "warn" | "danger" | "info";
 
 export interface FlagNotice {
-  key: "injection" | "injectionCleared" | "master" | "noApplyLink" | "lowConfidence" | "needsInput" | "approveAgain" | "companyMissing" | "dryRunSettled";
+  key:
+    | "appliedBefore"
+    | "injection"
+    | "injectionCleared"
+    | "master"
+    | "noApplyLink"
+    | "lowConfidence"
+    | "needsInput"
+    | "approveAgain"
+    | "companyMissing"
+    | "dryRunSettled";
   tone: NoticeTone;
   text: string;
 }
@@ -81,6 +93,15 @@ export function approveErrorText(err: unknown): string {
 export function flagNotices(card: ReviewCard): FlagNotice[] {
   const out: FlagNotice[] = [];
   const { job, flags } = card;
+  // PM3 S2, §10.2 rule 5: a second application to the same job (Lead or Ba asked to apply again).
+  if (flags.appliedBefore) {
+    const before = flags.appliedBefore;
+    out.push({
+      key: "appliedBefore",
+      tone: "warn",
+      text: `You applied to this job before (${formatDateTime(before.at)}, ${statusMeta(before.status).label}). Approving sends a second application to the same job.`,
+    });
+  }
   if (flags.injectionFlagged && job.injectionClearedAt === null) {
     out.push({
       key: "injection",
