@@ -16,7 +16,10 @@
     "allowedSites": [
       "topcv.vn",
       "itviec.com",
-      "linkedin.com"
+      "linkedin.com",
+      "vietnamworks.com",
+      "wellfound.com",
+      "upwork.com"
     ]
   },
   "mcpServers": [],
@@ -60,5 +63,5 @@
       "Every claim comes from a cited source"
     ]
   },
-  "promptVersion": 3
+  "promptVersion": 4
 }

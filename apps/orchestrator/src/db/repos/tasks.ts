@@ -1,5 +1,5 @@
-import { PauseReasonSchema, formatPauseReason, type PauseReason } from "@bs-job-agents/shared";
-import { and, asc, count, eq, gt, inArray, isNull, notExists, or, type SQL } from "drizzle-orm";
+import { FEED_SOURCES, PauseReasonSchema, formatPauseReason, type PauseReason } from "@bs-job-agents/shared";
+import { and, asc, count, eq, gt, inArray, isNull, not, notExists, or, sql, type SQL } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { TERMINAL_TASK_STATUSES, type Engine, type TaskStatus } from "../enums.js";
 import { InvalidTransitionError, NotFoundError } from "../errors.js";
@@ -92,6 +92,24 @@ export interface ClaimFilter extends ClockOpts {
   allowFigma?: boolean;
   /** Skip engines whose `engine_state.paused_until` is in the future (default true). */
   respectEnginePause?: boolean;
+  /**
+   * W5: feed tasks (research.scan of a feed source, `isFeedTask`) run in the orchestrator, not on
+   * an engine. "only" claims just those; "exclude" leaves them out. Default: no filter.
+   */
+  feedTasks?: "only" | "exclude";
+}
+
+/**
+ * W5: a research.scan task whose source is a feed (Remote OK, We Work Remotely, Remotive,
+ * Jobspresso). The orchestrator fetches it itself: no bot, no engine session, no usage limit.
+ */
+export function feedTaskSql(): SQL {
+  return and(eq(tasks.botName, "research"), eq(tasks.kind, "scan"), inArray(sql`coalesce(json_extract(${tasks.input}, '$.source'), '')`, [...FEED_SOURCES]))!;
+}
+
+export function isFeedTask(task: Pick<Task, "botName" | "kind" | "input">): boolean {
+  const source = (task.input as { source?: unknown } | null)?.source;
+  return task.botName === "research" && task.kind === "scan" && typeof source === "string" && (FEED_SOURCES as readonly string[]).includes(source);
 }
 
 /**
@@ -120,6 +138,7 @@ export function claimNextTask(db: Conn, filter: ClaimFilter = {}): Task | undefi
             filter.kinds ? inArray(tasks.kind, [...filter.kinds]) : undefined,
             filter.allowBrowser === false ? eq(tasks.usesBrowser, false) : undefined,
             filter.allowFigma === false ? eq(tasks.usesFigma, false) : undefined,
+            filter.feedTasks === "only" ? feedTaskSql() : filter.feedTasks === "exclude" ? not(feedTaskSql()) : undefined,
             filter.respectEnginePause === false
               ? undefined
               : notExists(
@@ -231,7 +250,8 @@ export function holdEngineTasks(db: Conn, engine: Engine): number {
   return db
     .update(tasks)
     .set({ status: "waiting_limit" })
-    .where(and(eq(tasks.engine, engine), eq(tasks.status, "queued")))
+    // W5: a feed task uses no engine, so a usage limit never holds it.
+    .where(and(eq(tasks.engine, engine), eq(tasks.status, "queued"), not(feedTaskSql())))
     .run().changes;
 }
 

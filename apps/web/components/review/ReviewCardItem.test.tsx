@@ -53,6 +53,17 @@ describe("ReviewCardItem on the live orchestrator", () => {
     expect(screen.getByText(/You applied to this job before \(2026-10-10 15:40, Submitted\)/)).toBeVisible();
   });
 
+  it("W5: an Upwork card is find only: the note, “Open on Upwork”, no Approve", () => {
+    setup(card({ findOnly: true }, { source: "upwork", url: "https://www.upwork.com/jobs/~021900000000000000001" }));
+    expect(screen.getByTestId("flag-findOnly")).toHaveTextContent("Find only — apply yourself on Upwork");
+    const open = screen.getByRole("link", { name: "Open on Upwork" });
+    expect(open).toHaveAttribute("href", "https://www.upwork.com/jobs/~021900000000000000001");
+    expect(open).toHaveAttribute("target", "_blank");
+    expect(screen.queryByRole("button", { name: /Approve/ })).toBeNull();
+    expect(screen.queryByLabelText("Intro / cover text (optional)")).toBeNull();
+    expect(screen.getByRole("button", { name: "Skip (give reason)" })).toBeInTheDocument();
+  });
+
   it("a settled dry run offers Approve live and Skip, but not Request changes", () => {
     setup(card({ dryRunSettled: true }));
     expect(screen.getByRole("button", { name: "Approve live & submit" })).toBeInTheDocument();

@@ -4,6 +4,7 @@
 // and their QA rounds, the job and its company.
 import {
   ReviewCardSchema,
+  findOnlySourceOf,
   isApplyBlockedByInjection,
   type FactRequest,
   type HumanStepSchema,
@@ -145,6 +146,8 @@ async function buildCard(db: Db, dataDir: string, c: Candidate, readyAt: Map<num
       companyMissing: out.companyMissing === true,
       dryRunSettled: c.dryRunSettled,
       appliedBefore: appliedBefore(db, c, job.id),
+      // W5: Upwork is find only: Approve is refused; the card links to the posting instead.
+      findOnly: findOnlySourceOf(job) !== null,
     },
     readyAt: readyAt.get(job.id) ?? now.toISOString(),
   };

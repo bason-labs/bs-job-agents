@@ -272,6 +272,8 @@ export function toSearchProfile(row: Row.SearchProfile): SharedSearchProfile {
     fitThreshold: row.fitThreshold,
     salaryPolicy: row.salaryPolicy,
     salaryAmount: row.salaryAmount,
+    // W5: only when set, so profiles saved before it read exactly as they did.
+    ...(row.timezoneOverlap !== null ? { timezoneOverlap: row.timezoneOverlap } : {}),
     updatedAt: row.updatedAt,
   };
 }

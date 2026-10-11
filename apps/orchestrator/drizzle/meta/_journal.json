@@ -78,6 +78,13 @@
       "when": 1791712375901,
       "tag": "0010_bot_engine_risk_ack",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1791715204985,
+      "tag": "0011_search_profile_timezone_overlap",
+      "breakpoints": true
     }
   ]
 }

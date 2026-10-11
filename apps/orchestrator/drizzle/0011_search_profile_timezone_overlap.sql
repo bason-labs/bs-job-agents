@@ -1,0 +1,1 @@
+ALTER TABLE `search_profiles` ADD `timezone_overlap` text;

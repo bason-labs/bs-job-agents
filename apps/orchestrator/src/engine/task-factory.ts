@@ -1,7 +1,7 @@
 // Creating a workflow task: resolve the step's templates, build and validate the input, record
 // which locks it needs, and hold it at once when its engine is paused for a usage limit (UC-16).
 import type { TaskRef } from "@bs-job-agents/shared";
-import { createStep, createTask, getStepByKey, holdEngineTasks, isEnginePaused, type Conn, type Step, type Task } from "../db/index.js";
+import { createStep, createTask, getStepByKey, holdEngineTasks, isEnginePaused, isFeedTask, type Conn, type Step, type Task } from "../db/index.js";
 import { effectiveBot, taskNeeds } from "./bots.js";
 import { templateScope, type RunCtx, type Scope } from "./context.js";
 import type { EngineCore } from "./core.js";
@@ -28,6 +28,9 @@ export function createWorkflowTask(
   const bot = effectiveBot(conn, core.deps.bots, ref.bot);
   const resolved = (resolveTemplate(ref.input, templateScope(conn, ctx, { ...scope, item: scope.item })) ?? {}) as Record<string, unknown>;
   const built = buildTaskInput({ conn, ctx, now, botName: ref.bot, kind: ref.kind, resolved, scope, ...extras });
+  // W5: a feed source's scan is fetched by the orchestrator (feed-tasks.ts): no Chrome, no Figma.
+  // It keeps the bot's engine only because the column needs one; it never uses an engine session.
+  const feed = isFeedTask({ botName: ref.bot, kind: ref.kind, input: built.input });
   const task = createTask(
     conn,
     {
@@ -38,10 +41,10 @@ export function createWorkflowTask(
       engine: bot.def.engine,
       input: built.input,
       promptVersion: bot.def.promptVersion,
-      ...taskNeeds(bot.def, ref.kind),
+      ...(feed ? { usesBrowser: false, usesFigma: false } : taskNeeds(bot.def, ref.kind)),
     },
     { now },
   );
-  if (isEnginePaused(conn, task.engine, { now })) holdEngineTasks(conn, task.engine);
+  if (!feed && isEnginePaused(conn, task.engine, { now })) holdEngineTasks(conn, task.engine);
   return { task, jobId: built.jobId };
 }

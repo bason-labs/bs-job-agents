@@ -11,6 +11,7 @@ import type {
   BotRegistry,
   BrowserStatusProbe,
   Clock,
+  FeedScanPort,
   FigmaPort,
   FileStore,
   GuardHooks,
@@ -49,6 +50,8 @@ export interface EngineDeps {
   conversations?: ConversationSink;
   /** PM3 S8: checks each research.scan output where it settles (W4a: src/adapters/**). Default: accept. */
   scanChecker?: ScanOutputChecker;
+  /** W5: feed sources in a job scan, fetched by the orchestrator (no bot). Default: such a source fails, saying it is not wired. */
+  feeds?: FeedScanPort;
   logger?: Logger;
 }
 

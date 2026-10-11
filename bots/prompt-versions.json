@@ -8,15 +8,15 @@
     "roleMdSha256": "8bc34d8b9a35269169c88ad29d7cec7b7ef75676fcc24222675f2de21fa879ab"
   },
   "lead": {
-    "promptVersion": 3,
-    "roleMdSha256": "e4161d9c8ad5f1fdeb7c0ff2cbfde08efbc59bfe5a07458949aca11427ca26b1"
+    "promptVersion": 4,
+    "roleMdSha256": "7c9e886413ab2bacb52862bf56174588bc377c5495e1968e725de1168e862210"
   },
   "qa": {
     "promptVersion": 4,
     "roleMdSha256": "16f80008a0e343dc131f0ad92d5a7496a179caeb25a651952dc1cd68e674697d"
   },
   "research": {
-    "promptVersion": 3,
-    "roleMdSha256": "0a62761f92c931c883243335829fafff700808d31ba2f15d1a6788161a3c17db"
+    "promptVersion": 4,
+    "roleMdSha256": "141ff1d6329b8fbf892cefec35a3c6eab8c073df00cc0b8ee08aedd0cdca5ecf"
   }
 }

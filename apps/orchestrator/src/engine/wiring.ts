@@ -13,6 +13,7 @@ import { Engine } from "./engine.js";
 import type {
   BotRegistry,
   BrowserStatusProbe,
+  FeedScanPort,
   FigmaPort,
   GuardHooks,
   Logger,
@@ -26,6 +27,7 @@ import type {
 import { nodeFileStore } from "./system.js";
 import type { ScanOutputChecker } from "./scan-check.js";
 import { createScanOutputChecker } from "../adapters/index.js";
+import { FeedScanner } from "../adapters/feeds/index.js";
 
 /** Coordinator A: per-task Claude hook settings from W2c's builders. */
 export const bridgeGuardHooks: GuardHooks = {
@@ -125,6 +127,8 @@ export interface ProductionEngineOptions {
   logger?: Logger;
   /** PM2 S2: W3a's chat flows (replies, handoffs), called in the settle transaction. */
   conversations?: ConversationSink;
+  /** W5: feed sources in a job scan. Default: one FeedScanner (src/adapters/feeds) per process. */
+  feeds?: FeedScanPort;
   /** PM3 S8: default: the source adapters' checker (src/adapters, W4a). */
   scanChecker?: ScanOutputChecker;
 }
@@ -147,6 +151,8 @@ export function createProductionEngine(opts: ProductionEngineOptions): Engine {
     prompts: botPromptSource(opts.botsDir),
     // PM3 S8: W4a's source adapters check each research.scan output.
     scanChecker: opts.scanChecker ?? createScanOutputChecker(),
+    // W5: Remote OK, We Work Remotely, Remotive and Jobspresso, fetched by the orchestrator.
+    feeds: opts.feeds ?? new FeedScanner(),
     ...(opts.config ? { config: opts.config } : {}),
     ...(opts.logger ? { logger: opts.logger } : {}),
     ...(opts.conversations ? { conversations: opts.conversations } : {}),

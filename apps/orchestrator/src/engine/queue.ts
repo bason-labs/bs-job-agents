@@ -81,6 +81,7 @@ import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, stillR
 import { hostOfUrl, pauseSite, siteBlocksOf, siteKey, type SiteBlock } from "./sites.js";
 import { adapterBrokenError, scanRejectedError, type ScanCheckResult } from "./scan-check.js";
 import { checkTaskTrust } from "./trust-guard.js";
+import { FeedTaskRunner } from "./feed-tasks.js";
 
 const ENGINES = EngineSchema.options;
 
@@ -230,8 +231,12 @@ export class TaskQueue {
   private browserLock: number | null = null;
   private figmaLock: number | null = null;
   private stopped = false;
+  /** W5: research.scan of a feed source: fetched by the orchestrator, outside the engine caps. */
+  readonly feeds: FeedTaskRunner;
 
-  constructor(private readonly core: EngineCore) {}
+  constructor(private readonly core: EngineCore) {
+    this.feeds = new FeedTaskRunner(core);
+  }
 
   running(engine?: Engine): number {
     let n = 0;
@@ -252,6 +257,7 @@ export class TaskQueue {
   }
 
   abort(taskId: number): boolean {
+    if (this.feeds.abort(taskId)) return true;
     const entry = this.inflight.get(taskId);
     if (!entry) return false;
     entry.controller.abort();
@@ -261,6 +267,7 @@ export class TaskQueue {
   /** Claim and start everything runnable now (sync). */
   dispatch(): void {
     if (this.stopped) return;
+    this.feeds.dispatch();
     for (;;) {
       const engines = ENGINES.filter((e) => this.running(e) < this.core.config.engineCaps[e]);
       if (engines.length === 0) return;
@@ -268,6 +275,7 @@ export class TaskQueue {
         engines,
         allowBrowser: this.browserLock === null,
         allowFigma: this.figmaLock === null,
+        feedTasks: "exclude",
         now: this.core.now(),
       });
       if (!task) return;
@@ -279,13 +287,13 @@ export class TaskQueue {
   async idle(): Promise<void> {
     for (let round = 0; round < 100_000; round++) {
       this.dispatch();
-      const pending = [...this.inflight.values()].map((e) => e.promise);
+      const pending = [...this.inflight.values()].map((e) => e.promise).concat(this.feeds.pending());
       if (pending.length > 0) {
         await Promise.all(pending);
         continue;
       }
       await new Promise((resolve) => setImmediate(resolve));
-      if (this.inflight.size === 0) return;
+      if (this.inflight.size === 0 && this.feeds.running() === 0) return;
     }
     throw new Error("the task queue did not become idle");
   }

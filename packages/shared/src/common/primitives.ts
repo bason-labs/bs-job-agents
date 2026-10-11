@@ -89,16 +89,45 @@ export type WorkMode = z.infer<typeof WorkModeSchema>;
 export const SenioritySchema = z.enum(["intern", "junior", "mid", "senior", "lead"]);
 export type Seniority = z.infer<typeof SenioritySchema>;
 
-/** Toggleable scan sources (§7.5, §15.1). Career sites come only via links or on request. */
-export const SearchSourceSchema = z.enum(["topcv", "itviec", "linkedin"]);
+/**
+ * Toggleable scan sources (§7.5, §15.1). Career sites come only via links or on request.
+ * W5 (additive): VietnamWorks, the remote boards and Wellfound/Upwork; all off by default.
+ * What each one is (browser or feed, find only, remote): ./sources.ts.
+ */
+export const SearchSourceSchema = z.enum([
+  "topcv",
+  "itviec",
+  "linkedin",
+  "vietnamworks",
+  "remoteok",
+  "weworkremotely",
+  "remotive",
+  "jobspresso",
+  "wellfound",
+  "upwork",
+]);
 export type SearchSource = z.infer<typeof SearchSourceSchema>;
 
 /**
  * Where a job came from. Open string so new adapters need no schema change;
- * known values: topcv, itviec, linkedin, career_site, link, file.
+ * known values: KNOWN_JOB_SOURCES.
  */
 export const JobSourceSchema = z.string().regex(/^[a-z][a-z0-9_]*$/, "job source is a lowercase key");
-export const KNOWN_JOB_SOURCES = ["topcv", "itviec", "linkedin", "career_site", "link", "file"] as const;
+export const KNOWN_JOB_SOURCES = [
+  "topcv",
+  "itviec",
+  "linkedin",
+  "career_site",
+  "link",
+  "file",
+  "vietnamworks",
+  "remoteok",
+  "weworkremotely",
+  "remotive",
+  "jobspresso",
+  "wellfound",
+  "upwork",
+] as const;
 
 /** Thresholds and limits from the spec. */
 export const LIMITS = {

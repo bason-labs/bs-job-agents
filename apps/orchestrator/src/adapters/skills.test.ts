@@ -9,7 +9,15 @@ import { SOURCE_ADAPTERS } from "./sources.js";
 
 const skill = (name: string) => readFileSync(new URL(`../../../../bots/research/skills/source-${name}/SKILL.md`, import.meta.url), "utf8");
 
-const SKILLS = { topcv: "topcv", itviec: "itviec", linkedin: "linkedin", career_site: "career-site" } as const;
+const SKILLS = {
+  topcv: "topcv",
+  itviec: "itviec",
+  linkedin: "linkedin",
+  career_site: "career-site",
+  vietnamworks: "vietnamworks",
+  wellfound: "wellfound",
+  upwork: "upwork",
+} as const;
 
 describe("bots/research/skills/source-*", () => {
   it.each(Object.entries(SKILLS))("%s: has a front matter name and description, and is read-only", (_source, dir) => {

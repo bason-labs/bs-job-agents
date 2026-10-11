@@ -5,7 +5,8 @@ import { LIMITS, type SearchProfileFieldsBase, type WorkMode } from "@bs-job-age
 import { normaliseLocation, type City } from "./location.js";
 import { slugify } from "./text.js";
 
-export type AdapterSource = "topcv" | "itviec" | "linkedin" | "career_site";
+/** Sources Research reads in Chrome (feed sources are in ./feeds: no bot). */
+export type AdapterSource = "topcv" | "itviec" | "linkedin" | "career_site" | "vietnamworks" | "wellfound" | "upwork";
 
 export interface SourceAdapter {
   source: AdapterSource;
@@ -31,6 +32,12 @@ export const SOURCE_ADAPTERS: Record<AdapterSource, SourceAdapter> = {
     maxDelayMs: 8000,
   },
   career_site: { source: "career_site", displayName: "Career site", hosts: [], maxPageViews: null, minDelayMs: 0, maxDelayMs: 0 },
+  // W5. VietnamWorks renders its cards in the browser; no fixed page limit, like TopCV.
+  vietnamworks: { source: "vietnamworks", displayName: "VietnamWorks", hosts: ["vietnamworks.com"], maxPageViews: null, minDelayMs: 0, maxDelayMs: 0 },
+  // Wellfound and Upwork are read with Ba's own login: slow and capped, like LinkedIn, so his
+  // accounts never look automated.
+  wellfound: { source: "wellfound", displayName: "Wellfound", hosts: ["wellfound.com"], maxPageViews: 30, minDelayMs: 3000, maxDelayMs: 8000 },
+  upwork: { source: "upwork", displayName: "Upwork", hosts: ["upwork.com"], maxPageViews: 30, minDelayMs: 3000, maxDelayMs: 8000 },
 };
 
 export function isAdapterSource(source: string): source is AdapterSource {
@@ -52,6 +59,11 @@ export function scanJobLimit(maxJobs: number): number {
 const TOPCV_CITY: Record<City, string> = { "Ho Chi Minh City": "ho-chi-minh-kl2", Hanoi: "ha-noi-kl1", "Da Nang": "da-nang-kl8" };
 const ITVIEC_CITY: Record<City, string> = { "Ho Chi Minh City": "ho-chi-minh-hcm", Hanoi: "ha-noi", "Da Nang": "da-nang" };
 const LINKEDIN_WORK_MODE: Record<WorkMode, string> = { onsite: "1", remote: "2", hybrid: "3" };
+// W5, observed 2026-10-11 (VietnamWorks location sitemap: /viec-lam-ho-chi-minh-v29-vn …).
+const VIETNAMWORKS_CITY: Record<City, string> = { "Ho Chi Minh City": "29", Hanoi: "24", "Da Nang": "17" };
+
+/** "Software Engineer (React/Node)" → "Software Engineer": the remote boards search by the role itself. */
+const bareRole = (role: string): string => role.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
 
 type Criteria = Pick<SearchProfileFieldsBase, "roles" | "locations" | "workModes">;
 
@@ -73,12 +85,29 @@ export function searchUrls(source: AdapterSource, criteria: Criteria): string[] 
           urls.push(city ? `https://itviec.com/it-jobs/${roleSlug}/${ITVIEC_CITY[city]}` : `https://itviec.com/it-jobs/${roleSlug}`);
           break;
         case "linkedin": {
-          const q = new URLSearchParams({ keywords: role, location: city ? `${city}, Vietnam` : "Vietnam", f_TPR: "r604800" });
+          // W5: a remote location without a city ("Remote", "Remote (VN)") uses LinkedIn's Remote
+          // filter (f_WT=2): in Vietnam when it says so, else worldwide.
+          const remoteOnly = loc.remote && !city;
+          const country = remoteOnly && !/\b(vn|vietnam|viet nam)\b/i.test(where) ? "Worldwide" : "Vietnam";
+          const q = new URLSearchParams({ keywords: role, location: city ? `${city}, Vietnam` : country, f_TPR: "r604800" });
           const modes = [...new Set(criteria.workModes)];
-          if (modes.length > 0 && modes.length < 3) q.set("f_WT", modes.map((m) => LINKEDIN_WORK_MODE[m]).sort().join(","));
+          if (remoteOnly) q.set("f_WT", LINKEDIN_WORK_MODE.remote);
+          else if (modes.length > 0 && modes.length < 3) q.set("f_WT", modes.map((m) => LINKEDIN_WORK_MODE[m]).sort().join(","));
           urls.push(`https://www.linkedin.com/jobs/search?${q.toString()}`);
           break;
         }
+        case "vietnamworks": {
+          const q = new URLSearchParams({ q: slugify(bareRole(role)) || roleSlug, ...(city ? { l: VIETNAMWORKS_CITY[city] } : {}) });
+          urls.push(`https://www.vietnamworks.com/viec-lam?${q.toString()}`);
+          break;
+        }
+        // Remote boards: the city is ignored (one search per role).
+        case "wellfound":
+          urls.push(`https://wellfound.com/role/r/${slugify(bareRole(role)) || roleSlug}`);
+          break;
+        case "upwork":
+          urls.push(`https://www.upwork.com/nx/search/jobs/?${new URLSearchParams({ q: bareRole(role) || role, sort: "recency" }).toString()}`);
+          break;
         case "career_site":
           break;
       }

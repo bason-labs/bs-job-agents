@@ -269,6 +269,22 @@ describe("migration 0006 on a database with data", () => {
   });
 });
 
+describe("migration 0010 on a database with data", () => {
+  it("adds search_profiles.timezone_overlap as NULL for saved profiles (ADD COLUMN, no rebuild)", () => {
+    const base = tempDir();
+    const path = join(base, "app.db");
+    const old = openAt(base, path, countAt("0009"));
+    populate(old, countAt("0009"));
+    old.close();
+
+    const db = openDb(path);
+    const c = db.$client;
+    expect(c.prepare("SELECT id, timezone_overlap AS tz, sources_json AS s FROM search_profiles").all()).toEqual([{ id: 1, tz: null, s: '["topcv"]' }]);
+    expect(missingGuardedObjects(c)).toEqual([]);
+    c.close();
+  });
+});
+
 describe("migration 0002 on a database with data", () => {
   it("maps legacy literals and gives new columns their defaults", () => {
     const base = tempDir();

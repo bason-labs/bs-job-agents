@@ -587,6 +587,8 @@ export const searchProfiles = sqliteTable(
       .notNull()
       .default("blank_if_optional"),
     salaryAmount: real("salary_amount"),
+    // W5 (0010, ADD COLUMN): remote boards' time-zone overlap, e.g. "Asia" or "UTC+7 ±3h"; NULL = no filter.
+    timezoneOverlap: text("timezone_overlap"),
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [

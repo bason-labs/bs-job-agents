@@ -19,7 +19,8 @@ import {
   type QaFix,
   type VerifiedPdfFacts,
 } from "@bs-job-agents/shared";
-import { scanJobLimit } from "../adapters/index.js";
+import { SOURCE_ADAPTERS, scanJobLimit } from "../adapters/index.js";
+import { isAdapterSource } from "../adapters/sources.js";
 import { getCompany, getCvVersion, getJob, getUpload, upsertJobCandidate, type Company, type Conn, type CvVersion, type Job } from "../db/index.js";
 import type { RunCtx, Scope } from "./context.js";
 import { invalidInput } from "./errors.js";
@@ -130,7 +131,8 @@ export function buildTaskInput(req: InputRequest): BuiltInput {
         input: validate(key, {
           source,
           criteria: ctx.profile,
-          maxPageViews: source === "linkedin" ? LIMITS.linkedinMaxPageViews : null,
+          // UC-03 c (LinkedIn) and W5 (Wellfound, Upwork: Ba's own login): the page-view cap per scan.
+          maxPageViews: source === "linkedin" ? LIMITS.linkedinMaxPageViews : typeof source === "string" && isAdapterSource(source) ? SOURCE_ADAPTERS[source].maxPageViews : null,
           candidateLimit: scanJobLimit(ctx.profile.maxJobs),
         }),
       };

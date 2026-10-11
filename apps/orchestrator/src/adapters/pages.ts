@@ -8,16 +8,22 @@ import { pageTitle, type DomRoot } from "./parsers/dom.js";
 import { itviecParser } from "./parsers/itviec.js";
 import { linkedinParser } from "./parsers/linkedin.js";
 import { topcvParser } from "./parsers/topcv.js";
+import { upworkParser } from "./parsers/upwork.js";
+import { vietnamworksParser } from "./parsers/vietnamworks.js";
+import { wellfoundParser } from "./parsers/wellfound.js";
 import type { SourceParser } from "./parsers/types.js";
 import { cleanText, detectLanguage, foldText } from "./text.js";
 
-export type ParsedSource = "topcv" | "itviec" | "linkedin" | "career_site";
+export type ParsedSource = "topcv" | "itviec" | "linkedin" | "career_site" | "vietnamworks" | "wellfound" | "upwork";
 
 export const PARSERS: Record<ParsedSource, SourceParser> = {
   topcv: topcvParser,
   itviec: itviecParser,
   linkedin: linkedinParser,
   career_site: careerSiteParser,
+  vietnamworks: vietnamworksParser,
+  wellfound: wellfoundParser,
+  upwork: upworkParser,
 };
 
 /** A job description shorter than this is a snippet, not the full JD (Research's self-check). */
@@ -76,7 +82,7 @@ export function detectBlock(root: DomRoot): Blocked | null {
   }
   if (
     root.querySelector("#challenge-form, .cf-challenge, iframe[src*='captcha'], .g-recaptcha, #captcha, .h-captcha") ||
-    /just a moment|attention required|verify you are human|security check|captcha/.test(title) ||
+    /just a moment|attention required|verify you are human|security check|captcha|^challenge\b/.test(title) ||
     /verify you are human|xac minh ban khong phai la robot/.test(body)
   ) {
     return { status: "blocked", reason: "captcha", detail: "the site shows a CAPTCHA / bot check" };

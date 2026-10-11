@@ -15,7 +15,8 @@ Read-only, and the strictest source (UC-03 c). Never connect, follow, message, s
 
 ## 2. Search URL
 `https://www.linkedin.com/jobs/search?keywords=<role>&location=<city>, Vietnam&f_TPR=r604800` (URL-encoded; `f_TPR=r604800` = past week).
-- `<city>`: "Ho Chi Minh City", "Hanoi", "Da Nang"; for Remote use `location=Vietnam`.
+- `<city>`: "Ho Chi Minh City", "Hanoi", "Da Nang".
+- **Remote filter:** a location that is remote with no city uses `&f_WT=2` (LinkedIn's "Remote"): "Remote (VN)" → `location=Vietnam&f_WT=2`; plain "Remote" → `location=Worldwide&f_WT=2`. Remote jobs abroad must still overlap `criteria.timezoneOverlap` when it is set (skip "US only").
 - Work modes, only when the profile does not want all three: `&f_WT=` with 1 = on-site, 2 = remote, 3 = hybrid (comma-separated, e.g. `f_WT=2,3`).
 - Next page: `&start=25`.
 

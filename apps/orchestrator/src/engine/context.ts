@@ -51,6 +51,7 @@ export function profileFields(row: SearchProfile): SearchProfileFieldsBase {
     fitThreshold: row.fitThreshold,
     salaryPolicy: row.salaryPolicy,
     salaryAmount: row.salaryAmount === null ? null : Math.round(row.salaryAmount),
+    ...(row.timezoneOverlap !== null ? { timezoneOverlap: row.timezoneOverlap } : {}),
   };
 }
 
