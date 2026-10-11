@@ -13,4 +13,4 @@ export {
   staticBotRegistry,
   staticWorkflowSource,
 } from "./fakes.js";
-export { BOTS_DIR, DATA_DIR, createTestEngine, type TestEngine, type TestEngineOptions } from "./harness.js";
+export { BOTS_DIR, DATA_DIR, LONG_WAIT_CONFIG, createTestEngine, type TestEngine, type TestEngineOptions } from "./harness.js";

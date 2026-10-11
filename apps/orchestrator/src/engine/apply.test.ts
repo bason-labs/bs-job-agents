@@ -21,7 +21,7 @@ import {
   type Db,
 } from "../db/index.js";
 import { fake } from "./testing/fake-runner.js";
-import { createTestEngine, type TestEngine, type TestEngineOptions } from "./testing/harness.js";
+import { LONG_WAIT_CONFIG, createTestEngine, type TestEngine, type TestEngineOptions } from "./testing/harness.js";
 
 const HOUR = 3600_000;
 
@@ -267,7 +267,8 @@ describe("Apply's own pauses wait for Ba (UC-11 a/b/e, UC-12, UC-17)", () => {
   });
 
   it("an expired token on resume is denied; Ba approves again and Apply starts fresh (PM M2)", async () => {
-    const { t, applicationId, taskId, cvVersionId } = await approved();
+    // LONG_WAIT_CONFIG: the 25 h advance below stays a handful of timer firings (no load-sensitive timeout).
+    const { t, applicationId, taskId, cvVersionId } = await approved({ config: LONG_WAIT_CONFIG });
     t.runner.script({ bot: "apply", kind: "submit", times: 1, result: fake.applyPaused({ reason: "captcha", site: "itviec.com" }) });
     await t.idle();
     t.clock.advance(25 * HOUR);
@@ -289,7 +290,7 @@ describe("Apply's own pauses wait for Ba (UC-11 a/b/e, UC-12, UC-17)", () => {
   });
 
   it("after a denied Apply Ba may skip instead: the approved application is marked failed", async () => {
-    const { t, applicationId, taskId } = await approved();
+    const { t, applicationId, taskId } = await approved({ config: LONG_WAIT_CONFIG });
     t.runner.script({ bot: "apply", kind: "submit", times: 1, result: fake.applyPaused({ reason: "captcha", site: "itviec.com" }) });
     await t.idle();
     t.clock.advance(25 * HOUR);
