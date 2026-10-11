@@ -188,6 +188,7 @@
 
 **FYIs** (no decision needed unless you disagree):
 - **(a) The CVs you already sent:** W4c found that the three `*_Figma_EN.pdf` files sent to DEKON, SMARTBIT and YAVIET have no extractable text, so an ATS may not have read them. The bridge's exports do have a text layer, and the pipeline checks it.
+  **Correction (2026-10-11):** wrong. The PDFs do have text; pdf.js 4 failed on Figma's embedded fonts (\"invalid font name\"). pypdf, pdfminer and pdf.js 5 read them, and the orchestrator now uses pdf.js 5 with a Figma-export regression test.
 - **(b) The dry run:** "never click submit" is a prompt rule. If Apply submits anyway, the app records it as a safety event, demotes Apply and sends the application to `needs_check`. That is why the dry run should be on a job you want.
 - **(c) Leaving the site by a click:** a click (not a `navigate`) that leaves the employer's site is caught after the task and by the extension's site permissions, not blocked up front.
 

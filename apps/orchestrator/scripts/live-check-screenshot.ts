@@ -16,6 +16,7 @@ import { createInterface } from "node:readline";
 import { checkBrowserBridge } from "../src/bridges/chrome/status.js";
 import { buildSiteGuardSettings } from "../src/bridges/chrome/site-guard/settings.js";
 import { SCREENSHOT_MANIFEST, ScreenshotCapture } from "../src/runner/screenshots.js";
+import { CLAUDE_CHROME_TOOLS } from "../src/runner/tools.js";
 
 const CLAUDE = process.env.CLAUDE_BIN ?? join(homedir(), ".local", "bin", "claude");
 const SITE = "example.com";
@@ -82,6 +83,9 @@ async function main(): Promise<number> {
     "",
     "--allowedTools",
     ...allowed,
+    // Hide every other Chrome tool, as the runner does; otherwise the model picks browser_batch and is denied.
+    "--disallowedTools",
+    ...CLAUDE_CHROME_TOOLS.map(chrome).filter((t) => !allowed.includes(t)),
     "--settings",
     JSON.stringify(settings),
     "--output-format",

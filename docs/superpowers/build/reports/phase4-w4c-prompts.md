@@ -11,6 +11,7 @@
 - **Master CV seed:** `data.example/master-cv.yaml`, 24 facts (15 with VI wording) and 5 headlines, all from `build_targeted_resumes.py` and validated by the schema.
 - **Imported applications:** `data.example/imported-applications.yaml` (DEKON, SMARTBIT, YAVIET) and `scripts/import-applications.ts` (idempotent, copies and hashes the PDFs). Command: `pnpm --filter @bs-job-agents/orchestrator import:applications -- --data <dir> --file <yaml>`. README has a "First run" section.
 - **Finding:** pdf.js extracts NO text from the three `*_Figma_EN.pdf` files that were actually sent, so ATS systems may not have been able to read them. By contrast, the S3b bridge export had a clean text layer.
+  **Correction (2026-10-11):** wrong. The PDFs do have text; pdf.js 4 failed on Figma's embedded fonts (\"invalid font name\"). pypdf, pdfminer and pdf.js 5 read them, and the orchestrator now uses pdf.js 5 with a Figma-export regression test.
 - **Handoffs:**
   - F4: the mock shows Research on Codex; check the Lead action names (both relayed).
   - Engine (F4 part B): Apply's input has no master facts (copy `master-cv.yaml` into its read folder); the CV task gets no template list.

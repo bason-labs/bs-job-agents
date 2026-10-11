@@ -48,7 +48,6 @@ export async function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
     const task = getDocument({
       data: new Uint8Array(bytes),
       verbosity: VerbosityLevel.ERRORS,
-      isEvalSupported: false,
       useSystemFonts: false,
       disableFontFace: true,
       standardFontDataUrl: STANDARD_FONT_DATA,
