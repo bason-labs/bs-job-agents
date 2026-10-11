@@ -57,7 +57,7 @@ All are optional. Set them in the shell before starting the orchestrator.
 | `ORCH_WEB_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | The web app's address. Change it only if you run the web app on another port. |
 | `ORCH_NOTIFY` | on | `0` turns off the macOS notifications ("review cards ready", "Lead needs you", "Chrome is closed"). |
 | `ORCH_PORT` | `4100` | The API port (on `127.0.0.1` only). If you change it, start the web app with the same `ORCH_PORT`. |
-| `BSJA_API_MODE` | `auto` | Set `live` for the web app, so it never falls back to the sample data when the orchestrator is down. **Caveat:** `pnpm dev` and `pnpm dev:web` run the web app through Turbo, which passes this variable on only once `apps/web/turbo.json` lists it (pm-phase-4 SF-1). Until then the web app runs in `auto`: live when the orchestrator answers, sample data (with the badge) when it doesn't. The **Sample data** badge check below is the guard either way. |
+| `BSJA_API_MODE` | `auto` | Set `live` for the web app, so it never falls back to the sample data when the orchestrator is down. Turbo passes it through to the web app (`apps/web/turbo.json`), along with `BSJA_MOCK_SPEED`, `ORCH_URL` and `ORCH_PORT`. The **Sample data** badge check below is still worth a glance. |
 
 ### Start
 

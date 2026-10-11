@@ -1,0 +1,9 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "dev": {
+      "passThroughEnv": ["BSJA_API_MODE", "BSJA_MOCK_SPEED", "ORCH_URL", "ORCH_PORT"]
+    }
+  }
+}

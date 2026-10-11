@@ -33,6 +33,8 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | F4 part B (S2–S7 + handoffs) | ✅ merged; 2674 tests + 151 e2e green; prompts v3 (Lead, Research, CV, Apply) |
 | 2026-10-11 | W4b e2e + runbook + live checks | ✅ merged; 2676 unit + 151 mock e2e + 11 live-shape e2e; reports/phase4-w4b-e2e.md; Chrome/Figma live checks blocked (need Ba) |
 | 2026-10-11 | Phase 4 QA/QC | ✅ merged; qa-phase-4.md; 2692 unit + 151 + 12 e2e; runtime proxy; dry-run gate; clean-clone check ok |
-| 2026-10-11 | Phase 4 PM review (final, worktree) | 🔄 running |
+| 2026-10-11 | Phase 4 PM review (final) | ✅ merged (66c849c); pm-phase-4.md: READY for Ba's live checks + dry run; no must-fix; all 13 earlier must-fix items verified |
+| 2026-10-11 | SF-1 web Turbo env pass-through | ✅ coordinator |
+| 2026-10-11 | **Build complete (Phases 0–4).** | ✅ Waiting on Ba: runbook §7 live checks 1–4, §8 dry run, first scheduled scan; open decisions E1, E2, evals, SF-2, spec wording batch |
 
-**Next action:** merge the final PM review, run a fixer only for genuine must-fix items, then give Ba the final summary, delete the watchdog cron, and clean up merged worktrees.
+**Next action:** Ba runs docs/runbook.md §3 → §7 checks 1–4 → §8 dry run, and reports back. Then schedule SF-2 (per Ba's decision), B1 (evals; needs 10 JDs from Ba) and B2 (tune prompts from the dry-run transcripts).
