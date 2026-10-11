@@ -16,7 +16,7 @@
     "roleMdSha256": "16f80008a0e343dc131f0ad92d5a7496a179caeb25a651952dc1cd68e674697d"
   },
   "research": {
-    "promptVersion": 4,
-    "roleMdSha256": "141ff1d6329b8fbf892cefec35a3c6eab8c073df00cc0b8ee08aedd0cdca5ecf"
+    "promptVersion": 5,
+    "roleMdSha256": "2d1ec9356dcee570901b1493198f5fd3ab15f4069f4e37d9ca3b230677a84a3c"
   }
 }
