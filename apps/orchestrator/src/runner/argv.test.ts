@@ -100,6 +100,7 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
       "--json-schema", "<schema: LeadOutput>",
       "--session-id", SID,
       "--permission-prompts", "none",
+      "--model", "sonnet",
     ]);
     expect(JSON.parse(inv.files[`${W}/mcp.json`]!)).toEqual({ mcpServers: { orchestrator: { type: "http", url: "http://127.0.0.1:4100/mcp" } } });
   });
@@ -130,6 +131,7 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
       "--json-schema", "<schema: CvOutput>",
       "--session-id", SID,
       "--permission-prompts", "none",
+      "--model", "sonnet",
       "--add-dir", "/repo/data/master",
     ]);
     const figma = DEFAULT_MCP_SERVERS.figma as { command: string; args: string[] };
@@ -162,6 +164,7 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
       "--json-schema", "<schema: ApplyOutput>",
       "--session-id", SID,
       "--permission-prompts", "none",
+      "--model", "sonnet",
       "--chrome",
       "--add-dir", "/repo/data/applications/7",
     ]);
@@ -267,6 +270,7 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
       "--resume", SID,
       "--no-session-persistence",
       "--permission-prompts", "none",
+      "--model", "sonnet",
     ]);
   });
 });

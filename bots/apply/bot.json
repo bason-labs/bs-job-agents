@@ -3,10 +3,17 @@
   "displayName": "Apply",
   "role": "Fills in and submits application forms in Ba's Chrome, only after Ba's approval.",
   "engine": "claude",
-  "model": null,
+  "model": "sonnet",
   "trustLevel": 1,
-  "allowedTools": ["chrome:write", "read"],
-  "browser": { "mode": "write", "allowedSites": [], "sitesFromApproval": true },
+  "allowedTools": [
+    "chrome:write",
+    "read"
+  ],
+  "browser": {
+    "mode": "write",
+    "allowedSites": [],
+    "sitesFromApproval": true
+  },
   "mcpServers": [],
   "timeoutSec": 600,
   "outputSchema": "ApplyOutput",

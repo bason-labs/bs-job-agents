@@ -24,6 +24,7 @@ import type { RunnerConfig } from "../config.js";
 import { RunnerConfigError } from "../errors.js";
 import { displayArgs, promptLabel, type Invocation } from "../invocation.js";
 import { codexToolConfig, type ToolPlan } from "../tools.js";
+import { modelForEngine } from "../model.js";
 
 /** TOML value for `-c key=value`: JSON strings and arrays of strings are valid TOML. */
 const toml = (value: string | readonly string[]): string => JSON.stringify(value);
@@ -85,7 +86,7 @@ export function buildCodexInvocation(i: CodexInvocationInput): Invocation {
     args.push("-c", `${key}.default_tools_approval_mode="approve"`);
     if (enabledTools) args.push("-c", `${key}.enabled_tools=${toml(enabledTools)}`);
   }
-  if (i.bot.model) args.push("-m", i.bot.model);
+  { const m = modelForEngine(i.bot.model, "codex"); if (m) args.push("-m", m); }
   args.push(i.prompt);
   return {
     command: i.config.codexBin,
@@ -122,7 +123,7 @@ export function buildCodexRepairInvocation(i: CodexRepairInput): Invocation {
     paths.schema,
     "-o",
     paths.repair,
-    ...(i.bot.model ? ["-m", i.bot.model] : []),
+    ...(modelForEngine(i.bot.model, "codex") ? ["-m", modelForEngine(i.bot.model, "codex") as string] : []),
     i.threadId,
     i.prompt,
   ];

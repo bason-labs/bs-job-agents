@@ -3,7 +3,7 @@
   "displayName": "Lead",
   "role": "Receives every request and only divides work: starts workflows and tasks, asks Ba, answers from stored data.",
   "engine": "claude",
-  "model": null,
+  "model": "sonnet",
   "trustLevel": 1,
   "allowedTools": [
     "mcp:orchestrator:start_workflow",
@@ -14,7 +14,9 @@
     "mcp:orchestrator:propose_workflow"
   ],
   "browser": null,
-  "mcpServers": ["orchestrator"],
+  "mcpServers": [
+    "orchestrator"
+  ],
   "timeoutSec": 600,
   "outputSchema": "LeadOutput",
   "selfCheck": [

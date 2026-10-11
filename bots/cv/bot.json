@@ -3,7 +3,7 @@
   "displayName": "CV",
   "role": "Tailors a one-page CV in Figma from master facts, on the Drafts page only; never invents.",
   "engine": "claude",
-  "model": null,
+  "model": "sonnet",
   "trustLevel": 2,
   "allowedTools": [
     "read",
@@ -12,7 +12,9 @@
     "mcp:figma:figma_capture_screenshot"
   ],
   "browser": null,
-  "mcpServers": ["figma"],
+  "mcpServers": [
+    "figma"
+  ],
   "timeoutSec": 600,
   "outputSchema": "CvOutput",
   "selfCheck": [

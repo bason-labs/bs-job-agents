@@ -3,10 +3,22 @@
   "displayName": "Research",
   "role": "Find jobs that fit Ba and profile the companies behind them.",
   "engine": "claude",
-  "model": null,
+  "model": "sonnet",
   "trustLevel": 2,
-  "allowedTools": ["read", "web_search", "chrome:read", "skill:source-*"],
-  "browser": { "mode": "read", "allowedSites": ["topcv.vn", "itviec.com", "linkedin.com"] },
+  "allowedTools": [
+    "read",
+    "web_search",
+    "chrome:read",
+    "skill:source-*"
+  ],
+  "browser": {
+    "mode": "read",
+    "allowedSites": [
+      "topcv.vn",
+      "itviec.com",
+      "linkedin.com"
+    ]
+  },
   "mcpServers": [],
   "timeoutSec": 600,
   "outputSchema": {

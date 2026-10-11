@@ -13,6 +13,7 @@ import { FIGMA_MCP_SERVER, type RunnerConfig } from "../config.js";
 import { RunnerConfigError, TaskSetupError } from "../errors.js";
 import { displayArgs, promptLabel, schemaLabel, type Invocation } from "../invocation.js";
 import { chromeToolName, claudeToolFlags, mcpToolName, type ToolPlan } from "../tools.js";
+import { modelForEngine } from "../model.js";
 
 /** The navigation tool a Claude browser task's site guard must cover (§4.4, §10.2 rule 7). */
 export const SITE_GUARDED_TOOL = chromeToolName("navigate");
@@ -124,7 +125,7 @@ export function buildClaudeInvocation(i: ClaudeInvocationInput): Invocation {
     i.sessionId,
     "--permission-prompts",
     "none",
-    ...(i.bot.model ? ["--model", i.bot.model] : []),
+    ...(modelForEngine(i.bot.model, "claude") ? ["--model", modelForEngine(i.bot.model, "claude") as string] : []),
     ...(flags.chrome ? ["--chrome"] : []),
     ...(flags.addDirs.length > 0 ? ["--add-dir", ...flags.addDirs] : []),
   ];
@@ -167,7 +168,7 @@ export function buildClaudeRepairInvocation(i: ClaudeRepairInput): Invocation {
     "--no-session-persistence",
     "--permission-prompts",
     "none",
-    ...(i.bot.model ? ["--model", i.bot.model] : []),
+    ...(modelForEngine(i.bot.model, "claude") ? ["--model", modelForEngine(i.bot.model, "claude") as string] : []),
   ];
   return { command: i.config.claudeBin, args, files: {}, display: display(args) };
 }
