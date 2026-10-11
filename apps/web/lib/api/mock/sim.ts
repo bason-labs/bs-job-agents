@@ -144,7 +144,7 @@ function nextRunId(core: Core): string {
   return String(Math.max(12, ...ids) + 1);
 }
 
-function createRun(core: Core, workflowName: string, trigger: Run["trigger"], params: unknown, scheduleId: string | null = null): RunState {
+function createRun(core: Core, workflowName: string, trigger: Run["trigger"], params: unknown, scheduleId: string | null = null, presetName: string | null = null): RunState {
   const id = nextRunId(core);
   const run: Run = {
     id,
@@ -158,7 +158,7 @@ function createRun(core: Core, workflowName: string, trigger: Run["trigger"], pa
     createdAt: core.nowIso(),
     finishedAt: null,
   };
-  const state: RunState = { run, steps: [], tasks: [], lanes: [] };
+  const state: RunState = { run, steps: [], tasks: [], lanes: [], presetName };
   core.state.runs[id] = state;
   core.emit({ type: "run.started", runId: id, workflowName, trigger, scheduleId });
   return state;
@@ -562,6 +562,17 @@ async function leadBrain(core: Core, text: string, uploadIds: string[]): Promise
       : `No run is in progress. ${core.state.queue.length} ${core.state.queue.length === 1 ? "card is" : "cards are"} waiting for you in Review.`;
     await core.post(LEAD_ROOM_ID, LEAD, reply, { stream: true });
     return;
+  }
+  // PM3 S4: a saved preset named in Ba's message → its base workflow with its params (Lead's start_workflow by name).
+  const preset = core.state.proposals.find((p) => p.status === "approved" && p.basedOn === "job-scan" && text.toLowerCase().includes(p.name.toLowerCase()));
+  if (preset) {
+    const r = createRun(core, "job-scan", "chat", { searchProfileId: null, overrides: null, ...(preset.params ?? {}) }, null, preset.name);
+    await core.post(LEAD_ROOM_ID, LEAD, `Started your saved workflow **${preset.name}** (Job scan #${r.run.id}) with its own settings. Delegating now.`, {
+      cards: [{ type: "run", runId: r.run.id }],
+      runIds: [r.run.id],
+      stream: true,
+    });
+    return jobScan(core, r);
   }
   if (/\b(find|scan|search|look for|jobs?)\b/i.test(text)) {
     const scanning = Object.values(core.state.runs).find((r) => r.run.workflowName === "job-scan" && r.run.status === "running");

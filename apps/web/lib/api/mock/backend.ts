@@ -38,6 +38,7 @@ import type {
   FeedStatus,
   HealthState,
   MessagesPage,
+  RunRow,
   RunsQuery,
   SendMessageInput,
   ProgressLine,
@@ -502,7 +503,7 @@ export class MockBackend implements WebApi, EventFeed {
 
   async listRuns(query: RunsQuery = {}) {
     const runs = Object.values(this.state.runs)
-      .map((r) => r.run)
+      .map((r): RunRow => ({ ...r.run, presetName: r.presetName ?? null }))
       .filter((r) => !query.status || r.status === query.status)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return structuredClone(runs.slice(0, query.limit ?? 50));
@@ -510,7 +511,7 @@ export class MockBackend implements WebApi, EventFeed {
 
   async getRun(runId: string) {
     const r = this.runState(runId);
-    return structuredClone({ run: r.run, steps: r.steps, tasks: r.tasks });
+    return structuredClone({ run: r.run, steps: r.steps, tasks: r.tasks, presetName: r.presetName ?? null });
   }
 
   async getStep(stepId: string): Promise<StepDetail> {

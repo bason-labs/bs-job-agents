@@ -100,6 +100,20 @@ describe("PM3 S2: an “apply again” card says Ba applied before", () => {
   });
 });
 
+describe("PM3 S4: a saved preset, started by name", () => {
+  it("approve a proposal, then ask Lead for it by name: a job scan named after the preset, with its params", async () => {
+    mock.simulate("workflow-proposal");
+    await mock.idle();
+    const proposal = mock.state.proposals.at(-1)!;
+    await mock.request("POST", "/workflow-proposals/:id/approve", { params: { id: proposal.id } });
+    await mock.sendMessage({ roomId: LEAD_ROOM_ID, text: `run ${proposal.name} please`, uploadIds: [] });
+    await mock.idle();
+    const [row] = await mock.listRuns();
+    expect(row).toMatchObject({ workflowName: "job-scan", presetName: proposal.name, params: { overrides: { locations: ["Ho Chi Minh City", "Đà Nẵng"] } } });
+    expect((await mock.getRun(row!.id)).presetName).toBe(proposal.name);
+  });
+});
+
 describe("PM3 S3: the approval before a submission record exists", () => {
   it("an approved application with no record shows its approval", async () => {
     const card = (await mock.getReviewQueue()).find((c) => c.job.url && !c.flags.injectionFlagged)!;

@@ -11,7 +11,7 @@ import { useRun } from "@/lib/api/hooks";
 import { useApi } from "@/lib/api/react";
 import { cn } from "@/lib/cn";
 import { formatWhen } from "@/lib/datetime";
-import { workflowTitle } from "@/components/chat/RunCard";
+import { runTitle, workflowTitle } from "@/components/chat/RunCard";
 import { Page } from "@/components/shell/Page";
 import { useShell } from "@/components/shell/ShellContext";
 import { StatusPill } from "@/components/ui/Badge";
@@ -115,7 +115,7 @@ export function FlowCanvas({ runId }: { runId: string }) {
     <Page width="full" className="relative">
       <div className="absolute top-3 left-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface/80 px-3 py-2 backdrop-blur-md">
         <b className="font-display">
-          {workflowTitle(view.run.workflowName)} #{runId}
+          {runTitle(view.run.workflowName, view.presetName)} #{runId}
         </b>
         <StatusPill status={status} />
         <span className="text-xs text-muted" data-testid="run-meta">
@@ -168,7 +168,7 @@ export function FlowCanvas({ runId }: { runId: string }) {
       <ConfirmDialog
         open={confirmCancel}
         onOpenChange={setConfirmCancel}
-        title={`Cancel ${workflowTitle(view.run.workflowName)} #${runId}?`}
+        title={`Cancel ${runTitle(view.run.workflowName, view.presetName)} #${runId}?`}
         description="Running tasks stop and the run ends. Finished steps keep their results; cards still waiting for review leave the queue. Submitted applications are never touched."
         confirmLabel="Cancel run"
         cancelLabel="Keep running"
