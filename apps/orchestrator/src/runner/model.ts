@@ -1,19 +1,3 @@
-// bot.json has one `model` for the bot's engine. When Ba switches the engine in the UI, a model
-// name meant for the other engine must not be passed on (codex would reject "sonnet").
-import type { Engine } from "@bs-job-agents/shared";
-
-const CLAUDE_MODEL = /^(claude|sonnet|opus|haiku|fable)/i;
-const OPENAI_MODEL = /^(gpt|o\d|codex|chatgpt)/i;
-
-/** The model flag value for this engine, or null to use the CLI's default. */
-export function modelForEngine(model: string | null | undefined, engine: Engine): string | null {
-  if (!model) return null;
-  if (engine === "codex" && CLAUDE_MODEL.test(model)) return null;
-  if (engine === "claude" && OPENAI_MODEL.test(model)) return null;
-  return model;
-}
-
-/** Ba's model choice (Bots screen) is valid for `engine`: never one meant for the other engine. */
-export function modelSuitsEngine(model: string, engine: Engine): boolean {
-  return modelForEngine(model, engine) !== null;
-}
+// The model logic lives in packages/shared (bots/models.ts) so the Bots screen and PATCH
+// /bots/:name use the same rule as the runner.
+export { modelForEngine, modelSuitsEngine } from "@bs-job-agents/shared";

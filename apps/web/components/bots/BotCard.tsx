@@ -1,10 +1,10 @@
 "use client";
 
-import { demotionReasonLabel, type TrustLevel } from "@bs-job-agents/shared";
+import { demotionReasonLabel, modelSuitsEngine, type TrustLevel } from "@bs-job-agents/shared";
 import { ChevronDown, Lightbulb, Lock, Settings, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useId, useState } from "react";
-import { Badge, BotAvatar, Button, IconButton, Switch, Tooltip, TRUST_DESCRIPTIONS } from "@/components/ui";
+import { Badge, BotAvatar, Button, IconButton, Input, Switch, Tooltip, TRUST_DESCRIPTIONS } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { botChatHref, botSettingsHref } from "@/lib/routes";
 import { formatDateTime } from "@/components/schedules/datetime";
@@ -45,6 +45,80 @@ export interface BotCardProps {
   warning?: string | null;
   /** The settings page: enable switch, trust ladder, model, memory open. */
   detailed?: boolean;
+}
+
+/** Model names offered per engine (any name the CLI takes may be typed). */
+const MODEL_SUGGESTIONS = { claude: ["sonnet", "opus", "haiku"], codex: ["gpt-5-codex", "gpt-5", "o3"] } as const;
+const ENGINE_NAME = { claude: "Claude", codex: "Codex" } as const;
+
+/** Why a typed model can't be saved for this bot, or null. Mirrors PATCH /bots/:name. */
+export function modelProblem(bot: Pick<BotScreenView, "displayName" | "engine">, model: string): string | null {
+  const name = model.trim();
+  if (name === "") return null;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:[\]-]*$/.test(name) || name.length > 64) return "Use a model name such as sonnet, opus or gpt-5-codex.";
+  if (!modelSuitsEngine(name, bot.engine)) {
+    const other = bot.engine === "claude" ? "codex" : "claude";
+    return `${name} is a model for ${ENGINE_NAME[other]}; ${bot.displayName} runs on ${ENGINE_NAME[bot.engine]}.`;
+  }
+  return null;
+}
+
+/** Live run 1: Ba picks the bot's model (empty = bot.json's default, or the CLI's own). */
+function ModelField({ bot, controller }: { bot: BotScreenView; controller: BotsController }) {
+  const ids = { input: useId(), list: useId(), error: useId() };
+  const current = bot.model !== null && bot.model !== (bot.defaultModel ?? null) ? bot.model : "";
+  const [value, setValue] = useState(current);
+  const [seen, setSeen] = useState(current);
+  if (seen !== current) {
+    // Saved here or elsewhere (bot.updated): show the stored choice.
+    setSeen(current);
+    setValue(current);
+  }
+  const problem = modelProblem(bot, value);
+  const changed = value.trim() !== current;
+  const fallback = bot.defaultModel ?? "the CLI's default for your subscription";
+  return (
+    <div className="space-y-1 text-xs">
+      <label htmlFor={ids.input} className="font-medium">
+        Model
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          id={ids.input}
+          list={ids.list}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={`Default: ${fallback}`}
+          invalid={problem !== null}
+          aria-describedby={problem ? ids.error : undefined}
+          data-testid="bot-model"
+          className="h-8 max-w-56 py-1 text-xs"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <datalist id={ids.list}>
+          {MODEL_SUGGESTIONS[bot.engine].map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+        <Button size="sm" pill aria-label="Save model" disabled={!changed || problem !== null || value.trim() === ""} onClick={() => void controller.setModel(bot, value.trim())}>
+          Save
+        </Button>
+        {current !== "" ? (
+          <Button size="sm" pill variant="ghost" onClick={() => void controller.setModel(bot, null)}>
+            Use default
+          </Button>
+        ) : null}
+      </div>
+      {problem ? (
+        <p id={ids.error} data-testid="bot-model-error" className="text-[11px] text-danger">
+          {problem}
+        </p>
+      ) : (
+        <p className="text-[11px] text-muted">Empty uses {bot.defaultModel ? `bot.json's model (${bot.defaultModel})` : "the CLI's default for your subscription"}. Applies to the bot&apos;s next task.</p>
+      )}
+    </div>
+  );
 }
 
 /** One bot (prototype Bots card): role, engine switch, trust, track record, promotion, memory. */
@@ -164,7 +238,7 @@ export function BotCard({ bot, controller, warning, detailed = false }: BotCardP
             onCheckedChange={(on) => void controller.setEnabled(bot, on)}
             label={<span className="text-xs">Enabled — when off, Lead doesn&apos;t assign it new tasks</span>}
           />
-          <p className="text-xs text-muted">Model: {bot.model ?? "the CLI's default for your subscription"}</p>
+          <ModelField bot={bot} controller={controller} />
           <div className="space-y-1">
             <p className="text-xs font-medium">Trust levels</p>
             <ol className="space-y-1 text-xs" aria-label="Trust levels">

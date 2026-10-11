@@ -96,6 +96,7 @@ export function seedBotViews(): BotView[] {
       displayName: def.displayName,
       engine: ENGINE_OVERRIDE[def.name] ?? def.engine,
       model: def.model,
+      defaultModel: def.model,
       enabled: def.enabled ?? true,
       activity: "idle",
       ...extra,
