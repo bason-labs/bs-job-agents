@@ -1,7 +1,7 @@
 // The five Phase 1 bots as GET /bots answers them (BotView), from the shared bot.json fixtures
 // plus the prototype's track records, prompt versions and memory notes. CV starts demoted (§5.3)
 // so the restore path shows; memory notes carry ids like W3a's (16 hex digits, PM S14).
-import { maxTrustLevel, type BotView } from "@bs-job-agents/shared";
+import { FIGMA_MCP_SERVER_NAME, maxTrustLevel, type BotView } from "@bs-job-agents/shared";
 import { botDefinitionFixtures } from "@bs-job-agents/shared/fixtures";
 
 type Extra = Pick<BotView, "role" | "trackRecord" | "promotionSuggested" | "memory" | "residualRisk" | "demotion" | "promptVersion"> &
@@ -82,9 +82,20 @@ export const CODEX_BROWSER_RISK =
 /** Engines as Ba last set them (bot.json after W4c: Research on Claude, E1 option A). */
 const ENGINE_OVERRIDE: Partial<Record<string, BotView["engine"]>> = { research: "claude" };
 
+/** The orchestrator's note for CV on Codex (owner decision 2026-10-11: Ba's opt-in, no Figma guard hook). */
+export const CODEX_FIGMA_RISK =
+  "On Codex the Figma guard can't block edits as they happen: the app checks your protected pages before and after every CV task and stops CV if anything changed, and Codex can read files on this Mac (§6.2). Switch it to Claude for the guard.";
+
+/** A bot with the Figma bridge on Codex (views/bots.ts `figmaGuardOff`). */
+export function figmaGuardOffFor(name: string, engine: BotView["engine"]): boolean {
+  const def = botDefinitionFixtures.find((d) => d.name === name);
+  return engine !== "claude" && (def?.mcpServers?.includes(FIGMA_MCP_SERVER_NAME) ?? false);
+}
+
 export function residualRiskFor(name: string, engine: BotView["engine"]): string | null {
   const def = botDefinitionFixtures.find((d) => d.name === name);
-  return engine === "codex" && def?.browser ? CODEX_BROWSER_RISK : null;
+  if (engine === "codex" && def?.browser) return CODEX_BROWSER_RISK;
+  return figmaGuardOffFor(name, engine) ? CODEX_FIGMA_RISK : null;
 }
 
 export function seedBotViews(): BotView[] {
@@ -104,6 +115,8 @@ export function seedBotViews(): BotView[] {
       // The API: below the Phase 1 cap (W3a views/bots.ts).
       promoteAllowed: trustLevel < maxTrustLevel(def.name),
       memoryNotes: withMemoryNotes(def.name, extra.memory),
+      figmaGuardOff: figmaGuardOffFor(def.name, ENGINE_OVERRIDE[def.name] ?? def.engine),
+      engineRiskAcknowledgedAt: null,
     };
   });
 }

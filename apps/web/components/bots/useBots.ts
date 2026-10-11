@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useToast } from "@/components/ui";
 import { errorText } from "@/components/schedules/apiError";
 import type { BotsData } from "./data";
-import { ENGINE_LABELS, type BotScreenView } from "./logic";
+import { ENGINE_LABELS, engineSwitchRisk, type BotScreenView } from "./logic";
 
 export interface MemoryNote {
   id: string;
@@ -20,7 +20,15 @@ export interface PendingTrust {
   kind: "promote" | "raise" | "lower";
 }
 
-const TRUST_VERB = { promote: "promoted", raise: "raised", lower: "lowered" } as const;
+/** An engine switch waiting for Ba to accept its risk (CV to Codex, owner decision 2026-10-11). */
+export interface PendingEngine {
+  bot: BotScreenView;
+  engine: Engine;
+  /** What Ba accepts, in plain words (engineSwitchRisk). */
+  risk: string;
+}
+
+const TRUST_VERB ={ promote: "promoted", raise: "raised", lower: "lowered" } as const;
 
 /** State and actions shared by the Bots grid and a bot's settings page. */
 export function useBots(initial: BotScreenView[], data: BotsData) {
@@ -33,6 +41,7 @@ export function useBots(initial: BotScreenView[], data: BotsData) {
   }
   const [pendingMemory, setPendingMemory] = useState<{ bot: BotScreenView; note: MemoryNote } | null>(null);
   const [pendingTrust, setPendingTrust] = useState<PendingTrust | null>(null);
+  const [pendingEngine, setPendingEngine] = useState<PendingEngine | null>(null);
   const { toast } = useToast();
 
   const put = (bot: BotScreenView) => setBots((bs) => bs.map((b) => (b.name === bot.name ? bot : b)));
@@ -47,12 +56,31 @@ export function useBots(initial: BotScreenView[], data: BotsData) {
     }
   };
 
+  const switchEngine = (bot: BotScreenView, engine: Engine, acknowledgeRisk: boolean) =>
+    update(bot, acknowledgeRisk ? { engine, acknowledgeRisk } : { engine }, (b) => `${b.displayName} now runs on ${ENGINE_LABELS[b.engine]}. Queued tasks keep their engine.`);
+
   return {
     bots,
     pendingMemory,
     pendingTrust,
-    setEngine: (bot: BotScreenView, engine: Engine) =>
-      update(bot, { engine }, (b) => `${b.displayName} now runs on ${ENGINE_LABELS[b.engine]}. Queued tasks keep their engine.`),
+    pendingEngine,
+    /** A switch with a risk (CV to Codex) waits for Ba's confirmation; the others save at once. */
+    setEngine: (bot: BotScreenView, engine: Engine) => {
+      const risk = engineSwitchRisk(bot.name, engine);
+      if (risk) {
+        setPendingEngine({ bot, engine, risk });
+        return Promise.resolve();
+      }
+      return switchEngine(bot, engine, false);
+    },
+    cancelEngine: () => setPendingEngine(null),
+    /** Owner decision 2026-10-11: Ba accepted the risk, so the request carries acknowledgeRisk. */
+    confirmEngine: async () => {
+      if (!pendingEngine) return;
+      const { bot, engine } = pendingEngine;
+      setPendingEngine(null);
+      await switchEngine(bot, engine, true);
+    },
     /** Live run 1: Ba's model for this bot (null = bot.json's default). */
     setModel: (bot: BotScreenView, model: string | null) =>
       update(bot, { model }, (b) => (model === null ? `${b.displayName} uses the default model again` : `${b.displayName} now uses ${b.model ?? model}`)),

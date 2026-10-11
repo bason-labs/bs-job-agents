@@ -26,12 +26,35 @@ test.describe("Bots grid", () => {
     await expect(research.getByTestId("bot-residual-risk")).toHaveCount(0);
   });
 
-  test("Apply's, CV's and Lead's engine switches are disabled with the reason (§4.4, §6.2, rule 5)", async ({ page }) => {
-    for (const name of ["apply", "cv", "lead"]) {
+  test("Apply's and Lead's engine switches are disabled with the reason (§4.4, rule 5)", async ({ page }) => {
+    for (const name of ["apply", "lead"]) {
       await expect(card(page, name).getByRole("radio", { name: "Codex" })).toBeDisabled();
       await expect(card(page, name).getByTestId("bot-engine-lock")).toContainText("Locked to Claude");
     }
-    await expect(card(page, "cv").getByTestId("bot-engine-lock")).toHaveText("Locked to Claude: CV edits Figma; its Drafts-only guard runs only on Claude.");
+    await expect(card(page, "cv").getByRole("radio", { name: "Codex" })).toBeEnabled();
+    await expect(card(page, "cv").getByTestId("bot-engine-lock")).toHaveCount(0);
+  });
+
+  test("CV on Codex is an opt-in: Ba confirms the Figma guard risk, then the card notes the guard is off (owner decision 2026-10-11)", async ({ page }) => {
+    const cv = card(page, "cv");
+    await cv.getByRole("radio", { name: "Codex" }).click();
+    const dialog = page.getByTestId("confirm-dialog");
+    await expect(dialog).toContainText("Run CV on Codex?");
+    await expect(dialog).toContainText("On Codex the Figma guard can't block edits as they happen.");
+    await expect(dialog).toContainText("Codex can also read files on your Mac.");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(cv.getByRole("radio", { name: "Claude" })).toHaveAttribute("aria-checked", "true");
+
+    await cv.getByRole("radio", { name: "Codex" }).click();
+    await page.getByTestId("confirm-dialog").getByRole("button", { name: "Run CV on Codex" }).click();
+    await expect(page.getByTestId("toast").filter({ hasText: "CV now runs on Codex. Queued tasks keep their engine." })).toBeVisible();
+    await expect(cv.getByRole("radio", { name: "Codex" })).toHaveAttribute("aria-checked", "true");
+    await expect(cv.getByTestId("bot-figma-guard-off")).toHaveText("Figma guard off (Codex)");
+    await expect(cv.getByTestId("bot-residual-risk")).toContainText("Figma guard");
+
+    await cv.getByRole("radio", { name: "Claude" }).click();
+    await expect(page.getByTestId("toast").filter({ hasText: "CV now runs on Claude. Queued tasks keep their engine." })).toBeVisible();
+    await expect(cv.getByTestId("bot-figma-guard-off")).toHaveCount(0);
   });
 
   test("switches Research's engine with the mouse and QA's with the arrow keys", async ({ page }) => {

@@ -37,11 +37,22 @@ describe("bots adapter (PM S21 rules)", () => {
     expect(await data.update("research", { engine: "claude" })).toMatchObject({ engine: "claude", residualRisk: null });
   });
 
-  it("refuses Apply or CV on Codex with the API's 403 (checkBotSafety)", async () => {
+  it("refuses Apply or Lead on Codex with the API's 403 (checkBotSafety), even with acknowledgeRisk", async () => {
     const data = make();
     expect(await err(data.update("apply", { engine: "codex" }))).toMatchObject({ status: 403, code: "forbidden", message: expect.stringMatching(/browser bot/) });
-    expect(await err(data.update("cv", { engine: "codex" }))).toMatchObject({ status: 403, message: expect.stringMatching(/Figma/) });
     expect(await err(data.update("lead", { engine: "codex" }))).toMatchObject({ status: 403, message: expect.stringMatching(/Lead must run on Claude/) });
+    expect(await err(data.update("apply", { engine: "codex", acknowledgeRisk: true }))).toMatchObject({ status: 403 });
+    expect(await err(data.update("lead", { engine: "codex", acknowledgeRisk: true }))).toMatchObject({ status: 403 });
+  });
+
+  it("CV on Codex is Ba's opt-in: 409 without acknowledgeRisk, 200 with it (owner decision 2026-10-11)", async () => {
+    const data = make();
+    expect(await err(data.update("cv", { engine: "codex" }))).toMatchObject({ status: 409, code: "conflict", message: expect.stringMatching(/Figma guard/) });
+    expect((await data.get("cv"))!.engine).toBe("claude");
+    const on = await data.update("cv", { engine: "codex", acknowledgeRisk: true });
+    expect(on).toMatchObject({ engine: "codex", figmaGuardOff: true, engineRiskAcknowledgedAt: expect.any(String), residualRisk: expect.stringMatching(/Figma guard/) });
+    const back = await data.update("cv", { engine: "claude" });
+    expect(back).toMatchObject({ engine: "claude", figmaGuardOff: false, residualRisk: null, engineRiskAcknowledgedAt: on.engineRiskAcknowledgedAt });
   });
 
   it("raises one level at a time up to the Phase 1 cap; Apply stays L1 (403); lowering is allowed", async () => {
