@@ -1,39 +1,34 @@
 // The orchestrator over HTTP (§4.2): a typed client over API_ROUTES, validated with the shared
-// response schemas. Browser calls go through the same-origin proxy (/api/orch, see proxy.ts);
-// server components call the orchestrator directly (config.ts).
+// response schemas. Browser calls go through the same-origin /api rewrite (next.config.ts: the
+// orchestrator sends no CORS headers); server components call the orchestrator directly (config.ts).
 import {
   API_ROUTES,
+  AnswerQuestionResponseSchema,
   BotsResponseSchema,
   ChatSendResponseSchema,
   EnginesResponseSchema,
+  HealthStatusSchema,
   MessagesResponseSchema,
   ReviewQueueResponseSchema,
   RoomsResponseSchema,
+  RunControlResponseSchema,
   RunDetailSchema,
   RunsResponseSchema,
+  StepDetailSchema,
   UploadsResponseSchema,
   fileUrl,
 } from "@bs-job-agents/shared";
 import type { z } from "zod";
-import {
-  ApproveResultSchema,
-  HealthStatusSchema,
-  TranscriptResponseSchema,
-  type EventFeed,
-  type HealthStatus,
-  type WebApi,
-} from "./contract";
+import { ApproveResultSchema, TranscriptResponseSchema, type EventFeed, type HealthState, type WebApi } from "./contract";
 import { csrfHeaders } from "./csrf";
 import { ApiRequestError, apiErrorFromResponse } from "./errors";
 import { toBotSummary, toRoomSummary, toShellData } from "./map";
 import { PROPOSED_ROUTES, apiPath, type QueryValue } from "./routes";
 
 export interface HttpClientOptions {
-  /** `http://127.0.0.1:4100` on the server, `/api/orch` in the browser. */
+  /** `http://127.0.0.1:4100` on the server, `/api` in the browser. */
   baseUrl: string;
   fetch?: typeof fetch;
-  /** document.cookie by default (CSRF double-submit). */
-  cookies?: () => string;
 }
 
 interface RequestOptions<S extends z.ZodTypeAny> {
@@ -50,7 +45,7 @@ export function createHttpClient(opts: HttpClientOptions) {
   const doFetch = opts.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init));
 
   async function send(method: string, route: string, o: RequestOptions<z.ZodTypeAny>): Promise<Response> {
-    const headers: Record<string, string> = { accept: "application/json", ...csrfHeaders(method, opts.cookies) };
+    const headers: Record<string, string> = { accept: "application/json", ...csrfHeaders(method) };
     let body: BodyInit | undefined;
     if (o.form) body = o.form;
     else if (o.body !== undefined) {
@@ -112,22 +107,24 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
   const listRooms = async () => (await request("GET", API_ROUTES.rooms, { schema: RoomsResponseSchema })).rooms;
   const listEngines = async () => (await request("GET", API_ROUTES.engines, { schema: EnginesResponseSchema })).engines;
   const getReviewQueue = async () => (await request("GET", API_ROUTES.reviewQueue, { schema: ReviewQueueResponseSchema })).cards;
-  const listRuns = async () => (await request("GET", API_ROUTES.runs, { schema: RunsResponseSchema })).runs;
+  const listRuns = async (q: { status?: string; limit?: number } = {}) =>
+    (await request("GET", API_ROUTES.runs, { query: { status: q.status, limit: q.limit }, schema: RunsResponseSchema })).runs;
 
   return {
     mode: "live",
     events: opts.events,
 
-    async getHealth(): Promise<HealthStatus> {
+    async getHealth(): Promise<HealthState> {
       let res: Response;
       try {
         res = await http.send("GET", API_ROUTES.health, {});
       } catch {
         return { ok: false, reason: "unreachable", detail: null };
       }
+      // A degraded start answers 503 with the reason in the body (PM S19): read it either way.
       const parsed = HealthStatusSchema.safeParse(await res.json().catch(() => null));
-      if (!parsed.success) return { ok: false, reason: `http_${res.status}`, detail: null };
-      return { ok: parsed.data.ok, reason: parsed.data.reason ?? null, detail: parsed.data.detail ?? null };
+      if (!parsed.success) return { ok: false, reason: res.status === 502 || res.status === 504 ? "unreachable" : `http_${res.status}`, detail: null };
+      return parsed.data.ok ? { ok: true, reason: null, detail: null } : { ok: false, reason: parsed.data.reason, detail: parsed.data.detail };
     },
 
     async getShellData() {
@@ -164,7 +161,7 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
       return request("POST", API_ROUTES.uploads, { form, schema: UploadsResponseSchema });
     },
     async answerQuestion(taskId, input) {
-      await request("POST", API_ROUTES.answerQuestion, { params: { taskId }, body: input });
+      return request("POST", API_ROUTES.answerQuestion, { params: { taskId }, body: input, schema: AnswerQuestionResponseSchema });
     },
     async resumeTask(taskId, input = { confirmDomain: null }) {
       await request("POST", API_ROUTES.taskResume, { params: { id: taskId }, body: { confirmDomain: input.confirmDomain } });
@@ -177,8 +174,11 @@ export function createHttpApi(opts: HttpApiOptions): WebApi {
     async getRun(runId) {
       return request("GET", API_ROUTES.run, { params: { id: runId }, schema: RunDetailSchema });
     },
+    async getStep(stepId) {
+      return request("GET", API_ROUTES.step, { params: { id: stepId }, schema: StepDetailSchema });
+    },
     async controlRun(runId, action) {
-      await request("POST", API_ROUTES.runControl, { params: { id: runId }, body: { action } });
+      return request("POST", API_ROUTES.runControl, { params: { id: runId }, body: { action }, schema: RunControlResponseSchema });
     },
     async rerunStep(stepId) {
       await request("POST", API_ROUTES.stepRerun, { params: { id: stepId }, body: {} });

@@ -1,4 +1,4 @@
-import type { BotView, EngineStatus, Room } from "@bs-job-agents/shared";
+import { CSRF_HEADER, CSRF_HEADER_VALUE, type BotView, type EngineStatus, type Room } from "@bs-job-agents/shared";
 import { messageFixture, reviewCardFixture, runFixture, stepFixture, taskFixture, uploadFixture } from "@bs-job-agents/shared/fixtures";
 import { describe, expect, it } from "vitest";
 import type { EventFeed } from "./contract";
@@ -33,9 +33,9 @@ function fakeFetch(routes: Record<string, () => Response | Promise<Response>>) {
 
 const noFeed: EventFeed = { subscribe: () => () => {}, getStatus: () => "idle", onStatus: () => () => {} };
 
-const api = (routes: Record<string, () => Response | Promise<Response>>, cookies = "") => {
+const api = (routes: Record<string, () => Response | Promise<Response>>) => {
   const f = fakeFetch(routes);
-  return { ...f, api: createHttpApi({ baseUrl: "http://orch.test", fetch: f.fetchImpl, events: noFeed, cookies: () => cookies }) };
+  return { ...f, api: createHttpApi({ baseUrl: "http://orch.test", fetch: f.fetchImpl, events: noFeed }) };
 };
 
 const BOT: BotView = {
@@ -71,7 +71,7 @@ describe("createHttpApi: reads", () => {
     expect(cards[0]!.job.company).toBe("NovaPay");
     expect(calls[0]).toMatchObject({ method: "GET", url: "http://orch.test/review" });
     expect(calls[0]!.headers.accept).toBe("application/json");
-    expect(calls[0]!.headers["x-requested-with"]).toBeUndefined();
+    expect(calls[0]!.headers[CSRF_HEADER]).toBeUndefined();
   });
 
   it("GET /rooms/:id/messages with the paging query", async () => {
@@ -80,15 +80,22 @@ describe("createHttpApi: reads", () => {
     expect(calls).toHaveLength(1);
   });
 
-  it("runs: list and detail", async () => {
+  it("runs: list (with the RunsQuery filter), detail and the step drawer's step", async () => {
     const { api: a } = api({
       "GET /runs": () => json({ runs: [runFixture] }),
+      "GET /runs?status=running&limit=5": () => json({ runs: [] }),
       "GET /runs/run_13": () => json({ run: runFixture, steps: [stepFixture], tasks: [taskFixture] }),
+      "GET /steps/step_7": () =>
+        json({ step: stepFixture, tasks: [taskFixture], selfCheck: [{ item: "One A4 page", passed: true, note: null }], durationMs: 4200 }),
     });
     expect((await a.listRuns()).map((r) => r.id)).toEqual(["run_13"]);
+    expect(await a.listRuns({ status: "running", limit: 5 })).toEqual([]);
     const detail = await a.getRun("run_13");
     expect(detail.steps[0]!.stepKey).toBe("tailor");
     expect(detail.tasks[0]!.botName).toBe("cv");
+    const step = await a.getStep("step_7");
+    expect(step.durationMs).toBe(4200);
+    expect(step.selfCheck[0]!.item).toBe("One A4 page");
   });
 
   it("composes the sidebar from five lists", async () => {
@@ -115,12 +122,17 @@ describe("createHttpApi: reads", () => {
     expect(await a.getRoom("99")).toBeNull();
   });
 
-  it("health: ok, degraded (S19) and unreachable never throw", async () => {
+  it("health: ok, degraded (S19: 503 with a body) and unreachable never throw", async () => {
     expect(await api({ "GET /health": () => json({ ok: true }) }).api.getHealth()).toEqual({ ok: true, reason: null, detail: null });
-    const degraded = await api({
-      "GET /health": () => json({ ok: false, reason: "prompt_version_stale", detail: { bot: "cv" } }, 503),
-    }).api.getHealth();
-    expect(degraded).toEqual({ ok: false, reason: "prompt_version_stale", detail: { bot: "cv" } });
+    const detail = "bots/cv/ROLE.md changed but promptVersion is still 4: bump promptVersion in bots/cv/bot.json";
+    const degraded = await api({ "GET /health": () => json({ ok: false, reason: "prompt_version_stale", detail }, 503) }).api.getHealth();
+    expect(degraded).toEqual({ ok: false, reason: "prompt_version_stale", detail });
+    // The web app's /api proxy answers 502 when nothing listens on the orchestrator's port.
+    expect(await api({ "GET /health": () => new Response("Bad gateway", { status: 502 }) }).api.getHealth()).toEqual({
+      ok: false,
+      reason: "unreachable",
+      detail: null,
+    });
     const down = createHttpApi({
       baseUrl: "http://orch.test",
       events: noFeed,
@@ -146,20 +158,15 @@ describe("createHttpApi: reads", () => {
 });
 
 describe("createHttpApi: commands", () => {
-  it("approve posts the chosen CV and intro; the result tolerates F2's nullable applicationId and reapproval", async () => {
-    const { api: a, calls } = api(
-      {
-        "POST /review/job_1/approve": () =>
-          json({ applicationId: null, taskId: null, approval: null, reapproval: true }),
-      },
-      "bsja_csrf=t0k",
-    );
+  it("approve posts the chosen CV and intro with the CSRF header; the result tolerates a nullable applicationId and reapproval", async () => {
+    const { api: a, calls } = api({
+      "POST /review/job_1/approve": () => json({ applicationId: null, taskId: null, approval: null, reapproval: true }),
+    });
     const result = await a.approve("job_1", { cvVersionId: "cvv_2", introText: null });
     expect(result).toEqual({ applicationId: null, taskId: null, approval: null, reapproval: true });
     expect(calls[0]).toMatchObject({ method: "POST", body: { cvVersionId: "cvv_2", introText: null } });
     expect(calls[0]!.headers["content-type"]).toBe("application/json");
-    expect(calls[0]!.headers["x-requested-with"]).toBe("bs-job-agents");
-    expect(calls[0]!.headers["x-csrf-token"]).toBe("t0k");
+    expect(calls[0]!.headers[CSRF_HEADER]).toBe(CSRF_HEADER_VALUE);
   });
 
   it("approve sends dryRun only when asked", async () => {
@@ -177,19 +184,19 @@ describe("createHttpApi: commands", () => {
       "POST /review/job_1/request-changes": ok,
       "POST /review/job_1/skip": ok,
       "POST /review/job_1/confirm-injection": ok,
-      "POST /questions/42/answer": () => json({ resumed: false, next: null }),
+      "POST /questions/42/answer": () => json({ resumed: true, next: null }),
       "POST /tasks/42/resume": ok,
-      "POST /runs/12/control": ok,
+      "POST /runs/12/control": () => json({ run: { ...runFixture, id: "12", status: "paused" }, abortedTaskIds: [] }),
       "POST /steps/s1/rerun": ok,
       "POST /chat/choices": ok,
     });
     await a.requestChanges("job_1", { comment: "Lead with Next.js" });
     await a.skip("job_1", { reason: "other", note: "too far" });
     await a.confirmInjection("job_1");
-    await a.answerQuestion("42", { field: "salary", mode: "negotiable", value: null, remember: true });
+    await expect(a.answerQuestion("42", { field: "salary", mode: "negotiable", value: null, remember: true })).resolves.toEqual({ resumed: true, next: null });
     await a.resumeTask("42", { confirmDomain: "acme.wd3.myworkdayjobs.com" });
     await a.resumeTask("42");
-    await a.controlRun("12", "pause");
+    expect((await a.controlRun("12", "pause")).run.status).toBe("paused");
     await a.rerunStep("s1");
     await a.chooseOption({ messageId: "m1", key: "criteria", optionId: "save" });
     expect(calls.map((c) => [c.method, c.url.replace("http://orch.test", ""), c.body])).toEqual([
@@ -220,7 +227,7 @@ describe("createHttpApi: commands", () => {
     expect(body).toBeInstanceOf(FormData);
     expect((body.getAll("files")[0] as File).name).toBe("JD_NovaPay.pdf");
     expect(calls[0]!.headers["content-type"]).toBeUndefined();
-    expect(calls[0]!.headers["x-requested-with"]).toBe("bs-job-agents");
+    expect(calls[0]!.headers[CSRF_HEADER]).toBe(CSRF_HEADER_VALUE);
   });
 });
 

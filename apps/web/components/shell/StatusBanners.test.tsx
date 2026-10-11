@@ -35,15 +35,20 @@ describe("PausedBanner", () => {
 });
 
 describe("HealthBanner (PM S19 degraded start, unreachable orchestrator)", () => {
-  it("names the stale ROLE.md with the fix (PM decision 8 copy)", () => {
-    expect(healthMessage({ ok: false, reason: "prompt_version_stale", detail: { bot: "cv" } })).toBe(
+  it("names the stale ROLE.md with the fix (PM decision 8 copy), from the orchestrator's detail", () => {
+    const detail = "bots/cv/ROLE.md changed but promptVersion is still 4: bump promptVersion in bots/cv/bot.json";
+    expect(healthMessage({ ok: false, reason: "prompt_version_stale", detail })).toBe(
       "bots/cv/ROLE.md changed without a version bump. Bump promptVersion in bots/cv/bot.json, then restart.",
     );
   });
-  it("explains an unreachable orchestrator and other degraded reasons", () => {
+  it("explains an unreachable orchestrator and the other degraded reasons", () => {
     expect(healthMessage({ ok: false, reason: "unreachable", detail: null })).toMatch(/Can't reach the orchestrator/);
-    expect(healthMessage({ ok: false, reason: "schema_guard", detail: "trigger missing" })).toBe(
-      "The orchestrator started without its engine (schema_guard: trigger missing). Bots won't run until this is fixed.",
+    expect(healthMessage({ ok: false, reason: "schema_guard", detail: "applications_no_update trigger missing" })).toBe(
+      "The database is missing one of its safety triggers: applications_no_update trigger missing. Bots won't run until this is fixed.",
+    );
+    expect(healthMessage({ ok: false, reason: "data_dir_invalid", detail: "the data folder /x (y) has a parenthesis" })).toMatch(/^The data folder can't be used: /);
+    expect(healthMessage({ ok: false, reason: "something_new", detail: null })).toBe(
+      "The orchestrator runs in degraded mode (something_new). Bots won't run until this is fixed.",
     );
     expect(healthMessage({ ok: true, reason: null, detail: null })).toBeNull();
   });

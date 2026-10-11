@@ -61,14 +61,14 @@ describe("review card model", () => {
     expect(flagNotices(all).map((n) => n.key)).toEqual(["injection", "master", "noApplyLink", "lowConfidence", "needsInput"]);
     const cleared = card({ job: { ...reviewCardFixture.job, injectionFlagged: true, injectionClearedAt: "2026-10-10T10:42:00+07:00" } });
     expect(flagNotices(cleared).map((n) => n.key)).toEqual(["injectionCleared"]);
-    const again = card({}, { reapproval: true } as Partial<ReviewCard["flags"]>);
-    expect(flagNotices(again).map((n) => n.key)).toEqual(["reapproval"]);
+    const again = card({}, { approveAgain: true });
+    expect(flagNotices(again).map((n) => n.key)).toEqual(["approveAgain"]);
   });
 
   it("approve button label follows the card (prototype + PM S24 'approve again')", () => {
     expect(approveLabel(card())).toBe("Approve & submit");
     expect(approveLabel(card({}, { qaPassed: false, escalated: true }))).toBe("Approve anyway & submit");
-    expect(approveLabel(card({}, { reapproval: true } as Partial<ReviewCard["flags"]>))).toBe("Approve again & submit");
+    expect(approveLabel(card({}, { approveAgain: true }))).toBe("Approve again & submit");
     expect(approveLabel(card({}, { noApplyLink: true }))).toBe("Approve (PDF only)");
   });
 

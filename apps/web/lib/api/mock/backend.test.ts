@@ -1,6 +1,9 @@
 import {
+  AnswerQuestionResponseSchema,
   AppEventSchema,
   BotsResponseSchema,
+  RunControlResponseSchema,
+  StepDetailSchema,
   ChatSendResponseSchema,
   EnginesResponseSchema,
   MessagesResponseSchema,
@@ -56,6 +59,16 @@ describe("mock backend: parity with the shared API schemas", () => {
     }
     const detail = await api.getRun("12");
     expect(TranscriptResponseSchema.safeParse({ lines: await api.getTranscript(detail.tasks[0]!.id) }).success).toBe(true);
+    const step = await api.getStep(detail.steps[0]!.id);
+    expect(StepDetailSchema.safeParse(step).success).toBe(true);
+    expect(step.selfCheck.map((c) => c.item)).toContain("Every job has a reachable URL");
+    expect(step.durationMs).toBe(6 * 60_000 + 35_000);
+  });
+
+  it("filters runs like RunsQuery (status, limit)", async () => {
+    expect((await api.listRuns()).map((r) => r.id)).toEqual(["12", "11"]);
+    expect((await api.listRuns({ status: "done" })).map((r) => r.id)).toEqual(["11"]);
+    expect((await api.listRuns({ limit: 1 })).map((r) => r.id)).toEqual(["12"]);
   });
 
   it("seeds the prototype's demo: 3 cards waiting from Job scan #12, Lead and consult rooms", async () => {
@@ -193,7 +206,9 @@ describe("mock backend: review (UC-07..12)", () => {
     expect(questions.map((q) => [q.question.field, q.question.required])).toEqual([["salary", false]]);
     const taskId = res.taskId!;
 
-    await api.answerQuestion(taskId, { field: "salary", mode: "negotiable", value: null, remember: true });
+    const first = await api.answerQuestion(taskId, { field: "salary", mode: "negotiable", value: null, remember: true });
+    expect(AnswerQuestionResponseSchema.safeParse(first).success).toBe(true);
+    expect(first).toMatchObject({ resumed: false, next: { field: "start_date" } });
     await api.idle();
     questions = cardsOf(await leadMessages(), "question");
     expect(questions.map((q) => [q.question.field, q.answered])).toEqual([
@@ -209,7 +224,10 @@ describe("mock backend: review (UC-07..12)", () => {
     const empty = await errorOf(api.answerQuestion(taskId, { field: "start_date", mode: "answer", value: " ", remember: false }));
     expect(isApiError(empty) && empty.code).toBe("validation_failed");
 
-    await api.answerQuestion(taskId, { field: "start_date", mode: "answer", value: "2 weeks after offer", remember: false });
+    await expect(api.answerQuestion(taskId, { field: "start_date", mode: "answer", value: "2 weeks after offer", remember: false })).resolves.toEqual({
+      resumed: true,
+      next: null,
+    });
     await api.idle();
     expect(events.filter((e) => e.type === "task.resumed").length).toBe(1);
     expect((await leadMessages()).at(-1)!.text).toMatch(/Sao Việt Tech\*\* submitted/);
@@ -312,7 +330,9 @@ describe("mock backend: pauses and run control (UC-16, UC-17, UC-11 e, UC-23)", 
   });
 
   it("UC-23: pause, resume and cancel a run; a submitted Apply step is never re-run", async () => {
-    await api.controlRun("12", "pause");
+    const paused = await api.controlRun("12", "pause");
+    expect(RunControlResponseSchema.safeParse(paused).success).toBe(true);
+    expect(paused).toMatchObject({ run: { id: "12", status: "paused" }, abortedTaskIds: [] });
     expect((await api.getRun("12")).run.status).toBe("paused");
     await api.controlRun("12", "resume");
     expect((await api.getRun("12")).run.status).toBe("waiting");

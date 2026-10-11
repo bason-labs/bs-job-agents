@@ -1,13 +1,13 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { HealthStatus } from "@/lib/api/contract";
+import type { HealthState } from "@/lib/api/contract";
 import type { ShellData } from "@/lib/api/types";
 
 export interface ShellState {
   /** Live sidebar data (bots with status, usage, review count, active run). */
   data: ShellData;
-  health: HealthStatus;
+  health: HealthState;
 }
 
 export const ShellContext = createContext<ShellState | null>(null);

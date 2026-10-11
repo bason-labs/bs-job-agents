@@ -4,7 +4,7 @@ import type { ReviewCard, SkipReason } from "@bs-job-agents/shared";
 import { ArrowUpRight, CircleAlert, Info, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { useId, useState, type ReactNode } from "react";
-import { supportsDryRun, type ApproveResult } from "@/lib/api/contract";
+import { supportsConfirmInjection, supportsDryRun, type ApproveResult } from "@/lib/api/contract";
 import { errorMessage } from "@/lib/api/errors";
 import { useApi } from "@/lib/api/react";
 import { cn } from "@/lib/cn";
@@ -194,7 +194,14 @@ export function ReviewCardItem({ card, acted, onApproved, onChangesRequested, on
           <Notice key={n.key} tone={n.tone} testId={`flag-${n.key}`}>
             <p>{n.text}</p>
             {n.key === "injection" && !acted ? (
-              <Button size="sm" pill variant="secondary" onClick={() => setDialog("injection")}>
+              <Button
+                size="sm"
+                pill
+                variant="secondary"
+                disabled={!supportsConfirmInjection(api.mode)}
+                title={supportsConfirmInjection(api.mode) ? undefined : "Confirming a flagged posting arrives with the next orchestrator update"}
+                onClick={() => setDialog("injection")}
+              >
                 I checked it — enable Apply
               </Button>
             ) : null}
@@ -315,7 +322,7 @@ export function ReviewCardItem({ card, acted, onApproved, onChangesRequested, on
           pending={pending}
           fileName={cvName(option)}
           introEdited={introPayload(intro) !== null}
-          dryRunAvailable={supportsDryRun()}
+          dryRunAvailable={supportsDryRun(api.mode)}
           onConfirm={(dryRun) => void approve(dryRun)}
         />
       ) : null}

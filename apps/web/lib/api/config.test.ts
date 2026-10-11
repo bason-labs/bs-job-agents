@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { BROWSER_API_BASE, apiModeSetting, mockSpeed, orchestratorUrl, probeOrchestrator, resolveApiMode } from "./config";
+import { BROWSER_API_BASE, apiModeSetting, mockSpeed, orchestratorRewrites, orchestratorUrl, probeOrchestrator, resolveApiMode } from "./config";
 
 describe("orchestratorUrl (server side)", () => {
   it("defaults to the spec's 127.0.0.1:4100", () => {
@@ -12,8 +12,18 @@ describe("orchestratorUrl (server side)", () => {
   it("ignores a broken ORCH_PORT", () => {
     expect(orchestratorUrl({ ORCH_PORT: "abc" })).toBe("http://127.0.0.1:4100");
   });
-  it("browser calls go through the same-origin proxy", () => {
-    expect(BROWSER_API_BASE).toBe("/api/orch");
+  it("browser calls go to /api on the web app's origin, rewritten to the orchestrator", () => {
+    expect(BROWSER_API_BASE).toBe("/api");
+    expect(orchestratorRewrites({ ORCH_PORT: "4200" })).toEqual([
+      { source: "/api/:path*", destination: "http://127.0.0.1:4200/:path*", has: [{ type: "host", value: "(?:localhost|127\\.0\\.0\\.1)" }] },
+    ]);
+  });
+
+  it("the rewrite only serves requests addressed to this Mac (DNS rebinding)", () => {
+    // Next matches `has: host` as ^value$ against the Host header's name (no port).
+    const host = new RegExp(`^${orchestratorRewrites({})[0]!.has[0]!.value}$`);
+    expect(["localhost", "127.0.0.1"].every((h) => host.test(h))).toBe(true);
+    expect(["evil.com", "localhost.evil.com", "127.0.0.1.evil.com", "192.168.1.5"].some((h) => host.test(h))).toBe(false);
   });
 });
 

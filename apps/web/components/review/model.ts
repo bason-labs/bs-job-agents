@@ -53,7 +53,7 @@ export function escalationNote(option: CvOption): string {
 export type NoticeTone = "warn" | "danger" | "info";
 
 export interface FlagNotice {
-  key: "injection" | "injectionCleared" | "master" | "noApplyLink" | "lowConfidence" | "needsInput" | "reapproval";
+  key: "injection" | "injectionCleared" | "master" | "noApplyLink" | "lowConfidence" | "needsInput" | "approveAgain";
   tone: NoticeTone;
   text: string;
 }
@@ -61,8 +61,8 @@ export interface FlagNotice {
 /** UC-07 b: Apply stays off for a flagged job until Ba confirms the posting. */
 export const isBlockedByInjection = (card: ReviewCard) => card.flags.injectionFlagged && card.job.injectionClearedAt === null;
 
-/** `reapproval` is not in the shared flags yet (W3a/F3 handoff); read it when the server sends it. */
-export const needsReapproval = (card: ReviewCard) => (card.flags as ReviewCard["flags"] & { reapproval?: boolean }).reapproval === true;
+/** PM S24 "approve again": Apply was denied before it ran (e.g. its token expired). Shared `flags.approveAgain`. */
+export const needsReapproval = (card: ReviewCard) => card.flags.approveAgain === true;
 
 /** The card's warnings, in the order the prototype's banners would stack. */
 export function flagNotices(card: ReviewCard): FlagNotice[] {
@@ -79,7 +79,7 @@ export function flagNotices(card: ReviewCard): FlagNotice[] {
   }
   if (needsReapproval(card)) {
     out.push({
-      key: "reapproval",
+      key: "approveAgain",
       tone: "info",
       text: "The last approval expired or was refused before Apply ran. Approving again issues a new token for the same application.",
     });

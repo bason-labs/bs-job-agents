@@ -1,27 +1,18 @@
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
-import { CSRF_COOKIE, CSRF_HEADER, csrfHeaders, readCookie } from "./csrf";
+import { csrfHeaders } from "./csrf";
 
-describe("csrfHeaders (S18; W3a defines the scheme, this is the one place to adjust)", () => {
+describe("csrfHeaders (PM S18; the shared CSRF_HEADER the orchestrator checks)", () => {
   it("adds nothing to safe methods", () => {
-    expect(csrfHeaders("GET", () => `${CSRF_COOKIE}=abc`)).toEqual({});
-    expect(csrfHeaders("head", () => "")).toEqual({});
+    expect(csrfHeaders("GET")).toEqual({});
+    expect(csrfHeaders("head")).toEqual({});
   });
 
-  it("marks every state-changing request and echoes the CSRF cookie when there is one", () => {
-    expect(csrfHeaders("POST", () => `theme=dark; ${CSRF_COOKIE}=tok%20en; other=1`)).toEqual({
-      "x-requested-with": "bs-job-agents",
-      [CSRF_HEADER]: "tok en",
-    });
-    expect(csrfHeaders("DELETE", () => "theme=dark")).toEqual({ "x-requested-with": "bs-job-agents" });
-  });
-
-  it("works without a document (server-side calls)", () => {
-    expect(csrfHeaders("PATCH")).toEqual({ "x-requested-with": "bs-job-agents" });
-  });
-
-  it("reads one cookie by name", () => {
-    expect(readCookie("a=1; b=two", "b")).toBe("two");
-    expect(readCookie("a=1", "b")).toBeNull();
-    expect(readCookie("", "b")).toBeNull();
+  it("marks every state-changing request with x-bsja-csrf: 1", () => {
+    for (const method of ["POST", "put", "PATCH", "DELETE"]) {
+      expect(csrfHeaders(method)).toEqual({ [CSRF_HEADER]: CSRF_HEADER_VALUE });
+    }
+    expect(CSRF_HEADER).toBe("x-bsja-csrf");
+    expect(CSRF_HEADER_VALUE).toBe("1");
   });
 });

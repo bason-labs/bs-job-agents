@@ -5,12 +5,13 @@
 //   BSJA_API_MODE     live | mock | auto (default). auto = live in production; in development,
 //                     live when the orchestrator answers, else the mock backend (labelled in the UI)
 //   BSJA_MOCK_SPEED   speed factor for the mock's simulated bots (e2e uses a faster one)
-// Browser requests never go to the orchestrator directly: it sends no CORS headers (PM S18),
-// so they go through the same-origin proxy at /api/orch (lib/api/proxy.ts).
+// Browser requests never go to the orchestrator directly: it sends no CORS headers (PM S18), so
+// they go to /api on the web app's own origin, which next.config.ts rewrites to the orchestrator
+// (orchestratorRewrites below; ORCH_URL / ORCH_PORT are read when the Next server starts).
 import type { ApiMode } from "./contract";
 
 export const DEFAULT_ORCH_URL = "http://127.0.0.1:4100";
-export const BROWSER_API_BASE = "/api/orch";
+export const BROWSER_API_BASE = "/api";
 
 type Env = Record<string, string | undefined>;
 const processEnv = (): Env => (typeof process === "undefined" ? {} : process.env);
@@ -20,6 +21,22 @@ export function orchestratorUrl(env: Env = processEnv()): string {
   const port = Number(env.ORCH_PORT);
   if (env.ORCH_PORT && Number.isInteger(port) && port > 0 && port < 65536) return `http://127.0.0.1:${port}`;
   return DEFAULT_ORCH_URL;
+}
+
+/**
+ * next.config.ts rewrites: /api/* → the orchestrator (REST, files, SSE). Only for requests
+ * addressed to this Mac: a page on another site that resolved its name to 127.0.0.1 (DNS
+ * rebinding) sends its own Host and gets a 404 here, before the orchestrator's own Host and
+ * X-Forwarded-Host checks.
+ */
+export function orchestratorRewrites(env: Env = processEnv()) {
+  return [
+    {
+      source: `${BROWSER_API_BASE}/:path*`,
+      destination: `${orchestratorUrl(env)}/:path*`,
+      has: [{ type: "host" as const, value: "(?:localhost|127\\.0\\.0\\.1)" }],
+    },
+  ];
 }
 
 export type ApiModeSetting = ApiMode | "auto";

@@ -17,7 +17,7 @@ export type {
   ApproveResult,
   EventFeed,
   FeedStatus,
-  HealthStatus,
+  HealthState,
   MessagesPage,
   SendMessageInput,
   TranscriptLine,

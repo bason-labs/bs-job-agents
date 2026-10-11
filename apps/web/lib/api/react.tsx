@@ -34,6 +34,7 @@ const ASYNC_METHODS: Record<AsyncMethod, true> = {
   chooseOption: true,
   listRuns: true,
   getRun: true,
+  getStep: true,
   controlRun: true,
   rerunStep: true,
   getTranscript: true,
@@ -243,6 +244,15 @@ export function useResource<T>(key: string | null, loader: (api: WebApi) => Prom
   useEffect(() => {
     void reload();
   }, [reload]);
+  // Back from a dropped connection: re-read, since live events in the gap may be lost (a first
+  // SSE connection gets no history, so state always comes from REST).
+  useEffect(() => {
+    let prev = api.events.getStatus();
+    return api.events.onStatus((status) => {
+      if (status === "open" && prev === "reconnecting") void reload();
+      prev = status;
+    });
+  }, [api, reload]);
   return { ...state, reload, mutate };
 }
 

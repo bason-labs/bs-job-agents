@@ -43,7 +43,7 @@ const latest = () => FakeEventSource.instances.at(-1)!;
 
 function feed(extra: Partial<Parameters<typeof createLiveEventFeed>[0]> = {}) {
   return createLiveEventFeed({
-    url: "/api/orch/events",
+    url: "/api/events",
     createEventSource: (url) => new FakeEventSource(url),
     backoff: { initialMs: 1000, maxMs: 8000, factor: 2 },
     closeGraceMs: 500,
@@ -67,7 +67,7 @@ describe("createLiveEventFeed", () => {
 
     const got: AppEvent[] = [];
     f.subscribe((e) => got.push(e));
-    expect(latest().url).toBe("/api/orch/events");
+    expect(latest().url).toBe("/api/events");
     expect([...latest().listeners.keys()].sort()).toEqual([...APP_EVENT_TYPES].sort());
     latest().open();
     latest().send(ev("run.started", "1"));
@@ -130,7 +130,8 @@ describe("createLiveEventFeed", () => {
     expect(FakeEventSource.instances).toHaveLength(1);
     vi.advanceTimersByTime(1);
     expect(FakeEventSource.instances).toHaveLength(2);
-    expect(latest().url).toBe("/api/orch/events?lastEventId=42");
+    // W3a's /events takes ?after= (or the Last-Event-ID header the browser sends by itself).
+    expect(latest().url).toBe("/api/events?after=42");
 
     // Still down: the wait doubles (2 s, then 4 s, capped at 8 s).
     latest().fail(2);

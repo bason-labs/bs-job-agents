@@ -10,6 +10,7 @@ import {
   checkUploadFile,
   isApplyBlockedByInjection,
   normalizeAnswerKey,
+  type AnswerQuestionResponse,
   type AppEvent,
   type BotActivity,
   type ChoiceRequest,
@@ -18,6 +19,8 @@ import {
   type MessageCard,
   type ReviewCard,
   type Room,
+  type RunControlResponse,
+  type StepDetail,
   type StepStatus,
   type Task,
   type Upload,
@@ -29,8 +32,9 @@ import type {
   EventFeed,
   EventListener,
   FeedStatus,
-  HealthStatus,
+  HealthState,
   MessagesPage,
+  RunsQuery,
   SendMessageInput,
   TranscriptLine,
   WebApi,
@@ -298,7 +302,7 @@ export class MockBackend implements WebApi, EventFeed {
 
   // ------------------------------------------------------------ WebApi: shell
 
-  async getHealth(): Promise<HealthStatus> {
+  async getHealth(): Promise<HealthState> {
     return { ok: true, reason: null, detail: null };
   }
 
@@ -391,7 +395,7 @@ export class MockBackend implements WebApi, EventFeed {
     return { uploads: structuredClone(uploads), rejected };
   }
 
-  async answerQuestion(taskId: string, input: AnswerInput): Promise<void> {
+  async answerQuestion(taskId: string, input: AnswerInput): Promise<AnswerQuestionResponse> {
     const pause = this.state.pauses[taskId];
     if (!pause || pause.reason.code !== "needs_answer") throw fail(409, "conflict", `task ${taskId} is not waiting for an answer`);
     const q = pause.questions[0];
@@ -426,7 +430,9 @@ export class MockBackend implements WebApi, EventFeed {
       for (const c of m.cards) if (c.type === "question" && c.taskId === taskId && c.question.field === q.field) c.answered = true;
     }
     pause.questions.shift();
+    const next = pause.questions[0] ?? null;
     this.background(sim.afterAnswer(this, pause));
+    return { resumed: next === null, next: next ? structuredClone(next) : null };
   }
 
   async resumeTask(taskId: string, input: { confirmDomain: string | null } = { confirmDomain: null }): Promise<void> {
@@ -465,12 +471,12 @@ export class MockBackend implements WebApi, EventFeed {
 
   // ------------------------------------------------------------ WebApi: runs
 
-  async listRuns() {
-    return structuredClone(
-      Object.values(this.state.runs)
-        .map((r) => r.run)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    );
+  async listRuns(query: RunsQuery = {}) {
+    const runs = Object.values(this.state.runs)
+      .map((r) => r.run)
+      .filter((r) => !query.status || r.status === query.status)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return structuredClone(runs.slice(0, query.limit ?? 50));
   }
 
   async getRun(runId: string) {
@@ -478,21 +484,40 @@ export class MockBackend implements WebApi, EventFeed {
     return structuredClone({ run: r.run, steps: r.steps, tasks: r.tasks });
   }
 
-  async controlRun(runId: string, action: "pause" | "resume" | "cancel"): Promise<void> {
+  async getStep(stepId: string): Promise<StepDetail> {
+    const r = Object.values(this.state.runs).find((x) => x.steps.some((s) => s.id === stepId));
+    const step = r?.steps.find((s) => s.id === stepId);
+    if (!r || !step) throw fail(404, "not_found", `step ${stepId} not found`);
+    const tasks = r.tasks.filter((t) => t.stepId === stepId);
+    const last = tasks.at(-1)?.output as { selfCheck?: StepDetail["selfCheck"] } | null | undefined;
+    const { preview: _preview, ...row } = step;
+    return structuredClone({
+      step: row,
+      tasks,
+      selfCheck: last?.selfCheck ?? [],
+      durationMs: step.startedAt && step.finishedAt ? Date.parse(step.finishedAt) - Date.parse(step.startedAt) : null,
+    });
+  }
+
+  async controlRun(runId: string, action: "pause" | "resume" | "cancel"): Promise<RunControlResponse> {
     const r = this.runState(runId);
     const status = r.run.status;
     if (status === "done" || status === "failed" || status === "cancelled") throw fail(409, "conflict", `run ${runId} has finished`);
+    let abortedTaskIds: string[] = [];
     if (action === "pause") {
-      if (status === "paused") return;
-      r.run.status = "paused";
-      this.emit({ type: "run.updated", runId, status: "paused" });
+      if (status !== "paused") {
+        r.run.status = "paused";
+        this.emit({ type: "run.updated", runId, status: "paused" });
+      }
     } else if (action === "resume") {
-      if (status !== "paused") return;
-      r.run.status = sim.runIsWaitingOnlyForBa(r) ? "waiting" : "running";
-      this.emit({ type: "run.updated", runId, status: r.run.status });
+      if (status === "paused") {
+        r.run.status = sim.runIsWaitingOnlyForBa(r) ? "waiting" : "running";
+        this.emit({ type: "run.updated", runId, status: r.run.status });
+      }
     } else {
-      sim.cancelRun(this, r);
+      abortedTaskIds = sim.cancelRun(this, r);
     }
+    return structuredClone({ run: r.run, abortedTaskIds });
   }
 
   async rerunStep(stepId: string): Promise<void> {

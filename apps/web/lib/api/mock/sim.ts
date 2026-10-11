@@ -761,10 +761,12 @@ export function skip(core: Core, card: ReviewCard, decision: SkipDecision): void
 
 // ---------------------------------------------------------------- run control (UC-23)
 
-export function cancelRun(core: Core, r: RunState): void {
+/** UC-23 cancel; returns the tasks that got the abort signal. */
+export function cancelRun(core: Core, r: RunState): string[] {
   const runId = r.run.id;
   r.run.status = "cancelled";
-  for (const task of r.tasks) if (task.status === "running" || task.status === "paused") core.finishTask(task, "failed", null, "cancelled by Ba");
+  const aborted = r.tasks.filter((t) => t.status === "running" || t.status === "paused").map((t) => t.id);
+  for (const task of r.tasks) if (aborted.includes(task.id)) core.finishTask(task, "failed", null, "cancelled by Ba");
   for (const step of r.steps) {
     if (!["done", "failed", "skipped", "cancelled"].includes(step.status)) core.setStep(runId, step.stepKey, step.branchKey, "cancelled", { preview: "cancelled" });
   }
@@ -772,6 +774,7 @@ export function cancelRun(core: Core, r: RunState): void {
   for (const [id, p] of Object.entries(core.state.pauses)) if (p.runId === runId) delete core.state.pauses[id];
   r.run.finishedAt = core.nowIso();
   core.emit({ type: "run.finished", runId, status: "cancelled", summary: "cancelled by Ba" });
+  return aborted;
 }
 
 export async function rerun(core: Core, r: RunState, step: { stepKey: string; branchKey: string | null; preview: string | null }): Promise<void> {

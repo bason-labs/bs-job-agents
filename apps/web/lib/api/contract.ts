@@ -7,6 +7,7 @@ import {
   ApproveResponseSchema,
   IdSchema,
   IsoDateTimeSchema,
+  type AnswerQuestionResponse,
   type AppEvent,
   type BotView,
   type ChatSendRequest,
@@ -18,8 +19,11 @@ import {
   type Room,
   type Run,
   type RunControlRequest,
+  type RunControlResponse,
   type RunDetail,
+  type RunStatus,
   type SkipRequest,
+  type StepDetail,
   type UploadsResponse,
 } from "@bs-job-agents/shared";
 import { z } from "zod";
@@ -42,15 +46,14 @@ export interface EventFeed {
 // ---------------------------------------------------------------- local schemas
 
 /**
- * GET /health. Shared HealthSchema is `{ ok: true }`; a degraded start (PM S19) answers
- * `{ ok: false, reason, detail }`, e.g. reason `prompt_version_stale`, detail `{ bot }`.
+ * What the shell knows about the orchestrator: the shared /health body (PM S19: a degraded start
+ * answers 503 `{ ok: false, reason, detail }`), plus the UI's own `unreachable` and `api_error`.
  */
-export const HealthStatusSchema = z.object({
-  ok: z.boolean(),
-  reason: z.string().nullable().optional(),
-  detail: z.unknown().optional(),
-});
-export type HealthStatus = { ok: boolean; reason: string | null; detail: unknown };
+export interface HealthState {
+  ok: boolean;
+  reason: string | null;
+  detail: string | null;
+}
 
 /**
  * POST /review/:jobId/approve. F2/S2 make `applicationId` nullable (no apply link, §7.3b) and the
@@ -75,8 +78,8 @@ export const TranscriptResponseSchema = z.object({ lines: z.array(TranscriptLine
 // ---------------------------------------------------------------- inputs
 
 /**
- * UC-12 answer. The shared AnswerQuestionRequest has no `field`, but the engine answers one
- * question by field (Apply may ask several); the UI sends it, and W3a should accept it.
+ * UC-12 answer: the shared AnswerQuestionRequest plus the card's `question.field` (Apply may ask
+ * several questions; the field says which one this answers).
  */
 export interface AnswerInput {
   field: string;
@@ -89,17 +92,24 @@ export interface ApproveInput {
   cvVersionId: string;
   /** null = Apply writes the intro from the master CV (UC-08 b, PM FYI e). */
   introText: string | null;
-  /** Sent only when the shared ApproveRequestSchema has `dryRun` (see supportsDryRun). */
+  /** Sent only when supportsDryRun says the backend takes it. */
   dryRun?: boolean;
 }
 
 /**
- * Dry-run approvals (§12) are offered only once the shared contract carries `dryRun` (F2 adds it,
- * PM S2). Until then the option stays hidden, so a server that would silently drop the flag can
- * never turn a dry run into a live submission.
+ * Dry-run approvals (§12): the mock takes them; the orchestrator once the shared contract carries
+ * `dryRun` (W3a part 2; part 1 refuses the flag with 400, so it can never turn into a live one).
  */
-export function supportsDryRun(schema: { shape: object } = ApproveRequestSchema): boolean {
-  return "dryRun" in schema.shape;
+export function supportsDryRun(mode: ApiMode, schema: { shape: object } = ApproveRequestSchema): boolean {
+  return mode === "mock" || "dryRun" in schema.shape;
+}
+
+/** POST /review/:jobId/confirm-injection arrives with W3a part 2; the mock has it now. */
+export const supportsConfirmInjection = (mode: ApiMode) => mode === "mock";
+
+export interface RunsQuery {
+  status?: RunStatus;
+  limit?: number;
 }
 
 export interface MessagesPage {
@@ -116,7 +126,8 @@ export interface WebApi {
   readonly events: EventFeed;
 
   // shell
-  getHealth(): Promise<HealthStatus>;
+  /** Never throws: an unreachable orchestrator is `{ ok: false, reason: "unreachable" }`. */
+  getHealth(): Promise<HealthState>;
   /** Sidebar + top bar (bots, rooms, usage, review count, active run). */
   getShellData(): Promise<ShellData>;
   getBot(name: string): Promise<BotSummary | null>;
@@ -129,14 +140,17 @@ export interface WebApi {
   listMessages(roomId: string, opts?: { before?: string; limit?: number }): Promise<MessagesPage>;
   sendMessage(input: SendMessageInput): Promise<Message>;
   uploadFiles(files: File[]): Promise<UploadsResponse>;
-  answerQuestion(taskId: string, input: AnswerInput): Promise<void>;
+  /** Apply resumed, or the next question Lead now asks (one at a time). */
+  answerQuestion(taskId: string, input: AnswerInput): Promise<AnswerQuestionResponse>;
   resumeTask(taskId: string, input?: { confirmDomain: string | null }): Promise<void>;
   chooseOption(input: ChoiceRequest): Promise<void>;
 
   // runs (UC-22, UC-23)
-  listRuns(): Promise<Run[]>;
+  listRuns(query?: RunsQuery): Promise<Run[]>;
   getRun(runId: string): Promise<RunDetail>;
-  controlRun(runId: string, action: RunControlRequest["action"]): Promise<void>;
+  /** UC-22 step drawer detail (GET /steps/:id). */
+  getStep(stepId: string): Promise<StepDetail>;
+  controlRun(runId: string, action: RunControlRequest["action"]): Promise<RunControlResponse>;
   rerunStep(stepId: string): Promise<void>;
   getTranscript(taskId: string): Promise<TranscriptLine[]>;
 

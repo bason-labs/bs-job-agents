@@ -2,7 +2,7 @@ import { connection } from "next/server";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/shell/AppShell";
 import { mockSpeed, resolveApiMode } from "@/lib/api/config";
-import type { HealthStatus, WebApi } from "@/lib/api/contract";
+import type { HealthState, WebApi } from "@/lib/api/contract";
 import { isApiError } from "@/lib/api/errors";
 import { offlineShellData } from "@/lib/api/map";
 import { ApiProvider } from "@/lib/api/react";
@@ -10,7 +10,7 @@ import { getServerApi } from "@/lib/api/server";
 import type { ShellData } from "@/lib/api/types";
 
 /** Sidebar data and health; an unreachable or broken API yields the offline sidebar and a banner. */
-async function loadShell(server: WebApi): Promise<{ data: ShellData; health: HealthStatus }> {
+async function loadShell(server: WebApi): Promise<{ data: ShellData; health: HealthState }> {
   const health = await server.getHealth();
   try {
     return { data: await server.getShellData(), health };

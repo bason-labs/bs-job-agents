@@ -4,7 +4,7 @@ import * as RadixDialog from "@radix-ui/react-dialog";
 import { Menu, RefreshCw } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
-import type { HealthStatus } from "@/lib/api/contract";
+import type { HealthState } from "@/lib/api/contract";
 import { affectsReviewCount, applyShellEvent, subscribeShellEvents } from "@/lib/api/live";
 import { useApi, useAppEvents, useDebounced, useFeedStatus } from "@/lib/api/react";
 import type { ShellData } from "@/lib/api/types";
@@ -20,11 +20,11 @@ import { HealthBanner, PausedBanner } from "./StatusBanners";
 export interface AppShellProps {
   data: ShellData;
   /** The orchestrator's /health when the page was rendered (PM S19 degraded start, unreachable). */
-  health?: HealthStatus;
+  health?: HealthState;
   children: ReactNode;
 }
 
-const HEALTHY: HealthStatus = { ok: true, reason: null, detail: null };
+const HEALTHY: HealthState = { ok: true, reason: null, detail: null };
 
 /**
  * Prototype layout: floating sidebar card + main card with a top bar.
@@ -64,6 +64,15 @@ export function AppShell({ data: initialData, health: initialHealth = HEALTHY, c
       );
     }
     wasOpen.current = feedStatus === "open";
+  }, [api, feedStatus]);
+
+  // While live updates are down, say why: unreachable, or a degraded start (/events answers 503).
+  useEffect(() => {
+    if (api.mode !== "live" || feedStatus !== "reconnecting") return;
+    const check = () => void api.getHealth().then(setHealth);
+    check();
+    const timer = setInterval(check, 15_000);
+    return () => clearInterval(timer);
   }, [api, feedStatus]);
 
   const title = titleForPath(pathname, data.bots, data.rooms);

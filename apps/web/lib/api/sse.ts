@@ -1,8 +1,11 @@
-// Live updates (§11): one EventSource on the orchestrator's /events per tab, shared by every
-// subscriber. The server names each frame (`event: <type>`) and ids it (`id: <events.id>`):
-// - while the browser retries by itself (readyState CONNECTING) it resends Last-Event-ID;
-// - when the source gives up (CLOSED, e.g. the proxy answered 502), we reopen it with backoff
-//   and `?lastEventId=` so the server replays what we missed (engine.replay);
+// Live updates (§11): one EventSource on the orchestrator's /events per tab (through the /api
+// rewrite), shared by every subscriber. The server names each frame (`event: <type>`) and ids it
+// (`id: <events row id>`); a first connection gets no history, only an id-only frame:
+// - while the browser retries by itself (readyState CONNECTING, `retry: 3000`) it resends
+//   Last-Event-ID and the server replays what was missed, in order;
+// - when the source gives up (CLOSED, e.g. the proxy answered 502 or the API runs degraded), we
+//   reopen it with backoff and `?after=<last id seen>`; screens also re-read over REST when the
+//   feed is back (react.tsx), which covers an id we could not see (the id-only frame);
 // - frames are validated with the shared schema (decodeSseData) and de-duplicated by id.
 import { APP_EVENT_TYPES, decodeSseData, type AppEvent } from "@bs-job-agents/shared";
 import type { EventFeed, EventListener, FeedStatus } from "./contract";
@@ -20,7 +23,7 @@ export interface EventSourceLike {
 const CLOSED = 2;
 
 export interface LiveFeedOptions {
-  /** e.g. `/api/orch/events` (same-origin proxy). */
+  /** e.g. `/api/events` (same-origin rewrite to the orchestrator). */
   url: string;
   createEventSource?: (url: string) => EventSourceLike;
   backoff?: { initialMs: number; maxMs: number; factor: number };
@@ -85,7 +88,7 @@ export function createLiveEventFeed(opts: LiveFeedOptions): EventFeed {
 
   const open = () => {
     retryTimer = null;
-    const url = lastId === null ? opts.url : `${opts.url}${opts.url.includes("?") ? "&" : "?"}lastEventId=${encodeURIComponent(lastId)}`;
+    const url = lastId === null ? opts.url : `${opts.url}${opts.url.includes("?") ? "&" : "?"}after=${encodeURIComponent(lastId)}`;
     const es = make(url);
     source = es;
     es.onopen = () => {
