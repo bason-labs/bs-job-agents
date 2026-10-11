@@ -1,7 +1,7 @@
 import { ApiErrorSchema, ApproveResponseSchema, OkResponseSchema, ReviewQueueResponseSchema, type PendingQuestion } from "@bs-job-agents/shared";
 import { qaFailFixture, qaPassFixture } from "@bs-job-agents/shared/fixtures";
 import { afterEach, describe, expect, it } from "vitest";
-import { getApplication, getCvVersion, getJob, getSavedAnswer, getTask, listEvents } from "../../db/index.js";
+import { getApplication, getCvVersion, getJob, getOrCreateLeadRoom, getSavedAnswer, getTask, listEvents, listMessages } from "../../db/index.js";
 import { fake } from "../../engine/testing/index.js";
 import type { TestEngineOptions } from "../../engine/testing/index.js";
 import { FILE_BYTES, createApiHarness, writeDataFile, type ApiHarness } from "../testing.js";
@@ -261,6 +261,13 @@ describe("POST /questions/:taskId/answer (UC-12)", () => {
     expect(second.json()).toEqual({ resumed: true, next: null });
     await x.t.idle();
     expect(getTask(x.t.db, Number(taskId))?.status).toBe("done");
+    // The question cards render as answered after a reload.
+    const room = getOrCreateLeadRoom(x.t.db);
+    const questionCards = listMessages(x.t.db, room.id)
+      .flatMap((m) => ((m.meta?.cards ?? []) as { type: string; taskId?: string; question?: { field: string }; answered?: boolean }[]))
+      .filter((c) => c.type === "question" && c.taskId === String(taskId));
+    expect(questionCards.length).toBeGreaterThan(0);
+    expect(questionCards.every((c) => c.answered === true)).toBe(true);
   });
 
   it("refuses an empty answer (400), an unknown field (400) and a task that waits for nothing (409)", async () => {

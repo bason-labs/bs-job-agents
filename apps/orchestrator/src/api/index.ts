@@ -5,6 +5,8 @@ import type { ApiContext } from "./context.js";
 import { applicationRoutes } from "./routes/applications.js";
 import { botRoutes } from "./routes/bots.js";
 import { chatRoutes } from "./routes/chat.js";
+import { proposalRoutes } from "./routes/proposals.js";
+import { transcriptRoutes } from "./routes/transcripts.js";
 import { criteriaRoutes } from "./routes/criteria.js";
 import { engineRoutes } from "./routes/engines.js";
 import { eventRoutes } from "./routes/events.js";
@@ -39,6 +41,8 @@ export function registerRoutes(app: FastifyInstance, ctx: ApiContext, opts: Rout
   masterCvRoutes(app, ctx);
   roomRoutes(app, ctx);
   chatRoutes(app, ctx);
+  proposalRoutes(app, ctx);
+  transcriptRoutes(app, ctx);
 }
 
 export type { ApiConfig, ApiContext, EventHub, OrchestratorState, Recovered } from "./context.js";

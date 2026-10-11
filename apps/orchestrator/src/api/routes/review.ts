@@ -22,6 +22,7 @@ import { requireDb, requireEngine, type ApiContext } from "../context.js";
 import { badRequest, conflict, notFound } from "../errors.js";
 import { idParam, parseWith, respond } from "../http.js";
 import { reviewQueue } from "../views/review.js";
+import { cardsOf, messagesWithQuestionCards, updateMessageCards } from "../chat/messages.js";
 
 type JobParams = { Params: { jobId: string } };
 
@@ -104,6 +105,18 @@ export function reviewRoutes(app: FastifyInstance, ctx: ApiContext): void {
       throw conflict(`task ${taskId} is not waiting for an answer`);
     }
     const r = engine.answerQuestion(taskId, { field, mode: body.mode, value: body.value, remember: body.remember });
+    markQuestionAnswered(engine.db, taskId, field);
     return respond(AnswerQuestionResponseSchema, r);
+  });
+}
+
+/** The question card for `field` turns answered, so a reloaded chat shows it settled (UC-12). */
+function markQuestionAnswered(db: Db, taskId: number, field: string): void {
+  db.transaction((tx) => {
+    for (const message of messagesWithQuestionCards(tx, taskId)) {
+      const cards = cardsOf(message);
+      const next = cards.map((c) => (c.type === "question" && c.taskId === String(taskId) && c.question.field === field ? { ...c, answered: true } : c));
+      if (JSON.stringify(next) !== JSON.stringify(cards)) updateMessageCards(tx, message, next);
+    }
   });
 }
