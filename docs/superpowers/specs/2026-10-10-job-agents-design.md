@@ -602,7 +602,7 @@ Format for each: **Trigger → Preconditions → Main flow → Alternate flows �
   - With no schedules left, the screen shows an empty state with "Create one".
 
 ### UC-21b: Edit search criteria on the dashboard
-- **Trigger:** Ba opens **Search criteria** from the sidebar, or the "Edit criteria" button on a run card or schedule.
+- **Trigger:** Ba opens **Search criteria** from the sidebar, or the "Edit criteria" link in a schedule's editor (as in the approved prototype; run cards have none).
 - **Main flow:** Ba edits the profile fields (§7.5) in a form; saving creates a new profile version. The next scheduled or chat-started scan uses it. A run already in progress keeps the version it started with.
 - **Alternate flows:**
   - (a) In chat Ba says "also include Đà Nẵng" → Lead asks: "just this run, or save to your criteria?" Saving updates the profile (new version).
