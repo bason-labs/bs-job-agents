@@ -2,21 +2,22 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/components/ui";
-import { createFixtureCriteriaData } from "@/components/criteria/data";
-import { createFixtureSchedulesData, type SchedulesData } from "./data";
-import { SchedulesScreen } from "./SchedulesScreen";
+import { TEST_NOW, testMock } from "@/lib/api/mock/testing";
+import { ApiProvider } from "@/lib/api/react";
+import { createSchedulesData, readSchedules, type SchedulesData } from "./data";
+import { SchedulesLive, SchedulesScreen } from "./SchedulesScreen";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
-const NOW = new Date("2026-10-11T03:00:00Z");
+const NOW = TEST_NOW;
 
-async function setup(data: SchedulesData = createFixtureSchedulesData({ now: () => NOW, criteria: createFixtureCriteriaData() })) {
-  const [initial, profiles] = await Promise.all([data.list(), data.profiles()]);
+async function setup(data: SchedulesData = createSchedulesData(testMock())) {
+  const { schedules, profiles } = await readSchedules(data);
   const user = userEvent.setup();
   render(
     <ToastProvider>
-      <SchedulesScreen initial={initial} profiles={profiles} data={data} />
+      <SchedulesScreen initial={schedules} profiles={profiles} data={data} />
     </ToastProvider>,
   );
   return { user, data };
@@ -89,7 +90,7 @@ describe("SchedulesScreen (UC-21)", () => {
 
   it("says so when Undo comes after the API's 6 s window (409 undo_window_passed)", async () => {
     let t = NOW.getTime();
-    const { user } = await setup(createFixtureSchedulesData({ now: () => new Date(t), criteria: createFixtureCriteriaData() }));
+    const { user } = await setup(createSchedulesData(testMock({ now: () => t })));
     await user.click(screen.getByRole("button", { name: "Delete Weekday morning scan" }));
     await user.click(within(screen.getByTestId("confirm-dialog")).getByRole("button", { name: "Delete schedule" }));
     await waitFor(() => expect(rows()).toHaveLength(0));
@@ -102,7 +103,7 @@ describe("SchedulesScreen (UC-21)", () => {
   it("Run now opens the new run's flow, and reports an overlap as a toast", async () => {
     const { user } = await setup();
     await user.click(screen.getByRole("button", { name: "Run now" }));
-    expect(push).toHaveBeenCalledWith("/flows/run_14");
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/flows/13"));
     await user.click(screen.getByRole("button", { name: "Run now" }));
     expect(await screen.findByText("“Weekday morning scan” is still running — a schedule never overlaps its previous run.")).toBeInTheDocument();
     expect(push).toHaveBeenCalledTimes(1);
@@ -113,5 +114,23 @@ describe("SchedulesScreen (UC-21)", () => {
     await user.click(screen.getByRole("switch", { name: "Weekday morning scan enabled" }));
     await waitFor(async () => expect((await data.list())[0]!.enabled).toBe(false));
     expect(within(rows()[0]!).getByTestId("schedule-summary")).toHaveTextContent("next: off");
+  });
+});
+
+describe("SchedulesLive (the page)", () => {
+  it("reads through the api and shows the last result after a scheduled scan fires", async () => {
+    const mock = testMock();
+    render(
+      <ApiProvider mode="mock" api={mock}>
+        <ToastProvider>
+          <SchedulesLive />
+        </ToastProvider>
+      </ApiProvider>,
+    );
+    await waitFor(() => expect(rows()).toHaveLength(1));
+    expect(within(rows()[0]!).getByTestId("schedule-summary")).toHaveTextContent("last: Fri 9 Oct · 3 to review");
+    await mock.request("POST", "/schedules/:id/run", { params: { id: "sch_1" } });
+    await waitFor(() => expect(within(rows()[0]!).getByTestId("schedule-summary")).toHaveTextContent("last: Sun 11 Oct · scanning"));
+    await mock.idle();
   });
 });

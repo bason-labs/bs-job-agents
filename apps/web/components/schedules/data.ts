@@ -1,30 +1,30 @@
-// Data access for the Schedules screen (UC-21, spec §11 Schedules).
-//
-// Screens import `schedulesData` from here and nothing else, so wiring the real API is a
-// one-line change: replace the fixture implementation below with an adapter over
-// lib/api (W3b's typed client). Shapes are the shared API schemas.
+// Data access for the Schedules screen (UC-21, spec §11 Schedules): an adapter over lib/api (the
+// orchestrator in live mode, the mock backend otherwise). Shapes are the shared API schemas:
 //   GET    /schedules             → SchedulesResponseSchema
-//   POST   /schedules             → body ScheduleCreateRequestSchema → ScheduleView
-//   PATCH  /schedules/:id         → body ScheduleUpdateRequestSchema → ScheduleView
+//   POST   /schedules             → 201 body ScheduleCreateRequestSchema → ScheduleView (400 when invalid)
+//   PATCH  /schedules/:id         → body ScheduleUpdateRequestSchema → ScheduleView; 404 when gone
 //   DELETE /schedules/:id         → ScheduleDeleteResponseSchema (soft delete, 6 s Undo)
 //   POST   /schedules/:id/restore → ScheduleView; 409 { reason: "undo_window_passed" } after 6 s
 //   POST   /schedules/:id/run     → ScheduleRunNowResponseSchema (may answer "overlap")
-//   GET    /criteria              → the active profile, for the "Search criteria" options
+//   GET    /criteria/profiles     → the "Search criteria" options (null = the active profile)
+"use client";
+
 import {
-  LIMITS,
-  ScheduleCreateRequestSchema,
-  ScheduleUpdateRequestSchema,
+  API_ROUTES,
+  ScheduleDeleteResponseSchema,
+  ScheduleRunNowResponseSchema,
+  ScheduleViewSchema,
+  SchedulesResponseSchema,
   type ScheduleCreateRequest,
-  type ScheduleDeleteResponseSchema,
-  type ScheduleRunNowResponseSchema,
   type ScheduleUpdateRequest,
   type ScheduleView,
+  type SearchProfile,
 } from "@bs-job-agents/shared";
-import { scheduleFixture } from "@bs-job-agents/shared/fixtures";
+import { useMemo } from "react";
 import type { z } from "zod";
-import { criteriaData, type CriteriaData } from "@/components/criteria/data";
-import { FixtureApiError } from "./apiError";
-import { cronToRepeat } from "./logic";
+import { createCriteriaData } from "@/components/criteria/data";
+import type { WebApi } from "@/lib/api/contract";
+import { useApi } from "@/lib/api/react";
 
 export type ScheduleDeleteResponse = z.infer<typeof ScheduleDeleteResponseSchema>;
 export type ScheduleRunNowResponse = z.infer<typeof ScheduleRunNowResponseSchema>;
@@ -47,97 +47,50 @@ export interface SchedulesData {
   runNow(id: string): Promise<ScheduleRunNowResponse>;
 }
 
-const VN_OFFSET_MS = 7 * 60 * 60 * 1000; // Asia/Ho_Chi_Minh has no DST
-
-/** Next fire time of a simple cron (fixture only; the orchestrator uses croner). */
-export function fixtureNextRun(cron: string, now: Date): string | null {
-  const r = cronToRepeat(cron);
-  if (r.freq === "custom") return null;
-  const [hh, mm] = r.time.split(":").map(Number) as [number, number];
-  const local = new Date(now.getTime() + VN_OFFSET_MS); // wall clock in Vietnam, read with getUTC*
-  for (let i = 0; i <= 7; i++) {
-    const day = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + i, hh, mm));
-    const at = day.getTime() - VN_OFFSET_MS;
-    if (at <= now.getTime()) continue;
-    const dow = day.getUTCDay();
-    const ok = r.freq === "daily" || (r.freq === "weekdays" && dow >= 1 && dow <= 5) || (r.freq === "weekly" && ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dow] === r.day);
-    if (ok) return new Date(at).toISOString();
-  }
-  return null;
+/**
+ * The modal's options: the active profile (null: a schedule follows whatever version is active when
+ * it fires) first, then every other profile pinned to its newest version.
+ */
+export function profileOptions(profiles: readonly SearchProfile[]): ProfileOption[] {
+  const active = profiles.find((p) => p.active);
+  const options: ProfileOption[] = [{ id: null, label: active ? `${active.name} (v${active.version})` : "Active criteria" }];
+  for (const p of profiles) if (p.name !== active?.name) options.push({ id: p.id, label: `${p.name} (v${p.version})` });
+  return options;
 }
 
-/** In-memory stand-in seeded from the shared fixtures (no orchestrator needed). */
-export function createFixtureSchedulesData(
-  opts: { seed?: ScheduleView[]; criteria?: CriteriaData; now?: () => Date } = {},
-): SchedulesData {
-  const now = opts.now ?? (() => new Date());
-  const criteria = opts.criteria ?? criteriaData;
-  const rows: ScheduleView[] = structuredClone(
-    opts.seed ?? [{ ...scheduleFixture, nextRunAt: "2026-10-12T09:00:00+07:00", lastResult: "Fri 9 Oct · 3 to review" }],
-  );
-  let nextId = rows.length + 1;
-  let nextRun = 14;
-  /** Runs started by "Run now" still in progress (a schedule never overlaps its previous run). */
-  const running = new Set<string>();
-
-  const find = (id: string) => {
-    const row = rows.find((r) => r.id === id);
-    if (!row) throw new FixtureApiError(404, "not_found", `schedule ${id} not found`);
-    return row;
-  };
-
+export function createSchedulesData(api: Pick<WebApi, "request">): SchedulesData {
+  const criteria = createCriteriaData(api);
   return {
     async list() {
-      return structuredClone(rows.filter((r) => r.deletedAt === null));
+      return (await api.request("GET", API_ROUTES.schedules, { schema: SchedulesResponseSchema })).schedules;
     },
     async profiles() {
-      const active = await criteria.get();
-      return [{ id: null, label: `${active.name} (v${active.version})` }];
+      return profileOptions(await criteria.profiles());
     },
-    async create(body) {
-      const req = ScheduleCreateRequestSchema.parse(body);
-      const row: ScheduleView = {
-        id: `sch_${nextId++}`,
-        ...req,
-        lastRunId: null,
-        nextRunAt: req.enabled ? fixtureNextRun(req.cron, now()) : null,
-        deletedAt: null,
-        lastResult: null,
-      };
-      rows.push(row);
-      return structuredClone(row);
+    create(body) {
+      return api.request("POST", API_ROUTES.schedules, { body, schema: ScheduleViewSchema });
     },
-    async update(id, body) {
-      const req = ScheduleUpdateRequestSchema.parse(body);
-      const row = find(id);
-      Object.assign(row, req);
-      row.nextRunAt = row.enabled ? fixtureNextRun(row.cron, now()) : null;
-      return structuredClone(row);
+    update(id, body) {
+      return api.request("PATCH", API_ROUTES.schedule, { params: { id }, body, schema: ScheduleViewSchema });
     },
-    async remove(id) {
-      const row = find(id);
-      const at = now();
-      row.deletedAt = at.toISOString();
-      return { deletedAt: row.deletedAt, undoUntil: new Date(at.getTime() + LIMITS.scheduleUndoMs).toISOString() };
+    remove(id) {
+      return api.request("DELETE", API_ROUTES.schedule, { params: { id }, schema: ScheduleDeleteResponseSchema });
     },
-    async restore(id) {
-      const row = find(id);
-      if (row.deletedAt === null) throw new FixtureApiError(409, "conflict", `schedule ${id} is not deleted`);
-      if (now().getTime() > Date.parse(row.deletedAt) + LIMITS.scheduleUndoMs) {
-        rows.splice(rows.indexOf(row), 1); // purged, like the API
-        throw new FixtureApiError(409, "conflict", `the 6 s undo window for schedule ${id} has passed`, { reason: "undo_window_passed" });
-      }
-      row.deletedAt = null;
-      row.nextRunAt = row.enabled ? fixtureNextRun(row.cron, now()) : null;
-      return structuredClone(row);
+    restore(id) {
+      return api.request("POST", API_ROUTES.scheduleRestore, { params: { id }, body: {}, schema: ScheduleViewSchema });
     },
-    async runNow(id) {
-      find(id);
-      if (running.has(id)) return { started: false, reason: "overlap" };
-      running.add(id);
-      return { started: true, runId: `run_${nextRun++}` };
+    runNow(id) {
+      return api.request("POST", API_ROUTES.scheduleRunNow, { params: { id }, body: {}, schema: ScheduleRunNowResponseSchema });
     },
   };
 }
 
-export const schedulesData: SchedulesData = createFixtureSchedulesData();
+export function useSchedulesData(): SchedulesData {
+  const api = useApi();
+  return useMemo(() => createSchedulesData(api), [api]);
+}
+
+export async function readSchedules(data: SchedulesData): Promise<{ schedules: ScheduleView[]; profiles: ProfileOption[] }> {
+  const [schedules, profiles] = await Promise.all([data.list(), data.profiles()]);
+  return { schedules, profiles };
+}
