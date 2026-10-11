@@ -124,6 +124,8 @@ function blockedScan(reason: "needs_login" | "captcha", site: string): ResearchS
     jobs: [],
     pageViews: 1,
     blocked: { reason, site, detail: reason === "needs_login" ? "the site shows a sign-in wall" : "a CAPTCHA is shown" },
+    injectionSuspected: false,
+    injectionNote: null,
     selfCheck: [pass("Every job has a reachable URL")],
     memoryNotes: [],
   };
@@ -151,6 +153,8 @@ function pausedApply(
         ? { reason: "needs_answer", site: null, detail: "required fields with no saved answer" }
         : { reason: pause.reason, site: pause.site, detail: pause.detail ?? null },
     jdSnapshot: null,
+    injectionSuspected: false,
+    injectionNote: null,
     selfCheck: [pass("All required fields are filled")],
     memoryNotes: [],
   };

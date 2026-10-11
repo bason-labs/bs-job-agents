@@ -87,6 +87,8 @@ export interface DedupeResult {
    */
   fresh: Job[];
   duplicates: { candidate: JobCandidateInput; job: Job; matchedBy: DuplicateMatch }[];
+  /** PM2 S11 (additive): the job of each candidate, in input order (fresh or duplicate). */
+  jobs: Job[];
 }
 
 /** Leading job id of a branch key: `42` or `42:vi` → 42 (0 when not numeric). */
@@ -133,7 +135,7 @@ export function dedupeCandidates(
   opts: ClockOpts & { includeSkipped?: boolean; excludeRunId?: number; ownedJobIds?: ReadonlySet<number> } = {},
 ): DedupeResult {
   return db.transaction((tx) => {
-    const result: DedupeResult = { fresh: [], duplicates: [] };
+    const result: DedupeResult = { fresh: [], duplicates: [], jobs: [] };
     const owned = opts.ownedJobIds ?? jobIdsInActiveRuns(tx, { excludeRunId: opts.excludeRunId });
     const seen = new Set<number>();
     for (const candidate of candidates) {
@@ -144,6 +146,7 @@ export function dedupeCandidates(
         ((opts.includeSkipped === true && r.job.status === "skipped") || (r.job.status === "new" && !owned.has(r.job.id)));
       if (r.created || resurfaced) result.fresh.push(r.job);
       else result.duplicates.push({ candidate, job: r.job, matchedBy: r.matchedBy ?? "canonical_url" });
+      result.jobs.push(r.job);
       seen.add(r.job.id);
     }
     return result;

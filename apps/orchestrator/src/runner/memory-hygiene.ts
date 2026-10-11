@@ -77,6 +77,7 @@ const hostAllowed = (host: string, sites: readonly string[]): boolean =>
 /** Whitespace and control characters collapse to one space. */
 export function cleanMemoryNote(note: string): string {
   return note
+    // eslint-disable-next-line no-control-regex -- control characters are exactly what is removed here
     .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ")
     .replace(/\s+/g, " ")
     .trim();

@@ -9,6 +9,7 @@ import { LIMITS, type JobCandidate, type ResearchScanOutput } from "@bs-job-agen
 import { dedupeCandidates, getApplicationByJob, getCompany, getJob, setJobStatus, type Conn, type Job } from "../db/index.js";
 import type { RunCtx } from "./context.js";
 import { invalidInput } from "./errors.js";
+import { flagJobs, runReadReportedInjection, suspiciousCandidateIndexes } from "./injection.js";
 import type { FilterStepOutput, JobRef, JoinStepOutput } from "./state.js";
 
 export function jobRef(conn: Conn, job: Job): JobRef {
@@ -33,6 +34,8 @@ export function dedupeFilter(conn: Conn, ctx: RunCtx, from: JoinStepOutput, opti
       setJobStatus(conn, job.id, "selected");
       items.push(jobRef(conn, job));
     }
+    // PM2 S11: the page this link or file was read from tried to instruct Research.
+    if (runReadReportedInjection(conn, ctx)) flagJobs(conn, items.map((i) => ({ id: i.jobId })));
     return { items, alreadyApplied };
   }
   const candidates = from.results.flatMap((r) => (r.output as Partial<ResearchScanOutput> | null)?.jobs ?? []) as JobCandidate[];
@@ -41,6 +44,9 @@ export function dedupeFilter(conn: Conn, ctx: RunCtx, from: JoinStepOutput, opti
   // The run's own jobs count as taken in a follow-up pass (PM2 M5): the main pass may still be
   // scoring one the late source found too. Only the main pass leaves its own run out (UC-23 re-run).
   const r = dedupeCandidates(conn, candidates, { now, ...(passKey === "" ? { excludeRunId: ctx.run.id } : {}), includeSkipped });
+  // PM2 S11: jobs from a scan output that reported an injection are flagged (UC-07 b path).
+  const suspicious = suspiciousCandidateIndexes(from);
+  flagJobs(conn, r.jobs.filter((_, i) => suspicious.has(i)));
   return { items: r.fresh.map((job) => jobRef(conn, job)), candidates: candidates.length, duplicates: r.duplicates.length };
 }
 

@@ -26,6 +26,7 @@ import {
   SubmissionRefusedError,
   addApprovalDomain,
   appendMessage,
+  flagJobInjection,
   getApplication,
   getCompany,
   getCvVersion,
@@ -334,6 +335,12 @@ export function onApplyDone(core: EngineCore, conn: Conn, task: Task, output: Ap
   updateAction(core, conn, row, { outcome: record.status === "submitted" ? "submitted" : "needs_check", record });
 }
 
+/** PM2 S11: Apply reported an injection on the job's page: flag the job (Apply stays off until Ba confirms). */
+export function flagApplyJob(conn: Conn, task: Task): void {
+  const app = getApplication(conn, Number((task.input as Partial<ApplyPromptInput> | null)?.applicationId));
+  if (app) flagJobInjection(conn, app.jobId);
+}
+
 /** After a spawn, anything but a clean result or a pause: needs_check, never retried (UC-11 c, PM FYI c). */
 export function onApplyFailedAfterSpawn(core: EngineCore, conn: Conn, task: Task, error: string): void {
   const row = actionRowOf(conn, task);
@@ -571,6 +578,9 @@ export async function verifyRecordFiles(core: EngineCore, applicationId: number,
 /** The status-history note when Apply said submitted but its proof is not on disk (PM2 M1). */
 export const SCREENSHOTS_NOT_CAPTURED = "screenshots not captured";
 
+/** The status-history note when Apply reported an injection attempt on the page (PM2 S11). */
+export const INJECTION_SUSPECTED = "injection suspected";
+
 /**
  * §9.1 / UC-11 step 9: the record from Apply's result, written right after Apply reported it,
  * with the orchestrator's hash of the copy Apply uploaded and the token the spawn used. When
@@ -630,8 +640,14 @@ export function writeSubmissionRecord(
   // One file is one proof: a confirmation screenshot that is the pre-submit one does not count; blank text is no text.
   const confirmation = files.confirmation !== null && files.confirmation !== files.preSubmit ? files.confirmation : null;
   const proofMissing = files.preSubmit === null || (confirmation === null && !output.confirmationText?.trim());
-  const status = output.status === "submitted" && !app.dryRun && sameFile && !proofMissing ? "submitted" : "needs_check";
-  const note = output.status === "submitted" && !app.dryRun && proofMissing ? SCREENSHOTS_NOT_CAPTURED : null;
+  // PM2 S11: a page that tried to instruct Apply means Ba checks what was sent.
+  const injection = output.injectionSuspected === true;
+  const status = output.status === "submitted" && !app.dryRun && sameFile && !proofMissing && !injection ? "submitted" : "needs_check";
+  const note = injection
+    ? `${INJECTION_SUSPECTED}: ${output.injectionNote?.trim() || "the page tried to instruct Apply"}`
+    : output.status === "submitted" && !app.dryRun && proofMissing
+      ? SCREENSHOTS_NOT_CAPTURED
+      : null;
   try {
     // recordSubmission runs in its own savepoint: a refusal writes nothing.
     const rec = recordSubmission(conn, { applicationId: appId, status, dryRun: app.dryRun, submission, snapshot, note }, { now: core.now() });

@@ -64,7 +64,7 @@ describe("apply-to-file (§7.3b, UC-24)", () => {
     const t = await createTestEngine();
     t.files.write("/data/uploads/7-JD_NovaPay.pdf", "%PDF a JD");
     const upload = createUpload(t.db, { filename: "JD_NovaPay.pdf", mime: "application/pdf", size: 9, path: "uploads/7-JD_NovaPay.pdf", sha256: "f".repeat(64) });
-    t.runner.script({ bot: "research", kind: "file", result: fake.ok({ jobs: [{ ...NOVAPAY, source: "file", url: null }], pageViews: 0, blocked: null, selfCheck: [pass("x")], memoryNotes: [] }) });
+    t.runner.script({ bot: "research", kind: "file", result: fake.ok({ jobs: [{ ...NOVAPAY, source: "file", url: null }], pageViews: 0, blocked: null, injectionSuspected: false, injectionNote: null, selfCheck: [pass("x")], memoryNotes: [] }) });
     const run = t.engine.startWorkflow({ workflow: "apply-to-file", params: { uploadId: String(upload.id), searchProfileId: null } }, { trigger: "chat" });
     await t.idle();
     const call = t.runner.callsFor("research.file")[0]!;
@@ -93,7 +93,7 @@ describe("an uploaded file's name never reaches the trusted prompt part (PM2 M4)
     const t = await createTestEngine();
     t.files.write("/data/uploads/9-x", "%PDF a JD");
     const upload = createUpload(t.db, { filename, mime, size: 9, path: "uploads/9-x", sha256: "f".repeat(64) });
-    t.runner.script({ bot: "research", kind: "file", result: fake.ok({ jobs: [{ ...NOVAPAY, source: "file", url: null }], pageViews: 0, blocked: null, selfCheck: [pass("x")], memoryNotes: [] }) });
+    t.runner.script({ bot: "research", kind: "file", result: fake.ok({ jobs: [{ ...NOVAPAY, source: "file", url: null }], pageViews: 0, blocked: null, injectionSuspected: false, injectionNote: null, selfCheck: [pass("x")], memoryNotes: [] }) });
     t.engine.startWorkflow({ workflow: "apply-to-file", params: { uploadId: String(upload.id), searchProfileId: null } }, { trigger: "chat" });
     await t.idle();
     const call = t.runner.callsFor("research.file")[0]!;

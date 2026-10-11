@@ -51,6 +51,7 @@ import {
 import type { PermissionDenial, RunnerEvent, RunnerResult, RunnerTask } from "../runner/types.js";
 import {
   applyStoppedBeforeSpawn,
+  flagApplyJob,
   isApplyPause,
   moveApplication,
   onApplyDone,
@@ -67,6 +68,7 @@ import { errorMessage } from "./errors.js";
 import { onCheckerDone, onProducerDone, type CvExport } from "./gate.js";
 import type { GuardBlock } from "./ports.js";
 import { isConversationTask, sinkContext, sinkFailed } from "./conversations.js";
+import { injectionDetail, reportedInjection } from "./injection.js";
 import { noticePause, noticeTaskFailed } from "./notices.js";
 import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, postLeadMessage, stillRunning } from "./task-events.js";
 import { hostOfUrl, pauseSite, siteBlocksOf, siteKey, type SiteBlock } from "./sites.js";
@@ -80,6 +82,11 @@ interface SafetyNote {
   detail: string | null;
   /** A runner denial from a guard hook (the guard log has the same block). */
   fromHook?: boolean;
+  /**
+   * PM2 S8: false = logged, but not a violation by the bot's own conduct (its own injection report,
+   * the after-the-fact URL check), so it never demotes the bot.
+   */
+  demote?: boolean;
 }
 
 /** What one attempt came to, after the engine checked the runner's result. */
@@ -337,6 +344,7 @@ export class TaskQueue {
     const blocks = await this.readGuardLog(prepared);
     outcome = this.withGuardLog(outcome, blocks);
     outcome = this.checkSiteGuard(task, outcome, siteBlocksOf(blocks, result));
+    outcome = this.checkInjectionReport(task, outcome);
     if (outcome.kind === "ok" && prepared.apply) {
       const appId = Number((task.input as { applicationId?: unknown } | null)?.applicationId);
       if (Number.isInteger(appId)) outcome = { ...outcome, recordFiles: await verifyRecordFiles(core, appId, outcome.output as ApplyOutput) };
@@ -618,6 +626,25 @@ export class TaskQueue {
     };
   }
 
+  /**
+   * PM2 S11 (§10.2 rule 4): the bot reported an injection attempt. It is logged as a safety event
+   * (not a violation of its own, so no demotion). A paused Apply stops (needs_check, no retry): a
+   * page that tries to instruct it is not one to keep filling in. A finished Apply is recorded as
+   * needs_check (writeSubmissionRecord); Research's jobs are flagged when they are stored.
+   */
+  private checkInjectionReport(task: Task, outcome: Outcome): Outcome {
+    if (outcome.kind !== "ok" && outcome.kind !== "paused") return outcome;
+    const key = taskKey(task.botName, task.kind);
+    const report = reportedInjection(key, outcome.output);
+    if (!report) return outcome;
+    const detail = injectionDetail(report.note);
+    const safety: SafetyNote[] = [...(outcome.safety ?? []), { reason: "injection_flagged", action: key, detail, demote: false }];
+    if (key === "apply.submit" && outcome.kind === "paused") {
+      return { kind: "failed", error: `Apply reported a suspected injection: ${detail}`, output: outcome.output, retryable: false, safety };
+    }
+    return { ...outcome, safety };
+  }
+
   classify(task: Task, bot: EffectiveBot, result: RunnerResult): Outcome {
     const key = taskKey(task.botName, task.kind);
     switch (result.status) {
@@ -780,6 +807,8 @@ export class TaskQueue {
       const current = getTask(tx, task.id);
       for (const s of outcome.safety ?? []) {
         emitSafetyDenied(core, tx, { botName: task.botName, taskId: task.id, action: s.action, reason: s.reason, detail: s.detail });
+        // PM2 S11: Apply met an injection on the job's page: the job is flagged like QA's flag.
+        if (s.reason === "injection_flagged" && key === "apply.submit") flagApplyJob(tx, task);
         if (s.reason === "protected_page_changed") {
           // §6.2: any change to a protected page alerts Ba; Figma's version history can restore it.
           postLeadMessage(core, tx, `A protected Figma page changed during a CV task, so I stopped it. ${s.detail ?? ""} Please check the file and restore the page from Figma's version history.`.trim(), {
