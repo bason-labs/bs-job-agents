@@ -1,4 +1,4 @@
-import { ApiErrorSchema, OkResponseSchema, ReviewQueueResponseSchema, type PendingQuestion } from "@bs-job-agents/shared";
+import { ApiErrorSchema, ApproveResponseSchema, OkResponseSchema, ReviewQueueResponseSchema, type PendingQuestion } from "@bs-job-agents/shared";
 import { qaFailFixture, qaPassFixture } from "@bs-job-agents/shared/fixtures";
 import { afterEach, describe, expect, it } from "vitest";
 import { getApplication, getCvVersion, getJob, getSavedAnswer, getTask, listEvents } from "../../db/index.js";
@@ -82,10 +82,33 @@ describe("GET /review (§11 Review queue)", () => {
     writeDataFile(h.dataDir, "master-cv.yaml", "version: 9\nfacts: []\n");
     const [card] = await queue(h);
     expect(card!.flags).toMatchObject({ injectionFlagged: true, masterChanged: true, qaPassed: true });
-    // Ba confirms on the card first (that route comes with F2's audited engine seam).
-    const res = await h.post(`/review/${card!.job.id}/approve`, { cvVersionId: card!.cvOptions[0]!.cvVersion.id, introText: null });
+    const approveBody = { cvVersionId: card!.cvOptions[0]!.cvVersion.id, introText: null };
+    const res = await h.post(`/review/${card!.job.id}/approve`, approveBody);
     expect(res.statusCode).toBe(403);
     expect(ApiErrorSchema.parse(res.json()).error.code).toBe("forbidden");
+    // Ba confirms on the card first (UC-07 b), audited as injection.confirmed; then Approve works.
+    const confirm = await h.post(`/review/${card!.job.id}/confirm-injection`);
+    expect(confirm.statusCode).toBe(200);
+    expect(OkResponseSchema.parse(confirm.json())).toEqual({ ok: true });
+    expect(h.t.events("injection.confirmed")).toEqual([expect.objectContaining({ jobId: card!.job.id, runId: card!.runId })]);
+    expect((await queue(h))[0]!.flags.injectionFlagged).toBe(false);
+    expect((await h.post(`/review/${card!.job.id}/approve`, approveBody)).statusCode).toBe(200);
+  });
+
+  it("confirm-injection on a job that is not flagged is a conflict (409); an unknown job is 404", async () => {
+    const x = await toReview();
+    const [card] = await queue(x);
+    const res = await x.post(`/review/${card!.job.id}/confirm-injection`);
+    expect(res.statusCode).toBe(409);
+    expect(x.t.events("injection.confirmed")).toEqual([]);
+    expect((await x.post("/review/999/confirm-injection")).statusCode).toBe(404);
+  });
+
+  it("confirm-injection is a state change: refused without the CSRF header (S18)", async () => {
+    const x = await toReview();
+    const [card] = await queue(x);
+    const res = await x.app.inject({ method: "POST", url: `/review/${card!.job.id}/confirm-injection`, headers: { host: "127.0.0.1:4100", origin: "http://localhost:3000" } });
+    expect(res.statusCode).toBe(403);
   });
 
   it("marks a card whose QA did not pass in 3 rounds as escalated (UC-07 a), with every round", async () => {
@@ -122,12 +145,23 @@ describe("POST /review/:jobId/approve (UC-08)", () => {
     expect(ApiErrorSchema.parse(rerun.json()).error.code).toBe("forbidden");
   });
 
-  it("a dry-run approval is refused until it is supported, never turned into a live one", async () => {
+  it("a dry-run approval (§12) runs Apply with dryRun: fill and screenshot, never a live submit", async () => {
     const x = await toReview();
     const [card] = await queue(x);
     const res = await x.post(`/review/${card!.job.id}/approve`, { cvVersionId: card!.cvOptions[0]!.cvVersion.id, introText: null, dryRun: true });
+    expect(res.statusCode).toBe(200);
+    expect(ApproveResponseSchema.parse(res.json())).toMatchObject({ applicationId: expect.any(String), taskId: expect.any(String), reapproval: false });
+    await x.t.idle();
+    const calls = x.t.runner.callsFor("apply.submit");
+    expect(calls).toHaveLength(1);
+    expect((calls[0]!.input as { dryRun?: unknown }).dryRun).toBe(true);
+  });
+
+  it("a dryRun that is not a boolean is refused (400) and approves nothing", async () => {
+    const x = await toReview();
+    const [card] = await queue(x);
+    const res = await x.post(`/review/${card!.job.id}/approve`, { cvVersionId: card!.cvOptions[0]!.cvVersion.id, introText: null, dryRun: "yes" });
     expect(res.statusCode).toBe(400);
-    expect(ApiErrorSchema.parse(res.json()).error.message).toMatch(/dry run/);
     expect(getApplication(x.t.db, 1)).toBeUndefined();
     expect(x.t.tasks("apply.submit")).toEqual([]);
   });

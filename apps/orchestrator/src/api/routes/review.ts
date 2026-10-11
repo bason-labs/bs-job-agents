@@ -1,14 +1,14 @@
 // Review queue and Ba's decisions (UC-07/08/09/10) and his answers to Apply's questions (UC-12).
 // Every decision goes through the engine: the application, its single-use token and the Apply task
 // are created in one transaction, and the token's value never leaves the orchestrator (S18).
-// UC-07 b's confirm-injection waits for F2's audited Engine.confirmInjection (W3a part 2).
+// UC-07 b: Ba confirms a suspected injection on the card (Engine.confirmInjection, audited as
+// injection.confirmed) before Approve is allowed. §12: Approve with dryRun fills and screenshots.
 import {
   API_ROUTES,
   AnswerQuestionRequestSchema,
   AnswerQuestionResponseSchema,
   ApproveRequestSchema,
   ApproveResponseSchema,
-  IdSchema,
   OkResponseSchema,
   RequestChangesRequestSchema,
   ReviewQueueResponseSchema,
@@ -25,12 +25,10 @@ import { reviewQueue } from "../views/review.js";
 
 type JobParams = { Params: { jobId: string } };
 
-/**
- * The approve response today: the engine returns no application for an uploaded JD without an
- * apply link (§7.3b), and says when this approval replaced a denied or expired token. F2 makes
- * the shared ApproveResponseSchema's applicationId nullable; W3a part 2 then uses it as is.
- */
-const ApproveResultSchema = ApproveResponseSchema.extend({ applicationId: IdSchema.nullable(), reapproval: z.boolean() });
+/** The API always says whether this approval replaced a denied or expired token. */
+const ApproveResultSchema = ApproveResponseSchema.extend({ reapproval: z.boolean() });
+/** The shared schema would silently drop a mistyped dryRun (turning a dry run into a live one). */
+const ApproveBodySchema = ApproveRequestSchema.strict();
 
 /** A CV version id from the card: a positive integer. */
 function rowId(raw: string, what: string): number {
@@ -60,13 +58,12 @@ export function reviewRoutes(app: FastifyInstance, ctx: ApiContext): void {
   app.post<JobParams>(API_ROUTES.reviewApprove, async (req) => {
     const engine = requireEngine(ctx);
     const jobId = idParam(req.params.jobId, "review card for job");
-    // The shared schema would drop an unknown `dryRun`, turning a dry run into a live submit. Until
-    // the dry-run approval lands (W3a part 2, with F2's schema), it is refused instead.
-    if ((req.body as { dryRun?: unknown } | null | undefined)?.dryRun === true) {
-      throw badRequest("dry run approvals are not available yet; nothing was approved");
-    }
-    const body = parseWith(ApproveRequestSchema, req.body);
-    const r = engine.approve(jobId, { cvVersionId: rowId(body.cvVersionId, "CV version"), introText: body.introText });
+    const body = parseWith(ApproveBodySchema, req.body);
+    const r = engine.approve(jobId, {
+      cvVersionId: rowId(body.cvVersionId, "CV version"),
+      introText: body.introText,
+      ...(body.dryRun === true ? { dryRun: true } : {}),
+    });
     return respond(ApproveResultSchema, {
       applicationId: r.applicationId === null ? null : String(r.applicationId),
       taskId: r.taskId === null ? null : String(r.taskId),
@@ -80,6 +77,13 @@ export function reviewRoutes(app: FastifyInstance, ctx: ApiContext): void {
     const jobId = idParam(req.params.jobId, "review card for job");
     const { comment } = parseWith(RequestChangesRequestSchema, req.body);
     engine.requestChanges(jobId, comment);
+    return respond(OkResponseSchema, { ok: true });
+  });
+
+  // UC-07 b: Ba read the flagged JD and confirms it is safe; Apply may then be approved.
+  app.post<JobParams>(API_ROUTES.reviewConfirmInjection, async (req) => {
+    const engine = requireEngine(ctx);
+    engine.confirmInjection(idParam(req.params.jobId, "job"));
     return respond(OkResponseSchema, { ok: true });
   });
 
