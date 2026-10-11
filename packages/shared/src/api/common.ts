@@ -74,7 +74,16 @@ export const API_ROUTES = {
   workflowProposalDismiss: "/workflow-proposals/:id/dismiss",
   /** UC-22: a task attempt's redacted transcript. */
   taskTranscript: "/tasks/:id/transcript",
+  /** §11 sidebar: Chrome extension status per engine (bridge.status events keep it live). */
+  bridges: "/bridges",
 } as const;
+
+/** GET /bridges (W3a, additive): whether each engine's Chrome extension answers; null = unknown (engine stopped). */
+export const BridgesResponseSchema = z.object({
+  chrome: z.array(z.object({ engine: z.enum(["claude", "codex"]), connected: z.boolean().nullable() })),
+  checkedAt: IsoDateTimeSchema,
+});
+export type BridgesResponse = z.infer<typeof BridgesResponseSchema>;
 
 /**
  * PM S18 (CSRF): every state-changing request (POST, PUT, PATCH, DELETE) carries this header, or the

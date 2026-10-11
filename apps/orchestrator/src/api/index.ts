@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import type { ApiContext } from "./context.js";
 import { applicationRoutes } from "./routes/applications.js";
 import { botRoutes } from "./routes/bots.js";
+import { bridgeRoutes } from "./routes/bridges.js";
 import { chatRoutes } from "./routes/chat.js";
 import { proposalRoutes } from "./routes/proposals.js";
 import { transcriptRoutes } from "./routes/transcripts.js";
@@ -38,6 +39,7 @@ export function registerRoutes(app: FastifyInstance, ctx: ApiContext, opts: Rout
   uploadRoutes(app, ctx);
   botRoutes(app, ctx);
   engineRoutes(app, ctx);
+  bridgeRoutes(app, ctx);
   masterCvRoutes(app, ctx);
   roomRoutes(app, ctx);
   chatRoutes(app, ctx);

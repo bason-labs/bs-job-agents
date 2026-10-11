@@ -3,6 +3,7 @@ import { z } from "zod";
 import { IdSchema } from "../common/primitives.js";
 import { RunSchema, RunStatusSchema, StepSchema, TaskSchema } from "../domain/run.js";
 import { StartWorkflowInputSchema } from "../workflow/params.js";
+import { WorkflowDefinitionSchema } from "../workflow/definition.js";
 
 export const StartRunRequestSchema = StartWorkflowInputSchema;
 export const StartRunResponseSchema = z.object({ runId: IdSchema });
@@ -24,6 +25,13 @@ export const RunDetailSchema = z.object({
   run: RunSchema,
   steps: z.array(StepSchema),
   tasks: z.array(TaskSchema),
+  /**
+   * W3a, additive: the definition the run started with (its own version), so the Flow canvas lays
+   * out its steps without hard-coding them; null when that version is no longer loadable.
+   */
+  definition: WorkflowDefinitionSchema.nullable().optional(),
+  /** W3a, additive: a one-line live preview per step id (latest progress, or a summary of its output). */
+  previews: z.record(IdSchema, z.string()).optional(),
 });
 export type RunDetail = z.infer<typeof RunDetailSchema>;
 

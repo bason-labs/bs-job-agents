@@ -71,6 +71,11 @@ describe("runs (UC-01, UC-22, UC-23)", () => {
     expect(detail.run.id).toBe(runId);
     expect(detail.steps.map((s) => s.stepKey)).toContain("scan");
     expect(detail.tasks.some((t) => t.botName === "research" && t.kind === "scan")).toBe(true);
+    // The canvas gets the run's own definition and a preview per step (W3b handoff).
+    expect(detail.definition).toMatchObject({ name: "job-scan", version: detail.run.workflowVersion });
+    expect(detail.definition!.steps.map((s) => s.key)).toContain("scan");
+    const scanStep = detail.steps.find((s) => s.stepKey === "scan")!;
+    expect(detail.previews?.[scanStep.id]).toMatch(/\d+ items?|\d+ jobs?/);
     expect((await h.get("/runs/999")).statusCode).toBe(404);
     expect((await h.get("/runs/abc")).statusCode).toBe(404);
     expect((await h.get("/runs/1e3")).statusCode).toBe(404);
