@@ -36,6 +36,10 @@ const POSTING_PATH: Partial<Record<AdapterSource, RegExp>> = {
   topcv: /^\/(viec-lam\/[^/]+\/\d+\.html|brand\/[^/]+\/tuyen-dung\/[^/]+-j\d+\.html)$/,
   itviec: /^\/it-jobs\/[a-z0-9-]+-\d+(\/content)?\/?$/,
   linkedin: /^\/jobs\/view\/([^/]*-)?\d+\/?$/,
+  // W5
+  vietnamworks: /^\/[a-z0-9-]+-\d+-jv\/?$/i,
+  wellfound: /^\/jobs\/\d+(-[a-z0-9-]+)?\/?$/i,
+  upwork: /^\/(jobs\/([^/]*_)?|freelance-jobs\/apply\/[^/]*_)(~|%7e)[0-9a-z]+\/?$/i,
 };
 
 /** Page labels a broken read returns instead of a title (folded). */

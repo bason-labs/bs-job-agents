@@ -1,0 +1,37 @@
+<!doctype html>
+<!-- SYNTHETIC (hand-made, minimal): the shape of Upwork's job search results as a signed-in freelancer
+     sees them (https://www.upwork.com/nx/search/jobs/?q=react&sort=recency). Upwork answers a plain GET
+     with its Cloudflare challenge (see upwork-challenge.html), so this page could not be captured.
+     The data-test hooks follow Upwork's markup as publicly documented by scrapers in 2025-26 and are a
+     starting point: Research verifies them on the first live scan and reports "Layout changed: …"
+     when they differ. Job ids, titles and texts are invented. -->
+<html lang="en"><head><meta charset="utf-8"><title>React Jobs | Upwork</title></head>
+<body>
+<main>
+  <div data-test="jobs-count"><span>1,284 jobs found</span></div>
+  <section data-test="JobsList">
+    <article data-test="JobTile" data-ev-job-uid="1900000000000000001">
+      <small data-test="job-pubilshed-date"><span>Posted</span> <span>2 hours ago</span></small>
+      <h2 class="job-tile-title"><a href="/jobs/Senior-React-Developer-for-fintech-dashboard_~021900000000000000001/?referrer_url_path=/nx/search/jobs/">Senior React Developer for fintech dashboard</a></h2>
+      <ul data-test="JobInfo">
+        <li data-test="job-type-label"><strong>Hourly: $40-$70</strong></li>
+        <li data-test="experience-level"><strong>Expert</strong></li>
+        <li data-test="duration-label"><strong>3 to 6 months</strong></li>
+      </ul>
+      <p data-test="UpCLineClamp JobDescription">We need an experienced React and TypeScript developer to build a dashboard for our fintech product…</p>
+      <div data-test="location"><span>United States</span></div>
+    </article>
+    <article data-test="JobTile" data-ev-job-uid="1900000000000000002">
+      <small data-test="job-pubilshed-date"><span>Posted</span> <span>yesterday</span></small>
+      <h2 class="job-tile-title"><a href="/jobs/Next-js-landing-page-fixes_~021900000000000000002/">Next.js landing page fixes</a></h2>
+      <ul data-test="JobInfo">
+        <li data-test="job-type-label"><strong>Fixed price</strong></li>
+        <li data-test="is-fixed-price"><strong>$500</strong></li>
+        <li data-test="experience-level"><strong>Intermediate</strong></li>
+      </ul>
+      <p data-test="UpCLineClamp JobDescription">Small fixes on a Next.js marketing site…</p>
+      <div data-test="location"><span>Singapore</span></div>
+    </article>
+  </section>
+</main>
+</body></html>

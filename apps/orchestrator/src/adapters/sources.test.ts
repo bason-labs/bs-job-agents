@@ -63,7 +63,7 @@ describe("scanJobLimit", () => {
 
 describe("SOURCE_ADAPTERS", () => {
   it("names the four sources with their hosts", () => {
-    expect(Object.keys(SOURCE_ADAPTERS).sort()).toEqual(["career_site", "itviec", "linkedin", "topcv"]);
+    expect(Object.keys(SOURCE_ADAPTERS).sort()).toEqual(["career_site", "itviec", "linkedin", "topcv", "upwork", "vietnamworks", "wellfound"]);
     expect(SOURCE_ADAPTERS.linkedin).toMatchObject({ displayName: "LinkedIn", hosts: ["linkedin.com"], maxPageViews: 40, minDelayMs: 3000, maxDelayMs: 8000 });
     expect(SOURCE_ADAPTERS.topcv.maxPageViews).toBeNull();
   });
