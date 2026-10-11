@@ -30,11 +30,7 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | W4c prompts + master CV + imports | ✅ merged; 2465 tests green; reports/phase4-w4c-prompts.md |
 | 2026-10-11 | F4 part A (M1–M3, S1, S8) | ✅ merged; 2504 tests + 145 e2e green; Lead Claude-only; Origin required on mutations; criteria/schedule proposals via Ba's click; ScanOutputChecker port |
 | 2026-10-11 | W4a source adapters | ✅ merged; 2635 tests green; reports/phase4-w4a-adapters.md; engine needs relayed to F4b |
-| 2026-10-11 | F4 part B (worktree) | 🔄 running |
+| 2026-10-11 | F4 part B (S2–S7 + handoffs) | ✅ merged; 2674 tests + 151 e2e green; prompts v3 (Lead, Research, CV, Apply) |
+| 2026-10-11 | W4b e2e + runbook + live checks (worktree) | 🔄 running |
 
-**Next action:**
-1. Merge F4 part A when it reports, then start W4a (source adapters) and F4 part B (S2–S7) in parallel.
-2. Merge W4c when it reports.
-3. When F4 part B, W4a and W4c are merged, start W4b: e2e live-shape lane, screenshot comparisons, runbook, the live checks in pm-phase-3.md §8, and dry-run acceptance (needs Ba at the keyboard for Chrome/Figma; the dry run never submits).
-4. Then the Phase 4 QA and PM, and the final summary.
-Resume any agent stopped by a usage limit with SendMessage.
+**Next action:** merge W4b, then the Phase 4 QA, then the Phase 4 PM (final), then the must-fix if any. Then the final summary to Ba with the runbook + dry-run steps (the dry run needs Ba present), delete the watchdog cron and clean up merged worktrees. Resume any agent stopped by a usage limit with SendMessage.
