@@ -25,9 +25,7 @@ data.example/        example user data (copy to data/, which is gitignored)
   ```
   /Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex
   ```
-- **Google Chrome**, running, with both extensions installed and signed in:
-  - **Claude in Chrome** (native host `com.anthropic.claude_code_browser_extension`)
-  - **ChatGPT for Chrome / Codex** (native host `com.openai.codexextension`)
+- **Google Chrome**, running, with **Claude in Chrome** installed, signed in and connected (native host `com.anthropic.claude_code_browser_extension`). **ChatGPT for Chrome / Codex** (native host `com.openai.codexextension`) is not needed while Research runs on Claude (owner decision E1, option A, applied); only QA uses Codex, and QA has no browser.
 
   Bots reuse your existing Chrome logins (TopCV, LinkedIn, ITviec, Figma, employer ATS sites). If Chrome is closed, browser tasks wait as `needs_browser`.
 - **Figma desktop** with the **Figma Desktop Bridge** plugin (from `figma-console-mcp`, imported once via `~/.figma-console-mcp/plugin/manifest.json`). The bridge does **not** start by itself. Each session:
@@ -50,7 +48,7 @@ Run these from the repo root, after `pnpm install`. If you set `ORCH_DATA_DIR`, 
    pnpm --filter @bs-job-agents/orchestrator import:applications -- --data data --file data.example/imported-applications.yaml
    ```
    It copies each PDF (from `pdfDir` in the YAML) into `data/applications/<id>/` with its SHA-256. Running it again changes nothing. Run it while the orchestrator is stopped.
-3. **Start the app:** `pnpm dev`, then open http://localhost:3000. Check the three imported rows on Applications (marked "imported"; missing parts show "not captured") and your facts on Master CV.
+3. **Start the app:** `BSJA_API_MODE=live pnpm dev`, then open http://localhost:3000. The header must not show a **Sample data** badge (see the runbook, §2). Check the three imported rows on Applications (marked "imported"; missing parts show "not captured") and your facts on Master CV.
 
 ## Develop
 

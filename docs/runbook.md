@@ -57,7 +57,7 @@ All are optional. Set them in the shell before starting the orchestrator.
 | `ORCH_WEB_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | The web app's address. Change it only if you run the web app on another port. |
 | `ORCH_NOTIFY` | on | `0` turns off the macOS notifications ("review cards ready", "Lead needs you", "Chrome is closed"). |
 | `ORCH_PORT` | `4100` | The API port (on `127.0.0.1` only). If you change it, start the web app with the same `ORCH_PORT`. |
-| `BSJA_API_MODE` | `auto` | Set `live` for the web app, so it never falls back to the sample data when the orchestrator is down. |
+| `BSJA_API_MODE` | `auto` | Set `live` for the web app, so it never falls back to the sample data when the orchestrator is down. **Caveat:** `pnpm dev` and `pnpm dev:web` run the web app through Turbo, which passes this variable on only once `apps/web/turbo.json` lists it (pm-phase-4 SF-1). Until then the web app runs in `auto`: live when the orchestrator answers, sample data (with the badge) when it doesn't. The **Sample data** badge check below is the guard either way. |
 
 ### Start
 
@@ -68,7 +68,7 @@ BSJA_API_MODE=live pnpm dev
 This starts the orchestrator (`http://127.0.0.1:4100`) and the web app (`http://localhost:3000`). Open http://localhost:3000.
 
 - `curl http://127.0.0.1:4100/health` → `{"ok":true}`. A `503` with a reason means a degraded start (§5.1).
-- The header must **not** show a **Sample data** badge. If it does, the web app is not talking to your orchestrator.
+- The header must **not** show a **Sample data** badge. If it does, the web app is not talking to your orchestrator: nothing you click there reaches your bots or any employer. Wait until `/health` answers, then reload the page; if the badge stays, restart `pnpm dev`. Check the badge again before every approval.
 
 **The lock file.** While it runs, the orchestrator holds `data/orchestrator.lock`, so two orchestrators never share one database. A second one waits briefly and then refuses to start. A lock left by a crash is taken over automatically. Delete the file only when no orchestrator is running (`pgrep -fl "orchestrator"` shows nothing).
 
@@ -227,14 +227,15 @@ Open Figma desktop with the CV file and start the Desktop Bridge plugin (§1). T
 pnpm --filter @bs-job-agents/orchestrator bridges:live-check
 ```
 - **What it does:** read-only on Chrome (it reads the process list only). In Figma it fingerprints the protected pages, exports the Drafts frame `SPIKE_TEST_EN_v1` to a temp PDF, and fingerprints the pages again.
+- **The frame:** `SPIKE_TEST_EN_v1` is the copy spike S3 left on the `Drafts` page of your CV file. If you deleted it, duplicate any resume frame onto `Drafts` and pass its name: `LIVE_CHECK_FRAME=<frame name> pnpm --filter @bs-job-agents/orchestrator bridges:live-check`. Never point it at a frame on another page.
 - **Expected:**
   - `figma: connected …`;
   - `pdfInfo: 1 page(s), 595×842 pt, one-page A4: true`;
   - readable text with no `wit h` splits;
   - `protected pages: unchanged`, and exit code 0.
-- **Then check `needs_figma` → resume:**
+- **Then check `needs_figma` → resume** (this part needs the app running, and it is a real scan, so it uses Chrome and your quota; you can fold it into the dry run's step 2 in §8):
   1. Close the plugin.
-  2. Ask Lead for a scan with one job. When a CV step waits, Chat says Figma isn't running.
+  2. Ask Lead for a scan with one job (or paste one job link). When a CV step waits, Chat says Figma isn't running.
   3. Start the plugin again. The step starts by itself.
 - **2026-10-11 (W4b): blocked, needs Ba.** Figma desktop was running, but the Desktop Bridge plugin was not ("not_connected after 20 s"). Chrome check: running, with Claude in Chrome and ChatGPT for Chrome installed.
 
@@ -284,7 +285,7 @@ Required before the first real submission (spec §12). It needs checks 1–4 to 
 
 The app enforces this: until one dry run has finished on your data folder, **Approve & submit** without **Dry run** is refused with "Do a dry run first …", and nothing is approved or sent. A dry run is always allowed, on any job. A dry run that reported "submitted" does not count until you have checked it and marked it Failed.
 
-1. **Start clean:** `BSJA_API_MODE=live pnpm dev`, Chrome open with Claude in Chrome connected, Figma open with the Desktop Bridge plugin running. Check that there is no **Sample data** badge.
+1. **Start clean:** `BSJA_API_MODE=live pnpm dev`, Chrome open with Claude in Chrome connected, Figma open with the Desktop Bridge plugin running. Check that there is no **Sample data** badge, and that your search criteria are saved (§3 step 4); a scan refuses to start without them.
 2. **Find the job:** ask Lead, e.g. "Find frontend jobs in HCM", or paste the job's link into Chat. Wait for its review card.
 3. **Read the card:** the fit reasons, the company profile, the QA score and, in the viewer, the CV PDF (one A4 page, your facts only). Edit the intro if you want.
 4. **Approve as a dry run:**
@@ -299,6 +300,7 @@ The app enforces this: until one dry run has finished on your data folder, **App
    - In your Chrome, the employer's site shows no submitted application, and no tab from the bot is left.
 7. **If anything is wrong** (it submitted, it went to another site, a field is wrong): stop. Mark the row Failed after checking, and report what happened, with the record and transcript.
 8. **Go live (optional, when happy):** on the card, click **Approve live & submit**. Apply fills the form again and submits once. The application shows **Submitted**, with both screenshots (before submit and confirmation) and the confirmation text, and the card leaves the queue.
+9. **First scheduled scan:** on **Schedules**, create one (the default is Weekdays 09:00) and leave the app running with Chrome and Figma open at that time. A scan that ends with at least one review card, without you doing anything, proves spec §1.2 criterion 1. Review its cards as usual; nothing is sent without your click.
 
 ## 9. Automated test lanes (for developers)
 
