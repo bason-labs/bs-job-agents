@@ -89,6 +89,12 @@ export const bots = sqliteTable(
     model: text("model"),
     /** Live run 1 (additive): Ba's model choice on the Bots screen; null = bot.json's `model`. Start-up sync keeps it. */
     modelOverride: text("model_override"),
+    /**
+     * Owner decision 2026-10-11 (additive): when Ba last acknowledged running this bot on an engine
+     * where its guard hook can't run (CV on Codex: no Figma Drafts-only hook); null = never. Set by
+     * PATCH /bots/:name { acknowledgeRisk }, kept when he switches back, kept by the start-up sync.
+     */
+    engineRiskAckAt: text("engine_risk_ack_at"),
     trustLevel: integer("trust_level").notNull(),
     promptVersion: integer("prompt_version").notNull().default(1),
     enabled: boolCol("enabled").notNull().default(true),

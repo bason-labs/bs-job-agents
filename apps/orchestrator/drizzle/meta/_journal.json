@@ -71,6 +71,13 @@
       "when": 1791707448596,
       "tag": "0009_bot_model_override",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791712375901,
+      "tag": "0010_bot_engine_risk_ack",
+      "breakpoints": true
     }
   ]
 }
