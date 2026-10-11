@@ -21,6 +21,14 @@ describe("Lead's ROLE.md (rule 5, UC-01, UC-21, UC-21b, UC-24, pm-phase-3 M3/S1/
     expect(text).toContain("propose_schedule");
     expect(text).toMatch(/just this run, or save to your criteria\?/);
   });
+  it("starts saved presets by name, found through get_status (PM3 S4)", () => {
+    expect(text).toMatch(/saved preset by name/);
+    expect(text).toMatch(/`get_status` lists the saved presets/);
+  });
+  it("fills propose_schedule's day (weekly only) and searchProfileId (null = active criteria)", () => {
+    expect(text).toMatch(/`day` is the weekday for `weekly` and null otherwise/);
+    expect(text).toMatch(/`searchProfileId` is null for Ba's active search criteria/);
+  });
   it("sets applyAgain only on Ba's explicit words", () => {
     expect(text).toMatch(/`applyAgain: true` \*\*only\*\* when Ba's own words/);
   });
