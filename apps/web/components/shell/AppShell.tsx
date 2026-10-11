@@ -3,7 +3,7 @@
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { Menu, RefreshCw } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import type { HealthState } from "@/lib/api/contract";
 import { affectsReviewCount, applyShellEvent, subscribeShellEvents } from "@/lib/api/live";
 import { useApi, useAppEvents, useDebounced, useFeedStatus } from "@/lib/api/react";
@@ -77,8 +77,15 @@ export function AppShell({ data: initialData, health: initialHealth = HEALTHY, c
     return () => clearInterval(timer);
   }, [api, feedStatus]);
 
+  const refresh = useCallback(() => {
+    api.getShellData().then(
+      (fresh) => dispatch({ type: "shell.replace", data: fresh }),
+      () => {},
+    );
+  }, [api]);
+
   const title = titleForPath(pathname, data.bots, data.rooms);
-  const shell = useMemo(() => ({ data, health }), [data, health]);
+  const shell = useMemo(() => ({ data, health, refresh }), [data, health, refresh]);
 
   return (
     <ShellContext.Provider value={shell}>
