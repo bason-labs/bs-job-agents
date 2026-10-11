@@ -1,0 +1,21 @@
+# F2 fixer report (PM2 M1–M5, S1–S6)
+
+- **Merged** as 6d8ad74. develop: 1,845 tests (shared 375, orchestrator 1,383, web 87).
+- **M1:** record files are kept only if inside `data/applications/<id>/`, a regular file reached without links, and PNG/JPEG. Otherwise null. A missing proof screenshot turns "submitted" into `needs_check` ("screenshots not captured"). Until S7 lands, a real Apply ends in `needs_check`.
+- **M2:** `shared/common/host.ts` `publicHostProblem` (tldts 7.4.18 Public Suffix List; no IPs, localhost, LAN or loopback-resolving names).
+  - Used by `DomainSchema`, approvals and the allowlist; `PublicUrlSchema` covers job links.
+  - `domain_confirm` is offered only for the exact host the guard blocked; anything else → `needs_check` + `safety.denied` `off_allowlist`.
+- **M3:** Codex browser bots get `--disable apps`, `notify=[]`, and every other MCP server disabled. Live check: only the Chrome plugin's `cua_repl`, web search and Codex built-ins remain (the shell under the read-only sandbox, sub-agents and image_gen are residual risk for E1).
+- **M4:** untrusted blocks for Apply `jobUrl`/`answers`/`savedAnswers`, cv `fixes`, research.file `filename`, lead.chat `history`/`handoff`. The upload copy is renamed `upload-<id><ext>`.
+- **M5:** the scan continues past a source waiting for Ba. A follow-up pass runs after Ba's Done (branch keys `late-<taskId>`; W3b's canvas must handle them). Overlap ignores a scan that only waits for Ba.
+- **S1:** `engine/notices.ts` posts Lead notices in the same transaction as the state change: pause cards, waits, failures, adapter broken, needs_check, usage pause/resume, review summary with a `review_link` card.
+- **S2 (for W3a part 2):**
+  - `engine.enqueueConversation({ bot, kind: chat|consult|discussion, input })` → `{ taskId }`.
+  - `ConversationSink`, passed as `createProductionEngine({ conversations })`, with `done(ctx, …)` and `failed(ctx, err)`; `ctx.enqueue` for UC-25 handoffs.
+  - `engine.confirmInjection(jobId)` emits `injection.confirmed`.
+  - `approve(…, { dryRun? })` returns a nullable `applicationId`. Shared `LeadChatInputSchema`; `approvalStatus` is exported.
+- **S3:** a Chrome site-guard block fails the task with no retry. **S4:** the Figma "before" fingerprint is persisted (`figma.before` audit row) and checked on the next spawn and at start-up. **S5:** memory.md is gitignored and seeded at start-up. **S6:** `bots/prompt-versions.json` + `prompt-lock.test.ts` + a `bots:lock` script.
+- **Residual:**
+  - an extended usage pause posts no new time
+  - a public name can still resolve to Ba's network
+  - clicks that navigate away are unguarded
