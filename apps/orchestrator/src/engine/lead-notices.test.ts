@@ -38,6 +38,24 @@ describe("UC-17 pause cards (S1)", () => {
     expect(texts(t)).toContainEqual(expect.stringMatching(/log in to linkedin\.com in your Chrome.*LinkedIn scan.*then click Done/));
   });
 
+  it("a login site the bot names off its allowlist is never put in Lead's mouth: the card names the source's site", async () => {
+    const t = await createTestEngine({ sources: ["itviec", "linkedin"] });
+    t.runner.script({ bot: "research", kind: "scan", when: (task) => (task.input as { source: string }).source === "linkedin", times: 1, result: fake.needsLogin("https://linkedin-secure-login.com/session") });
+    t.engine.startWorkflow(scanParams, { trigger: "chat" });
+    await t.idle();
+    expect(cardsOf(t, "pause")).toEqual([expect.objectContaining({ reason: "needs_login(linkedin.com)" })]);
+    expect(texts(t).join("\n")).not.toMatch(/linkedin-secure-login/);
+  });
+
+  it("Apply's login site off its approved domains: the card names the job's site", async () => {
+    const { t, cvVersionId } = await review();
+    t.runner.script({ bot: "apply", kind: "submit", times: 1, result: fake.applyPaused({ reason: "needs_login", site: "itviec-login.example" }) });
+    t.engine.approve(1, { cvVersionId, introText: null });
+    await t.idle();
+    expect(cardsOf(t, "pause")).toEqual([expect.objectContaining({ reason: "needs_login(itviec.com)" })]);
+    expect(texts(t).join("\n")).not.toMatch(/itviec-login/);
+  });
+
   it("Apply's login, CAPTCHA and domain_confirm pauses each get a card; the domain card asks with the host", async () => {
     const { t, cvVersionId } = await review();
     t.runner.script({
@@ -135,6 +153,32 @@ describe("Apply needs_check (S1)", () => {
     t.engine.approve(1, { cvVersionId, introText: null, dryRun: true });
     await t.idle();
     expect(texts(t).filter((x) => /[Dd]ry run/.test(x))).toEqual([expect.stringMatching(/^Dry run finished for NovaPay.*nothing was submitted/)]);
+  });
+
+  it("a dry run that reports submitted is never called harmless: it may really have been sent", async () => {
+    const { t, cvVersionId } = await review();
+    t.runner.script({
+      bot: "apply",
+      kind: "submit",
+      times: 1,
+      result: (task) => {
+        const input = task.input as { pdfPath: string; pdfSha256: string };
+        return fake.ok({ ...applyOutputFixture, status: "submitted", uploadedFile: { filename: input.pdfPath.split("/").pop()!, sha256: input.pdfSha256 } });
+      },
+    });
+    t.engine.approve(1, { cvVersionId, introText: null, dryRun: true });
+    await t.idle();
+    const dry = texts(t).filter((x) => /[Dd]ry run/.test(x));
+    expect(dry).toEqual([expect.stringMatching(/^Dry run for NovaPay.*reported that it submitted.*may really have been sent/)]);
+    expect(dry.join(" ")).not.toMatch(/nothing was submitted/);
+  });
+
+  it("a dry run that did not finish cleanly says so, with the reason", async () => {
+    const { t, cvVersionId } = await review();
+    t.runner.script({ bot: "apply", kind: "submit", times: 1, result: fake.timeout() });
+    t.engine.approve(1, { cvVersionId, introText: null, dryRun: true });
+    await t.idle();
+    expect(texts(t).filter((x) => /[Dd]ry run/.test(x))).toEqual([expect.stringMatching(/^Dry run for NovaPay.*needs a check: .*timed out/)]);
   });
 
   it("after a crash: the interrupted Apply's application needs a check, and Ba is told", async () => {

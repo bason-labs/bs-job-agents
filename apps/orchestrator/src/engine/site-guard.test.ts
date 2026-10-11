@@ -135,7 +135,32 @@ describe("domain_confirm is offered only for a host the site guard blocked in th
     t.engine.resumeTask(taskId!, { confirmDomain: " NOVAPAY.breezy.hr. " });
     await t.idle();
     expect(t.runner.callsFor("apply.submit")[1]!.allowedSites).toEqual(["itviec.com", "novapay.breezy.hr"]);
-    expect(getApplication(t.db, applicationId!)?.status).not.toBe("paused");
+    // The respawn reads only its own guard decisions: the first spawn's block is not held against it.
+    expect(getTask(t.db, taskId!)).toMatchObject({ status: "done", error: null });
+    expect(getApplication(t.db, applicationId!)?.status).toBe("submitted");
+    expect(getSubmissionRecord(t.db, applicationId!)?.submission).toBeDefined();
+    expect(t.events("safety.denied")).toHaveLength(1);
+  });
+
+  it("a host blocked only in an earlier spawn of the same attempt is never offered again", async () => {
+    const { t, cvVersionId } = await review();
+    t.runner.script({
+      bot: "apply",
+      kind: "submit",
+      times: 1,
+      result: (task) => {
+        siteBlock(t, task, "novapay.breezy.hr");
+        return fake.applyPaused({ reason: "domain_confirm", site: "novapay.breezy.hr" });
+      },
+    });
+    const { applicationId, taskId } = t.engine.approve(1, { cvVersionId, introText: null });
+    await t.idle();
+    // The respawn asks for the same host again, though nothing blocked it this time.
+    t.runner.script({ bot: "apply", kind: "submit", times: 1, result: fake.applyPaused({ reason: "domain_confirm", site: "novapay.breezy.hr" }) });
+    t.engine.resumeTask(taskId!, { confirmDomain: "novapay.breezy.hr" });
+    await t.idle();
+    expect(getTask(t.db, taskId!)).toMatchObject({ status: "failed", error: expect.stringMatching(/blocked no navigation/) });
+    expect(getApplication(t.db, applicationId!)?.status).toBe("needs_check");
   });
 
   it("Apply that names no site gets the one host the guard blocked", async () => {
@@ -151,9 +176,28 @@ describe("domain_confirm is offered only for a host the site guard blocked in th
         return r;
       },
     });
+    const { applicationId, taskId } = t.engine.approve(1, { cvVersionId, introText: null });
+    await t.idle();
+    // The exact host the guard blocked: `www.` is never dropped, so a confirmation never widens to the parent.
+    expect(getTask(t.db, taskId!)).toMatchObject({ status: "paused", pauseReason: "domain_confirm(www.acme.wd3.myworkdayjobs.com)" });
+    t.engine.resumeTask(taskId!, { confirmDomain: "acme.wd3.myworkdayjobs.com" });
+    expect(latestApprovalForApplication(t.db, applicationId!)?.allowedDomains).toEqual(["itviec.com", "www.acme.wd3.myworkdayjobs.com"]);
+  });
+
+  it("a blocked www. host is offered as is (www.google.com never becomes google.com, which would allow mail.google.com)", async () => {
+    const { t, cvVersionId } = await review();
+    t.runner.script({
+      bot: "apply",
+      kind: "submit",
+      times: 1,
+      result: (task) => {
+        siteBlock(t, task, "www.google.com");
+        return fake.applyPaused({ reason: "domain_confirm", site: "google.com" });
+      },
+    });
     const { taskId } = t.engine.approve(1, { cvVersionId, introText: null });
     await t.idle();
-    expect(getTask(t.db, taskId!)).toMatchObject({ status: "paused", pauseReason: "domain_confirm(acme.wd3.myworkdayjobs.com)" });
+    expect(getTask(t.db, taskId!)).toMatchObject({ status: "paused", pauseReason: "domain_confirm(www.google.com)" });
   });
 
   it("a site with odd characters never corrupts a stored pause: Ba can still click Done", async () => {

@@ -330,7 +330,7 @@ export class Engine implements EngineCore {
           { runId: task.runId },
         );
         const current = getTask(tx, task.id);
-        if (current?.status === "queued") failTaskNow(this, tx, current, `denied: ${detail}`);
+        if (current?.status === "queued" || current?.status === "waiting_limit") failTaskNow(this, tx, current, `denied: ${detail}`);
       }
     });
   }
@@ -443,6 +443,8 @@ export class Engine implements EngineCore {
    * effective engine and waits out a usage limit. Its result reaches the ConversationSink.
    */
   enqueueConversation(req: ConversationRequest): { taskId: number } {
+    // It dispatches after its commit: inside another transaction (e.g. a sink) use ctx.enqueue.
+    if (this.db.$client.inTransaction) throw new EngineError("conflict", "enqueueConversation cannot run inside a transaction: a ConversationSink queues with ctx.enqueue");
     const task = this.db.transaction((tx) => createConversationTask(this, tx, req));
     this.bus.flush();
     this.dispatch();

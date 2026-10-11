@@ -65,6 +65,12 @@ describe("enqueueConversation (PM2 S2)", () => {
     expect(t.runner.callsFor("qa.consult")[0]!.bot.engine).toBe("claude");
   });
 
+  it("refuses to run inside a transaction (a sink queues follow-ups with ctx.enqueue)", async () => {
+    const t = await createTestEngine();
+    expect(code(() => t.db.transaction(() => t.engine.enqueueConversation({ bot: "qa", kind: "consult", input: CONVERSATION })))).toBe("conflict");
+    expect(t.tasks()).toEqual([]);
+  });
+
   it("refuses a disabled bot", async () => {
     const t = await createTestEngine();
     updateBot(t.db, "cv", { enabled: false });

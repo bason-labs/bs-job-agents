@@ -172,13 +172,23 @@ export function noticeApplyNotStarted(core: EngineCore, conn: Conn, task: Task, 
 // ---------------------------------------------------------------- needs_check
 
 /** An application that needs Ba's check (UC-11 c, UC-18), or a finished dry run (§12). */
-export function noticeNeedsCheck(core: EngineCore, conn: Conn, applicationId: number, reason: string, opts: { runId?: number | null } = {}): void {
+export function noticeNeedsCheck(
+  core: EngineCore,
+  conn: Conn,
+  applicationId: number,
+  reason: string,
+  opts: { runId?: number | null; dryRun?: "finished" | "reported_submitted" } = {},
+): void {
   const app = getApplication(conn, applicationId);
   if (!app) return;
   const job = jobLabel(conn, app.jobId) ?? `application ${app.id}`;
-  const text = app.dryRun
-    ? `Dry run finished for ${job}: the form was filled and nothing was submitted. Check the screenshots in Applications.`
-    : `${job} needs a check: ${reason}. Open Applications, check the form in your Chrome, then mark it submitted or failed.`;
+  const text = !app.dryRun
+    ? `${job} needs a check: ${reason}. Open Applications, check the form in your Chrome, then mark it submitted or failed.`
+    : opts.dryRun === "finished"
+      ? `Dry run finished for ${job}: the form was filled and nothing was submitted. Check the screenshots in Applications.`
+      : opts.dryRun === "reported_submitted"
+        ? `Dry run for ${job} reported that it submitted, which a dry run must never do: it may really have been sent. Check with the employer and in Applications.`
+        : `Dry run for ${job} needs a check: ${reason}. Check the form in your Chrome; nothing should have been submitted.`;
   postNotice(core, conn, { text, runId: opts.runId ?? null });
 }
 

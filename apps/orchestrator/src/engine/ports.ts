@@ -33,9 +33,10 @@ export interface FileStore {
   readText(path: string): Promise<string | null>;
   /**
    * PM2 M1: the first `bytes` bytes of a regular file (to check an image's magic bytes), or null
-   * when it is missing, a folder or a symbolic link (never followed).
+   * when it is missing, a folder or a symbolic link (never followed), or, with `within`, when its
+   * real path (folder links resolved) is outside that folder.
    */
-  readHead(path: string, bytes: number): Promise<Buffer | null>;
+  readHead(path: string, bytes: number, within?: string): Promise<Buffer | null>;
 }
 
 /**

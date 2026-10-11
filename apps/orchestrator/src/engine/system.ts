@@ -1,7 +1,8 @@
 // Production implementations of the simplest ports: the system clock and a node:fs FileStore
 // built on W2c's PDF file tools (streamed SHA-256, verified copy).
-import { access, copyFile, lstat, mkdir, open, readFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { constants } from "node:fs";
+import { access, copyFile, mkdir, open, readFile, realpath } from "node:fs/promises";
+import { dirname, sep } from "node:path";
 import { copyFileVerified } from "../bridges/pdf/files.js";
 import { sha256File } from "../bridges/pdf/hash.js";
 import type { Clock, FileStore } from "./ports.js";
@@ -56,12 +57,17 @@ export const nodeFileStore: FileStore = {
       throw err;
     }
   },
-  async readHead(path, bytes) {
+  async readHead(path, bytes, within) {
     try {
-      // lstat: a symbolic link is not a regular file here, so it is never followed (PM2 M1).
-      if (!(await lstat(path)).isFile()) return null;
-      const handle = await open(path, "r");
+      if (within !== undefined) {
+        // Folder links resolved: the file must really sit inside `within` (PM2 M1).
+        const [real, root] = await Promise.all([realpath(path), realpath(within)]);
+        if (real !== root && !real.startsWith(root + sep)) return null;
+      }
+      // O_NOFOLLOW: a link as the file itself is never followed; fstat: a regular file only.
+      const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
       try {
+        if (!(await handle.stat()).isFile()) return null;
         const buffer = Buffer.alloc(bytes);
         const { bytesRead } = await handle.read(buffer, 0, bytes, 0);
         return buffer.subarray(0, bytesRead);
@@ -69,7 +75,7 @@ export const nodeFileStore: FileStore = {
         await handle.close();
       }
     } catch (err) {
-      if (["ENOENT", "ENOTDIR", "ELOOP"].includes((err as NodeJS.ErrnoException).code ?? "")) return null;
+      if (["ENOENT", "ENOTDIR", "ELOOP", "EISDIR"].includes((err as NodeJS.ErrnoException).code ?? "")) return null;
       throw err;
     }
   },

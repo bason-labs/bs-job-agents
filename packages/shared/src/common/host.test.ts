@@ -37,6 +37,15 @@ const REFUSED = [
   `${"a".repeat(64)}.com`,
   "topcv.vn/jobs",
   "user@topcv.vn",
+  // Public names that resolve to Ba's machine or LAN (wildcard IP DNS, router admin pages).
+  "127.0.0.1.nip.io",
+  "192.168.1.1.nip.io",
+  "1-1-1-1.sslip.io",
+  "localtest.me",
+  "app.lvh.me",
+  "fritz.box",
+  "router.asus.com",
+  "routerlogin.net",
 ];
 const ACCEPTED = ["topcv.vn", "itviec.com", "acme.wd3.myworkdayjobs.com", "novapay.breezy.hr", "linkedin.com", "figma.com", "bbc.co.uk", "ba.github.io", "jobs.lever.co"];
 

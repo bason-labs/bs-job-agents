@@ -11,6 +11,7 @@ import {
   PauseReasonSchema,
   failedSelfChecks,
   isRetryableTask,
+  normalizeHostName,
   parseBotOutput,
   publicHostProblem,
   resolveOutputSchemaName,
@@ -112,6 +113,8 @@ interface Prepared {
   apply: boolean;
   /** Absolute JSONL log the guard hooks write their decisions to. */
   guardLog: string | null;
+  /** Where this spawn's lines start in the guard log (a resume keeps the attempt, so the log holds earlier spawns' lines). */
+  guardLogOffset: number;
 }
 
 interface Inflight {
@@ -385,6 +388,7 @@ export class TaskQueue {
 
     const claude = bot.def.engine === "claude";
     const guardLog = claude ? core.paths.abs(core.paths.guardLog(task.id, task.attempt)) : null;
+    const guardLogOffset = guardLog ? ((await core.deps.files.readText(guardLog).catch(() => null))?.length ?? 0) : 0;
     const hooks: ClaudeHookSettings[] = [];
     let input: unknown = task.input;
     let readDirs: string[] | undefined;
@@ -467,6 +471,7 @@ export class TaskQueue {
       bot,
       apply: trust.needsApproval,
       guardLog,
+      guardLogOffset,
       ...(figmaBefore ? { figmaBefore } : {}),
       ...(authorize ? { authorize } : {}),
       runnerTask: {
@@ -534,7 +539,9 @@ export class TaskQueue {
     if (key === "research.scan" || key === "research.single" || key === "research.file") {
       const blocked = (output as { blocked?: { reason: "needs_login" | "captcha"; site: string; detail: string | null } | null }).blocked;
       if (!blocked) return null;
-      return { code: blocked.reason, site: pauseSite(blocked.site, this.researchSite(task)) ?? "unknown-site", detail: blocked.detail };
+      // S1: Lead names the site in Ba's chat, so a bot-named host counts only when the task may open it.
+      const allowed = [...(this.core.deps.bots.get(task.botName)?.browser?.allowedSites ?? []), ...[hostOfUrl((task.input as { url?: unknown } | null)?.url)].filter((h): h is string => h !== null)];
+      return { code: blocked.reason, site: pauseSite(blocked.site, this.researchSite(task), allowed) ?? "unknown-site", detail: blocked.detail };
     }
     if (key === "apply.submit") {
       const o = output as ApplyOutput;
@@ -543,7 +550,9 @@ export class TaskQueue {
       const url = (task.input as { jobUrl?: string } | null)?.jobUrl;
       const jobHost = url ? hostOfUrl(url) : null;
       // domain_confirm keeps what Apply named (null too): checkSiteGuard compares it with the guard's blocks.
-      const site = code === "domain_confirm" ? (o.pauseReason?.site ?? null) : code === "needs_answer" ? null : pauseSite(o.pauseReason?.site, jobHost);
+      const domains = (task.input as { allowedDomains?: unknown } | null)?.allowedDomains;
+      const allowed = Array.isArray(domains) ? domains.filter((d): d is string => typeof d === "string") : [];
+      const site = code === "domain_confirm" ? (o.pauseReason?.site ?? null) : code === "needs_answer" ? null : pauseSite(o.pauseReason?.site, jobHost, allowed);
       const reason = { code, site, detail: o.pauseReason?.detail ?? null };
       if (code === "domain_confirm") return reason as PauseReason;
       return PauseReasonSchema.safeParse(reason).success ? reason : { code: "needs_answer", site: null, detail: reason.detail };
@@ -574,18 +583,21 @@ export class TaskQueue {
   private checkSiteGuard(task: Task, outcome: Outcome, blocks: readonly SiteBlock[]): Outcome {
     const domainConfirm = outcome.kind === "paused" && outcome.reason.code === "domain_confirm";
     if (blocks.length === 0 && !domainConfirm) return outcome;
-    const hosts = [...new Set(blocks.map((b) => b.host).filter((h): h is string => h !== null).map(siteKey))];
+    // The exact hosts the guard blocked; Apply's name for one is matched without `www.`, but the
+    // offer is always the exact blocked host, so a confirmation never widens to a parent domain.
+    const hosts = [...new Set(blocks.map((b) => b.host).filter((h): h is string => h !== null))];
     if (outcome.kind === "paused" && domainConfirm) {
-      const named = outcome.reason.site ? siteKey(outcome.reason.site) : hosts.length === 1 ? hosts[0]! : null;
+      const named = outcome.reason.site ? normalizeHostName(outcome.reason.site) : hosts.length === 1 ? hosts[0]! : null;
+      const blocked = named === null ? undefined : hosts.find((h) => siteKey(h) === siteKey(named));
       const blockedText = hosts.length > 0 ? `the site guard blocked ${hosts.join(", ")}` : "the site guard blocked no navigation";
       let detail: string | null = null;
       if (named === null) detail = `Apply asked to confirm a domain without naming it, and ${blockedText} in this attempt`;
-      else if (!hosts.includes(named)) detail = `Apply asked to confirm ${named}, but ${blockedText} in this attempt`;
+      else if (!blocked) detail = `Apply asked to confirm ${named}, but ${blockedText} in this attempt`;
       else {
-        const problem = publicHostProblem(named);
-        if (problem) detail = `Apply asked to confirm ${named}, which the site guard blocked, but ${problem}`;
+        const problem = publicHostProblem(blocked);
+        if (problem) detail = `Apply asked to confirm ${blocked}, which the site guard blocked, but ${problem}`;
       }
-      if (detail === null) return { ...outcome, reason: { ...outcome.reason, site: named } };
+      if (detail === null) return { ...outcome, reason: { ...outcome.reason, site: blocked! } };
       return {
         kind: "failed",
         error: `domain not confirmed: ${detail}`,
@@ -673,7 +685,8 @@ export class TaskQueue {
   /** The guard hooks' blocks in this attempt (empty when there is no log or it cannot be read). */
   private async readGuardLog(prepared: Prepared): Promise<GuardBlock[]> {
     if (!prepared.guardLog) return [];
-    return parseGuardLog(await this.core.deps.files.readText(prepared.guardLog).catch(() => null));
+    const text = await this.core.deps.files.readText(prepared.guardLog).catch(() => null);
+    return parseGuardLog(text === null ? null : text.slice(prepared.guardLogOffset));
   }
 
   /**

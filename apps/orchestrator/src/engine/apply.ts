@@ -510,7 +510,8 @@ export function resumePausedTask(core: EngineCore, taskId: number, opts: { confi
         const appId = Number((task.input as Partial<ApplyPromptInput> | null)?.applicationId);
         const approval = latestApprovalForApplication(tx, appId);
         if (!approval) throw invalidState(`application ${appId} has no approval`);
-        addApprovalDomain(tx, approval.token, site);
+        // The exact host offered (the one the guard blocked), never Ba's typed variant of it.
+        addApprovalDomain(tx, approval.token, reason.site);
         resumeTaskNow(core, tx, task);
         return;
       }
@@ -554,7 +555,7 @@ async function recordFile(core: EngineCore, applicationId: number, value: string
   const abs = isAbsolute(value) ? resolve(value) : resolve(dir, value);
   const inside = relative(dir, abs);
   if (inside === "" || inside.startsWith("..") || isAbsolute(inside)) return null;
-  const head = await core.deps.files.readHead(abs, 8).catch(() => null);
+  const head = await core.deps.files.readHead(abs, 8, dir).catch(() => null);
   return head && isImage(head) ? core.paths.rel(abs) : null;
 }
 
@@ -608,7 +609,7 @@ export function writeSubmissionRecord(
     uploadedSha256: uploaded?.sha256 ?? null,
     uploadedPath: uploaded?.path ?? null,
     preSubmitScreenshotPath: files.preSubmit,
-    confirmationScreenshotPath: files.confirmation,
+    confirmationScreenshotPath: files.confirmation !== files.preSubmit ? files.confirmation : null,
     confirmationText: output.confirmationText,
     approvalToken: latestApprovalForApplication(conn, appId, { usedOnly: true })?.token ?? null,
     submittedAt: core.now().toISOString(),
@@ -626,7 +627,9 @@ export function writeSubmissionRecord(
       }
     : // Apply captured no snapshot: freeze what Research stored (UC-11 step 5 fallback).
       { url: job.url ?? "", title: job.title, company: company?.name ?? "", salaryText: job.salaryText, jdText: job.jdText ?? "", pageScreenshotPath: null };
-  const proofMissing = files.preSubmit === null || (files.confirmation === null && !output.confirmationText);
+  // One file is one proof: a confirmation screenshot that is the pre-submit one does not count; blank text is no text.
+  const confirmation = files.confirmation !== null && files.confirmation !== files.preSubmit ? files.confirmation : null;
+  const proofMissing = files.preSubmit === null || (confirmation === null && !output.confirmationText?.trim());
   const status = output.status === "submitted" && !app.dryRun && sameFile && !proofMissing ? "submitted" : "needs_check";
   const note = output.status === "submitted" && !app.dryRun && proofMissing ? SCREENSHOTS_NOT_CAPTURED : null;
   try {
@@ -642,7 +645,8 @@ export function writeSubmissionRecord(
           : output.status === "submitted"
             ? "it needs a look before it counts as submitted"
             : "Apply could not confirm the submission");
-      noticeNeedsCheck(core, conn, appId, why, { runId: task.runId });
+      const dryRun = app.dryRun ? (output.status === "submitted" ? "reported_submitted" : "finished") : undefined;
+      noticeNeedsCheck(core, conn, appId, why, { runId: task.runId, ...(dryRun ? { dryRun } : {}) });
     }
     return { applicationId: appId, recorded: true, status: rec.application.status, refused: null, error: sameFile ? null : `Apply reported uploading ${output.uploadedFile!.filename}` };
   } catch (err) {

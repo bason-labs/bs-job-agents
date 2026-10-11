@@ -145,6 +145,61 @@ describe("a source waiting for Ba never stalls the scan (PM2 M5)", () => {
     expect(s.id).toBeGreaterThan(0);
   });
 
+  it("a follow-up pass that fails does not block later scheduled scans", async () => {
+    const t = await scanWithLogin();
+    t.runner.script({ bot: "research", kind: "fit", when: (task) => JSON.stringify(task.input).includes("Kite Labs"), result: fake.failed("fit broke") });
+    const s = createSchedule(t.db, { name: "Hourly", cron: "0 * * * *", workflowName: "job-scan", nextRunAt: at(0) });
+    const first = t.engine.scheduler.tick().fired[0]!;
+    await t.idle();
+    t.engine.resumeTask(linkedInTask(t).id);
+    await t.idle();
+    const pass = `late-${linkedInTask(t).id}`;
+    expect(t.step(first.runId, "fit-join", pass)?.status).toBe("failed");
+    // itviec's card still waits for Ba; the failed pass is over, not "still scanning".
+    expect(getRun(t.db, first.runId)?.status).toBe("waiting");
+    t.clock.advance(HOUR);
+    expect(t.events("schedule.skipped")).toEqual([]);
+    expect(t.events("schedule.fired").map((e) => e.scheduleId)).toEqual([String(s.id), String(s.id)]);
+  });
+
+  it("a job the main pass is still scoring is never processed again by the follow-up pass", async () => {
+    const t = await createTestEngine({ sources: ["itviec", "linkedin"], config: { engineCaps: { codex: 4, claude: 2 } } });
+    const novapay = researchScanFixture.jobs.find((j) => j.source === "itviec")!;
+    t.runner.script({ bot: "research", kind: "scan", when: isLinkedIn, result: () => fake.ok({ ...researchScanFixture, jobs: [{ ...novapay, source: "linkedin" }] }) });
+    t.runner.script({ bot: "research", kind: "scan", when: isLinkedIn, times: 1, result: fake.needsLogin("linkedin.com") });
+    // The main pass's fit is still running when Ba clicks Done.
+    t.runner.script({ bot: "research", kind: "fit", times: 1, delayMs: 2 * HOUR });
+    const run = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await t.flush();
+    await t.flush();
+    t.engine.resumeTask(linkedInTask(t).id);
+    await t.flush();
+    await t.flush();
+    t.clock.advance(3 * HOUR);
+    await t.idle();
+    expect(t.tasks("research.fit")).toHaveLength(1);
+    expect(t.step(run.id, "dedupe", `late-${linkedInTask(t).id}`)?.output).toMatchObject({ items: [], duplicates: 1 });
+    expect(t.events("review.ready").map((e) => e.jobId)).toEqual(["1"]);
+    t.engine.skip(1, { reason: "salary_low", note: null });
+    await t.idle();
+    expect(t.events("run.finished")).toEqual([expect.objectContaining({ summary: "1 job, 1 skipped" })]);
+  });
+
+  it("a source scanning again after Ba's Done is still scanning: the next slot is an overlap", async () => {
+    const t = await scanWithLogin();
+    let resumed = false;
+    t.runner.script({ bot: "research", kind: "scan", when: (task) => resumed && isLinkedIn(task), delayMs: 2 * HOUR, result: () => fake.ok({ ...researchScanFixture, jobs: [KITE] }) });
+    const s = createSchedule(t.db, { name: "Hourly", cron: "0 * * * *", workflowName: "job-scan", nextRunAt: at(0) });
+    t.engine.scheduler.tick();
+    await t.idle();
+    resumed = true;
+    t.engine.resumeTask(linkedInTask(t).id);
+    await t.flush();
+    expect(getTask(t.db, linkedInTask(t).id)?.status).toBe("running");
+    t.db.$client.prepare("UPDATE schedules SET next_run_at = ? WHERE id = ?").run(at(0), s.id);
+    expect(t.engine.scheduler.tick()).toMatchObject({ fired: [], skipped: [{ scheduleId: s.id, reason: "overlap" }] });
+  });
+
   it("a source still scanning (not waiting for Ba) keeps the overlap rule", async () => {
     const t = await createTestEngine({ sources: ["itviec", "linkedin"] });
     t.runner.script({ bot: "research", kind: "scan", when: isLinkedIn, times: 1, delayMs: 2 * HOUR });

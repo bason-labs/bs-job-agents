@@ -115,6 +115,21 @@ describe("the record cites only the orchestrator's own image files (PM2 M1, §9.
   });
 });
 
+describe("the proof must be real (PM2 M1)", () => {
+  it("one file named as both the pre-submit and the confirmation screenshot is one proof, not two; blank text is no proof", async () => {
+    const { t, approve } = await approved();
+    t.runner.script({
+      bot: "apply",
+      kind: "submit",
+      result: report(t, { preSubmitScreenshot: "pre.png", confirmationScreenshot: "./pre.png", confirmationText: "   " }, (dir) => t.files.write(`${dir}/pre.png`, PNG)),
+    });
+    const { applicationId } = approve();
+    await t.idle();
+    expect(getSubmissionRecord(t.db, applicationId!)?.submission).toMatchObject({ preSubmitScreenshotPath: "applications/1/pre.png", confirmationScreenshotPath: null });
+    expect(getApplication(t.db, applicationId!)).toMatchObject({ status: "needs_check", statusHistory: expect.arrayContaining([expect.objectContaining({ note: "screenshots not captured" })]) });
+  });
+});
+
 describe("nodeFileStore.readHead (PM2 M1)", () => {
   let dir: string | undefined;
   afterEach(() => {
@@ -132,5 +147,17 @@ describe("nodeFileStore.readHead (PM2 M1)", () => {
     expect(await nodeFileStore.readHead(join(dir, "link.png"), 4)).toBeNull();
     expect(await nodeFileStore.readHead(join(dir, "sub"), 4)).toBeNull();
     expect(await nodeFileStore.readHead(join(dir, "missing"), 4)).toBeNull();
+  });
+
+  it("never reads through a linked folder out of the application's folder", async () => {
+    dir = mkdtempSync(join(tmpdir(), "bsja-head-"));
+    const app = join(dir, "applications", "1");
+    mkdirSync(app, { recursive: true });
+    mkdirSync(join(dir, "elsewhere"));
+    writeFileSync(join(dir, "elsewhere", "shot.png"), PNG);
+    writeFileSync(join(app, "own.png"), PNG);
+    symlinkSync(join(dir, "elsewhere"), join(app, "shots"));
+    expect(await nodeFileStore.readHead(join(app, "own.png"), 4, app)).toEqual(PNG.subarray(0, 4));
+    expect(await nodeFileStore.readHead(join(app, "shots", "shot.png"), 4, app)).toBeNull();
   });
 });

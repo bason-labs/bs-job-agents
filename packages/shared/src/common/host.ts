@@ -9,6 +9,12 @@ import { parse } from "tldts";
 /** Names that only exist on Ba's Mac or LAN, or are reserved (RFC 6761, 6762, 8375, ICANN .internal). */
 const LOCAL_NAMES = ["localhost", "local", "localdomain", "test", "invalid", "example", "onion", "arpa", "internal", "lan", "home", "corp", "intranet", "private"];
 
+/**
+ * Public names known to resolve to Ba's machine or LAN: wildcard IP DNS services and router admin
+ * pages. Not complete (any name can point anywhere); defence in depth for allowlists and domain_confirm.
+ */
+const LOCAL_ALIASES = ["nip.io", "sslip.io", "xip.io", "localtest.me", "lvh.me", "vcap.me", "traefik.me", "lacolhost.com", "fritz.box", "router.asus.com", "routerlogin.net", "routerlogin.com", "tplinkwifi.net", "tplinklogin.net", "mywifiext.net"];
+
 /** Lowercase, trimmed, without trailing dots: how hosts are compared everywhere. */
 export function normalizeHostName(host: string): string {
   return host.trim().toLowerCase().replace(/\.+$/, "");
@@ -29,6 +35,8 @@ export function publicHostProblem(raw: string): string | null {
   if (/^(?:\d+|0x[0-9a-f]*)$/.test(last)) return `${host} is an IP address, not a public web site`;
   const local = LOCAL_NAMES.find((name) => host === name || host.endsWith(`.${name}`));
   if (local) return `${host} is a local or reserved name (${local}), not a public web site`;
+  const alias = LOCAL_ALIASES.find((name) => host === name || host.endsWith(`.${name}`));
+  if (alias) return `${host} resolves to your own machine or network (${alias}), not a public web site`;
   if (labels.length < 2) return `${host} is a single name, not a public web site`;
   const parsed = parse(host, { allowPrivateDomains: true, detectIp: true });
   if (parsed.isIp) return `${host} is an IP address, not a public web site`;

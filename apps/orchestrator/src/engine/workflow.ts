@@ -215,6 +215,7 @@ function advanceMapStep(core: EngineCore, ctx: RunCtx, step: MapStep, scope: Sco
     // holds the map (unless its join needs every item).
     const waiting = out.items.map((i, idx) => i.taskId >= 0 && waitsForBa(tasks[idx]));
     const goOn =
+      scope.branchKey === "" &&
       !allSettled &&
       waiting.some(Boolean) &&
       statuses.every((s, idx) => settled(s) || waiting[idx]) &&
@@ -272,7 +273,7 @@ function advanceFilterStep(core: EngineCore, ctx: RunCtx, step: FilterStep, scop
   return guarded(core, ctx, step.key, scope, (tx) => {
     const from = getStepByKey(tx, ctx.run.id, step.from, scope.branchKey)?.output;
     const options = (resolveTemplate(step.options, templateScope(tx, ctx, scope)) ?? {}) as Record<string, unknown>;
-    const out = runFilter(tx, ctx, step.fn, from, options, core.now());
+    const out = runFilter(tx, ctx, step.fn, from, options, core.now(), scope.branchKey);
     openStep(core, tx, ctx, step.key, scope, "done", { output: out, preview: filterPreview(step.fn, out) });
     return "done";
   });
@@ -645,6 +646,16 @@ export function scanPhaseBusy(conn: Conn, ctx: RunCtx): boolean {
       if (step.branch) continue;
       const row = getStepByKey(conn, ctx.run.id, step.key, pass.key);
       if (!row || !isTerminalStep(row)) return true;
+      // A pass that failed (or was cancelled) is over: its later steps never come.
+      if (row.status === "failed" || row.status === "cancelled") break;
+    }
+  }
+  // A waiting source that Ba unblocked scans again: that is scanning, not waiting for Ba.
+  for (const { out } of waitingMaps(conn, ctx)) {
+    for (const i of out.items) {
+      if (i.status !== "waiting") continue;
+      const t = getTask(conn, i.taskId);
+      if (t && !waitsForBa(t) && !SETTLED_TASK.includes(t.status)) return true;
     }
   }
   return false;
@@ -695,9 +706,11 @@ export function advanceRun(core: EngineCore, runId: number): void {
   for (const pass of latePasses(core.db, ctx)) {
     // A follow-up pass that fails ends only itself (its failed tasks are reported); the run goes on.
     const r = advancePass(core, ctx, pass.key, pass.from + 1);
-    noticeCardsReady(core, ctx, pass.key, r.branches);
+    // One job, one branch, whichever pass selected it first.
+    const fresh = r.branches.filter((b) => !branches.some((x) => x.item.jobId === b.item.jobId));
+    noticeCardsReady(core, ctx, pass.key, fresh);
     if (r.active) active = true;
-    branches.push(...r.branches);
+    branches.push(...fresh);
   }
   if (waitingMaps(core.db, ctx).length > 0) active = true;
   if (!active && branches.every((b) => b.state !== "active")) {

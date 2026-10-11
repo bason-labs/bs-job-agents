@@ -50,7 +50,9 @@ export function siteBlocksOf(log: readonly GuardBlock[], result: RunnerResult): 
  * A site a bot named in its own pause (needs_login, captcha), as a plain host: a URL or odd
  * characters never reach the stored pause reason (`code(site)`), which must parse back.
  */
-export function pauseSite(raw: string | null | undefined, fallback: string | null): string | null {
-  const host = raw ? (hostOfUrl(raw) ?? null) : null;
-  return host ?? fallback;
+export function pauseSite(raw: string | null | undefined, fallback: string | null, allowed: readonly string[]): string | null {
+  const host = raw ? hostOfUrl(raw) : null;
+  // Only a host the task may open (its allowlist or token domains): never a look-alike the bot picked.
+  const ok = host !== null && allowed.some((d) => host === normalizeHostName(d) || host.endsWith(`.${normalizeHostName(d)}`));
+  return ok ? host : fallback;
 }
