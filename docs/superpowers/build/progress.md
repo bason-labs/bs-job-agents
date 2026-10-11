@@ -26,6 +26,12 @@ Updated by the coordinator after every step, so work can resume after an interru
 | 2026-10-11 | F3 fixer | ✅ merged; 2339 tests green; reports/phase3-f3-fixer.md; S7 live check blocked (Chrome extension not connected) |
 | 2026-10-11 | W3d wiring | ✅ merged; 2382 tests green; reports/phase3-w3d-wiring.md |
 | 2026-10-11 | Phase 3 QA/QC | ✅ merged; qa-phase-3.md; 2431 tests + 144 e2e green; API contract parity tests; live smoke (Lead + QA consult) ok |
-| 2026-10-11 | Phase 3 PM review (worktree) | 🔄 running |
+| 2026-10-11 | Phase 3 PM review | ✅ merged (3b5caf8); pm-phase-3.md: ready after F4 part A (M1–M3, S1, S8); E1 update + E2 in owner-decisions.md |
+| 2026-10-11 | F4 part A (M1–M3, S1, S8), W4c prompts + master CV + imports (worktrees) | 🔄 running |
 
-**Next action:** merge Phase 3 QA when it reports, then run the Phase 3 PM, then the must-fix fixer, then Phase 4 (W4a adapters, W4b e2e + runbook + dry run, W4c prompts + master CV). Resume any agent stopped by a usage limit with SendMessage.
+**Next action:**
+1. Merge F4 part A when it reports, then start W4a (source adapters) and F4 part B (S2–S7) in parallel.
+2. Merge W4c when it reports.
+3. When F4 part B, W4a and W4c are merged, start W4b: e2e live-shape lane, screenshot comparisons, runbook, the live checks in pm-phase-3.md §8, and dry-run acceptance (needs Ba at the keyboard for Chrome/Figma; the dry run never submits).
+4. Then the Phase 4 QA and PM, and the final summary.
+Resume any agent stopped by a usage limit with SendMessage.
