@@ -61,7 +61,17 @@ export interface FigmaPort {
   fingerprintProtectedPages(): Promise<ProtectedPagesFingerprint>;
   findDraftFrame(name: string): Promise<{ id: string; name: string; url: string | null } | null>;
   /** PDF export of a Drafts frame to `outPath` (absolute), hashed (PM decision 2a). No LLM involved. */
-  exportFramePdf(frameId: string, outPath: string): Promise<{ sha256: string; pageCount: number; onePageA4: boolean }>;
+  exportFramePdf(frameId: string, outPath: string): Promise<FramePdfExport>;
+}
+
+/** What the orchestrator verified about its own PDF export (W2c's FigmaPdfExport has these and more). */
+export interface FramePdfExport {
+  sha256: string;
+  pageCount: number;
+  onePageA4: boolean;
+  /** First page size in points (additive, F5: QA's verified PDF facts). */
+  widthPt?: number;
+  heightPt?: number;
 }
 
 /** One block decision a guard hook logged (JSONL, `decision: "block"`). */

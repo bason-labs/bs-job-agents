@@ -1,7 +1,11 @@
 "use client";
 
-import { CircleAlert, Globe, PauseCircle } from "lucide-react";
+import type { Engine } from "@bs-job-agents/shared";
+import { CircleAlert, Globe, PauseCircle, Play } from "lucide-react";
+import { useState } from "react";
+import { Button } from "@/components/ui/Button";
 import type { HealthState } from "@/lib/api/contract";
+import { errorMessage } from "@/lib/api/errors";
 import type { ShellData } from "@/lib/api/types";
 import { formatClock, formatDuration } from "@/lib/datetime";
 import { useNow } from "@/lib/useNow";
@@ -12,11 +16,28 @@ export function pausedText(label: string, until: string, now: number): string {
   return `${label} paused until ${formatClock(until, now)} · ${left > 0 ? `resumes in ${formatDuration(left)}` : "resuming now"}`;
 }
 
-/** Engine paused (UC-16) / Chrome not connected (§10.3) banner under the top bar. */
-export function PausedBanner({ data }: { data: ShellData }) {
+/**
+ * Engine paused (UC-16) / Chrome not connected (§10.3) banner under the top bar. "Resume now" lifts
+ * a usage-limit pause early (e.g. after Ba switched accounts); the engine.resumed event clears it.
+ */
+export function PausedBanner({ data, onResume }: { data: ShellData; onResume?: (engine: Engine) => Promise<void> }) {
   const paused = data.usage.filter((u) => u.pausedUntil);
   const now = useNow(paused.length > 0);
+  const [pending, setPending] = useState<Engine | null>(null);
+  const [error, setError] = useState<string | null>(null);
   if (!paused.length && data.chromeConnected) return null;
+  const resume = async (engine: Engine) => {
+    if (!onResume) return;
+    setPending(engine);
+    setError(null);
+    try {
+      await onResume(engine);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setPending(null);
+    }
+  };
   return (
     <div
       role="status"
@@ -27,8 +48,28 @@ export function PausedBanner({ data }: { data: ShellData }) {
         <span key={u.engine} className="inline-flex items-center gap-1.5">
           <PauseCircle aria-hidden className="size-3.5" />
           {now === null ? `${u.label} paused` : pausedText(u.label, u.pausedUntil!, now)}
+          {onResume ? (
+            <Button
+              variant="warn"
+              size="sm"
+              className="ml-1 h-6 px-2"
+              aria-label={`Resume ${u.label} now`}
+              data-testid={`resume-engine-${u.engine}`}
+              loading={pending === u.engine}
+              leftIcon={<Play aria-hidden className="size-3" />}
+              onClick={() => void resume(u.engine)}
+            >
+              Resume now
+            </Button>
+          ) : null}
         </span>
       ))}
+      {error ? (
+        <span role="alert" className="inline-flex items-center gap-1.5 text-danger">
+          <CircleAlert aria-hidden className="size-3.5" />
+          {error}
+        </span>
+      ) : null}
       {data.chromeConnected ? null : (
         <span className="inline-flex items-center gap-1.5">
           <Globe aria-hidden className="size-3.5" />

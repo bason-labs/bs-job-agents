@@ -31,6 +31,7 @@ export * from "./bots/consult.js";
 export * from "./bots/registry.js";
 export * from "./bots/definition.js";
 export * from "./bots/inputs.js";
+export * from "./bots/models.js";
 
 // domain (§9, §9.1)
 export * from "./domain/search-profile.js";

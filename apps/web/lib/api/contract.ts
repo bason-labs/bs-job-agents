@@ -10,6 +10,7 @@ import type {
   BotView,
   ChatSendRequest,
   ChoiceRequest,
+  Engine,
   EngineStatus,
   Message,
   RequestChangesRequest,
@@ -129,6 +130,8 @@ export interface WebApi {
   getRoom(id: string): Promise<RoomSummary | null>;
   listBots(): Promise<BotView[]>;
   listEngines(): Promise<EngineStatus[]>;
+  /** "Resume now" on the paused banner: lift a usage-limit pause early (POST /engines/:engine/resume). */
+  resumeEngine(engine: Engine): Promise<void>;
 
   // chat (UC-01, UC-12, UC-17, UC-24, UC-25)
   listRooms(): Promise<Room[]>;

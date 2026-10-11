@@ -83,6 +83,8 @@ const WEBAPI: Array<{ fn: keyof WebApi; args: unknown[]; method: ApiMethod; key:
   { fn: "answerQuestion", args: ["1", { field: "f", mode: "answer", value: "v", remember: false }], method: "POST", key: "answerQuestion", body: { resumed: true, next: null } },
   { fn: "resumeTask", args: ["1"], method: "POST", key: "taskResume", body: { ok: true } },
   { fn: "declineDomain", args: ["1"], method: "POST", key: "taskDeclineDomain", body: { ok: true } },
+  // Path params are checked as "1" (the client does not validate the engine name; the server does).
+  { fn: "resumeEngine", args: ["1"], method: "POST", key: "engineResume", body: { ok: true } },
   { fn: "chooseOption", args: [{ messageId: "1", key: "k", optionId: "o" }], method: "POST", key: "chatChoices", body: { message: messageFixture, taskIds: [] } },
   { fn: "listRuns", args: [], method: "GET", key: "runs", body: { runs: [] } },
   { fn: "getRun", args: ["1"], method: "GET", key: "run", body: { run: runFixture, steps: [stepFixture], tasks: [taskFixture] } },

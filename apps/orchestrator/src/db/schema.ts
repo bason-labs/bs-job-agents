@@ -87,6 +87,8 @@ export const bots = sqliteTable(
     displayName: text("display_name").notNull(),
     engine: text("engine", { enum: ENGINES }).notNull(),
     model: text("model"),
+    /** Live run 1 (additive): Ba's model choice on the Bots screen; null = bot.json's `model`. Start-up sync keeps it. */
+    modelOverride: text("model_override"),
     trustLevel: integer("trust_level").notNull(),
     promptVersion: integer("prompt_version").notNull().default(1),
     enabled: boolCol("enabled").notNull().default(true),

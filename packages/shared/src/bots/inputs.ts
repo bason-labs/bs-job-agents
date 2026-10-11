@@ -85,6 +85,23 @@ export const CvTailorInputSchema = z.object({
   templates: z.array(CvTemplateSchema).optional(),
 });
 
+/**
+ * Live run 1 (F5): facts about the exported PDF that the orchestrator itself verified (its own
+ * Figma export and PDF.js read, §6.2). QA uses them for the page-count / one-page A4 checks
+ * instead of guessing from the extracted text. Strict: nothing else rides along.
+ */
+export const VerifiedPdfFactsSchema = z
+  .object({
+    pageCount: z.number().int().nonnegative(),
+    onePageA4: z.boolean().describe("Exactly one page, A4 portrait"),
+    widthPt: z.number().nonnegative().nullable().describe("First page width in points (A4 portrait: 595.28)"),
+    heightPt: z.number().nonnegative().nullable().describe("First page height in points (A4 portrait: 841.89)"),
+    sha256: Sha256Schema,
+    textChars: z.number().int().nonnegative().describe("Characters of pdfText the orchestrator extracted"),
+  })
+  .strict();
+export type VerifiedPdfFacts = z.infer<typeof VerifiedPdfFactsSchema>;
+
 /** qa.review (§5.2 QA). */
 export const QaReviewInputSchema = z.object({
   jobId: IdSchema,
@@ -93,6 +110,8 @@ export const QaReviewInputSchema = z.object({
   company: CompanyProfileSchema.nullable(),
   draft: CvDraftSchema,
   pdfText: z.string().describe("Extracted with a pdfminer/PDF.js-style extractor (§6.2)"),
+  /** Additive (F5): absent on inputs stored before it. */
+  pdf: VerifiedPdfFactsSchema.optional().describe("Orchestrator-verified facts about the exported PDF"),
   masterCvVersion: z.number().int().positive(),
 });
 

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MOCK_SHELL_DATA } from "@/lib/mock/shell";
 import { HealthBanner, PausedBanner, healthMessage, pausedText } from "./StatusBanners";
@@ -31,6 +31,33 @@ describe("PausedBanner", () => {
     rerender(<PausedBanner data={MOCK_SHELL_DATA} />);
     expect(screen.queryByRole("status")).toBeNull();
     vi.useRealTimers();
+  });
+});
+
+describe("PausedBanner: Resume now (live run 1, POST /engines/:engine/resume)", () => {
+  const paused = {
+    ...MOCK_SHELL_DATA,
+    usage: MOCK_SHELL_DATA.usage.map((u) => (u.engine === "claude" ? { ...u, pausedUntil: new Date(Date.now() + 3600_000).toISOString() } : u)),
+    chromeConnected: true,
+  };
+  it("a paused engine offers Resume now, which calls onResume with that engine", async () => {
+    const onResume = vi.fn(async () => {});
+    render(<PausedBanner data={paused} onResume={onResume} />);
+    fireEvent.click(screen.getByRole("button", { name: "Resume Claude now" }));
+    await waitFor(() => expect(onResume).toHaveBeenCalledWith("claude"));
+    expect(screen.getByRole("button", { name: "Resume Claude now" })).toHaveTextContent("Resume now");
+  });
+  it("shows the error when the orchestrator refuses", async () => {
+    const onResume = vi.fn(async () => {
+      throw new Error("claude is not paused");
+    });
+    render(<PausedBanner data={paused} onResume={onResume} />);
+    fireEvent.click(screen.getByRole("button", { name: "Resume Claude now" }));
+    expect(await screen.findByText(/claude is not paused/)).toBeInTheDocument();
+  });
+  it("no button without a handler, and none for Chrome", () => {
+    render(<PausedBanner data={{ ...paused, chromeConnected: false }} />);
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });
 

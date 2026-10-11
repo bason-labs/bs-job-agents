@@ -86,6 +86,8 @@ export const API_ROUTES = {
   criteriaProfiles: "/criteria/profiles",
   /** Phase 3 QA (additive): UC-11 e "Don't allow" on a domain_confirm pause (engine.declineDomain). */
   taskDeclineDomain: "/tasks/:id/decline-domain",
+  /** Live run 1 (additive): "Resume now" on the paused banner lifts a usage-limit pause early (e.g. after switching accounts). */
+  engineResume: "/engines/:engine/resume",
 } as const;
 
 /** GET /bridges (W3a, additive): whether each engine's Chrome extension answers; null = unknown (engine stopped). */

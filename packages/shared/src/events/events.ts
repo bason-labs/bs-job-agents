@@ -51,6 +51,9 @@ export const SAFETY_DENIAL_REASONS = [
   "dry_run_submitted",
   // §6.2: the Figma guard hook blocked a call that reached outside the Drafts page.
   "protected_page_blocked",
+  // Live run 1 (F5): the Figma guard blocked a call and the protected pages were unchanged after
+  // the task: prevention that worked. Informational only (never fails the task, never demotes).
+  "figma_guard_blocked",
 ] as const;
 export const SafetyDenialReasonSchema = z.enum(SAFETY_DENIAL_REASONS);
 export type SafetyDenialReason = z.infer<typeof SafetyDenialReasonSchema>;

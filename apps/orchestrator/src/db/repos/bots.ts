@@ -47,7 +47,7 @@ export function upsertBot(db: Conn, input: UpsertBotInput): Bot {
 /**
  * Start-up sync from bot.json (§5.1), keeping what Ba changed on the Bots screen: a missing bot
  * is inserted as bot.json says; an existing row takes bot.json's name, model and prompt version
- * but keeps its engine, trust level and enabled flag.
+ * but keeps its engine, trust level, enabled flag and Ba's model choice (model_override).
  */
 export function syncBotFromDefinition(db: Conn, input: UpsertBotInput): Bot {
   if (!getBot(db, input.name)) return upsertBot(db, input);
@@ -72,7 +72,7 @@ export function listBots(db: Conn): Bot[] {
 export function updateBot(
   db: Conn,
   name: string,
-  patch: Partial<Pick<Bot, "engine" | "model" | "trustLevel" | "promptVersion" | "enabled" | "displayName">>,
+  patch: Partial<Pick<Bot, "engine" | "model" | "modelOverride" | "trustLevel" | "promptVersion" | "enabled" | "displayName">>,
 ): Bot {
   if (patch.trustLevel !== undefined) assertTrustLevel(name, patch.trustLevel);
   const row = db.update(bots).set(patch).where(eq(bots.name, name)).returning().get();

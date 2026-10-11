@@ -13,6 +13,7 @@ import {
   type Company,
   type CvLanguage,
   type CvVersion,
+  type Engine,
   type Job,
   type MessageCard,
   type PauseReason,
@@ -986,6 +987,17 @@ async function pauseTask(core: Core, botName: string, kind: string, reason: Paus
 function minutesFromNow(core: Core, minutes: number): string {
   const ms = core.nowMs() + minutes * 60_000;
   return new Date(Math.ceil(ms / 60_000) * 60_000).toISOString();
+}
+
+/** "Resume now" (POST /engines/:engine/resume): the pause ends early; the orchestrator's Lead notice. */
+export async function resumeEngineNow(core: Core, engine: Engine): Promise<void> {
+  const status = core.state.engines.find((e) => e.engine === engine);
+  if (!status) return;
+  status.pausedUntil = null;
+  status.reason = null;
+  core.emit({ type: "engine.resumed", engine });
+  const label = engine === "claude" ? "Claude" : "ChatGPT";
+  await core.post(LEAD_ROOM_ID, LEAD, `▶️ ${label} resumed by you (Resume now). Waiting tasks are back in the queue; if the limit is still reached, it pauses again.`);
 }
 
 export async function simulate(core: Core, kind: SimulationKind): Promise<void> {

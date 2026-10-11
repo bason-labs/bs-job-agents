@@ -53,6 +53,9 @@ export function useBots(initial: BotScreenView[], data: BotsData) {
     pendingTrust,
     setEngine: (bot: BotScreenView, engine: Engine) =>
       update(bot, { engine }, (b) => `${b.displayName} now runs on ${ENGINE_LABELS[b.engine]}. Queued tasks keep their engine.`),
+    /** Live run 1: Ba's model for this bot (null = bot.json's default). */
+    setModel: (bot: BotScreenView, model: string | null) =>
+      update(bot, { model }, (b) => (model === null ? `${b.displayName} uses the default model again` : `${b.displayName} now uses ${b.model ?? model}`)),
     setEnabled: (bot: BotScreenView, enabled: boolean) =>
       update(bot, { enabled }, (b) => (b.enabled ? `${b.displayName} enabled` : `${b.displayName} disabled — Lead won't assign it new tasks`)),
     /** Back to the level a demotion took away (§5.3); no confirmation needed. */

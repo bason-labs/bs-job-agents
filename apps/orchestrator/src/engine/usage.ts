@@ -6,6 +6,7 @@
 import type { Engine } from "@bs-job-agents/shared";
 import { getEngineState, holdEngineTasks, listEngineStates, pauseEngine, releaseEngineTasks, resumeEngine, type Conn } from "../db/index.js";
 import type { EngineCore } from "./core.js";
+import { invalidState } from "./errors.js";
 import { noticeEnginePaused, noticeEngineResumed } from "./notices.js";
 
 export class UsageWatcher {
@@ -61,6 +62,28 @@ export class UsageWatcher {
     });
     core.bus.flush();
     if (resumed) core.dispatch();
+  }
+
+  /**
+   * "Resume now" (live run 1): Ba lifts a usage-limit pause before its reset, e.g. after switching
+   * Claude accounts. Clears the pause and its timer, releases the held tasks, emits engine.resumed.
+   * If the engine is still limited, the next task's result pauses it again.
+   */
+  resumeNow(engine: Engine): void {
+    const core = this.core;
+    core.db.transaction((tx) => {
+      const state = getEngineState(tx, engine);
+      if (state.pausedUntil === null && state.reason === null) throw invalidState(`${engine} is not paused`);
+      resumeEngine(tx, engine);
+      releaseEngineTasks(tx, engine);
+      core.bus.emit(tx, { type: "engine.resumed", engine });
+      noticeEngineResumed(core, tx, engine, { manual: true });
+    });
+    const timer = this.timers.get(engine);
+    if (timer !== undefined) core.clock.clearTimer(timer);
+    this.timers.delete(engine);
+    core.bus.flush();
+    core.dispatch();
   }
 
   /** After a restart: resume pauses that expired while the orchestrator was down; re-arm the others. */

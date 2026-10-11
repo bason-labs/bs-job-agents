@@ -97,6 +97,22 @@ test.describe("Bot settings", () => {
     await expect(page).toHaveURL(/\/chat\/apply$/);
   });
 
+  test("picks a model for the bot's engine and goes back to the default (live run 1)", async ({ page }) => {
+    await open(page, "/bots/qa");
+    const qa = card(page, "qa");
+    const field = qa.getByRole("combobox", { name: "Model" });
+    await field.fill("sonnet");
+    await expect(qa.getByTestId("bot-model-error")).toHaveText("sonnet is a model for Claude; QA runs on Codex.");
+    await expect(qa.getByRole("button", { name: "Save model" })).toBeDisabled();
+    await field.fill("gpt-5-codex");
+    await qa.getByRole("button", { name: "Save model" }).click();
+    await expect(page.getByTestId("toast").filter({ hasText: "QA now uses gpt-5-codex" })).toBeVisible();
+    await expect(field).toHaveValue("gpt-5-codex");
+    await qa.getByRole("button", { name: "Use default" }).click();
+    await expect(page.getByTestId("toast").filter({ hasText: "QA uses the default model again" })).toBeVisible();
+    await expect(field).toHaveValue("");
+  });
+
   test("an unknown bot is not found", async ({ page }) => {
     await open(page, "/bots/nobody");
     await expect(page.getByText("Not found")).toBeVisible();

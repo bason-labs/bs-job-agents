@@ -138,7 +138,7 @@ export function AppShell({ data: initialData, health: initialHealth = HEALTHY, c
             </div>
           </header>
           {api.mode === "live" ? <HealthBanner health={health} /> : null}
-          <PausedBanner data={data} />
+          <PausedBanner data={data} onResume={api.resumeEngine} />
           <main id="main" className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             {children}
           </main>

@@ -139,6 +139,7 @@ export const API_CONTRACT = {
   masterCvFactRequestDismiss: { POST: ep(OkResponseSchema) },
   criteriaProfiles: { GET: ep(SearchProfilesResponseSchema) },
   taskDeclineDomain: { POST: ep(OkResponseSchema) },
+  engineResume: { POST: ep(OkResponseSchema) },
 } as const satisfies { [K in ApiRouteKey]: Partial<Record<ApiMethod, ApiEndpoint>> };
 
 /** Every (method, route) pair of the contract, e.g. `{ key: "bot", method: "PATCH", path: "/bots/:name", … }`. */

@@ -134,6 +134,7 @@ export function botView(
     residualRisk: record.engine === "codex" && def?.browser ? RESIDUAL_RISK : null,
     // §5.3 / PM2 S8: the newest demotion Ba has not restored (the engine records it).
     demotion: demotionOf(db, name),
+    defaultModel: def?.model ?? row?.model ?? null,
   };
 }
 

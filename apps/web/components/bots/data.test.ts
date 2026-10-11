@@ -50,7 +50,19 @@ describe("bots adapter (PM S21 rules)", () => {
     expect((await data.update("lead", { trustLevel: 2 })).trustLevel).toBe(2);
     expect(await data.update("lead", { trustLevel: 0 })).toMatchObject({ trustLevel: 0, promoteAllowed: true });
     expect(await err(data.update("lead", { trustLevel: 2 }))).toMatchObject({ status: 403, message: expect.stringMatching(/one step at a time/) });
-    expect(await err(data.update("lead", { model: "x" } as never))).toMatchObject({ status: 400, code: "validation_failed" });
+    expect(await err(data.update("lead", { nickname: "x" } as never))).toMatchObject({ status: 400, code: "validation_failed" });
+  });
+
+  it("sets a model that suits the engine (live run 1); a model for the other engine is a 400; null goes back to bot.json's", async () => {
+    const data = make();
+    expect(await data.update("cv", { model: "opus" })).toMatchObject({ model: "opus", defaultModel: null });
+    expect(await err(data.update("cv", { model: "gpt-5" }))).toMatchObject({ status: 400, code: "validation_failed", message: expect.stringMatching(/not a model for Claude/) });
+    expect(await err(data.update("research", { engine: "codex", model: "sonnet" }))).toMatchObject({ status: 400 });
+    expect(await err(data.update("cv", { model: "--yolo" }))).toMatchObject({ status: 400 });
+    expect(await data.update("cv", { model: null })).toMatchObject({ model: null });
+    // An engine switch drops a model that no longer suits it.
+    expect(await data.update("research", { model: "opus" })).toMatchObject({ model: "opus" });
+    expect(await data.update("research", { engine: "codex" })).toMatchObject({ engine: "codex", model: null });
   });
 
   it("restores a demoted bot and clears the demotion", async () => {

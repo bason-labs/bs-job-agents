@@ -92,6 +92,15 @@ describe("CV's ROLE.md (§6.1, §6.2, §6.3, UC-06)", () => {
   it("clones one of the templates the task lists (W4c handoff: `templates` in the input)", () => {
     expect(text).toMatch(/`templates`/);
   });
+  it("live run 1: inspects a template only through its Drafts clone, never walks template nodes in helpers", () => {
+    expect(text).toMatch(/clone it into Drafts first/i);
+    expect(text).toMatch(/never pass a template node .*helper function/i);
+  });
+  it("live run 1: cites every supporting fact and never attaches an unstated technology duration", () => {
+    expect(text).toMatch(/every master fact that supports/i);
+    expect(text).toMatch(/durations, technologies and metrics/i);
+    expect(text).toMatch(/technology-specific duration/i);
+  });
   it("one A4 page, ATS-safe, language rule", () => {
     expect(text).toMatch(/one A4 page/i);
     expect(text).toMatch(/ATS/);
@@ -105,6 +114,15 @@ describe("QA's ROLE.md (§5.2 QA, UC-07)", () => {
     for (const hf of ["invented_claim", "wrong_language", "wrong_company", "pdf_unreadable", "over_one_page", "ats_order", "missing_section"]) expect(text).toContain(hf);
     expect(text).toContain("injectionSuspected");
     expect(text).toMatch(/total ≥ 80/);
+  });
+  it("live run 1: uses the orchestrator-verified `pdf` facts for page checks", () => {
+    expect(text).toContain("`pdf`");
+    expect(text).toContain("pdf.onePageA4");
+    expect(text).toMatch(/do not fail .*missing evidence/i);
+  });
+  it("live run 1: a supported but uncited claim is a fix, invented_claim only when no master fact supports it", () => {
+    expect(text).toMatch(/merely not cited.*fix/is);
+    expect(text).toMatch(/`invented_claim`[^\n]*no master fact/);
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelForEngine } from "./model.js";
+import { modelForEngine, modelSuitsEngine } from "./model.js";
 
 describe("modelForEngine", () => {
   it("keeps a model meant for the engine", () => {
@@ -13,5 +13,17 @@ describe("modelForEngine", () => {
   });
   it("null means the CLI default", () => {
     expect(modelForEngine(null, "claude")).toBeNull();
+  });
+});
+
+describe("modelSuitsEngine (PATCH /bots/:name { model })", () => {
+  it("refuses a Claude model on Codex and an OpenAI model on Claude", () => {
+    expect(modelSuitsEngine("opus", "claude")).toBe(true);
+    expect(modelSuitsEngine("claude-sonnet-4-5", "claude")).toBe(true);
+    expect(modelSuitsEngine("gpt-5-codex", "codex")).toBe(true);
+    expect(modelSuitsEngine("o3", "codex")).toBe(true);
+    expect(modelSuitsEngine("sonnet", "codex")).toBe(false);
+    expect(modelSuitsEngine("gpt-5", "claude")).toBe(false);
+    expect(modelSuitsEngine("o3", "claude")).toBe(false);
   });
 });

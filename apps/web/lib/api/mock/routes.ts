@@ -49,6 +49,7 @@ import {
   canChangeApplicationStatus,
   checkBotSafety,
   maxTrustLevel,
+  modelSuitsEngine,
   type Application,
   type ApplicationListItem,
   type ApprovalSummary,
@@ -421,10 +422,18 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
       b.trustLevel = patch.trustLevel;
       b.promoteAllowed = b.trustLevel < maxTrustLevel(b.name);
     }
+    // Live run 1: like the orchestrator, the model must suit the engine after this change; an
+    // engine switch drops a model that no longer suits it; null goes back to bot.json's model.
+    const engine = patch.engine ?? b.engine;
+    if (patch.model !== undefined && patch.model !== null && !modelSuitsEngine(patch.model, engine)) {
+      throw fail(400, "validation_failed", `${patch.model} is not a model for ${engine === "claude" ? "Claude" : "Codex"}, which ${b.name} runs on`);
+    }
     if (patch.engine !== undefined) {
       b.engine = patch.engine;
       b.residualRisk = residualRiskFor(b.name, b.engine);
     }
+    if (patch.model !== undefined) b.model = patch.model ?? b.defaultModel ?? null;
+    else if (patch.engine !== undefined && b.model !== null && b.model !== (b.defaultModel ?? null) && !modelSuitsEngine(b.model, b.engine)) b.model = b.defaultModel ?? null;
     if (patch.enabled !== undefined) b.enabled = patch.enabled;
     return botUpdated(core, b);
   }),

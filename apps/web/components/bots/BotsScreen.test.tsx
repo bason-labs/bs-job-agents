@@ -156,6 +156,28 @@ describe("BotsScreen (§11 Bots)", () => {
   });
 });
 
+describe("BotsScreen: model (live run 1, PATCH /bots/:name { model })", () => {
+  it("the settings page saves a model for the bot's engine, refuses one for the other engine, and goes back to the default", async () => {
+    const { user, data } = await setup("cv");
+    const field = within(card("cv")).getByRole("combobox", { name: "Model" });
+    const save = within(card("cv")).getByRole("button", { name: "Save model" });
+    expect(field).toHaveValue("");
+    expect(field).toHaveAttribute("placeholder", "Default: the CLI's default for your subscription");
+    expect(save).toBeDisabled();
+    await user.type(field, "gpt-5");
+    expect(within(card("cv")).getByTestId("bot-model-error")).toHaveTextContent("gpt-5 is a model for Codex; CV runs on Claude.");
+    expect(save).toBeDisabled();
+    await user.clear(field);
+    await user.type(field, "opus");
+    await user.click(save);
+    expect(await screen.findByText("CV now uses opus")).toBeInTheDocument();
+    expect((await data.get("cv"))!.model).toBe("opus");
+    await user.click(within(card("cv")).getByRole("button", { name: "Use default" }));
+    expect(await screen.findByText("CV uses the default model again")).toBeInTheDocument();
+    expect((await data.get("cv"))!.model).toBeNull();
+  });
+});
+
 describe("BotsLive (the pages)", () => {
   it("reads the bots through the api and follows bot.updated from elsewhere", async () => {
     const { mock } = live();

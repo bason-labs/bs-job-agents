@@ -2,7 +2,8 @@
 // lib/api (the orchestrator in live mode, the mock backend otherwise). Shapes are the shared API schemas:
 //   GET    /bots                              → BotsResponseSchema (BotView[] with demotion, memoryNotes)
 //   GET    /bots/:name                        → BotView; 404 → null here
-//   PATCH  /bots/:name                        → body BotUpdateRequestSchema (engine, enabled, trustLevel) → BotView.
+//   PATCH  /bots/:name                        → body BotUpdateRequestSchema (engine, enabled, trustLevel, model) → BotView.
+//                                               400 for a model meant for the other engine (live run 1)
 //                                               403 for Apply/CV on Codex (checkBotSafety) and for a trust level
 //                                               that rises more than one step or above the Phase 1 cap
 //   DELETE /bots/:name/memory/:noteId         → BotView without the note (PM S14); 404 when it is gone

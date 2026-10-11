@@ -6,7 +6,7 @@ import { notFound } from "./errors.js";
 import type { BotRegistry } from "./ports.js";
 
 export interface EffectiveBot {
-  /** bot.json with the DB's engine; this is what the runner receives. */
+  /** bot.json with the DB's engine and Ba's model choice; this is what the runner receives. */
   def: BotDefinition;
   /** The DB row's level when present (the trust guard reads it), else bot.json's. */
   trustLevel: TrustLevel;
@@ -18,7 +18,7 @@ export function effectiveBot(db: Conn, registry: BotRegistry, name: string): Eff
   if (!def) throw notFound("bot", name);
   const row = getBot(db, name);
   return {
-    def: { ...def, engine: row?.engine ?? def.engine },
+    def: { ...def, engine: row?.engine ?? def.engine, model: row?.modelOverride ?? def.model },
     trustLevel: (row?.trustLevel as TrustLevel | undefined) ?? def.trustLevel,
     enabled: (row?.enabled ?? true) && def.enabled,
   };

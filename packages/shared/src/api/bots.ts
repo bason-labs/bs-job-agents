@@ -21,6 +21,8 @@ export const BotViewSchema = BotRecordSchema.extend({
   demotion: z.object({ fromLevel: TrustLevelSchema, at: z.string(), reason: z.string() }).nullable().optional(),
   /** W3a, additive: the memory notes with ids for DELETE /bots/:name/memory/:noteId (PM S14). */
   memoryNotes: z.array(z.object({ id: z.string().min(1), text: z.string() })).optional(),
+  /** Additive (live run 1): bot.json's model, used when Ba chose none (`model` is the effective one). */
+  defaultModel: z.string().nullable().optional(),
 });
 export type BotView = z.infer<typeof BotViewSchema>;
 
@@ -44,8 +46,25 @@ export const FactRequestsResponseSchema = z.object({ requests: z.array(FactReque
 
 export const BotsResponseSchema = z.object({ bots: z.array(BotViewSchema) });
 
+/**
+ * Live run 1: a model name as the CLIs take it (`sonnet`, `claude-opus-4-1`, `opus[1m]`, `gpt-5-codex`,
+ * `o3`): never starts with `-`, no spaces. The orchestrator also checks it suits the bot's engine.
+ */
+export const BotModelNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:[\]-]*$/, "a model name such as sonnet, opus or gpt-5-codex");
+
 export const BotUpdateRequestSchema = z
-  .object({ engine: EngineSchema, enabled: z.boolean(), trustLevel: TrustLevelSchema })
+  .object({
+    engine: EngineSchema,
+    enabled: z.boolean(),
+    trustLevel: TrustLevelSchema,
+    /** Additive (live run 1): Ba's model for this bot; null = bot.json's model. */
+    model: BotModelNameSchema.nullable(),
+  })
   .partial()
   .strict();
 export type BotUpdateRequest = z.infer<typeof BotUpdateRequestSchema>;
