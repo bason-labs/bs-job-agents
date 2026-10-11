@@ -26,7 +26,9 @@ describe("Sidebar", () => {
     expect(within(research).getByRole("link", { name: "Research settings" })).toHaveAttribute("href", "/bots/research");
     expect(within(research).getByRole("img", { name: "Working" })).toBeInTheDocument();
     expect(within(research).getByText("working")).toBeInTheDocument();
+    // PM S9: only Apply carries the trust badge (as in the prototype).
     expect(within(rows[4]!).getByLabelText("Trust level L1")).toBeInTheDocument();
+    expect(within(team).getAllByLabelText(/Trust level/)).toHaveLength(1);
     // Lead's chat is the main chat; /chat/lead only redirects there.
     expect(within(rows[0]!).getByRole("link", { name: /Chat with Lead/ })).toHaveAttribute("href", "/chat");
   });

@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { cn } from "@/lib/cn";
 import { formatBytes } from "@/lib/files";
 import { buttonClass } from "./Button";
+import { useReturnFocus } from "./focus";
 import { PdfPages } from "./PdfPages";
 
 export type ViewerKind = "pdf" | "image" | "text" | "form" | "other";
@@ -52,12 +53,14 @@ export interface FileViewerProps {
  * first; Download lives inside. Esc, ✕ or a click on the backdrop closes it.
  */
 export function FileViewer({ file, onOpenChange }: FileViewerProps) {
+  const focus = useReturnFocus();
   return (
     <RadixDialog.Root open={file !== null} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="fixed inset-0 z-[45] bg-black/60 backdrop-blur-sm" />
         <RadixDialog.Content
           data-testid="file-viewer"
+          {...focus}
           aria-describedby={undefined}
           className="fixed inset-0 z-[46] flex flex-col outline-none"
         >

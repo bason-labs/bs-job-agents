@@ -1,17 +1,9 @@
-import { MessageSquare } from "lucide-react";
 import type { Metadata } from "next";
-import { PlaceholderPage } from "@/components/shell/Page";
+import { ChatScreen } from "@/components/chat/ChatScreen";
 
 export const metadata: Metadata = { title: "Chat" };
 
-// Phase 1 placeholder; the real screen is built in Phase 3.
+/** Lead's chat, the home screen (spec §11): every work request goes through Lead. */
 export default function Page() {
-  return (
-    <PlaceholderPage
-      width="full"
-      icon={<MessageSquare aria-hidden />}
-      heading="Chat with Lead"
-      description="Lead takes every request and hands work to the team. The chat screen (bot tabs, delegation trace, run cards, composer with attachments) arrives in Phase 3."
-    />
-  );
+  return <ChatScreen botName="lead" />;
 }

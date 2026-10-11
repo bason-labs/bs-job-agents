@@ -1,10 +1,14 @@
-// Live-update seam for the shell (spec §11 "Live updates": SSE events).
-// Phase 3 (W3a/W3b): implement `subscribeShellEvents` with an EventSource on
-// the orchestrator and map its `engine.paused/resumed`, `review.ready`,
-// `run.*` and task events onto ShellEvent. The reducer below stays as is.
+// Live-update seam for the shell (spec §11 "Live updates": SSE events). The api's event feed
+// (SSE in live mode, the mock backend otherwise) is mapped onto ShellEvent by toShellEvent and
+// applied by the reducer below.
+import type { AppEvent } from "@bs-job-agents/shared";
+import type { EventFeed } from "./contract";
+import { toShellEvent } from "./map";
 import type { BotLiveStatus, Engine, ShellData } from "./types";
 
 export type ShellEvent =
+  /** A fresh read of the whole shell (after the live connection came back). */
+  | { type: "shell.replace"; data: ShellData }
   | { type: "bot.status"; name: string; status: BotLiveStatus }
   | { type: "engine.paused"; engine: Engine; pausedUntil: string }
   | { type: "engine.resumed"; engine: Engine }
@@ -17,6 +21,8 @@ export type ShellEvent =
 /** Pure: returns new ShellData with the event applied. */
 export function applyShellEvent(data: ShellData, event: ShellEvent): ShellData {
   switch (event.type) {
+    case "shell.replace":
+      return event.data;
     case "bot.status":
       return { ...data, bots: data.bots.map((b) => (b.name === event.name ? { ...b, status: event.status } : b)) };
     case "engine.paused":
@@ -36,7 +42,29 @@ export function applyShellEvent(data: ShellData, event: ShellEvent): ShellData {
   }
 }
 
-/** Subscribes to shell events; returns an unsubscribe function. No-op until Phase 3. */
-export function subscribeShellEvents(_onEvent: (event: ShellEvent) => void): () => void {
-  return () => {};
+/** Subscribes to shell events on the feed; returns an unsubscribe function. */
+export function subscribeShellEvents(feed: EventFeed, onEvent: (event: ShellEvent) => void): () => void {
+  return feed.subscribe((event) => {
+    const shellEvent = toShellEvent(event);
+    if (shellEvent) onEvent(shellEvent);
+  });
+}
+
+/**
+ * Events after which the sidebar's review count may have changed: a card became ready, Ba
+ * decided on one (its review step finished or re-opened), or a run ended. The shell then
+ * re-reads the queue size instead of guessing from the event.
+ */
+export function affectsReviewCount(event: AppEvent): boolean {
+  switch (event.type) {
+    case "review.ready":
+    case "run.finished":
+      return true;
+    case "step.started":
+    case "step.updated":
+    case "step.finished":
+      return event.stepKey === "review";
+    default:
+      return false;
+  }
 }
