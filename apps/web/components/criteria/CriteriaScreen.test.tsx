@@ -7,6 +7,9 @@ import type { MockState } from "@/lib/api/mock/state";
 import { ApiProvider } from "@/lib/api/react";
 import { CriteriaLive, CriteriaScreen } from "./CriteriaScreen";
 import { createCriteriaData, readCriteria } from "./data";
+import { formToRequest, profileToForm } from "./logic";
+
+const profileToFormForTest = (p: Parameters<typeof profileToForm>[0]) => formToRequest(profileToForm(p));
 
 async function setup() {
   const data = createCriteriaData(testMock());
@@ -100,6 +103,26 @@ describe("CriteriaScreen (UC-21b)", () => {
 });
 
 describe("CriteriaLive (the page)", () => {
+  it("takes a newer version read in the background (saved from chat) while Ba is not editing", async () => {
+    const mock = testMock();
+    const data = createCriteriaData(mock);
+    const first = await readCriteria(data);
+    const { rerender } = render(
+      <ToastProvider>
+        <CriteriaScreen initial={first.profile} initialVersions={first.versions} initialAnswers={first.answers} data={data} />
+      </ToastProvider>,
+    );
+    await data.save({ ...profileToFormForTest(first.profile!), locations: ["Ho Chi Minh City", "Đà Nẵng"] });
+    const next = await readCriteria(data);
+    rerender(
+      <ToastProvider>
+        <CriteriaScreen initial={next.profile} initialVersions={next.versions} initialAnswers={next.answers} data={data} />
+      </ToastProvider>,
+    );
+    expect(screen.getByTestId("criteria-header")).toHaveTextContent("Active profile v4");
+    expect(within(screen.getByTestId("criteria-locations")).getByText("Đà Nẵng")).toBeInTheDocument();
+  });
+
   it("reads the criteria through the api", async () => {
     live();
     expect(await screen.findByTestId("criteria-header")).toHaveTextContent("Active profile v3");

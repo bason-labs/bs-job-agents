@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { open } from "./helpers";
+import { open, withMock, type MockHandle } from "./helpers";
 
 // UC-20: Ba edits master CV data; saving bumps the master version.
 
@@ -56,6 +56,36 @@ test("won't save a fact without text, or a duplicate id", async ({ page }) => {
   await page.getByTestId("cv-save").click();
   await expect(page.getByRole("alert").filter({ hasText: "duplicate fact id grad-1" })).toBeVisible();
   await expect(page.getByTestId("cv-header")).toContainText("Master version v7.");
+});
+
+test("a save based on an older version shows the reload banner (409 master_cv_changed)", async ({ page }) => {
+  await page.getByRole("button", { name: "Edit grad-2" }).click();
+  await editor(page).getByLabel("Text (English)").fill("Owned the purchase order system.");
+  await editor(page).getByRole("button", { name: "Done" }).click();
+  // Another tab saves v8 meanwhile.
+  await withMock(page, async (mock: MockHandle) => {
+    const m = mock.state.masterCv as { cv: unknown };
+    await mock.request("PUT", "/master-cv", { body: m.cv });
+  });
+  await page.getByTestId("cv-save").click();
+  const banner = page.getByTestId("cv-conflict");
+  await expect(banner).toContainText("The master CV changed since you opened it (now v8)");
+  await expect(page.getByTestId("cv-save")).toBeDisabled();
+  await banner.getByRole("button", { name: "Reload" }).click();
+  await expect(page.getByTestId("cv-header")).toContainText("Master version v8.");
+  await expect(banner).toBeHidden();
+});
+
+test("a question answered with a saved fact stays closed after a reload of the screen", async ({ page }) => {
+  await page.getByTestId("fact-request").getByRole("button", { name: "Add a fact" }).click();
+  await editor(page).getByLabel("Text (English)").fill("GraphQL (Apollo Client) — used at Aegona");
+  await page.getByTestId("cv-save").click();
+  await expect(page.getByTestId("cv-header")).toContainText("Master version v8.");
+  await page.getByTestId("sidebar").getByRole("link", { name: "Schedules" }).click();
+  await expect(page.getByTestId("page-title")).toHaveText("Schedules");
+  await page.getByTestId("sidebar").getByRole("link", { name: /Master CV/ }).click();
+  await expect(page.getByTestId("cv-header")).toContainText("Master version v8.");
+  await expect(page.getByTestId("fact-request")).toHaveCount(0);
 });
 
 test("“No, I don't” closes CV's question without adding a fact", async ({ page }) => {

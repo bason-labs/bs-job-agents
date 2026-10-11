@@ -34,8 +34,20 @@ export async function withMock<T>(page: Page, fn: (mock: MockHandle) => T | Prom
 /** The parts of the mock backend e2e tests call (lib/api/mock/backend.ts). */
 export interface MockHandle {
   simulate(kind: string): void;
-  approve(jobId: string, input: { cvVersionId: string; introText: string | null }): Promise<{ taskId: string | null }>;
+  approve(jobId: string, input: { cvVersionId: string; introText: string | null; dryRun?: boolean }): Promise<{ taskId: string | null }>;
   idle(): Promise<void>;
+  /** Any API_ROUTES call, as another tab (or the engine) would make it. */
+  request(method: string, route: string, opts?: { params?: Record<string, string>; body?: unknown }): Promise<unknown>;
+  getReviewQueue(): Promise<{ job: { id: string; url: string | null; company: string }; cvOptions: { cvVersion: { id: string } }[]; flags: Record<string, unknown> }[]>;
+  /** The mock's in-memory state (lib/api/mock/state.ts), for setting up a case. */
+  state: {
+    applications: Record<string, { jobId: string; dryRun: boolean; status: string; statusHistory: { status: string; at: string; note: string | null }[] }>;
+    bots: { name: string; trustLevel: number; demotion?: unknown }[];
+    masterCv: unknown;
+    profiles: unknown[];
+    queue: { job: { id: string }; flags: Record<string, unknown> }[];
+    rooms: { id: string; members: string[] }[];
+  };
 }
 
 const CLICKABLE = [

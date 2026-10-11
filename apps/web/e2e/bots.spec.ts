@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { open } from "./helpers";
+import { open, withMock, type MockHandle } from "./helpers";
 
 // §11 Bots, UC-19 promotion, §5.3 trust and demotion, PM S10/S14/S21/S25 rules.
 
@@ -98,5 +98,29 @@ test.describe("Bot settings", () => {
   test("an unknown bot is not found", async ({ page }) => {
     await open(page, "/bots/nobody");
     await expect(page.getByText("Not found")).toBeVisible();
+  });
+});
+
+test.describe("Workflow proposals (rule 3)", () => {
+  test("Lead's proposals: approve saves a workflow and starts nothing; dismiss only marks it", async ({ page }) => {
+    await open(page, "/bots");
+    const section = page.getByTestId("workflow-proposals");
+    await expect(section.getByTestId("workflow-proposal")).toHaveCount(1);
+    await withMock(page, (mock: MockHandle) => mock.simulate("workflow-proposal"));
+    await expect(section.getByTestId("workflow-proposal")).toHaveCount(2);
+
+    const weekly = section.getByTestId("workflow-proposal").filter({ hasText: "weekly-remote-react" });
+    await expect(weekly.getByTestId("workflow-proposal-summary")).toHaveText("preset of job-scan · workModes: remote · includeKeywords: React, Next.js · maxJobs: 5");
+    await weekly.getByRole("button", { name: "Approve (save only)" }).click();
+    await expect(page.getByTestId("toast").filter({ hasText: "Saved weekly-remote-react v1. Nothing was started; ask Lead to run it." })).toBeVisible();
+    await expect(weekly).toHaveAttribute("data-status", "approved");
+    await expect(weekly).toContainText("saved v1");
+
+    const danang = section.getByTestId("workflow-proposal").filter({ hasText: "scan-da-nang" });
+    await danang.getByRole("button", { name: "Dismiss" }).click();
+    await expect(danang).toHaveAttribute("data-status", "dismissed");
+    await expect(section.getByRole("button", { name: /Approve|Dismiss/ })).toHaveCount(0);
+    // Nothing ran (rule 3): the mock still has only its two seeded runs.
+    expect(await withMock(page, (mock: MockHandle) => Object.keys((mock.state as unknown as { runs: object }).runs).length)).toBe(2);
   });
 });

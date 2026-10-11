@@ -166,7 +166,8 @@ describe("BotsLive (the pages)", () => {
 
   it("says so for a bot that doesn't exist", async () => {
     live("nope");
-    expect(await screen.findByText("There is no bot named “nope”")).toBeInTheDocument();
+    expect(await screen.findByText("Not found")).toBeInTheDocument();
+    expect(screen.getByText(/There is no bot named “nope”/)).toBeInTheDocument();
   });
 
   it("lists Lead's workflow proposals: approve saves (never runs), dismiss hides the buttons", async () => {

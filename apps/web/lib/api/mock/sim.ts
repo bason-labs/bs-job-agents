@@ -766,7 +766,12 @@ function requeueAfterDryRun(core: Core, ctx: ApplyCtx): void {
   const card = core.acted.find((c) => c.job.id === ctx.jobId);
   if (!card) return;
   const options = card.cvOptions.filter((o) => o.cvVersion.id === ctx.app.cvVersionId);
-  const back: ReviewCard = { ...card, cvOptions: options.length ? options : card.cvOptions, flags: { ...card.flags, dryRunSettled: true } as ReviewCard["flags"] };
+  const back: ReviewCard = {
+    ...card,
+    cvOptions: options.length ? options : card.cvOptions,
+    flags: { ...card.flags, dryRunSettled: true } as ReviewCard["flags"],
+    readyAt: core.nowIso(),
+  };
   core.state.queue = [...core.state.queue.filter((c) => c.job.id !== ctx.jobId), back];
   core.setStep(ctx.runId, "review", ctx.jobId, "waiting", { preview: "dry run done · approve live?" });
   core.emit({

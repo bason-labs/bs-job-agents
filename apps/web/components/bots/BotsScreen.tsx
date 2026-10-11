@@ -30,8 +30,8 @@ export function BotsLive({ only }: { only?: string }) {
       {(initial) =>
         only && !initial.some((b) => b.name === only) ? (
           <EmptyState
-            title={`There is no bot named “${only}”`}
-            description="Phase 1 has Lead, Research, CV, QA and Apply."
+            title="Not found"
+            description={`There is no bot named “${only}”. Phase 1 has Lead, Research, CV, QA and Apply.`}
             action={
               <Link href="/bots" className="text-sm text-accent hover:underline">
                 ← All bots
