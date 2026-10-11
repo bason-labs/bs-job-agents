@@ -10,6 +10,7 @@ import {
   SenioritySchema,
   WorkModeSchema,
 } from "../common/primitives.js";
+import { TimezoneOverlapSchema } from "../common/timezone.js";
 
 /**
  * Application form defaults → expected salary rule (§7.5, UC-12):
@@ -55,6 +56,12 @@ export const SearchProfileFieldsBaseSchema = z.object({
   fitThreshold: z.number().int().min(0).max(100),
   salaryPolicy: SalaryPolicySchema,
   salaryAmount: z.number().int().positive().nullable(),
+  /**
+   * W5 (additive, optional): remote boards keep postings whose stated region overlaps these time
+   * zones, e.g. "Asia" or "UTC+7 ±3h" (common/timezone.ts). Null or absent = no filter. Browser
+   * boards in Vietnam ignore it.
+   */
+  timezoneOverlap: TimezoneOverlapSchema.nullable().optional(),
 });
 export type SearchProfileFieldsBase = z.infer<typeof SearchProfileFieldsBaseSchema>;
 

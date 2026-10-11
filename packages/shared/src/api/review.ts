@@ -48,6 +48,11 @@ export const ReviewCardFlagsSchema = z.object({
     })
     .nullable()
     .optional(),
+  /**
+   * W5: a find-only source (Upwork, `findOnlySourceOf`): Approve is refused (FIND_ONLY_REASON) and
+   * the card shows FIND_ONLY_NOTE with a link to the posting. Additive.
+   */
+  findOnly: z.boolean().optional(),
 });
 
 export const ReviewCvOptionSchema = z.object({

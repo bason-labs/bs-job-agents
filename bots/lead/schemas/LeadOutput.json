@@ -388,7 +388,14 @@
                           "enum": [
                             "topcv",
                             "itviec",
-                            "linkedin"
+                            "linkedin",
+                            "vietnamworks",
+                            "remoteok",
+                            "weworkremotely",
+                            "remotive",
+                            "jobspresso",
+                            "wellfound",
+                            "upwork"
                           ]
                         }
                       },

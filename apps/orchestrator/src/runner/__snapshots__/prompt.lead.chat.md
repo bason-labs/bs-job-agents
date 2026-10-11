@@ -94,7 +94,7 @@ Fields:
         - remove: array of string
       - workModes: array of one of "onsite", "hybrid", "remote" or null — The new full list; null = unchanged
       - seniority: array of one of "intern", "junior", "mid", "senior", "lead" or null — The new full list; null = unchanged
-      - sources: array of one of "topcv", "itviec", "linkedin" or null — The new full list; null = unchanged
+      - sources: array of one of "topcv", "itviec", "linkedin", "vietnamworks", "remoteok", "weworkremotely", "remotive", "jobspresso", "wellfound", "upwork" or null — The new full list; null = unchanged
       - minSalary: object or null — null = unchanged
         - amount: integer ≥ 0 or null — null removes the floor
         - currency: one of "VND", "USD" or null
