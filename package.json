@@ -13,7 +13,8 @@
     "lint": "turbo lint",
     "test": "turbo test",
     "typecheck": "turbo typecheck",
-    "e2e": "pnpm --filter @bs-job-agents/web e2e"
+    "e2e": "pnpm --filter @bs-job-agents/web e2e",
+    "e2e:live-shape": "turbo build --filter=@bs-job-agents/orchestrator && pnpm --filter @bs-job-agents/web e2e:live-shape"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

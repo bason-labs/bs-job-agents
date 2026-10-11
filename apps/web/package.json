@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "e2e:screenshots": "UPDATE_SCREENSHOTS=1 playwright test e2e/screenshots",
+    "e2e:live-shape": "playwright test -c playwright.live-shape.config.ts",
+    "e2e:screenshots":"UPDATE_SCREENSHOTS=1 playwright test e2e/screenshots",
     "e2e:install": "playwright install chromium"
   },
   "dependencies": {

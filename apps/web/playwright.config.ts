@@ -5,6 +5,8 @@ const baseURL = `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: "./e2e",
+  // The live-shape lane has its own config (playwright.live-shape.config.ts).
+  testIgnore: ["live-shape/**"],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
