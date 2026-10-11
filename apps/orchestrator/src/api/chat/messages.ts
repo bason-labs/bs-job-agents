@@ -56,8 +56,9 @@ export function postMessage(conn: Conn, input: PostMessageInput, now: Date): Mes
     },
     { now },
   );
-  const uploads = (input.uploadIds ?? []).length > 0 ? listUploadsForMessage(conn, message.id).map((u) => u.id) : [];
-  appendAppEvent(conn, { type: "message.created", roomId: String(input.room.id), message: mappers.toMessage(message, input.room.kind, uploads) }, { now });
+  // F8: the event carries the attachments too, so a chip shows the file's name and type (never just "Attachment").
+  const view = (input.uploadIds ?? []).length > 0 ? chatMessageView(conn, message, input.room) : mappers.toMessage(message, input.room.kind, []);
+  appendAppEvent(conn, { type: "message.created", roomId: String(input.room.id), message: view }, { now });
   return message;
 }
 

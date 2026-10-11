@@ -4,7 +4,7 @@ import { z } from "zod";
 import { BotNameSchema, EngineSchema, IdSchema, IsoDateTimeSchema, TrustLevelSchema } from "../common/primitives.js";
 import { ApplicationOriginSchema, ApplicationStatusSchema, type SubmissionRefusalReason } from "../domain/application.js";
 import { BotActivitySchema } from "../domain/bot-record.js";
-import { MessageSchema } from "../domain/chat.js";
+import { ChatMessageSchema } from "../api/chat.js";
 import { EnginePauseReasonSchema, EngineUsageSchema } from "../domain/engine-state.js";
 import { ExportSchema } from "../domain/export.js";
 import { PauseReasonSchema, RunStatusSchema, RunTriggerSchema, StepStatusSchema } from "../domain/run.js";
@@ -169,7 +169,8 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   /** UC-07 b (PM2 S2): Ba confirmed a job QA flagged for a suspected injection; Apply may run for it. */
   ev("injection.confirmed", { jobId: IdSchema, runId: IdSchema.nullable() }),
   // chat
-  ev("message.created", { roomId: IdSchema, message: MessageSchema }),
+  // F8: the message carries its attachments (name, mime, size, file id), like GET /rooms/:id/messages.
+  ev("message.created", { roomId: IdSchema, message: ChatMessageSchema }),
   ev("message.delta", { roomId: IdSchema, messageId: IdSchema, delta: z.string() }),
   // bots, schedules, bridges
   ev("bot.updated", {

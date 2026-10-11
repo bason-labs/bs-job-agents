@@ -112,6 +112,12 @@ describe("POST /chat/messages in the Lead chat (UC-01, rule 1)", () => {
     const input = h.t.runner.callsFor("lead.chat")[0]!.input as LeadChatInput;
     expect(input.uploadIds).toEqual([String(upload.id)]);
     expect(input.history.at(-1)).toEqual({ author: "system", text: `Ba attached upload ${upload.id}: NovaPay JD.pdf (application/pdf, 1234 bytes)` });
+    // F8: the live event carries the attachment too (the chip shows its name and opens by mime).
+    const created = h.t.events("message.created").find((e) => e.message.id === body.message.id)!;
+    expect(created.message.attachments).toEqual([
+      { id: String(upload.id), filename: "NovaPay JD.pdf", mime: "application/pdf", size: 1234, file: { id: `upload-${upload.id}`, kind: "upload", filename: "NovaPay JD.pdf", mime: "application/pdf" } },
+    ]);
+    expect(h.t.events("message.created").find((e) => e.message.author.type !== "ba")?.message.attachments).toBeUndefined();
     // An upload belongs to one message; an unknown one is refused.
     expect((await send(h, lead, "again", [String(upload.id)])).statusCode).toBe(409);
     expect((await send(h, lead, "ghost", ["999"])).statusCode).toBe(400);
