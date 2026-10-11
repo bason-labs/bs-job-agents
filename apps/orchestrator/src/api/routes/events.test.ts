@@ -1,7 +1,7 @@
 import { request, type IncomingMessage } from "node:http";
 import { AppEventSchema, decodeSseData, type AppEvent } from "@bs-job-agents/shared";
 import { afterEach, describe, expect, it } from "vitest";
-import { appendEvent, listEvents } from "../../db/index.js";
+import { appendAppEvent, appendEvent, latestApprovalForApplication, listEvents } from "../../db/index.js";
 import { createApiHarness, type ApiHarness, type ApiHarnessOptions } from "../testing.js";
 
 let h: ApiHarness | null = null;
@@ -90,6 +90,31 @@ function open(port: number, path: string, headers: Record<string, string> = {}):
     req.end();
   });
 }
+
+describe("GET /events never streams an approval token (S18 backstop, Phase 3 QA)", () => {
+  it("drops a frame that would carry a stored token value, replayed or live, and keeps streaming", async () => {
+    const { x, port, host } = await listen();
+    await x.post("/runs", scan, host);
+    await x.t.idle();
+    const card = (await x.get("/review", host)).json().cards[0];
+    const approved = (await x.post(`/review/${card.job.id}/approve`, { cvVersionId: card.cvOptions[0].cvVersion.id, introText: null }, host)).json();
+    await x.t.idle();
+    const token = latestApprovalForApplication(x.t.db, Number(approved.applicationId))!.token;
+    const mark = listEvents(x.t.db).at(-1)!.id;
+    const leak = { type: "safety.denied", botName: "apply", taskId: null, action: "x", reason: "off_allowlist", detail: `token ${token}` } as const;
+    appendAppEvent(x.t.db, leak);
+    appendAppEvent(x.t.db, { ...leak, detail: "a clean one" });
+    const s = await open(port, "/events", { "last-event-id": String(mark) });
+    await s.waitFor((st) => st.events().some((e) => e.type === "safety.denied" && e.detail === "a clean one"));
+    // Live too.
+    appendAppEvent(x.t.db, leak);
+    x.t.engine.bus.flush();
+    await x.patch("/bots/qa", { enabled: false }, host);
+    await s.waitFor((st) => st.events().some((e) => e.type === "bot.updated"));
+    expect(s.frames.some((f) => (f.data ?? "").includes(token))).toBe(false);
+    expect(s.events().filter((e) => e.type === "safety.denied").map((e) => (e as { detail: string }).detail)).toEqual(["a clean one"]);
+  });
+});
 
 describe("GET /events (SSE, §11 live updates)", () => {
   it("streams new events as id/event/data frames; a fresh connection starts from the latest id", async () => {

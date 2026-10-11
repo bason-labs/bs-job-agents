@@ -7,7 +7,8 @@ import { schema } from "../db/index.js";
 import type { ApiContext } from "./context.js";
 import { apiErrorBody } from "./errors.js";
 
-function storedTokens(ctx: ApiContext): string[] {
+/** Every stored approval token value (16+ characters), for the response and SSE backstops. */
+export function storedTokens(ctx: ApiContext): string[] {
   if (!ctx.db) return [];
   return ctx.db
     .select({ token: schema.approvals.token })
