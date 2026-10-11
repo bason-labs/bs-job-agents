@@ -120,6 +120,30 @@ export const memoryChanges = sqliteTable(
   (t) => [index("memory_changes_bot_idx").on(t.botName, t.createdAt)],
 );
 
+/**
+ * PM2 S8 (§5.3): automatic demotions, one level per violation. `restored_at` is set when Ba
+ * raises the bot back to `from_level` (Bots screen) or says a protected-page change was his.
+ */
+export const botDemotions = sqliteTable(
+  "bot_demotions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    botName: text("bot_name")
+      .notNull()
+      .references(() => bots.name),
+    fromLevel: integer("from_level").notNull(),
+    toLevel: integer("to_level").notNull(),
+    /** A SafetyDenialReason, or "qa_hard_fail". */
+    reason: text("reason").notNull(),
+    detail: text("detail"),
+    runId: integer("run_id").references(() => runs.id, { onDelete: "set null" }),
+    taskId: integer("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    restoredAt: text("restored_at"),
+  },
+  (t) => [index("bot_demotions_bot_idx").on(t.botName, t.createdAt)],
+);
+
 export const workflows = sqliteTable(
   "workflows",
   {
