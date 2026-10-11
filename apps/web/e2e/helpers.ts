@@ -58,7 +58,8 @@ const CLICKABLE = [
   "[role=radio]",
   "[role=switch]",
   "[role=checkbox]",
-  "[role=combobox]",
+  // A text box with autocomplete (role=combobox on an input or textarea) keeps the text cursor.
+  "[role=combobox]:not(input):not(textarea)",
   "[role=slider]",
   "[role=option]",
   "[role=menuitem]",
@@ -90,6 +91,24 @@ export async function nativeControls(page: Page): Promise<string[]> {
         return r.width > 1 && r.height > 1 && getComputedStyle(el).visibility !== "hidden";
       })
       .map((el) => el.outerHTML.slice(0, 80)),
+  );
+}
+
+/**
+ * File viewer rule (§11): outside the open viewer, no link goes straight to a file (`/files/…`,
+ * a `download` link, or a PDF/image URL); files open in the viewer first. The export ZIP is the
+ * one deliberate download (UC-13b), so a link to `/exports` is allowed.
+ */
+export async function directFileLinks(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]"))
+      .filter((a) => !a.closest("[data-testid=file-viewer]"))
+      .filter((a) => {
+        const href = a.getAttribute("href") ?? "";
+        if (/\/exports\b/.test(href)) return false;
+        return a.hasAttribute("download") || /\/files\//.test(href) || /\.(pdf|png|jpe?g)(\?|$)/i.test(href);
+      })
+      .map((a) => a.outerHTML.slice(0, 100)),
   );
 }
 
