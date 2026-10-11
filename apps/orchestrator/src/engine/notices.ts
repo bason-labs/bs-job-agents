@@ -204,6 +204,9 @@ export function noticeEnginePaused(core: EngineCore, conn: Conn, engine: Engine,
   postNotice(core, conn, { text: `⏸ ${label} usage limit reached. Tasks on ${label} wait until ${formatClock(core, until)} and then continue by themselves.` });
 }
 
-export function noticeEngineResumed(core: EngineCore, conn: Conn, engine: Engine): void {
-  postNotice(core, conn, { text: `✅ ${ENGINE_LABEL[engine]} usage limit has reset: resumed automatically. No action needed.` });
+export function noticeEngineResumed(core: EngineCore, conn: Conn, engine: Engine, opts: { manual?: boolean } = {}): void {
+  const text = opts.manual
+    ? `▶️ ${ENGINE_LABEL[engine]} resumed by you (Resume now). Waiting tasks are back in the queue; if the limit is still reached, it pauses again.`
+    : `✅ ${ENGINE_LABEL[engine]} usage limit has reset: resumed automatically. No action needed.`;
+  postNotice(core, conn, { text });
 }

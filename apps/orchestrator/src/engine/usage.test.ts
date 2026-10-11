@@ -106,4 +106,32 @@ describe("usage-limit watcher (UC-16)", () => {
     await second.idle();
     expect(second.tasks("research.fit")[0]?.status).toBe("done");
   });
+
+  it("Resume now (Ba switched accounts): clears the pause before the reset, releases held tasks, emits engine.resumed", async () => {
+    const t = await createTestEngine({ sources: ["itviec"] });
+    t.runner.script({ bot: "research", kind: "fit", times: 1, result: fake.usageLimit("codex", at(90 * MIN)) });
+    const run = t.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await t.idle();
+    const fit = t.tasks("research.fit")[0]!;
+    expect(fit.status).toBe("waiting_limit");
+
+    t.clock.advance(5 * MIN);
+    t.engine.resumeEngineNow("codex");
+    await t.idle();
+    expect(getEngineState(t.db, "codex")).toMatchObject({ pausedUntil: null, reason: null });
+    expect(t.events("engine.resumed")).toEqual([expect.objectContaining({ engine: "codex" })]);
+    expect(getTask(t.db, fit.id)).toMatchObject({ status: "done", attempt: 1 });
+    expect(t.review(run.id, 1)).toBeDefined();
+    expect(t.events("message.created").map((e) => e.message.text)).toContainEqual(expect.stringMatching(/ChatGPT.*resumed.*you/i));
+    // The old reset timer does not fire a second resume.
+    t.clock.advance(90 * MIN);
+    await t.idle();
+    expect(t.events("engine.resumed")).toHaveLength(1);
+  });
+
+  it("Resume now on an engine that is not paused is refused (invalid state)", async () => {
+    const t = await createTestEngine();
+    expect(() => t.engine.resumeEngineNow("claude")).toThrow(/not paused/);
+    expect(t.events("engine.resumed")).toEqual([]);
+  });
 });

@@ -1,11 +1,12 @@
 // GET /engines (UC-16, §11 sidebar): per engine, whether it is paused for a usage limit and until
 // when, the latest usage reading, the sessions it runs and its cap.
-import { API_ROUTES, EngineUsageSchema, EnginesResponseSchema, type Engine, type EngineStatus, type EngineUsage } from "@bs-job-agents/shared";
+import { API_ROUTES, EngineSchema, EngineUsageSchema, EnginesResponseSchema, OkResponseSchema, type Engine, type EngineStatus, type EngineUsage } from "@bs-job-agents/shared";
 import { desc, eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { ENGINES, countTasks, getEngineState, schema, type Db } from "../../db/index.js";
 import { DEFAULT_ENGINE_CONFIG } from "../../engine/index.js";
-import { requireDb, type ApiContext } from "../context.js";
+import { requireDb, requireEngine, type ApiContext } from "../context.js";
+import { notFound } from "../errors.js";
 import { respond } from "../http.js";
 
 /** The newest engine.usage reading per engine (Claude reports utilization; Codex reports none). */
@@ -41,5 +42,13 @@ export function engineRoutes(app: FastifyInstance, ctx: ApiContext): void {
       };
     });
     return respond(EnginesResponseSchema, { engines });
+  });
+
+  // Live run 1: "Resume now" (e.g. Ba switched Claude accounts). Not paused → 409 (engine conflict).
+  app.post<{ Params: { engine: string } }>(API_ROUTES.engineResume, async (req) => {
+    const engine = EngineSchema.safeParse(req.params.engine);
+    if (!engine.success) throw notFound(`engine ${req.params.engine} not found`);
+    requireEngine(ctx).resumeEngineNow(engine.data);
+    return respond(OkResponseSchema, { ok: true });
   });
 }

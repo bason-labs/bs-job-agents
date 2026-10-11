@@ -435,6 +435,11 @@ export class Engine implements EngineCore {
     resumePausedTask(this, taskId, opts);
   }
 
+  /** "Resume now" on the paused banner (POST /engines/:engine/resume): lift a usage-limit pause early. */
+  resumeEngineNow(engine: EngineName): void {
+    this.usage.resumeNow(engine);
+  }
+
   /** UC-11 e "Don't allow" (W3a request): Ba declines the domain Apply paused for; Apply ends (needs_check). */
   declineDomain(taskId: number): void {
     declineDomain(this, taskId);
