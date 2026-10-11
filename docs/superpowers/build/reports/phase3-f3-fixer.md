@@ -1,0 +1,29 @@
+# F3 fixer report (PM2 S7–S16 + W3a engine requests)
+
+- **Merged.** develop: 2,339 tests (shared 380, orchestrator 1,551, web 408).
+- **S7 screenshots:**
+  - `runner/screenshots.ts` writes Chrome tool images to `data/screenshots/<task>-<attempt>/` with a manifest (file type sniffed from the bytes, per-attempt cap).
+  - The transcript stores file references, not base64. The site guard also checks the `computer` tool and refuses `save_to_disk`.
+  - The engine copies only the shots Apply names by id into `data/applications/<id>/` (hash-checked).
+  - **The live check was blocked:** "Browser extension is not connected". The image shape comes from a synthetic fixture; the S27 runbook must confirm it.
+- **S8 demotion:**
+  - `bot_demotions` (migration 0007, table only) and `engine/demotion.ts`: one level down, at most once per task, with `bot.updated` + a Lead message.
+  - Triggers: guard blocks, Figma-guard blocks, protected-page changes, page_mismatch, dry_run_submitted, runtime permission denials, a CV escalated with hard fails.
+  - `restoreBot`, and `protectedChangeWasBa(taskId)` (choice `figma-change:<taskId>`).
+- **S9:** the fingerprint records visual properties; the diff reports `style.<prop>`.
+- **S10:** Apply's page URLs and final URL are checked against the approval domains; outside them → `needs_check` + `safety.denied`.
+- **S11:** `injectionSuspected` / `injectionNote` on Apply and Research scan outputs → flags. For a flagged Research job, approve is refused until Ba confirms.
+- **S12:** a 121-tool knownTools list (with a drift test); CV hides 118.
+- **S13:** the copy goes through a temp file with EXCL, then a rename; it never follows a link.
+- **S14:** memory hygiene drops secrets, rule overrides, off-allowlist hosts, notes over 300 characters, and notes beyond 3 per task.
+- **S15:** a dry run that reported "submitted" counts as applied until Ba marks it failed. "Approve live" works on the same card (new application and token, same CV).
+- **S16:** Ba's re-run of the company step skips the cache. A failed company task gives `company: null` and the `companyMissing` flag.
+- **W3a requests:**
+  - `engine.declineDomain(taskId)`
+  - `removeMemoryNote` under the per-bot lock
+  - `BotDemotionSchema` + db readers (`latestBotDemotion` …)
+  - question `answer` field
+- **Still to wire (Phase 3 QA):**
+  - API: fill `BotView.demotion`; route `declineDomain`; switch memory delete to `removeMemoryNote`; route `figma-change` "was_me" to `protectedChangeWasBa`.
+  - Web (relayed to W3d): Approve live, `companyMissing`, the Research injection flag, demotion display + restore, "Don't allow", the figma-change chip.
+  - W4c ROLE.md: Apply names screenshots by tool id and never uses `save_to_disk`; Apply and Research report injections.
