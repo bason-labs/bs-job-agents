@@ -52,3 +52,14 @@
   stroke-dasharray: 6 6;
   animation: bsja-dash 0.8s linear infinite;
 }
+
+/* Minimap nodes by status (SVG fill attributes cannot use var(), classes can). */
+.bsja-flow .react-flow__minimap-node.bsja-mm { fill: var(--surface-3); stroke: none; }
+.bsja-flow .react-flow__minimap-node.bsja-mm-done,
+.bsja-flow .react-flow__minimap-node.bsja-mm-skipped { fill: var(--ok); }
+.bsja-flow .react-flow__minimap-node.bsja-mm-running { fill: var(--accent); }
+.bsja-flow .react-flow__minimap-node.bsja-mm-failed { fill: var(--danger); }
+.bsja-flow .react-flow__minimap-node.bsja-mm-waiting,
+.bsja-flow .react-flow__minimap-node.bsja-mm-waiting_limit,
+.bsja-flow .react-flow__minimap-node.bsja-mm-paused,
+.bsja-flow .react-flow__minimap-node.bsja-mm-locked { fill: var(--warn); }

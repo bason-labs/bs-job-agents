@@ -22,9 +22,10 @@ describe("buildFlowGraph", () => {
     const view = (await api.getRun("12")) as RunView;
     const g = buildFlowGraph(view);
     const ids = g.nodes.map((n) => n.id);
-    expect(ids.slice(0, 5)).toEqual(["trigger", "step:scan", "step:dedupe", "step:fit", "step:top"]);
-    // Joins are bookkeeping, not nodes.
-    expect(ids.some((id) => id.includes("join"))).toBe(false);
+    expect(ids.slice(0, 3)).toEqual(["trigger", "step:scan", "step:fit"]);
+    // Joins are bookkeeping, and dedupe + fit + top-N fold into one node (prototype).
+    expect(ids.some((id) => /join|dedupe|top/.test(id))).toBe(false);
+    expect(g.nodes.find((n) => n.id === "step:fit")!.data).toMatchObject({ label: "Dedupe + fit score", preview: "3 jobs ≥ 60 (16 dropped, 2 already applied)", botLabel: "Research ×21" });
     for (const job of ["101", "102", "103"]) {
       expect(ids).toEqual(expect.arrayContaining([`lane:${job}:company`, `lane:${job}:tailor`, `lane:${job}:review`, `lane:${job}:apply`, `lane:${job}:record`]));
     }
@@ -54,7 +55,7 @@ describe("buildFlowGraph", () => {
     const g = buildFlowGraph((await api.getRun("12")) as RunView);
     const has = (source: string, target: string) => g.edges.some((e) => e.source === source && e.target === target);
     expect(has("trigger", "step:scan")).toBe(true);
-    expect(has("step:top", "lane:101:company")).toBe(true);
+    expect(has("step:fit", "lane:101:company")).toBe(true);
     expect(has("lane:101:tailor", "lane:101:review")).toBe(true);
     expect(has("lane:101:apply", "lane:101:record")).toBe(true);
     const loops = g.edges.filter((e) => e.kind === "loop").map((e) => e.source);
@@ -70,9 +71,7 @@ describe("buildFlowGraph", () => {
     expect(g.nodes.map((n) => [n.id, n.data.status])).toEqual([
       ["trigger", "done"],
       ["step:scan", "running"],
-      ["step:dedupe", "pending"],
       ["step:fit", "pending"],
-      ["step:top", "pending"],
     ]);
     expect(g.edges.find((e) => e.target === "step:scan")!.state).toBe("running");
   });
@@ -96,7 +95,7 @@ describe("buildFlowGraph", () => {
       tasks: [],
     };
     const g = buildFlowGraph(link);
-    expect(g.nodes.map((n) => n.id)).toEqual(expect.arrayContaining(["step:scan", "step:fit", "step:selected", "lane:7:company"]));
+    expect(g.nodes.map((n) => n.id)).toEqual(expect.arrayContaining(["step:scan", "step:fit", "lane:7:company"]));
     expect(g.nodes.find((n) => n.id === "step:scan")!.data.label).toBe("Read the job page");
 
     const custom: RunView = { run: { ...runFixture, workflowName: "my-flow" }, steps: [step("alpha", null, "done"), step("beta", null, "running")], tasks: [] };

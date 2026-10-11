@@ -76,26 +76,26 @@ interface StepDef {
   kind: NodeKind;
   label: string;
   bot: string | null;
+  /** Step keys this node stands for, in order (the prototype folds dedupe + fit + top-N into one). */
+  keys?: string[];
 }
 
 const RUN_LAYOUTS: Record<string, StepDef[]> = {
   "job-scan": [
     { key: "scan", kind: "map", label: "Scan sources", bot: "research" },
-    { key: "dedupe", kind: "filter", label: "Dedupe", bot: null },
-    { key: "fit", kind: "map", label: "Fit score", bot: "research" },
-    { key: "top", kind: "filter", label: "Top matches", bot: null },
+    { key: "fit", kind: "map", label: "Dedupe + fit score", bot: "research", keys: ["dedupe", "fit", "top"] },
   ],
   "apply-to-link": [
     { key: "scan", kind: "task", label: "Read the job page", bot: "research" },
-    { key: "fit", kind: "map", label: "Fit score", bot: "research" },
-    { key: "selected", kind: "filter", label: "Selected job", bot: null },
+    { key: "fit", kind: "map", label: "Fit score", bot: "research", keys: ["fit", "selected"] },
   ],
   "apply-to-file": [
     { key: "scan", kind: "task", label: "Read the JD file", bot: "research" },
-    { key: "fit", kind: "map", label: "Fit score", bot: "research" },
-    { key: "selected", kind: "filter", label: "Selected job", bot: null },
+    { key: "fit", kind: "map", label: "Fit score", bot: "research", keys: ["fit", "selected"] },
   ],
 };
+
+const keysOf = (def: StepDef) => def.keys ?? [def.key];
 
 const LANE_STEPS: StepDef[] = [
   { key: "company", kind: "task", label: "Company profile", bot: "research" },
@@ -107,7 +107,7 @@ const LANE_STEPS: StepDef[] = [
 
 const BOT_NAMES: Record<string, string> = { research: "Research", cv: "CV", qa: "QA", apply: "Apply", lead: "Lead" };
 const COL = 230;
-const ROW = 200;
+const ROW = 250;
 
 const isJoin = (key: string) => key.endsWith("-join");
 const laneOf = (s: StepView) => (s.branchKey ? s.branchKey.split(":")[0]! : null);
@@ -123,8 +123,11 @@ function aggregate(rows: readonly StepView[]): NodeStatus {
 }
 
 function countsOf(rows: readonly StepView[]): MapCounts | null {
-  const c = (rows[0]?.output as { counts?: MapCounts } | null)?.counts;
-  return c && typeof c.total === "number" ? c : null;
+  for (const r of rows) {
+    const c = (r.output as { counts?: MapCounts } | null)?.counts;
+    if (c && typeof c.total === "number") return c;
+  }
+  return null;
 }
 
 function roundsOf(rows: readonly StepView[]): GateRoundView[] {
@@ -141,8 +144,11 @@ function makeNode(def: StepDef, rows: StepView[], tasks: readonly Task[], lane: 
   let status = aggregate(rows);
   if (status === "running" && own.some((t) => t.status === "waiting_limit")) status = "waiting_limit";
   const counts = def.kind === "map" ? countsOf(rows) : null;
-  const preview =
-    rows.length > 1
+  // A folded node shows its furthest step's preview (top-N, else fit, else dedupe).
+  const folded = def.keys ? [...rows].reverse().map((r) => stepPreview(r)).find(Boolean) : undefined;
+  const preview = folded !== undefined
+    ? (folded ?? null)
+    : rows.length > 1
       ? rows
           .map((r) => {
             const p = stepPreview(r);
@@ -202,7 +208,7 @@ export function buildFlowGraph(view: RunView): FlowGraph {
   // Run-level steps: the known layout, plus any other step the run has.
   const runDefs: StepDef[] = [...(layout ?? [])];
   for (const s of runRows) {
-    if (!runDefs.some((d) => d.key === s.stepKey)) runDefs.push({ key: s.stepKey, kind: "task", label: titleCase(s.stepKey), bot: null });
+    if (!runDefs.some((d) => keysOf(d).includes(s.stepKey))) runDefs.push({ key: s.stepKey, kind: "task", label: titleCase(s.stepKey), bot: null });
   }
 
   // Lanes: the jobs the filter step selected, then any other branch the steps have.
@@ -242,7 +248,7 @@ export function buildFlowGraph(view: RunView): FlowGraph {
     },
   ];
   runDefs.forEach((def, i) => {
-    nodes.push(makeNode(def, runRows.filter((s) => s.stepKey === def.key), tasks, null, { x: (i + 1) * COL, y: centerY }));
+    nodes.push(makeNode(def, keysOf(def).flatMap((k) => runRows.filter((s) => s.stepKey === k)), tasks, null, { x: (i + 1) * COL, y: centerY }));
   });
 
   const laneDefs = layout ? LANE_STEPS : [...LANE_STEPS.filter((d) => steps.some((s) => laneOf(s) && s.stepKey === d.key))];
