@@ -5,7 +5,7 @@
 //   browserReadyFor), FigmaPort (the FigmaBridge class), PdfTextExtractor (extractText),
 //   GuardHooks (buildSiteGuardSettings, prepareFigmaGuard): src/bridges (W2c)
 // - BotRegistry: `loadBots(botsDir)` (W2b); WorkflowSource: workflows/*.yaml (W3a)
-import type { BotDefinition, Engine, WorkflowDefinition } from "@bs-job-agents/shared";
+import type { BotDefinition, Engine, FeedSource, ResearchScanInput, ResearchScanOutput, WorkflowDefinition } from "@bs-job-agents/shared";
 import type { ProtectedPagesFingerprint } from "../bridges/figma/fingerprint.js";
 import type { ClaudeHookSettings } from "../bridges/hooks/settings.js";
 
@@ -151,6 +151,16 @@ export interface MemoryWriter {
  */
 export interface OrphanKiller {
   killGroup(pid: number): void;
+}
+
+/**
+ * W5: feed sources (Remote OK, We Work Remotely, Remotive, Jobspresso) in a job scan. The
+ * orchestrator fetches the board's public feed itself and answers in research.scan's output shape:
+ * no bot, no LLM, no engine session. Production: src/adapters/feeds FeedScanner. Throws on a
+ * failed fetch (the source fails; the scan goes on with the others).
+ */
+export interface FeedScanPort {
+  scan(source: FeedSource, input: ResearchScanInput, signal?: AbortSignal): Promise<ResearchScanOutput>;
 }
 
 export interface Logger {
