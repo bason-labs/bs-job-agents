@@ -305,8 +305,9 @@ bs-job-agents/
   - `Drafts`: one frame per CV version, named `<COMPANY>_<ROLE>_<LANG>_v<n>`.
 - **Write boundary:** `figma_execute` runs arbitrary plugin code, so "Drafts only" cannot be fully enforced by tool permissions.
   - The prompt and a `PreToolUse` hook reject code that references any page other than Drafts.
-  - Hooks exist only on Claude (§4.4), so a bot with the Figma bridge (CV) runs on Claude. As for Apply, the Bots screen disables its engine switch and shows why.
+  - Hooks exist only on Claude (§4.4), so a bot with the Figma bridge (CV) runs on Claude by default.
   - Before and after each CV task, the orchestrator records a fingerprint of every protected page (node ids, names, text content). Any change fails the task and alerts Ba; Figma's version history can restore the page.
+  - **CV on Codex is an explicit opt-in (owner decision 2026-10-11, to save Claude quota).** Ba switches CV to Codex on the Bots screen and confirms the risk; the API needs `acknowledgeRisk` and records it per bot (`bots.engine_risk_ack_at`). On Codex the `PreToolUse` hook can't run, so nothing blocks an edit as it happens: the Figma lock and the protected-page fingerprint before and after every CV task are the only backstop. A change fails the task, demotes CV and alerts Ba ("That was me — retry"). Codex gets only the Figma bridge with CV's three tools, a read-only sandbox (which can read files on the Mac; the read folder is a prompt-level boundary) and no user config. Apply and Lead stay on Claude only.
 - **Long edits are chunked:** one `figma_execute` call may run at most 30 s. Changing fonts on many text nodes is slow (seconds per node), so a font change starts from a template variant already set in that font, rather than restyling every node.
 - **Figma lock:** one CV task uses Figma at a time (like the browser lock).
 - **Layout freedom:** CV may change section order, emphasis, which projects appear, fonts (from an allowed list: Be Vietnam Pro, Inter, Space Grotesk, Arial), accent colour, single/two-column layout and spacing, to suit the job and company.
