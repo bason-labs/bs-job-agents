@@ -2,6 +2,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { getBotOutputJsonSchema, resolveOutputSchemaName, type BotDefinition } from "@bs-job-agents/shared";
+import { FIGMA_CONSOLE_MCP_TOOLS } from "../bridges/figma/tools.js";
 import type { ClaudeHookSettings } from "../bridges/hooks/settings.js";
 import { loadBotDefinition } from "./bots.js";
 import { buildClaudeInvocation, buildClaudeRepairInvocation, claudeSettings, hookMatcherCovers } from "./claude/argv.js";
@@ -105,6 +106,10 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
 
   it("cv", () => {
     const inv = claude("cv", "tailor", { readDirs: ["/repo/data/master"], hookSettings: FIGMA_HOOKS });
+    // PM2 S12: the pinned figma-console-mcp's other 118 tools are hidden, so CV sees only its 3.
+    const cvTools = ["figma_get_status", "figma_execute", "figma_capture_screenshot"];
+    const hidden = FIGMA_CONSOLE_MCP_TOOLS.filter((t) => !cvTools.includes(t)).map((t) => `mcp__figma__${t}`);
+    expect(hidden).toHaveLength(118);
     expect(inv.display).toEqual([
       "-p", "<prompt: 6 chars>",
       "--output-format", "stream-json", "--verbose",
@@ -116,6 +121,8 @@ describe("Claude argv (spike S1, spec §5.5)", () => {
       "mcp__figma__figma_get_status",
       "mcp__figma__figma_execute",
       "mcp__figma__figma_capture_screenshot",
+      "--disallowedTools",
+      ...hidden,
       "--mcp-config", `${W}/mcp.json`,
       "--strict-mcp-config",
       "--settings",
