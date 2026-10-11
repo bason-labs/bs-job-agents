@@ -216,6 +216,9 @@ const PNG_2X2 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR4nGP4z8D
 
 /** Cmd+V of a screenshot: a paste event whose clipboard holds one image file named "image.png". */
 async function pasteImage(page: Page) {
+  // Under a loaded parallel run the composer can still be loading its room; a paste before then is dropped.
+  await page.waitForLoadState("networkidle");
+  await expect(composer(page)).toBeEditable();
   await composer(page).evaluate((el, b64) => {
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
     const data = new DataTransfer();
