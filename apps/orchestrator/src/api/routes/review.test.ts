@@ -53,6 +53,7 @@ describe("GET /review (§11 Review queue)", () => {
       companyMissing: false,
       dryRunSettled: false,
       appliedBefore: null,
+      findOnly: false,
     });
     const ready = listEvents(x.t.db, { types: ["review.ready"] }).at(-1)!;
     expect(card!.readyAt).toBe(ready.createdAt);

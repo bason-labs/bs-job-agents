@@ -8,9 +8,12 @@
 // Every decision is kept in the human step's output (PM brief: §5.3 promotion rule, sub-project C).
 import {
   DRY_RUN_APPLICATION_STATUS,
+  FIND_ONLY_NOTE,
+  FIND_ONLY_REASON,
   PRE_SUBMIT_APPLICATION_STATUSES,
   RequestChangesRequestSchema,
   SkipDecisionSchema,
+  findOnlySourceOf,
   isApplyBlockedByInjection,
   publicHostProblem,
   type ActionStepSchema,
@@ -407,6 +410,11 @@ export function approve(core: EngineCore, jobId: number, input: ApproveInput): A
     const actionOut = ref.action?.output as ActionStepOutput | null | undefined;
     const job = getJob(tx, jobId)!;
     const dryRun = input.dryRun === true;
+
+    // W5: a find-only source (Upwork) never gets an application, a token or an Apply task — not
+    // even a dry run. Ba applies there himself; the card says so and links to the posting.
+    const findOnly = findOnlySourceOf(job);
+    if (findOnly) throw invalidState(FIND_ONLY_NOTE, { reason: FIND_ONLY_REASON, source: findOnly });
 
     // A second approval for the same application, after Apply was denied before it ran.
     if (awaitingReapproval(ref)) {

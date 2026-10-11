@@ -11,8 +11,10 @@
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import {
   ApplyPromptInputSchema,
+  FIND_ONLY_NOTE,
   BOT_TASK_INPUT_SCHEMAS,
   canTransitionApplicationStatus,
+  findOnlySourceOf,
   normalizeAnswerKey,
   parsePauseReason,
   splitApplySubmitInput,
@@ -249,6 +251,8 @@ export async function prepareApply(core: EngineCore, task: Task): Promise<ApplyP
   const cv = app.cvVersionId === null ? undefined : getCvVersion(db, app.cvVersionId);
   const company = job ? getCompany(db, job.companyId) : undefined;
   if (!job?.url || !cv?.pdfPath || !company) return deny(core, task, "no_token", `application ${app.id} has no job link or approved PDF`);
+  // W5: Approve refuses find-only jobs; should an Apply task exist anyway, it never runs there.
+  if (findOnlySourceOf(job)) return deny(core, task, "wrong_domain", FIND_ONLY_NOTE);
   const req: ApplyGuardRequest = {
     applicationId: app.id,
     jobId: Number(stored.jobId ?? app.jobId),
