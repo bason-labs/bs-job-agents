@@ -42,7 +42,7 @@ import { LeadTools } from "./lead-tools.js";
 import { silentLogger, type Clock, type Logger } from "./ports.js";
 import { TaskQueue, lastFigmaBeforeHash } from "./queue.js";
 import { createConversationTask, sinkFailed, type ConversationRequest } from "./conversations.js";
-import { approve, confirmInjection, requestChanges, skip, type ApproveInput, type ApproveResult } from "./review.js";
+import { announceDryRunCardForApplication, approve, confirmInjection, requestChanges, skip, type ApproveInput, type ApproveResult } from "./review.js";
 import { Scheduler } from "./scheduler.js";
 import { systemClock } from "./system.js";
 import { noticeNeedsCheck, noticeTaskFailed } from "./notices.js";
@@ -420,6 +420,11 @@ export class Engine implements EngineCore {
 
   skip(jobId: number, decision: SkipDecision): void {
     skip(this, jobId, decision);
+  }
+
+  /** Ba changed a dry run's status by hand: if that settles it, its card comes back (review.ready). */
+  dryRunStatusChanged(applicationId: number): void {
+    announceDryRunCardForApplication(this, applicationId);
   }
 
   answerQuestion(taskId: number, input: AnswerInput) {

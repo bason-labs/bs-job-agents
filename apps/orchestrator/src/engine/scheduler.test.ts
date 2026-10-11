@@ -40,7 +40,15 @@ describe("scheduler (§7.4, UC-02, UC-21)", () => {
     const lead = listRooms(t.db, { kind: "lead" })[0]!;
     expect(listMessages(t.db, lead.id).at(-1)).toMatchObject({ author: "lead", text: "Scheduled scan started: Weekdays 9:00.", runRefs: [run.id] });
     await t.idle();
-    expect(t.review(run.id, 1)).toBeDefined();
+    // §1.2 criterion 1: with no step from Ba, the scheduled scan ends at a full review card: the job,
+    // a company profile, a tailored CV and a QA pass (score ≥ 80, no hard fail). Nothing is sent.
+    expect(t.review(run.id, 1)).toMatchObject({ jobId: 1, qaPassed: true, escalated: false, needsInput: false, companyMissing: false });
+    expect(t.review(run.id, 1)!.cvVersions.length).toBeGreaterThan(0);
+    expect(t.tasks("research.company").map((x) => x.status)).toEqual(["done"]);
+    const qa = t.tasks("qa.review").map((x) => x.output as { total: number; hardFails: unknown[] });
+    expect(qa.length).toBeGreaterThan(0);
+    expect(qa.every((o) => o.total >= 80 && o.hardFails.length === 0)).toBe(true);
+    expect(t.runner.callsFor("apply.submit")).toEqual([]);
   });
 
   it("a new schedule gets its first fire time; disabled schedules never fire", async () => {

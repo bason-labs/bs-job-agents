@@ -183,6 +183,10 @@ The source's page layout changed, so Research can't read it the way its skill sa
 
 Do these in order, with the app stopped unless a step says otherwise. Each one uses your subscriptions a little and touches nothing outside the listed page. Results of the run by W4b on **2026-10-11** are recorded under each check.
 
+Two things that make these checks flaky (found by W4b):
+- **One Claude session on Chrome at a time.** Close other Claude Code sessions (and the app) before a `--chrome` check; the extension serves one session, and a second one makes the calls time out (§5.3).
+- **Keep `--strict-mcp-config` and `--setting-sources ""`** on every manual `--chrome` command, as written below. Without them your own MCP servers and settings load too, so the check no longer matches what the app runs and may hang on a server prompt.
+
 ### Check 1: Claude in Chrome is connected
 ```bash
 claude -p "Call mcp__claude-in-chrome__tabs_context_mcp once WITHOUT createIfEmpty, then reply CONNECTED <n tabs> or NOT_CONNECTED <error>. Call nothing else." \
@@ -278,6 +282,8 @@ With an orchestrator running on 4100, run:
 
 Required before the first real submission (spec §12). It needs checks 1–4 to pass. Do it on a job you **actually want** to apply to, because the dry run is followed by the real application.
 
+The app enforces this: until one dry run has finished on your data folder, **Approve & submit** without **Dry run** is refused with "Do a dry run first …", and nothing is approved or sent. A dry run is always allowed, on any job. A dry run that reported "submitted" does not count until you have checked it and marked it Failed.
+
 1. **Start clean:** `BSJA_API_MODE=live pnpm dev`, Chrome open with Claude in Chrome connected, Figma open with the Desktop Bridge plugin running. Check that there is no **Sample data** badge.
 2. **Find the job:** ask Lead, e.g. "Find frontend jobs in HCM", or paste the job's link into Chat. Wait for its review card.
 3. **Read the card:** the fit reasons, the company profile, the QA score and, in the viewer, the CV PDF (one A4 page, your facts only). Edit the intro if you want.
@@ -302,4 +308,4 @@ None of these call a real CLI, Chrome or Figma.
 |---|---|
 | `pnpm -w test` | Vitest in every package. |
 | `pnpm e2e` | Playwright on the web app's **mock** backend: every screen's behaviour, the §11 rules, and **light/dark screenshot comparisons** against `apps/web/e2e/__screenshots__/` (frozen clock, ≤ 1% differing pixels). After an intended UI change, review the diff in the report, then run `pnpm --filter @bs-job-agents/web e2e:screenshots` to refresh the baselines. Baselines are taken on macOS. |
-| `pnpm e2e:live-shape` | Playwright with the web app in **live** mode against the **real orchestrator** (built `dist/`, real API, SSE, Lead's MCP server, engine and scan checker) on a throwaway data folder. FakeRunner stands in for the CLIs, and fakes stand in for Chrome and Figma (`apps/orchestrator/e2e/live-shape-launcher.ts`, test only). It covers: chat → run card, the canvas following the run, dry run → approve live → record and viewer, request changes, skip, a UC-12 question, the usage pause with auto-resume, the criteria and schedule proposals, schedules, the export ZIP, and the Bots locks. Ports: web 3399, orchestrator 4199, control 4198 (`E2E_LIVE_PORT`, `E2E_ORCH_PORT`, `E2E_CONTROL_PORT`). |
+| `pnpm e2e:live-shape` | Playwright with the web app in **live** mode against the **real orchestrator** (built `dist/`, real API, SSE, Lead's MCP server, engine and scan checker) on a throwaway data folder. FakeRunner stands in for the CLIs, and fakes stand in for Chrome and Figma (`apps/orchestrator/e2e/live-shape-launcher.ts`, test only). It covers: chat → run card, the canvas following the run, dry run → approve live → record and viewer, request changes, skip, a UC-12 question, the usage pause with auto-resume, the criteria and schedule proposals, schedules, the export ZIP, the Bots locks, and §12's "dry run before the first live submission" gate (the launcher keeps that gate off unless a test resets with it on). Ports: web 3399, orchestrator 4199, control 4198 (`E2E_LIVE_PORT`, `E2E_ORCH_PORT`, `E2E_CONTROL_PORT`). |

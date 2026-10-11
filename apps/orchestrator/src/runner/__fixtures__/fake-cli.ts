@@ -19,6 +19,11 @@ export interface FakeScript {
   spawnError?: string;
   /** Files to write before exiting (e.g. Codex `-o last.json`), keyed by a function of the args. */
   writeFiles?: (args: readonly string[]) => Record<string, string>;
+  /**
+   * Called once the process is spawned. Timeout and cancel tests act from here, so a slow machine
+   * preparing the task cannot make them race the spawn (Phase 4 QA flake fix).
+   */
+  onSpawn?: (child: FakeChild) => void;
 }
 
 export interface SpawnCall {
@@ -81,6 +86,7 @@ export function fakeSpawn(scripts: readonly FakeScript[] | ((command: string, ar
     }
     const child = new FakeChild(10_000 + calls.length, script);
     calls.push({ command, args: [...args], options, child });
+    script.onSpawn?.(child);
     const play = () => {
       if (child.hasExited) return;
       for (const line of script.stdout ?? []) child.stdout.write(`${line}\n`);

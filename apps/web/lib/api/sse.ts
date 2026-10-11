@@ -1,5 +1,5 @@
 // Live updates (§11): one EventSource on the orchestrator's /events per tab (through the /api
-// rewrite), shared by every subscriber. The server names each frame (`event: <type>`) and ids it
+// proxy, proxy.ts), shared by every subscriber. The server names each frame (`event: <type>`) and ids it
 // (`id: <events row id>`); a first connection gets no history, only an id-only frame:
 // - while the browser retries by itself (readyState CONNECTING, `retry: 3000`) it resends
 //   Last-Event-ID and the server replays what was missed, in order;
@@ -23,7 +23,7 @@ export interface EventSourceLike {
 const CLOSED = 2;
 
 export interface LiveFeedOptions {
-  /** e.g. `/api/events` (same-origin rewrite to the orchestrator). */
+  /** e.g. `/api/events` (same-origin proxy to the orchestrator). */
   url: string;
   createEventSource?: (url: string) => EventSourceLike;
   backoff?: { initialMs: number; maxMs: number; factor: number };

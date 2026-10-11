@@ -7,6 +7,7 @@
 // - UC-10 skip: the job is skipped with its reason; Apply and the record are skipped.
 // Every decision is kept in the human step's output (PM brief: §5.3 promotion rule, sub-project C).
 import {
+  DRY_RUN_APPLICATION_STATUS,
   PRE_SUBMIT_APPLICATION_STATUSES,
   RequestChangesRequestSchema,
   SkipDecisionSchema,
@@ -38,7 +39,9 @@ import {
   isEnginePaused,
   latestApprovalForApplication,
   listActiveRuns,
+  listApplications,
   listRuns,
+  listTasks,
   resetStep,
   setJobStatus,
   skipJob,
@@ -213,6 +216,29 @@ export function announceSettledDryRun(core: EngineCore, conn: Conn, actionRow: S
   });
 }
 
+/**
+ * W4b open issue 3: Ba settled a dry run by hand (a dry run that reported "submitted": needs_check →
+ * failed on the Applications screen). If that puts its card back (Approve live), announce it like
+ * announceSettledDryRun does, so an open review screen shows it without depending on a queue reload.
+ * A no-op for a live application, or a dry run whose card is not (or no longer) its review's.
+ */
+export function announceDryRunCardForApplication(core: EngineCore, applicationId: number): void {
+  core.db.transaction((tx) => {
+    const app = getApplication(tx, applicationId);
+    if (!app?.dryRun) return;
+    let ref: ReviewRef;
+    try {
+      ref = findReview(core, tx, app.jobId);
+    } catch {
+      return; // no review card for this job
+    }
+    const out = ref.action?.output as ActionStepOutput | null | undefined;
+    if (out?.applicationId !== app.id) return;
+    announceSettledDryRun(core, tx, ref.action);
+  });
+  core.bus.flush();
+}
+
 function settledDryRunRef(conn: Conn, ref: ReviewRef): boolean {
   return isDryRunSettled(conn, {
     humanStatus: ref.human.status,
@@ -344,6 +370,33 @@ function approveLiveAfterDryRun(core: EngineCore, tx: Conn, ref: ReviewRef, job:
   };
 }
 
+/**
+ * §12 dry-run acceptance: has this install passed its first dry run? True once a dry run settled
+ * (its Apply task ended, and it is not one that reported "submitted" and waits for Ba's check), or
+ * once the app itself has made a live application (the gate was passed before). Imported
+ * applications (UC-13) do not count.
+ */
+export function dryRunAcceptanceDone(conn: Conn): boolean {
+  return listApplications(conn).some((a) => {
+    if (a.origin !== "app") return false;
+    if (!a.dryRun) return true;
+    // Settled as approveLiveAfterDryRun means it: ended (needs_check, or failed), and not a dry run
+    // that reported "submitted" and still waits for Ba's check.
+    if ((a.status !== DRY_RUN_APPLICATION_STATUS && a.status !== "failed") || isBlockingDryRun(conn, a)) return false;
+    return !applySubmitTaskFor(conn, a.id, (s) => !["done", "failed", "interrupted"].includes(s));
+  });
+}
+
+/** True when an apply.submit task for this application has a status matching `test`. */
+function applySubmitTaskFor(conn: Conn, applicationId: number, test: (status: string) => boolean): boolean {
+  return listTasks(conn).some(
+    (t) => t.botName === "apply" && t.kind === "submit" && String((t.input as { applicationId?: unknown } | null)?.applicationId) === String(applicationId) && test(t.status),
+  );
+}
+
+export const DRY_RUN_REQUIRED_MESSAGE =
+  "Do a dry run first: before the first live submission, one dry run must finish (Apply fills the form and takes screenshots, and never submits). Tick “Dry run” in the approve dialog, on this job or any other.";
+
 /** UC-08 Approve & submit (and a re-approval after a denied or expired token). */
 export function approve(core: EngineCore, jobId: number, input: ApproveInput): ApproveResult {
   let runId = 0;
@@ -400,6 +453,10 @@ export function approve(core: EngineCore, jobId: number, input: ApproveInput): A
       return { applicationId: null, taskId: null, approval: null, reapproval: false };
     }
     if (!ref.actionDef) throw invalidState("this workflow has no apply step");
+    // §12: a dry run is required before the first live submission (a dry run is always allowed).
+    if (!dryRun && core.config.requireDryRunFirst && !dryRunAcceptanceDone(tx)) {
+      throw invalidState(DRY_RUN_REQUIRED_MESSAGE, { reason: "dry_run_required" });
+    }
     // PM2 M2: Apply is sent only to a public web site, never to Ba's Mac, his LAN or a bare suffix.
     const problem = publicHostProblem(registrableHost(job.url));
     if (problem) throw invalidState(`the job link's site is not a public web site, so Apply cannot be sent there: ${problem}`, { reason: "invalid_domain" });

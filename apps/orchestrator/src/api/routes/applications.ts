@@ -46,8 +46,12 @@ export function applicationRoutes(app: FastifyInstance, ctx: ApiContext): void {
     const db = requireDb(ctx);
     const id = idParam(req.params.id, "application");
     const body = parseWith(ApplicationStatusChangeRequestSchema, req.body);
+    const from = getApplication(db, id)?.status;
     const moved = transitionApplication(db, id, body.status, { by: "manual", now: ctx.now(), ...(body.note !== null ? { note: body.note } : {}) });
     emitEvent(ctx, { type: "application.updated", applicationId: String(moved.id), jobId: String(moved.jobId), status: moved.status, origin: moved.origin });
+    // A dry run Ba settled (it reported "submitted"; Ba checked: not sent) puts its card back for
+    // "Approve live": announced as review.ready, not left to a queue reload (W4b open issue 3).
+    if (moved.dryRun && moved.status !== from && ctx.engine && ctx.state.state === "running") ctx.engine.dryRunStatusChanged(moved.id);
     return respond(ApplicationStatusChangeResponseSchema, { application: mappers.toApplication(moved) });
   });
 

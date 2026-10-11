@@ -20,9 +20,9 @@ afterEach(() => kit.dispose());
 const SID = "11111111-2222-4333-8444-555555555555";
 const play = (lines: string[], over: Partial<FakeScript> = {}): FakeScript => ({ stdout: lines, exitCode: 0, ...over });
 
-function runner(scripts: FakeScript[], configOver = {}) {
+function runner(scripts: FakeScript[], configOver = {}, deps: { now?: () => number } = {}) {
   const fake = fakeSpawn(scripts);
-  const r = new ClaudeRunner(kit.config(configOver), { spawn: fake.spawn, randomUUID: () => SID });
+  const r = new ClaudeRunner(kit.config(configOver), { spawn: fake.spawn, randomUUID: () => SID, ...deps });
   return { r, calls: fake.calls };
 }
 
@@ -246,8 +246,12 @@ describe("ClaudeRunner: failures, denials, limits", () => {
 });
 
 describe("ClaudeRunner: timeout and cancel", () => {
+  // A frozen duration clock: the time spent preparing the task (temp files, MCP config) is not
+  // taken from the timeout, so a loaded machine cannot reach the deadline before the spawn.
+  const frozen = { now: () => 0 };
+
   it("kills the process at the task timeout → timeout", async () => {
-    const { r, calls } = runner([{ hang: true }]);
+    const { r, calls } = runner([{ hang: true }], {}, frozen);
     const result = await r.run(consultTask({ timeoutMs: 40 }), () => {});
     expect(result.status).toBe("timeout");
     expect(calls[0]!.child.signals[0]).toBe("SIGTERM");
@@ -255,15 +259,15 @@ describe("ClaudeRunner: timeout and cancel", () => {
   });
 
   it("the timeout covers the repair too", async () => {
-    const { r } = runner([play(claudeLines("invalidOutput")), { hang: true }]);
+    const { r } = runner([play(claudeLines("invalidOutput")), { hang: true }], {}, frozen);
     const result = await r.run(consultTask({ timeoutMs: 150 }), () => {});
     expect(result.status).toBe("timeout");
   });
 
   it("an AbortSignal kills the process → cancelled", async () => {
-    const { r, calls } = runner([{ hang: true }]);
     const ac = new AbortController();
-    setTimeout(() => ac.abort(), 30);
+    // Abort once the process runs, never before it spawned.
+    const { r, calls } = runner([{ hang: true, onSpawn: () => setTimeout(() => ac.abort(), 10) }]);
     const result: RunnerResult = await r.run(consultTask({ signal: ac.signal }), () => {});
     expect(result.status).toBe("cancelled");
     expect(calls[0]!.child.signals).toContain("SIGTERM");

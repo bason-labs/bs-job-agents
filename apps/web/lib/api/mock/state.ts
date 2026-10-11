@@ -66,6 +66,7 @@ export interface ApplicationExtra {
   submission: ApplicationDetail["submission"];
   files: FileRef[];
   confirmationScreenshotFileId: string | null;
+  preSubmitScreenshotFileId: string | null;
   partialRecord: boolean;
   cvFile: FileRef | null;
 }

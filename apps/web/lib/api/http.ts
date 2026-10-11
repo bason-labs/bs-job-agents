@@ -1,5 +1,5 @@
 // The orchestrator over HTTP (§4.2): a typed client over API_ROUTES, validated with the shared
-// response schemas. Browser calls go through the same-origin /api rewrite (next.config.ts: the
+// response schemas. Browser calls go through the same-origin /api proxy (proxy.ts: the
 // orchestrator sends no CORS headers); server components call the orchestrator directly (config.ts).
 import {
   API_ROUTES,

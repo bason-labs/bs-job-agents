@@ -145,7 +145,8 @@ beforeAll(async () => {
     workflows: staticWorkflowSource(),
     figma: new FigmaBridge({ connect: async () => mcp }),
     browser: new FakeBrowserProbe(),
-    config: { bridgePollMs: 60_000, schedulerPollMs: 60_000 },
+    // §12's dry-run gate is on in production (asserted below); this run approves live directly.
+    config: { bridgePollMs: 60_000, schedulerPollMs: 60_000, requireDryRunFirst: false },
   });
   await engine.start();
   runId = engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" }).id;
@@ -238,5 +239,10 @@ describe("the production engine on the real adapters (createProductionEngine)", 
     expect(types).not.toContain("safety.denied");
     expect(types).not.toContain("task.paused");
     expect(types.filter((t) => t === "run.finished")).toHaveLength(1);
+  });
+
+  it("§12: the production engine requires a dry run before the first live submission unless told otherwise", () => {
+    const prod = createProductionEngine({ db, dataDir, botsDir, runners: engine.deps.runners, workflows: staticWorkflowSource(), browser: new FakeBrowserProbe() });
+    expect(prod.config.requireDryRunFirst).toBe(true);
   });
 });

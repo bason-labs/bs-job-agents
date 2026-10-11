@@ -243,6 +243,7 @@ export const APPLICATION_DETAILS: ApplicationDetail[] = [
 export function extraOf(d: ApplicationDetail): ApplicationExtra {
   const s = d.submission;
   const confirmation = s?.confirmationScreenshotPath ? d.files.find((f) => f.kind === "screenshot" && s.confirmationScreenshotPath?.endsWith(f.filename)) : undefined;
+  const preSubmit = s?.preSubmitScreenshotPath ? d.files.find((f) => f.kind === "screenshot" && s.preSubmitScreenshotPath?.endsWith(f.filename)) : undefined;
   const cvFile = d.files.find((f) => f.kind === "cv_pdf") ?? null;
   const missing = !s || (!s.dryRun && (!s.preSubmitScreenshotPath || !s.confirmationScreenshotPath || !s.jdSnapshot || !s.uploadedFile?.sha256));
   return {
@@ -251,6 +252,7 @@ export function extraOf(d: ApplicationDetail): ApplicationExtra {
     submission: d.submission,
     files: d.files,
     confirmationScreenshotFileId: confirmation?.id ?? null,
+    preSubmitScreenshotFileId: preSubmit?.id ?? null,
     partialRecord: d.application.origin === "imported" || (d.submission !== null && missing),
     cvFile,
   };
@@ -258,8 +260,8 @@ export function extraOf(d: ApplicationDetail): ApplicationExtra {
 
 /** The list row GET /applications returns for a detail. */
 export function toRow(d: ApplicationDetail): ApplicationListItem {
-  const { job, cvVersion, confirmationScreenshotFileId, partialRecord, cvFile } = extraOf(d);
-  return { application: d.application, job, cvVersion, confirmationScreenshotFileId, partialRecord, cvFile };
+  const { job, cvVersion, confirmationScreenshotFileId, preSubmitScreenshotFileId, partialRecord, cvFile } = extraOf(d);
+  return { application: d.application, job, cvVersion, confirmationScreenshotFileId, preSubmitScreenshotFileId, partialRecord, cvFile };
 }
 
 /** Sample files under public/dev for the viewer, by the seeded files' types. */

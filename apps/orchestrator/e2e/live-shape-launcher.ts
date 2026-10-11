@@ -16,6 +16,8 @@
 // between tests and read what the fake runners were asked to do:
 //   GET  /ready   200 once the orchestrator listens
 //   POST /reset   stop it, start a fresh one on a new data folder (same port); 200 {dataDir}
+//                 ?dryRunGate=1 keeps §12's "dry run before the first live submission" gate on
+//                 (as in production); by default it is off so specs can approve live directly
 //   GET  /calls   [{key, input}] of every runner task since the last reset
 //
 // Env: E2E_ORCH_PORT (default 4199), E2E_CONTROL_PORT (4198), ORCH_WEB_ORIGINS (the web app).
@@ -229,7 +231,7 @@ interface Running {
 
 let current: Running | null = null;
 
-async function boot(): Promise<Running> {
+async function boot(opts: { dryRunGate?: boolean } = {}): Promise<Running> {
   const root = mkdtempSync(join(tmpdir(), "bsja-live-shape-"));
   const dataDir = join(root, "data");
   const botsDir = join(root, "bots");
@@ -265,6 +267,7 @@ async function boot(): Promise<Running> {
     browser: new FakeBrowserProbe(),
     lockWaitMs: 2000,
     shutdownGraceMs: 2000,
+    engineConfig: { requireDryRunFirst: opts.dryRunGate === true },
   });
   if (orch.ctx.state.state !== "running") throw new Error(`live-shape orchestrator degraded: ${JSON.stringify(orch.ctx.state)}`);
   await orch.listen();
@@ -305,10 +308,11 @@ const control = createServer((req, res) => {
   void (async () => {
     try {
       if (req.method === "GET" && req.url === "/ready") return send(current ? 200 : 503, { ready: current !== null });
-      if (req.method === "POST" && req.url === "/reset") {
+      if (req.method === "POST" && (req.url === "/reset" || req.url?.startsWith("/reset?"))) {
+        const dryRunGate = new URL(req.url, "http://control").searchParams.get("dryRunGate") === "1";
         const r = await serial(async () => {
           await shutdown();
-          current = await boot();
+          current = await boot({ dryRunGate });
           return current;
         });
         return send(200, { dataDir: r.orch.ctx.config.dataDir });
