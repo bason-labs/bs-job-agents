@@ -79,9 +79,9 @@ describe("memory notes and promotion suggestions (PM S14, UC-19)", () => {
 });
 
 describe("PATCH /bots/:name (S21)", () => {
-  it("keeps Apply and CV on Claude (their guards are hooks), and lets Research or QA switch", async () => {
+  it("keeps Apply, CV and Lead on Claude (guards are hooks; Lead's tool limit, PM3 M1), and lets Research or QA switch", async () => {
     h = await createApiHarness();
-    for (const name of ["apply", "cv"]) {
+    for (const name of ["apply", "cv", "lead"]) {
       const res = await h.patch(`/bots/${name}`, { engine: "codex" });
       expect(res.statusCode, name).toBe(403);
       expect(ApiErrorSchema.parse(res.json()).error.message).toMatch(/must run on Claude/);
@@ -93,6 +93,15 @@ describe("PATCH /bots/:name (S21)", () => {
     expect(h.t.events("bot.updated").at(-1)).toMatchObject({ botName: "research", engine: "claude", trustLevel: 2, enabled: true, activity: "idle" });
     h.t.checkEvents();
     expect((await h.patch("/bots/qa", { engine: "claude" })).statusCode).toBe(200);
+  });
+
+  it("PM3 M1: PATCH /bots/lead {engine: codex} is a 403 with the rule 5 reason, and nothing changes", async () => {
+    h = await createApiHarness();
+    const res = await h.patch("/bots/lead", { engine: "codex" });
+    expect(res.statusCode).toBe(403);
+    expect(ApiErrorSchema.parse(res.json()).error.message).toBe("lead: Lead must run on Claude, where its only tools are the orchestrator's (rule 5)");
+    expect(getBot(h.t.db, "lead")?.engine).toBe("claude");
+    expect(h.t.events("bot.updated")).toHaveLength(0);
   });
 
   it("never raises Apply above L1; a demoted bot comes back one level at a time", async () => {

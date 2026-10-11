@@ -17,5 +17,6 @@ function getServerMock(): Promise<WebApi> {
 export async function getServerApi(mode?: ApiMode): Promise<WebApi> {
   const resolved = mode ?? (await resolveApiMode());
   if (resolved === "mock") return getServerMock();
-  return createHttpApi({ baseUrl: orchestratorUrl(), events: NO_EVENTS });
+  // PM3 M2: no browser Origin here, so no state changes either.
+  return createHttpApi({ baseUrl: orchestratorUrl(), events: NO_EVENTS, readOnly: true });
 }

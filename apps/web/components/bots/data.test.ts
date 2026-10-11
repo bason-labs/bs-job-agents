@@ -16,11 +16,11 @@ describe("seeded bots (mock orchestrator)", () => {
     expect(bots.every((b) => b.memoryNotes?.length === b.memory.length)).toBe(true);
   });
 
-  it("match the prototype: Apply L1 with a promotion it can't accept, CV demoted, Research with its residual risk", async () => {
+  it("match the prototype: Apply L1 with a promotion it can't accept, CV demoted, Research on Claude (E1 option A)", async () => {
     const bots = await make().list();
     expect(bots.find((b) => b.name === "apply")).toMatchObject({ trustLevel: 1, engine: "claude", promotionSuggested: true, promoteAllowed: false });
     expect(bots.find((b) => b.name === "cv")).toMatchObject({ trustLevel: 1, demotion: { fromLevel: 2 } });
-    expect(bots.find((b) => b.name === "research")!.residualRisk).toMatch(/prompt/);
+    expect(bots.find((b) => b.name === "research")).toMatchObject({ engine: "claude", residualRisk: null });
   });
 });
 
@@ -32,13 +32,16 @@ describe("bots adapter (PM S21 rules)", () => {
   });
 
   it("switches an unlocked bot's engine", async () => {
-    expect((await make().update("research", { engine: "claude" })).engine).toBe("claude");
+    const data = make();
+    expect(await data.update("research", { engine: "codex" })).toMatchObject({ engine: "codex", residualRisk: expect.stringMatching(/prompt/) });
+    expect(await data.update("research", { engine: "claude" })).toMatchObject({ engine: "claude", residualRisk: null });
   });
 
   it("refuses Apply or CV on Codex with the API's 403 (checkBotSafety)", async () => {
     const data = make();
     expect(await err(data.update("apply", { engine: "codex" }))).toMatchObject({ status: 403, code: "forbidden", message: expect.stringMatching(/browser bot/) });
     expect(await err(data.update("cv", { engine: "codex" }))).toMatchObject({ status: 403, message: expect.stringMatching(/Figma/) });
+    expect(await err(data.update("lead", { engine: "codex" }))).toMatchObject({ status: 403, message: expect.stringMatching(/Lead must run on Claude/) });
   });
 
   it("raises one level at a time up to the Phase 1 cap; Apply stays L1 (403); lowering is allowed", async () => {

@@ -163,5 +163,17 @@ test("UC-21b a: 'also include Đà Nẵng' asks just this run or save, and the c
   await expect(choice.getByRole("button", { name: "Just this run" })).toBeVisible();
   await choice.getByRole("button", { name: "Save to my criteria" }).click();
   await expect(choice).toContainText("You chose “Save to my criteria”.");
-  await expect(lead(page).filter({ hasText: "now v4" })).toBeVisible();
+  await expect(lead(page).filter({ hasText: "Saved to your search criteria (now v4)." })).toBeVisible();
+  await expect(lead(page).filter({ hasText: "Save to your search criteria (now v3)? Add Đà Nẵng to locations." })).toBeVisible();
+});
+
+test("UC-21 via Lead (PM3 S1): 'scan every weekday at 9' proposes a schedule; one click creates it", async ({ page }) => {
+  await open(page, "/chat");
+  await composer(page).fill("Scan every weekday at 9");
+  await composer(page).press("Enter");
+  const proposal = lead(page).filter({ hasText: "Create the schedule “Weekday morning scan”? Runs: Weekdays 09:00" });
+  await expect(proposal).toBeVisible();
+  await proposal.getByRole("button", { name: "Create schedule" }).click();
+  await expect(proposal.getByTestId("choice-card")).toContainText("You chose “Create schedule”.");
+  await expect(lead(page).filter({ hasText: "Created the schedule “Weekday morning scan” (Weekdays 09:00)." })).toBeVisible();
 });

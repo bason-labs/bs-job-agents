@@ -4,7 +4,7 @@ import type { BotSummary, ShellData } from "@/lib/api/types";
 
 export const MOCK_BOTS: BotSummary[] = [
   { name: "lead", displayName: "Lead", engine: "claude", trustLevel: 1, status: "idle", role: "Receives every request; only divides work." },
-  { name: "research", displayName: "Research", engine: "codex", trustLevel: 2, status: "working", role: "Finds jobs, scores fit, profiles companies (read-only browser)." },
+  { name: "research", displayName: "Research", engine: "claude", trustLevel: 2, status: "working", role: "Finds jobs, scores fit, profiles companies (read-only browser)." },
   { name: "cv", displayName: "CV", engine: "claude", trustLevel: 2, status: "idle", role: "Tailors CV in Figma from master facts; never invents." },
   { name: "qa", displayName: "QA", engine: "codex", trustLevel: 2, status: "idle", role: "Scores CV vs JD + company; hard-fails invented facts." },
   { name: "apply", displayName: "Apply", engine: "claude", trustLevel: 1, status: "idle", role: "Fills & submits forms in your Chrome after your approval." },

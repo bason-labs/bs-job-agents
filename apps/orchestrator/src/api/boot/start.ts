@@ -11,11 +11,11 @@
 // the next start (UC-18).
 import { accessSync, constants, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import type { DegradedReason, Engine as EngineName } from "@bs-job-agents/shared";
+import { checkBotSafety, type DegradedReason, type Engine as EngineName } from "@bs-job-agents/shared";
 import type { FastifyInstance, FastifyServerOptions } from "fastify";
 import { FigmaBridge } from "../../bridges/index.js";
 import { checkDataDir, type OrchestratorConfig } from "../../config.js";
-import { SchemaGuardError, getOrCreateLeadRoom, openDb, type Db } from "../../db/index.js";
+import { SchemaGuardError, getBot, getOrCreateLeadRoom, openDb, type Db } from "../../db/index.js";
 import {
   EngineError,
   botRegistryFrom,
@@ -94,6 +94,24 @@ function startFailureReason(err: unknown): DegradedReason {
   return "engine_start_failed";
 }
 
+/**
+ * PM3 M1: the engine each bot would run on (its Bots-screen row over bot.json) checked against the
+ * Phase 1 safety rules; null when every bot is safe.
+ */
+export function unsafeStoredEngines(db: Db, registry: BotRegistry): string | null {
+  const problems: string[] = [];
+  for (const def of registry.list()) {
+    const engine = getBot(db, def.name)?.engine ?? def.engine;
+    if (engine === def.engine) continue;
+    const issues = checkBotSafety({ ...def, engine });
+    if (issues.length > 0) {
+      const label = def.displayName || def.name;
+      problems.push(`${issues.join("; ")}. ${label} is set to ${engine === "codex" ? "Codex" : engine} on the Bots screen: switch it back to Claude, then restart the orchestrator`);
+    }
+  }
+  return problems.length > 0 ? problems.join(". ") : null;
+}
+
 export async function startOrchestrator(opts: StartOptions): Promise<Orchestrator> {
   const { config } = opts;
   const now = opts.now ?? (() => new Date());
@@ -144,7 +162,7 @@ export async function startOrchestrator(opts: StartOptions): Promise<Orchestrato
   // bind to the engine once it exists. Without it, Lead could not run: start-up degrades instead.
   const capabilities = new CapabilityStore();
   const proposals = new ProposalStore({ dataDir: config.dataDir, now, workflows: () => workflows });
-  const sink = new ChatSink({ capabilities, now, log });
+  const sink = new ChatSink({ capabilities, now, log, dataDir: config.dataDir, workflows: () => workflows });
   let mcp: OrchestratorMcpServer | null = null;
   const custom = typeof opts.runners === "object" ? opts.runners : null;
   if (db && workflows && !state && !custom) {
@@ -172,6 +190,12 @@ export async function startOrchestrator(opts: StartOptions): Promise<Orchestrato
     } catch (err) {
       degrade("bots_invalid", `bots/: ${message(err)}`);
     }
+  }
+  // PM3 M1: a Bots-screen change stored before the rule existed (Lead on Codex) never runs: the
+  // engine stays stopped with the reason, and the Bots screen can switch it back.
+  if (engine && db && !state) {
+    const unsafe = unsafeStoredEngines(db, engine.deps.bots);
+    if (unsafe) degrade("bots_invalid", unsafe);
   }
   if (engine && db && !state) {
     try {

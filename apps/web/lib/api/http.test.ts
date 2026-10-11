@@ -229,7 +229,7 @@ describe("createHttpApi: commands", () => {
     await a.resumeTask("42");
     expect((await a.controlRun("12", "pause")).run.status).toBe("paused");
     await a.rerunStep("s1");
-    await a.chooseOption({ messageId: "m1", key: "criteria", optionId: "save" });
+    await a.chooseOption({ messageId: "m1", key: "criteria-save:AbCdEf123456", optionId: "save" });
     await a.declineDomain("43");
     expect(calls.map((c) => [c.method, c.url.replace("http://orch.test", ""), c.body])).toEqual([
       ["POST", "/review/job_1/request-changes", { comment: "Lead with Next.js" }],
@@ -240,7 +240,7 @@ describe("createHttpApi: commands", () => {
       ["POST", "/tasks/42/resume", { confirmDomain: null }],
       ["POST", "/runs/12/control", { action: "pause" }],
       ["POST", "/steps/s1/rerun", {}],
-      ["POST", "/chat/choices", { messageId: "m1", key: "criteria", optionId: "save" }],
+      ["POST", "/chat/choices", { messageId: "m1", key: "criteria-save:AbCdEf123456", optionId: "save" }],
       ["POST", "/tasks/43/decline-domain", {}],
     ]);
   });

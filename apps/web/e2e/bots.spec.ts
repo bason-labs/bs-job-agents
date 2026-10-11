@@ -18,29 +18,31 @@ test.describe("Bots grid", () => {
     expect(Math.abs(first.y - second.y)).toBeLessThan(2); // side by side
     const research = card(page, "research");
     await expect(research).toContainText("Finds jobs, scores fit, profiles companies (read-only browser).");
-    await expect(research.getByRole("radio", { name: "Codex" })).toHaveAttribute("aria-checked", "true");
+    await expect(research.getByRole("radio", { name: "Claude" })).toHaveAttribute("aria-checked", "true");
     await expect(research.getByRole("img", { name: /^Trust level L2/ })).toBeVisible();
     await expect(research).toContainText("Track record: 41 tasks · 95% self-check pass");
     await expect(research.getByTestId("bot-prompt-version")).toHaveText("prompt v2");
-    await expect(research.getByTestId("bot-residual-risk")).toContainText("owner decision E1");
+    // E1 option A: Research on Claude has no residual-risk note.
+    await expect(research.getByTestId("bot-residual-risk")).toHaveCount(0);
   });
 
-  test("Apply's and CV's engine switches are disabled with the reason (§4.4, §6.2)", async ({ page }) => {
-    for (const name of ["apply", "cv"]) {
+  test("Apply's, CV's and Lead's engine switches are disabled with the reason (§4.4, §6.2, rule 5)", async ({ page }) => {
+    for (const name of ["apply", "cv", "lead"]) {
       await expect(card(page, name).getByRole("radio", { name: "Codex" })).toBeDisabled();
       await expect(card(page, name).getByTestId("bot-engine-lock")).toContainText("Locked to Claude");
     }
     await expect(card(page, "cv").getByTestId("bot-engine-lock")).toHaveText("Locked to Claude: CV edits Figma; its Drafts-only guard runs only on Claude.");
   });
 
-  test("switches Research's engine with the mouse and Lead's with the arrow keys", async ({ page }) => {
-    await card(page, "research").getByRole("radio", { name: "Claude" }).click();
-    await expect(page.getByTestId("toast").filter({ hasText: "Research now runs on Claude. Queued tasks keep their engine." })).toBeVisible();
-    await expect(card(page, "research").getByRole("radio", { name: "Claude" })).toHaveAttribute("aria-checked", "true");
+  test("switches Research's engine with the mouse and QA's with the arrow keys", async ({ page }) => {
+    await card(page, "research").getByRole("radio", { name: "Codex" }).click();
+    await expect(page.getByTestId("toast").filter({ hasText: "Research now runs on Codex. Queued tasks keep their engine." })).toBeVisible();
+    await expect(card(page, "research").getByRole("radio", { name: "Codex" })).toHaveAttribute("aria-checked", "true");
+    await expect(card(page, "research").getByTestId("bot-residual-risk")).toContainText("owner decision E1");
 
-    await card(page, "lead").getByRole("radio", { name: "Claude" }).focus();
-    await page.keyboard.press("ArrowRight");
-    await expect(card(page, "lead").getByRole("radio", { name: "Codex" })).toHaveAttribute("aria-checked", "true");
+    await card(page, "qa").getByRole("radio", { name: "Codex" }).focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(card(page, "qa").getByRole("radio", { name: "Claude" })).toHaveAttribute("aria-checked", "true");
   });
 
   test("Apply's promotion suggestion can't be accepted in Phase 1, only dismissed (UC-19)", async ({ page }) => {

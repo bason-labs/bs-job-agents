@@ -35,7 +35,7 @@ test("UC-22: a node opens the drawer with input, output, self-check, transcript,
   await node(page, "node-scan").click();
   const drawer = page.getByTestId("step-drawer");
   await expect(drawer.getByRole("heading", { name: "Scan sources" })).toBeVisible();
-  await expect(drawer).toContainText("Research ×3 · Codex");
+  await expect(drawer).toContainText("Research ×3 · Claude");
   // The newest task (LinkedIn) is shown first: it took two attempts.
   await expect(drawer.getByRole("radio", { name: "LinkedIn" })).toHaveAttribute("aria-checked", "true");
   await expect(drawer.getByTestId("drawer-attempt")).toContainText("2 of 2");
@@ -66,7 +66,8 @@ test("a run started from chat fills its canvas live; the drawer streams the tran
   await page.keyboard.press("Enter");
   await page.locator('[data-testid=run-card][data-run="13"]').getByRole("link", { name: /Open flow/ }).click();
   await expect(page).toHaveURL(/\/flows\/13$/);
-  await expect(node(page, "node-scan")).toHaveAttribute("data-status", "running");
+  // The mock scan takes under a second at e2e speed: it may already be done when the canvas opens.
+  await expect(node(page, "node-scan")).toHaveAttribute("data-status", /^(running|done)$/);
   await node(page, "node-scan").click();
   await expect(page.getByTestId("transcript")).toContainText("search results");
   await page.keyboard.press("Escape");

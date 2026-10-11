@@ -61,6 +61,7 @@ import { ApiRequestError } from "../errors";
 import type { QueryValue } from "../routes";
 import type { MockBackend } from "./backend";
 import { activeProfile, saveCriteria } from "./criteria";
+import { residualRiskFor } from "./seed-bots";
 import * as sim from "./sim";
 import type { ApplicationExtra } from "./state";
 
@@ -391,7 +392,10 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
       b.trustLevel = patch.trustLevel;
       b.promoteAllowed = b.trustLevel < maxTrustLevel(b.name);
     }
-    if (patch.engine !== undefined) b.engine = patch.engine;
+    if (patch.engine !== undefined) {
+      b.engine = patch.engine;
+      b.residualRisk = residualRiskFor(b.name, b.engine);
+    }
     if (patch.enabled !== undefined) b.enabled = patch.enabled;
     return botUpdated(core, b);
   }),

@@ -365,7 +365,7 @@ export function seedQueue(jobs: Record<string, Job>, companies: Record<string, C
 
 // ---------------------------------------------------------------- runs, steps, tasks
 
-const ENGINE_OF: Record<string, Engine> = { lead: "claude", research: "codex", cv: "claude", qa: "codex", apply: "claude" };
+const ENGINE_OF: Record<string, Engine> = { lead: "claude", research: "claude", cv: "claude", qa: "codex", apply: "claude" };
 const PROMPT_OF: Record<string, number> = { lead: 3, research: 2, cv: 4, qa: 2, apply: 1 };
 const SELF_CHECK: Record<string, string[]> = {
   "research.scan": ["Every job has a reachable URL", "Every job has full JD text (not a snippet)", "No job is a duplicate of another in this output"],
@@ -800,6 +800,7 @@ export function createSeedState(): MockState {
     factRequests: seedFactRequests(),
     proposals: seedProposals(),
     savedWorkflows: {},
+    leadProposals: {},
     seq: 9000,
   };
 }

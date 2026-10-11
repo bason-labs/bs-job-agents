@@ -17,6 +17,7 @@ import {
   resolveOutputSchemaName,
   taskKey,
   type ApplyOutput,
+  type ResearchScanOutput,
   type ApplyPromptInput,
   type CvOutput,
   type Engine,
@@ -76,6 +77,7 @@ import { DEMOTING_SAFETY_REASONS, demoteBot, postProtectedChangeAlert } from "./
 import { noticePause, noticeTaskFailed } from "./notices.js";
 import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, stillRunning } from "./task-events.js";
 import { hostOfUrl, pauseSite, siteBlocksOf, siteKey, type SiteBlock } from "./sites.js";
+import { adapterBrokenError, scanRejectedError, type ScanCheckResult } from "./scan-check.js";
 import { checkTaskTrust } from "./trust-guard.js";
 
 const ENGINES = EngineSchema.options;
@@ -354,6 +356,7 @@ export class TaskQueue {
     outcome = this.withGuardLog(outcome, blocks);
     outcome = this.checkSiteGuard(task, outcome, siteBlocksOf(blocks, result));
     outcome = this.checkInjectionReport(task, outcome);
+    outcome = await this.checkScanOutput(task, prepared, outcome, result);
     if (prepared.apply) outcome = this.checkApplyPages(task, outcome, result);
     if (outcome.kind === "ok" && prepared.apply) {
       const appId = Number((task.input as { applicationId?: unknown } | null)?.applicationId);
@@ -649,6 +652,40 @@ export class TaskQueue {
    * page that tries to instruct it is not one to keep filling in. A finished Apply is recorded as
    * needs_check (writeSubmissionRecord); Research's jobs are flagged when they are stored.
    */
+  /**
+   * PM3 S8: a research.scan output that passed its schema and self-check goes to the
+   * ScanOutputChecker (W4a's adapters). A broken adapter fails the branch for good (UC-03 b); an
+   * implausible output fails the attempt (retried). A checker error is logged and accepted.
+   */
+  private async checkScanOutput(task: Task, prepared: Prepared, outcome: Outcome, result: RunnerResult): Promise<Outcome> {
+    if (outcome.kind !== "ok" || taskKey(task.botName, task.kind) !== "research.scan") return outcome;
+    const checker = this.core.deps.scanChecker;
+    if (!checker) return outcome;
+    const input = task.input as { source?: unknown } | null;
+    const captures = prepared.screenshotDir ? await this.capturesOf(prepared.screenshotDir, result) : [];
+    let verdict: ScanCheckResult;
+    try {
+      verdict = await checker.check({
+        taskId: task.id,
+        runId: task.runId,
+        attempt: task.attempt,
+        engine: prepared.bot.def.engine,
+        source: typeof input?.source === "string" ? input.source : "unknown",
+        input: task.input,
+        output: outcome.output as ResearchScanOutput,
+        screenshots: captures.map((c) => this.core.paths.rel(join(prepared.screenshotDir!, c.file))),
+      });
+    } catch (err) {
+      this.core.log.warn(`scan check for task ${task.id} failed, output accepted: ${errorMessage(err)}`);
+      return outcome;
+    }
+    if (verdict.ok) return outcome;
+    const reason = verdict.reason.trim() || "the scan output did not pass the source's checks";
+    return verdict.adapterBroken
+      ? { kind: "failed", error: adapterBrokenError(reason, verdict.screenshot), output: outcome.output, retryable: false, safety: outcome.safety }
+      : { kind: "failed", error: scanRejectedError(reason), output: outcome.output, retryable: true, safety: outcome.safety };
+  }
+
   private checkInjectionReport(task: Task, outcome: Outcome): Outcome {
     if (outcome.kind !== "ok" && outcome.kind !== "paused") return outcome;
     const key = taskKey(task.botName, task.kind);

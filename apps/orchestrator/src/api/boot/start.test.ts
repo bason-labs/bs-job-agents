@@ -8,7 +8,7 @@ import { FigmaBridge } from "../../bridges/index.js";
 import { findRepoRoot, resolveConfig, type OrchestratorConfig } from "../../config.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { listMessages, listRooms, openDb } from "../../db/index.js";
+import { listMessages, listRooms, openDb, updateBot } from "../../db/index.js";
 import { LeadMcpRunner, ORCHESTRATOR_TOOLS } from "../../mcp/index.js";
 import { FakeBrowserProbe, FakeFigmaPort, FakeRunner, MemoryFileStore, defaultFakeResult } from "../../engine/testing/index.js";
 import { startOrchestrator, type Orchestrator, type StartOptions } from "./start.js";
@@ -144,6 +144,28 @@ describe("startOrchestrator", () => {
     expect(startRun.statusCode).toBe(503);
   });
 
+  it("PM3 M1 degraded: a DB row that already has Lead on Codex refuses to start the engine (rule 5); Ba can switch it back", async () => {
+    const config = setup();
+    await (await start(config)).close();
+    running.pop();
+    const db = openDb(join(config.dataDir, "app.db"));
+    updateBot(db, "lead", { engine: "codex" });
+    db.$client.close();
+    const orch = await start(config);
+    expect(orch.ctx.state).toMatchObject({ state: "degraded", reason: "bots_invalid" });
+    expect(orch.ctx.state.state === "degraded" && orch.ctx.state.detail).toMatch(/Lead must run on Claude.*switch it back to Claude/);
+    const back = await orch.app.inject({
+      method: "PATCH",
+      url: "/bots/lead",
+      headers: { host: `127.0.0.1:${config.port}`, origin: "http://localhost:3000", "x-bsja-csrf": "1", "content-type": "application/json" },
+      payload: JSON.stringify({ engine: "claude" }),
+    });
+    expect(back.statusCode).toBe(200);
+    await orch.close();
+    running.pop();
+    expect((await start(config)).ctx.state.state).toBe("running");
+  });
+
   it("degraded: an invalid workflow file and a missing bots folder name their reason", async () => {
     const root = tempRoot();
     const wf = join(root, "workflows");
@@ -176,7 +198,7 @@ describe("startOrchestrator", () => {
     const seen: { tools: string[]; url: string } = { tools: [], url: "" };
     const orch = await start(config, {
       runners: ({ capabilities, server }) => {
-        const fakeRunner = new FakeRunner();
+        const fakeRunner = new FakeRunner({ engine: "claude" });
         const lead = new LeadMcpRunner(fakeRunner, {
           capabilities,
           server,

@@ -7,10 +7,11 @@
 //   to Lead (rule 1) carries a handoff card ("Open Lead chat"); Lead's chat gets "Handed over from
 //   @Bot: …" and a lead.chat task, queued in the same transaction (ctx.enqueue).
 // - A conversation that failed for good gets a short note from the bot (no internals).
-import type { ConsultOutput, LeadAction, LeadOutput, MessageCard } from "@bs-job-agents/shared";
+import { LEAD_ENGINE_RULE, type ConsultOutput, type LeadAction, type LeadOutput, type MessageCard } from "@bs-job-agents/shared";
 import { getOrCreateLeadRoom, getRoom, type Room } from "../../db/index.js";
-import type { ConversationResult, ConversationSink, ConversationSinkContext, Logger } from "../../engine/index.js";
+import type { ConversationResult, ConversationSink, ConversationSinkContext, Logger, WorkflowSource } from "../../engine/index.js";
 import type { CapabilityStore, LeadToolAction } from "../../mcp/capabilities.js";
+import { postLeadProposal } from "./lead-proposals.js";
 import { REPLY_TEXT_MAX, clip, conversationHistory, postMessage } from "./messages.js";
 
 const BOT_LABEL: Record<string, string> = { lead: "Lead", research: "Research", cv: "CV", qa: "QA", apply: "Apply" };
@@ -67,17 +68,25 @@ export interface ChatSinkOptions {
   now?: () => Date;
   capabilities?: CapabilityStore | null;
   log?: Logger;
+  /** PM3 M3 / S1: where Lead's proposals are stored (data/api-state.json). */
+  dataDir?: string;
+  /** For checking a proposed schedule's workflow. */
+  workflows?: () => WorkflowSource | null;
 }
 
 export class ChatSink implements ConversationSink {
   private now: () => Date;
   private capabilities: CapabilityStore | null;
   private log: Logger | null;
+  private dataDir: string | null;
+  private workflows: () => WorkflowSource | null;
 
   constructor(opts: ChatSinkOptions = {}) {
     this.now = opts.now ?? (() => new Date());
     this.capabilities = opts.capabilities ?? null;
     this.log = opts.log ?? null;
+    this.dataDir = opts.dataDir ?? null;
+    this.workflows = opts.workflows ?? (() => null);
   }
 
   /** Late binding: the clock and capability log exist once the engine and MCP server do. */
@@ -85,6 +94,8 @@ export class ChatSink implements ConversationSink {
     if (opts.now) this.now = opts.now;
     if (opts.capabilities !== undefined) this.capabilities = opts.capabilities;
     if (opts.log) this.log = opts.log;
+    if (opts.dataDir) this.dataDir = opts.dataDir;
+    if (opts.workflows) this.workflows = opts.workflows;
   }
 
   private roomOf(ctx: ConversationSinkContext): Room | null {
@@ -102,9 +113,30 @@ export class ChatSink implements ConversationSink {
     if (result.kind === "chat") {
       const { cards, runRefs } = leadCards(recorded, result.output);
       postMessage(ctx.conn, { room, author: "lead", text: clip(result.output.reply, REPLY_TEXT_MAX), cards, runRefs }, now);
+      this.proposals(ctx, room, result.output, now);
       return;
     }
     this.consultReply(ctx, room, result.output, now);
+  }
+
+  /**
+   * PM3 M3 / S1: Lead's proposals become server-worded cards (one of each kind per reply). Only a
+   * Lead chat turn in work mode proposes; a proposal in a consult or room reply cannot happen
+   * (ConsultOutput has no actions).
+   */
+  private proposals(ctx: ConversationSinkContext, room: Room, output: LeadOutput, now: Date): void {
+    const wanted = ["propose_criteria_change", "propose_schedule"] as const;
+    const actions = wanted
+      .map((type) => output.actions.find((a): a is Extract<LeadAction, { type: (typeof wanted)[number] }> => a.type === type))
+      .filter((a) => a !== undefined);
+    if (actions.length === 0) return;
+    if (!this.dataDir) {
+      this.log?.warn(`lead task ${ctx.task.id}: a proposal was dropped (no data folder bound to the chat sink)`);
+      return;
+    }
+    for (const action of actions) {
+      postLeadProposal({ conn: ctx.conn, room, taskId: ctx.task.id, dataDir: this.dataDir, workflows: this.workflows(), now }, action);
+    }
   }
 
   private consultReply(ctx: ConversationSinkContext, room: Room, output: ConsultOutput, now: Date): void {
@@ -146,10 +178,23 @@ export class ChatSink implements ConversationSink {
     }
   }
 
-  failed(ctx: ConversationSinkContext, _error: string): void {
+  failed(ctx: ConversationSinkContext, error: string): void {
     this.capabilities?.takeActions(ctx.task.id);
     const room = this.roomOf(ctx);
     if (!room) return;
+    if (error.includes(LEAD_ENGINE_RULE)) {
+      // PM3 M1: the trust guard refused Lead on another engine; nothing ran.
+      postMessage(
+        ctx.conn,
+        {
+          room,
+          author: "system",
+          text: "Lead runs only on Claude, where its only tools are the orchestrator's (rule 5), but it is set to another engine. Switch Lead back to Claude on the Bots screen, then send your message again.",
+        },
+        this.now(),
+      );
+      return;
+    }
     // The error may name paths or CLI output: Ba gets a plain note; the step drawer has the details.
     postMessage(
       ctx.conn,

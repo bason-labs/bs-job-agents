@@ -44,21 +44,21 @@ describe("BotsScreen (§11 Bots)", () => {
     expect(screen.getByTestId("bots-grid").children).toHaveLength(5);
     const research = card("research");
     expect(within(research).getByText("Finds jobs, scores fit, profiles companies (read-only browser).")).toBeInTheDocument();
-    expect(within(research).getByRole("radio", { name: "Codex" })).toHaveAttribute("aria-checked", "true");
+    expect(within(research).getByRole("radio", { name: "Claude" })).toHaveAttribute("aria-checked", "true");
     expect(within(research).getByRole("img", { name: /Trust level L2/ })).toBeInTheDocument();
     expect(within(research).getByText("Track record: 41 tasks · 95% self-check pass")).toBeInTheDocument();
     expect(within(research).getByTestId("bot-prompt-version")).toHaveTextContent("prompt v2");
-    expect(within(research).getByTestId("bot-residual-risk")).toBeInTheDocument();
+    expect(within(research).queryByTestId("bot-residual-risk")).toBeNull();
   });
 
-  it("disables Apply's and CV's engine switch and says why (PM S25)", async () => {
+  it("disables Apply's, CV's and Lead's engine switch and says why (PM S25, PM3 M1)", async () => {
     await setup();
-    for (const name of ["apply", "cv"]) {
+    for (const name of ["apply", "cv", "lead"]) {
       const radios = within(card(name)).getAllByRole("radio");
       for (const r of radios) expect(r).toBeDisabled();
       expect(within(card(name)).getByTestId("bot-engine-lock")).toHaveTextContent(/^Locked to Claude/);
     }
-    expect(within(card("research")).getByRole("radio", { name: "Claude" })).toBeEnabled();
+    expect(within(card("research")).getByRole("radio", { name: "Codex" })).toBeEnabled();
   });
 
   it("switches an unlocked bot's engine, and warns when QA would share CV's engine", async () => {
@@ -160,8 +160,8 @@ describe("BotsLive (the pages)", () => {
   it("reads the bots through the api and follows bot.updated from elsewhere", async () => {
     const { mock } = live();
     expect(await screen.findByTestId("bots-grid")).toBeInTheDocument();
-    await mock.request("PATCH", "/bots/:name", { params: { name: "research" }, body: { engine: "claude" } });
-    await waitFor(() => expect(within(card("research")).getByRole("radio", { name: "Claude" })).toHaveAttribute("aria-checked", "true"));
+    await mock.request("PATCH", "/bots/:name", { params: { name: "research" }, body: { engine: "codex" } });
+    await waitFor(() => expect(within(card("research")).getByRole("radio", { name: "Codex" })).toHaveAttribute("aria-checked", "true"));
   });
 
   it("says so for a bot that doesn't exist", async () => {

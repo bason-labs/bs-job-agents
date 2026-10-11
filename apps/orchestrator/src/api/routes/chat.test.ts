@@ -139,6 +139,18 @@ describe("POST /chat/messages in the Lead chat (UC-01, rule 1)", () => {
     expect(note.text).toMatch(/could not answer/);
     expect(note.text).not.toMatch(/Users|ENOENT/);
   });
+
+  it("PM3 M1: Lead stored on Codex is refused at spawn (never runs) and Ba gets a clear note", async () => {
+    h = await createApiHarness();
+    const lead = await roomId(h, "lead");
+    updateBot(h.t.db, "lead", { engine: "codex" });
+    await send(h, lead, "Find frontend jobs in HCM");
+    await h.t.idle();
+    expect(h.t.runner.callsFor("lead.chat")).toHaveLength(0);
+    expect(h.t.events("safety.denied").at(-1)).toMatchObject({ botName: "lead", reason: "trust_level" });
+    const note = (await history(h, lead)).at(-1)!;
+    expect(note.text).toBe("Lead runs only on Claude, where its only tools are the orchestrator's (rule 5), but it is set to another engine. Switch Lead back to Claude on the Bots screen, then send your message again.");
+  });
 });
 
 describe("consult threads (UC-25)", () => {

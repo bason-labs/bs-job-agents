@@ -110,6 +110,12 @@ export function resolveSelfCheckItems(
 /** The only tools Lead may have (§3 rule 5): orchestrator MCP tools. */
 export const LEAD_TOOL_PREFIX = "mcp:orchestrator:";
 
+/** The orchestrator's own MCP server (Lead's six tools) in bot.json `mcpServers`. */
+export const ORCHESTRATOR_MCP_SERVER_NAME = "orchestrator";
+
+/** PM3 M1: why Lead never runs on another engine. */
+export const LEAD_ENGINE_RULE = "lead: Lead must run on Claude, where its only tools are the orchestrator's (rule 5)";
+
 /** The MCP server name of the local Figma bridge (figma-console-mcp) in bot.json `mcpServers`. */
 export const FIGMA_MCP_SERVER_NAME = "figma";
 
@@ -134,11 +140,17 @@ export function checkBotSafety(
   if (def.name === "apply" && def.trustLevel !== 1) {
     issues.push("apply: Apply stays at trust level L1 in Phase 1, so every submit needs Ba's approval (UC-19)");
   }
+  if (def.mcpServers.includes(ORCHESTRATOR_MCP_SERVER_NAME) && def.name !== "lead") {
+    issues.push(`${def.name}: only Lead may use the orchestrator MCP server (rule 5)`);
+  }
   if (def.name === "lead") {
+    // PM3 M1: the six-tool limit (--tools / --strict-mcp-config) exists only on Claude; on Codex every
+    // session also has a shell, apply_patch and sub-agents, and its MCP URL would sit in argv.
+    if (def.engine !== "claude") issues.push(LEAD_ENGINE_RULE);
     const extra = def.allowedTools.filter((t) => !t.startsWith(LEAD_TOOL_PREFIX));
     if (extra.length > 0) issues.push(`lead: only orchestrator MCP tools are allowed (rule 5), not ${extra.join(", ")}`);
     if (def.browser) issues.push("lead: no browser (rule 5)");
-    const servers = def.mcpServers.filter((s) => s !== "orchestrator");
+    const servers = def.mcpServers.filter((s) => s !== ORCHESTRATOR_MCP_SERVER_NAME);
     if (servers.length > 0) issues.push(`lead: only the orchestrator MCP server is allowed (rule 5), not ${servers.join(", ")}`);
   }
   return issues;

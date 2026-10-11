@@ -3,6 +3,7 @@
 // with per-job lanes and the CV ⇄ QA gate (UC-03..07), review decisions (UC-08..10), Apply's
 // questions (UC-12) and pauses (UC-11 e, UC-16, UC-17). Timings are short and scaled by `speed`.
 import {
+  CRITERIA_SAVE_KEY_PREFIX,
   ROOM_MENTION_CAP,
   cvLanguagesForJd,
   normalizeAnswerKey,
@@ -19,12 +20,13 @@ import {
   type ReviewCard,
   type Room,
   type Run,
+  type ScheduleProposal,
   type SkipDecision,
   type Task,
 } from "@bs-job-agents/shared";
 import type { ApproveInput, ApproveResult } from "../contract";
 import type { MockBackend, SimulationKind } from "./backend";
-import { saveCriteria } from "./criteria";
+import { NO_CRITERIA_CHANGE, proposeCriteria, proposeSchedule } from "./lead-proposals";
 import { LEAD_ROOM_ID, cvVersion, pdfFileId, qaRecord, selfCheckFor } from "./seed";
 import type { LaneInfo, MockPause, RunState } from "./state";
 
@@ -520,10 +522,23 @@ async function leadBrain(core: Core, text: string, uploadIds: string[]): Promise
     return applyToLink(core, r, url);
   }
   if (/\b(also|include)\b/i.test(text) && /(đà nẵng|da nang)/i.test(text)) {
-    await core.post(LEAD_ROOM_ID, LEAD, "Add **Đà Nẵng** just for this run, or save it to your search criteria?", {
-      cards: [{ type: "choice", key: "criteria", options: [{ id: "once", label: "Just this run" }, { id: "save", label: "Save to my criteria" }], chosen: null }],
-      stream: true,
-    });
+    // PM3 M3: Lead proposes (propose_criteria_change); the backend words the card and saves on Ba's click.
+    await core.post(LEAD_ROOM_ID, LEAD, "Add **Đà Nẵng** just for this run, or save it to your search criteria?", { stream: true });
+    await proposeCriteria(core, { ...NO_CRITERIA_CHANGE, locations: { add: ["Đà Nẵng"], remove: [] } });
+    return;
+  }
+  const every = /\bevery\s+(weekday|day|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b.*?\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i.exec(text);
+  if (every) {
+    // PM3 S1 (UC-21 "by telling Lead"): Lead proposes (propose_schedule); Ba's click creates it.
+    const unit = every[1]!.toLowerCase();
+    let hour = Number(every[2]) % 24;
+    if (every[4]?.toLowerCase() === "pm" && hour < 12) hour += 12;
+    const time = `${String(hour).padStart(2, "0")}:${every[3] ?? "00"}`;
+    const day = unit === "weekday" || unit === "day" ? null : (`${unit.charAt(0).toUpperCase()}${unit.slice(1, 3)}` as ScheduleProposal["day"]);
+    const repeat = unit === "weekday" ? "weekdays" : unit === "day" ? "daily" : "weekly";
+    const name = repeat === "weekdays" ? "Weekday morning scan" : repeat === "daily" ? "Daily scan" : `${day} scan`;
+    await core.post(LEAD_ROOM_ID, LEAD, `I can run a job scan ${repeat === "weekly" ? `every ${day}` : repeat === "daily" ? "every day" : "every weekday"} at ${time} with your search criteria. Create the schedule?`, { stream: true });
+    await proposeSchedule(core, { name, repeat, day, time, searchProfileId: null });
     return;
   }
   if (/\b(status|progress|where)\b/i.test(text)) {
@@ -612,18 +627,18 @@ export async function afterChoice(core: Core, roomId: string, key: string, optio
     );
     return;
   }
-  if (key !== "criteria") {
-    await core.post(roomId, LEAD, "Noted.");
-    return;
-  }
-  if (optionId === "save") {
+  if (key.startsWith(CRITERIA_SAVE_KEY_PREFIX) && optionId === "just_this_run") {
+    // "Just this run" went back to Lead, who starts the scan with per-run overrides (UC-21b a).
     const active = core.state.profiles.find((p) => p.active);
-    if (active) saveCriteria(core, { ...active, locations: [...new Set([...active.locations, "Đà Nẵng"])] });
-    else core.state.criteriaVersion++;
-    await core.post(roomId, LEAD, `Saved to your search criteria (now **v${core.state.criteriaVersion}**). The next scan includes Đà Nẵng.`, { stream: true });
-  } else {
-    await core.post(roomId, LEAD, "OK — Đà Nẵng only for the next run. Your saved criteria stay the same.", { stream: true });
+    const r = createRun(core, "job-scan", "chat", { searchProfileId: null, overrides: { locations: [...new Set([...(active?.locations ?? []), "Đà Nẵng"])] } });
+    await core.post(roomId, LEAD, `OK — Đà Nẵng only for this run. Started **Job scan #${r.run.id}**; your saved criteria stay the same.`, {
+      cards: [{ type: "run", runId: r.run.id }],
+      runIds: [r.run.id],
+      stream: true,
+    });
+    return jobScan(core, r);
   }
+  await core.post(roomId, LEAD, "Noted.");
 }
 
 // ---------------------------------------------------------------- review decisions (UC-08..10)

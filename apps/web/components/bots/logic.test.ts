@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { seedBotViews } from "@/lib/api/mock/seed-bots";
-import { engineLockReason, lowerTarget, memoryNotesOf, promoteAction, promotionText, qaEngineWarning, raiseTarget, restoreTarget, type BotScreenView } from "./logic";
+import { engineLockReason, engineSwitchDisabled, lowerTarget, memoryNotesOf, promoteAction, promotionText, qaEngineWarning, raiseTarget, restoreTarget, type BotScreenView } from "./logic";
 
 const BOT_VIEWS = seedBotViews();
 
@@ -16,13 +16,20 @@ describe("memoryNotesOf (PM S14)", () => {
 const bot = (name: string, over: Partial<BotScreenView> = {}): BotScreenView => ({ ...BOT_VIEWS.find((b) => b.name === name)!, ...over });
 
 describe("engineLockReason (§4.4, §6.2, PM S10/S25)", () => {
-  it("locks Apply and CV to Claude, with the reason shown", () => {
+  it("locks Apply, CV and Lead to Claude, with the reason shown (PM3 M1 for Lead)", () => {
     expect(engineLockReason("apply")).toBe("Locked to Claude: Apply fills forms in your Chrome, and its site allowlist runs only on Claude.");
     expect(engineLockReason("cv")).toBe("Locked to Claude: CV edits Figma; its Drafts-only guard runs only on Claude.");
+    expect(engineLockReason("lead")).toBe("Locked to Claude: Lead only divides work, and its tool limit holds only on Claude.");
   });
 
   it("leaves the other bots switchable", () => {
-    for (const name of ["lead", "research", "qa"]) expect(engineLockReason(name)).toBeNull();
+    for (const name of ["research", "qa"]) expect(engineLockReason(name)).toBeNull();
+  });
+
+  it("a locked bot stored on Codex (before the rule) can still be switched back to Claude", () => {
+    expect(engineSwitchDisabled({ name: "lead", engine: "claude" })).toBe(true);
+    expect(engineSwitchDisabled({ name: "lead", engine: "codex" })).toBe(false);
+    expect(engineSwitchDisabled({ name: "research", engine: "codex" })).toBe(false);
   });
 });
 

@@ -150,6 +150,421 @@
               "source"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "propose_criteria_change"
+                ]
+              },
+              "changes": {
+                "type": "object",
+                "properties": {
+                  "roles": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "add": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "remove": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "add",
+                          "remove"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "null leaves this list as it is"
+                  },
+                  "locations": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "add": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "remove": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "add",
+                          "remove"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "null leaves this list as it is"
+                  },
+                  "includeKeywords": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "add": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "remove": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "add",
+                          "remove"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "null leaves this list as it is"
+                  },
+                  "excludeKeywords": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "add": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "remove": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "add",
+                          "remove"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "null leaves this list as it is"
+                  },
+                  "excludeCompanies": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "add": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "remove": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "add",
+                          "remove"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "null leaves this list as it is"
+                  },
+                  "companyTypes": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "add": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "remove": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "add",
+                          "remove"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "null leaves this list as it is"
+                  },
+                  "workModes": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "onsite",
+                            "hybrid",
+                            "remote"
+                          ]
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The new full list; null = unchanged"
+                  },
+                  "seniority": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "intern",
+                            "junior",
+                            "mid",
+                            "senior",
+                            "lead"
+                          ]
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The new full list; null = unchanged"
+                  },
+                  "sources": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "topcv",
+                            "itviec",
+                            "linkedin"
+                          ]
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The new full list; null = unchanged"
+                  },
+                  "minSalary": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "amount": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ],
+                            "description": "null removes the floor"
+                          },
+                          "currency": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "VND",
+                                  "USD"
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "amount",
+                          "currency"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "null = unchanged"
+                  },
+                  "maxJobs": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "fitThreshold": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "roles",
+                  "locations",
+                  "includeKeywords",
+                  "excludeKeywords",
+                  "excludeCompanies",
+                  "companyTypes",
+                  "workModes",
+                  "seniority",
+                  "sources",
+                  "minSalary",
+                  "maxJobs",
+                  "fitThreshold"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "type",
+              "changes"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "propose_schedule"
+                ]
+              },
+              "schedule": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Short schedule name, e.g. Weekday morning scan"
+                  },
+                  "repeat": {
+                    "type": "string",
+                    "enum": [
+                      "weekdays",
+                      "daily",
+                      "weekly"
+                    ]
+                  },
+                  "day": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "Sun",
+                          "Mon",
+                          "Tue",
+                          "Wed",
+                          "Thu",
+                          "Fri",
+                          "Sat"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Day of the week for weekly; null otherwise"
+                  },
+                  "time": {
+                    "type": "string",
+                    "description": "HH:MM, 24-hour, Asia/Ho_Chi_Minh"
+                  },
+                  "searchProfileId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "null = Ba's active search criteria"
+                  }
+                },
+                "required": [
+                  "name",
+                  "repeat",
+                  "day",
+                  "time",
+                  "searchProfileId"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "type",
+              "schedule"
+            ],
+            "additionalProperties": false
           }
         ]
       }

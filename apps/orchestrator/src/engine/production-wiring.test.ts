@@ -33,6 +33,7 @@ import type { Engine } from "./engine.js";
 import { defaultFakeResult } from "./testing/fake-runner.js";
 import { FakeBrowserProbe, staticWorkflowSource } from "./testing/fakes.js";
 import { createProductionEngine } from "./wiring.js";
+import { createScanOutputChecker } from "../adapters/index.js";
 
 const CLAUDE = "/fake/bin/claude";
 const CODEX = "/fake/bin/codex";
@@ -172,6 +173,10 @@ describe("the production engine on the real adapters (createProductionEngine)", 
     expect(getRun(db, runId)?.status).toBe("done");
     // Only the fake CLIs ran.
     expect([...new Set(calls.map((c) => c.command))].sort()).toEqual([CLAUDE, CODEX]);
+  });
+
+  it("PM3 S8: the scan-output checker comes from the source adapters (src/adapters) and accepted the scan", () => {
+    expect(engine.deps.scanChecker).toBe(createScanOutputChecker());
   });
 
   it("the CV PDF is the FigmaBridge's export into data/pdf, hashed, its text read by pdf.js", async () => {

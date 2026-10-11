@@ -23,8 +23,8 @@ const EXTRA: Record<string, Extra> = {
     promotionSuggested: false,
     promptVersion: 2,
     memory: ['TopCV salary often hidden: read "Mức lương" field.', "LinkedIn: stop at 40 page views."],
-    residualRisk:
-      "On Codex, Research's site allowlist is only in its prompt: its sandbox can read any file on this Mac and it can run shell commands. A job page that injects instructions could make it leak local files. Running it on Claude limits it to its task folder (owner decision E1, pending).",
+    // E1 option A (W4c): Research runs on Claude, so there is no residual-risk note until Ba switches it.
+    residualRisk: null,
     demotion: null,
   },
   cv: {
@@ -75,6 +75,18 @@ export function noteId(bot: string, text: string): string {
 
 export const withMemoryNotes = (bot: string, memory: readonly string[]) => memory.map((text) => ({ id: noteId(bot, text), text }));
 
+/** The orchestrator's note for a browser bot on Codex (views/bots.ts), recomputed on an engine switch. */
+export const CODEX_BROWSER_RISK =
+  "On Codex, Research's site allowlist is only in its prompt: its sandbox can read any file on this Mac and it can run shell commands. A job page that injects instructions could make it leak local files. Running it on Claude limits it to its task folder (owner decision E1).";
+
+/** Engines as Ba last set them (bot.json after W4c: Research on Claude, E1 option A). */
+const ENGINE_OVERRIDE: Partial<Record<string, BotView["engine"]>> = { research: "claude" };
+
+export function residualRiskFor(name: string, engine: BotView["engine"]): string | null {
+  const def = botDefinitionFixtures.find((d) => d.name === name);
+  return engine === "codex" && def?.browser ? CODEX_BROWSER_RISK : null;
+}
+
 export function seedBotViews(): BotView[] {
   return botDefinitionFixtures.map((def) => {
     const extra = EXTRA[def.name]!;
@@ -82,7 +94,7 @@ export function seedBotViews(): BotView[] {
     return {
       name: def.name,
       displayName: def.displayName,
-      engine: def.engine,
+      engine: ENGINE_OVERRIDE[def.name] ?? def.engine,
       model: def.model,
       enabled: def.enabled ?? true,
       activity: "idle",

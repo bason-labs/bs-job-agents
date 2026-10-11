@@ -131,8 +131,9 @@ export function noticeTaskFailed(core: EngineCore, conn: Conn, task: Task, error
     case "research.scan": {
       const label = sourceLabel(String(input.source ?? "source"));
       const others = task.runId !== null && listTasks(conn, { runId: task.runId }).some((t) => t.id !== task.id && t.botName === "research" && t.kind === "scan");
-      const broken = /^self-check failed: /.test(error);
-      text = `${label} ${broken ? `adapter broken: ${error.replace(/^self-check failed: /, "")}` : `scan failed: ${error}`}.${others ? " The other sources go on." : ""}`;
+      // UC-03 b: a failed self-check, or PM3 S8's scan checker reporting a broken adapter.
+      const broken = /^(self-check failed|adapter broken): /.test(error);
+      text = `${label} ${broken ? `adapter broken: ${error.replace(/^(self-check failed|adapter broken): /, "")}` : `scan failed: ${error}`}.${others ? " The other sources go on." : ""}`;
       break;
     }
     case "research.single":

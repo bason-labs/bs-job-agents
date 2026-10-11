@@ -180,6 +180,21 @@ describe("S6: Phase 1 bot safety rules", () => {
     ).toMatch(/rule 5/);
     expect(checkBotSafety(BotDefinitionSchema.parse({ ...lead, mcpServers: ["orchestrator", "figma"] })).join()).toMatch(/rule 5/);
   });
+
+  it("PM3 M1: Lead runs on Claude only, where its only tools are the orchestrator's (rule 5)", () => {
+    const lead = botDefinitionFixtures.find((d) => d.name === "lead")!;
+    expect(checkBotSafety(BotDefinitionSchema.parse({ ...lead, engine: "claude" }))).toEqual([]);
+    expect(checkBotSafety(BotDefinitionSchema.parse({ ...lead, engine: "codex" }))).toEqual([
+      "lead: Lead must run on Claude, where its only tools are the orchestrator's (rule 5)",
+    ]);
+    expect(SafeBotDefinitionSchema.safeParse({ ...lead, engine: "codex" }).success).toBe(false);
+  });
+
+  it("PM3 M1: only Lead may use the orchestrator MCP server, and only on Claude (its capability URL never reaches argv)", () => {
+    const qa = botDefinitionFixtures.find((d) => d.name === "qa")!;
+    expect(checkBotSafety(BotDefinitionSchema.parse({ ...qa, mcpServers: ["orchestrator"] })).join()).toMatch(/only Lead may use the orchestrator MCP server/);
+    expect(checkBotSafety(BotDefinitionSchema.parse({ ...qa, engine: "claude", mcpServers: ["orchestrator"] })).join()).toMatch(/only Lead/);
+  });
 });
 
 describe("output rules the JSON Schema cannot express", () => {

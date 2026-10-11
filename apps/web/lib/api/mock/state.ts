@@ -24,6 +24,7 @@ import type {
   WorkflowProposal,
 } from "@bs-job-agents/shared";
 import type { ProgressLine } from "../contract";
+import type { MockLeadProposal } from "./lead-proposals";
 
 /** A step row plus its last preview text (the engine only sends it in step.* events; W3a handoff). */
 export interface StepRow extends Step {
@@ -106,6 +107,8 @@ export interface MockState {
   proposals: WorkflowProposal[];
   /** Workflows saved by approving a proposal: name → latest version. */
   savedWorkflows: Record<string, number>;
+  /** PM3 M3 / S1: Lead's criteria and schedule proposals waiting for Ba's click, by id. */
+  leadProposals?: Record<string, MockLeadProposal>;
   /** Next id for new records. */
   seq: number;
 }
