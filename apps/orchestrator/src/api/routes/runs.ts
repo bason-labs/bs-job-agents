@@ -9,6 +9,7 @@ import {
   RunDetailSchema,
   RunSchema,
   RunsQuerySchema,
+  RunsResponseSchema,
   StartRunRequestSchema,
   StartRunResponseSchema,
   StepDetailSchema,
@@ -57,7 +58,7 @@ export function runRoutes(app: FastifyInstance, ctx: ApiContext): void {
     const db = requireDb(ctx);
     const q = parseWith(RunsQuerySchema, req.query);
     const rows = listRuns(db, { ...(q.status ? { status: q.status } : {}), limit: q.limit });
-    return { runs: keepValid(RunSchema, rows.map(mappers.toRun), warn) };
+    return respond(RunsResponseSchema, { runs: keepValid(RunSchema, rows.map(mappers.toRun), warn) });
   });
 
   app.post(API_ROUTES.runs, async (req, reply) => {
