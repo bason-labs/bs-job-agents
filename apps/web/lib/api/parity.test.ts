@@ -143,6 +143,35 @@ describe("web client = API_CONTRACT", () => {
   });
 });
 
+/** Event types the UI handles that the orchestrator does not send (yet), and why. */
+const NOT_EMITTED: Record<string, string> = {
+  "message.delta": "replies are posted whole (W3a part 2); the UI streams deltas only from the mock",
+};
+
+describe("live events: what the UI listens to, the orchestrator sends", () => {
+  it("every AppEvent type the web app handles is emitted by the orchestrator (engine or API)", () => {
+    const known = new Set<string>(shared.APP_EVENT_TYPES);
+    const listened = new Set<string>();
+    for (const file of sources()) {
+      const text = readFileSync(file, "utf8");
+      for (const m of text.matchAll(/(?:\.type\s*===\s*|case\s+)"([a-z]+\.[a-z_]+)"/g)) if (known.has(m[1]!)) listened.add(m[1]!);
+    }
+    expect(listened.size).toBeGreaterThan(10);
+    const orch = join(WEB_ROOT, "..", "orchestrator", "src");
+    let emitted = "";
+    const walk = (dir: string) => {
+      for (const name of readdirSync(dir)) {
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) walk(p);
+        else if (name.endsWith(".ts") && !name.endsWith(".test.ts") && !p.includes(`${"/"}testing${"/"}`)) emitted += readFileSync(p, "utf8");
+      }
+    };
+    walk(orch);
+    const missing = [...listened].filter((t) => !NOT_EMITTED[t] && !new RegExp(`type:\\s*"${t.replace(".", "\\.")}"`).test(emitted));
+    expect(missing).toEqual([]);
+  });
+});
+
 describe("mock backend = API_CONTRACT", () => {
   it("serves only contract routes, with the contract's response schema", () => {
     const byKey = new Map(apiEndpoints().map((e) => [label(e.method, e.path), e]));
