@@ -60,6 +60,12 @@ describe("mergeMessages", () => {
       ["2", true],
     ]);
   });
+  it("keeps a message's attachments when a later copy (an older event shape) has none (F8)", () => {
+    const attachment = { id: "1", filename: "shot.png", mime: "image/png", size: 10, file: { id: "upload-1", kind: "upload" as const, filename: "shot.png", mime: "image/png" } };
+    const posted = { ...msg("5", "2026-10-10T09:00:00Z"), attachments: [attachment] };
+    expect(mergeMessages([posted], [msg("5", "2026-10-10T09:00:00Z")])[0]!.attachments).toEqual([attachment]);
+    expect(mergeMessages([posted], [{ ...posted, attachments: [] }])[0]!.attachments).toEqual([]);
+  });
   it("orders same-second messages by numeric id", () => {
     expect(mergeMessages([msg("10", "2026-10-10T09:00:00Z")], [msg("9", "2026-10-10T09:00:00Z")]).map((m) => m.id)).toEqual(["9", "10"]);
   });

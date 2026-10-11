@@ -4,7 +4,7 @@ import * as RadixDialog from "@radix-ui/react-dialog";
 import { ClipboardList, Download, ExternalLink, FileText, Image as ImageIcon, Minus, Paperclip, Pin, Plus, X } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import { formatBytes } from "@/lib/files";
+import { formatBytes, kindForMime } from "@/lib/files";
 import { buttonClass } from "./Button";
 import { useReturnFocus } from "./focus";
 import { PdfPages } from "./PdfPages";
@@ -29,6 +29,16 @@ export interface ViewerFile {
   /** Adds "Open in Figma ↗" (CV versions). */
   figmaUrl?: string;
   sizeBytes?: number;
+  /**
+   * The file's type when known (an upload's `mime`). F8: with kind "other", the viewer picks
+   * image/PDF/text from it, and without it from the response's Content-Type.
+   */
+  mime?: string;
+}
+
+/** The kind the viewer shows: the given one, else the mime's (uploads), else "other". */
+export function viewerKind(file: Pick<ViewerFile, "kind" | "mime">): ViewerKind {
+  return file.kind !== "other" ? file.kind : kindForMime(file.mime);
 }
 
 const ZOOM_MIN = 50;
@@ -71,12 +81,30 @@ export function FileViewer({ file, onOpenChange }: FileViewerProps) {
   );
 }
 
-function ViewerBody({ file, onClose }: { file: ViewerFile; onClose: () => void }) {
+function ViewerBody({ file: given, onClose }: { file: ViewerFile; onClose: () => void }) {
   const [zoom, setZoom] = useState(100);
   const [pages, setPages] = useState<number | null>(null);
   const [page, setPage] = useState(1);
-  const [text, setText] = useState<string | null>(file.text ?? null);
+  const [text, setText] = useState<string | null>(given.text ?? null);
+  // F8: an upload's kind comes from its mime; a file of unknown type is sniffed by the response's
+  // Content-Type (the orchestrator sends the stored type), so a PNG never shows "No preview".
+  const [sniffed, setSniffed] = useState<ViewerKind | null>(null);
+  const known = viewerKind(given);
+  const file = useMemo(() => ({ ...given, kind: known === "other" && sniffed ? sniffed : known }), [given, known, sniffed]);
   const href = file.downloadUrl ?? file.url;
+
+  useEffect(() => {
+    if (known !== "other" || given.text !== undefined || !given.url) return;
+    const controller = new AbortController();
+    fetch(given.url, { signal: controller.signal })
+      .then((r) => {
+        const kind = r.ok ? kindForMime(r.headers.get("content-type") ?? undefined) : "other";
+        controller.abort(); // only the headers are needed
+        if (kind !== "other") setSniffed(kind);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [given, known]);
 
   useEffect(() => {
     if (file.kind !== "text" || file.text !== undefined || !file.url) return;

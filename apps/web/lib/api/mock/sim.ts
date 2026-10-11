@@ -545,6 +545,12 @@ async function leadBrain(core: Core, task: Task, text: string, uploadIds: string
   await core.wait(500);
   const files = uploadIds.map((id) => core.state.uploads[id]?.filename).filter((n): n is string => !!n);
   const url = URL_RE.exec(text)?.[0];
+  // F8: Lead sees attached screenshots (a scoped Read of the task's copy) and answers about them.
+  const images = uploadIds.map((id) => core.state.uploads[id]).filter((u) => u?.mime.startsWith("image/"));
+  if (images.length && images.length === files.length) {
+    await core.post(LEAD_ROOM_ID, LEAD, `I looked at **${files.join(", ")}**. Tell me what you'd like done with it, or paste a job link and I'll start on it.`);
+    return;
+  }
   if (files.length) {
     await leadTool(core, task, "start_workflow", { workflow: "apply-to-file", params: { uploadId: uploadIds[0] } });
     const r = createRun(core, "apply-to-file", "chat", { uploadId: uploadIds[0], searchProfileId: null });

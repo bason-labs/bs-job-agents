@@ -8,11 +8,11 @@ import type {
   ApproveResponse,
   TranscriptLine,
   BotView,
+  ChatMessage,
   ChatSendRequest,
   ChoiceRequest,
   Engine,
   EngineStatus,
-  Message,
   RequestChangesRequest,
   ReviewCard,
   Room,
@@ -109,7 +109,7 @@ export interface RunsQuery {
 }
 
 export interface MessagesPage {
-  messages: Message[];
+  messages: ChatMessage[];
   hasMore: boolean;
 }
 
@@ -136,7 +136,7 @@ export interface WebApi {
   // chat (UC-01, UC-12, UC-17, UC-24, UC-25)
   listRooms(): Promise<Room[]>;
   listMessages(roomId: string, opts?: { before?: string; limit?: number }): Promise<MessagesPage>;
-  sendMessage(input: SendMessageInput): Promise<Message>;
+  sendMessage(input: SendMessageInput): Promise<ChatMessage>;
   uploadFiles(files: File[]): Promise<UploadsResponse>;
   /** Apply resumed, or the next question Lead now asks (one at a time). */
   answerQuestion(taskId: string, input: AnswerInput): Promise<AnswerQuestionResponse>;

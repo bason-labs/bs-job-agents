@@ -223,6 +223,22 @@ describe("mock backend: chat (UC-01, UC-24, UC-25)", () => {
     expect(approved).toEqual({ applicationId: null, taskId: null, approval: null, reapproval: false });
   });
 
+  it("F8: Ba's message carries its attachments like the orchestrator, and the file id opens the upload", async () => {
+    const shot = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "Screenshot at Oct 11 5-14-30 PM.png", { type: "image/png" });
+    const { uploads } = await api.uploadFiles([shot]);
+    const id = uploads[0]!.id;
+    const sent = await api.sendMessage({ roomId: LEAD_ROOM_ID, text: "what's wrong here?", uploadIds: [id] });
+    const attachment = { id, filename: shot.name, mime: "image/png", size: 4, file: { id: `upload-${id}`, kind: "upload", filename: shot.name, mime: "image/png" } };
+    expect(sent.attachments).toEqual([attachment]);
+    expect(MessagesResponseSchema.parse(await api.listMessages(LEAD_ROOM_ID)).messages.find((m) => m.id === sent.id)!.attachments).toEqual([attachment]);
+    const created = events.find((e) => e.type === "message.created" && e.message.id === sent.id);
+    expect(created && created.type === "message.created" && created.message.attachments).toEqual([attachment]);
+    expect(api.fileUrl(`upload-${id}`)).toBe(api.fileUrl(id));
+    await api.idle();
+    // Lead answers about the screenshot instead of treating it as a JD file.
+    expect((await leadMessages()).at(-1)!.text).toContain(`I looked at **${shot.name}**`);
+  });
+
   it("an empty message is refused like ChatSendRequestSchema", async () => {
     const err = await errorOf(api.sendMessage({ roomId: LEAD_ROOM_ID, text: "  " }));
     expect(isApiError(err) && err.code).toBe("validation_failed");

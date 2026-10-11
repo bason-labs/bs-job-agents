@@ -1,6 +1,6 @@
 "use client";
 
-import type { Message, Upload } from "@bs-job-agents/shared";
+import type { ChatMessage, Upload } from "@bs-job-agents/shared";
 import { MessageSquareOff } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MessagesPage } from "@/lib/api/contract";
@@ -49,7 +49,7 @@ export function ChatScreen({ botName }: { botName: string }) {
   const roomId = room?.id ?? null;
   const page = useResource<MessagesPage>(roomId ? `messages:${roomId}` : null, (a) => a.listMessages(roomId!, { limit: PAGE_SIZE }));
 
-  const [older, setOlder] = useState<Message[]>([]);
+  const [older, setOlder] = useState<ChatMessage[]>([]);
   const [olderHasMore, setOlderHasMore] = useState<boolean | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});

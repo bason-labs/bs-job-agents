@@ -1,35 +1,13 @@
 "use client";
 
-import type { Message } from "@bs-job-agents/shared";
+import type { ChatMessage } from "@bs-job-agents/shared";
 import { ENGINE_NAMES } from "@/lib/api/map";
-import { useApi } from "@/lib/api/react";
 import { formatWhen } from "@/lib/datetime";
-import { kindForFile } from "@/lib/files";
 import { BotAvatar } from "@/components/ui/Avatar";
-import { FileButton } from "@/components/ui/FileViewer";
+import { MessageAttachments } from "./Attachments";
 import { botDisplay, useChat } from "./ChatContext";
 import { MessageCards } from "./MessageCards";
 import { RichText } from "./RichText";
-
-function Attachments({ ids }: { ids: readonly string[] }) {
-  const api = useApi();
-  const { uploads } = useChat();
-  if (!ids.length) return null;
-  return (
-    <div className="flex flex-wrap justify-end gap-2">
-      {ids.map((id) => {
-        const u = uploads[id];
-        const name = u?.filename ?? "Attachment";
-        return (
-          <FileButton
-            key={id}
-            file={{ name, kind: u ? kindForFile(u.filename, u.mime) : "other", url: api.fileUrl(id), downloadUrl: api.fileUrl(id, { download: true }), sizeBytes: u?.size }}
-          />
-        );
-      })}
-    </div>
-  );
-}
 
 /** Bot header: avatar, name, engine chip, consult chip, time. */
 export function BotHeader({ bot, consult, at }: { bot: string; consult: boolean; at?: string }) {
@@ -59,7 +37,7 @@ export function BotBlock({ bot, consult, at, children }: { bot: string; consult:
   );
 }
 
-export function MessageItem({ message }: { message: Message }) {
+export function MessageItem({ message }: { message: ChatMessage }) {
   const { author } = message;
   if (author.type === "ba") {
     return (
@@ -67,7 +45,7 @@ export function MessageItem({ message }: { message: Message }) {
         {message.text ? (
           <div className="max-w-[80%] rounded-3xl rounded-br-md border border-border bg-surface-2 px-4 py-3 break-words whitespace-pre-wrap">{message.text}</div>
         ) : null}
-        <Attachments ids={message.uploadIds} />
+        <MessageAttachments message={message} />
       </div>
     );
   }

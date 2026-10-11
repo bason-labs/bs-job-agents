@@ -1,10 +1,10 @@
 "use client";
 
 import { ArrowUp, Paperclip, X } from "lucide-react";
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type KeyboardEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { ENGINE_NAMES } from "@/lib/api/map";
 import type { BotSummary } from "@/lib/api/types";
-import { formatBytes, kindForFile } from "@/lib/files";
+import { filesFromClipboard, formatBytes, kindForFile } from "@/lib/files";
 import { FileDropzone, type FileDropzoneHandle } from "@/components/ui/FileDropzone";
 import { useFileViewer } from "@/components/ui/FileViewer";
 import { IconButton } from "@/components/ui/IconButton";
@@ -86,6 +86,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
   };
 
+  // F8: Cmd+V of a screenshot (or of files copied in Finder) attaches them like a drop, through
+  // the same type and 10 MB checks; a text paste stays text.
+  const onPaste = (e: ClipboardEvent<HTMLElement>) => {
+    if (disabled) return;
+    const pasted = filesFromClipboard(e.clipboardData, new Date());
+    if (!pasted.length) return;
+    e.preventDefault();
+    dropzone.current?.add(pasted);
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
@@ -118,20 +128,28 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       >
         {files.length ? (
           <ul className="mb-2 flex flex-wrap gap-2" aria-label="Attachments">
-            {files.map((a) => (
-              <li key={a.id} className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 py-1 pr-1 pl-3 text-xs" data-testid="attachment-chip">
-                <button
-                  type="button"
-                  onClick={() => openFile({ name: a.file.name, kind: kindForFile(a.file.name, a.file.type), url: a.url, sizeBytes: a.file.size })}
-                  className="flex items-center gap-1.5 hover:text-accent"
-                >
-                  <Paperclip aria-hidden className="size-3.5 text-muted" />
-                  <span className="max-w-48 truncate">{a.file.name}</span>
-                </button>
-                <span className="text-muted">{formatBytes(a.file.size)}</span>
-                <IconButton size="sm" label={`Remove ${a.file.name}`} icon={<X aria-hidden />} onClick={() => remove(a.id)} className="hover:text-danger" />
-              </li>
-            ))}
+            {files.map((a) => {
+              const kind = kindForFile(a.file.name, a.file.type);
+              return (
+                <li key={a.id} className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 py-1 pr-1 pl-1.5 text-xs" data-testid="attachment-chip">
+                  <button
+                    type="button"
+                    onClick={() => openFile({ name: a.file.name, kind, mime: a.file.type, url: a.url, sizeBytes: a.file.size })}
+                    className="flex cursor-pointer items-center gap-1.5 hover:text-accent"
+                  >
+                    {kind === "image" ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- a local preview (blob: URL) of the file before it is sent
+                      <img src={a.url} alt="" data-testid="attachment-thumbnail" className="size-8 shrink-0 rounded-md border border-border object-cover" />
+                    ) : (
+                      <Paperclip aria-hidden className="ml-1.5 size-3.5 text-muted" />
+                    )}
+                    <span className="max-w-48 truncate">{a.file.name}</span>
+                  </button>
+                  <span className="text-muted">{formatBytes(a.file.size)}</span>
+                  <IconButton size="sm" label={`Remove ${a.file.name}`} icon={<X aria-hidden />} onClick={() => remove(a.id)} className="hover:text-danger" />
+                </li>
+              );
+            })}
           </ul>
         ) : null}
         <textarea
@@ -141,6 +159,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           disabled={disabled}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           aria-label={`Message ${display}`}
           placeholder={`Message ${display}…  (⏎ send · drop files here)`}
           className="block w-full resize-none bg-transparent px-1 py-1 text-sm leading-relaxed text-fg outline-none placeholder:text-muted/70"

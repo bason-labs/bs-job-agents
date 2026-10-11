@@ -16,9 +16,11 @@ import {
   type AnswerQuestionResponse,
   type AppEvent,
   type BotActivity,
+  type ChatMessage,
   type ChoiceRequest,
   type Engine,
   type Message,
+  type MessageAttachment,
   type MessageAuthor,
   type MessageCard,
   type ReviewCard,
@@ -178,10 +180,11 @@ export class MockBackend implements WebApi, EventFeed {
     author: MessageAuthor,
     text: string,
     o: { cards?: MessageCard[]; runIds?: string[]; uploadIds?: string[]; mentions?: string[] } = {},
-  ): Promise<Message> {
+  ): Promise<ChatMessage> {
     const room = this.room(roomId);
     const id = this.nextId();
-    const message: Message = {
+    const uploadIds = o.uploadIds ?? [];
+    const message: ChatMessage = {
       id,
       roomId,
       author,
@@ -189,13 +192,22 @@ export class MockBackend implements WebApi, EventFeed {
       mode: room.kind === "lead" ? "work" : room.kind === "direct" ? "consult" : "discussion",
       mentions: o.mentions ?? [],
       runIds: o.runIds ?? [],
-      uploadIds: o.uploadIds ?? [],
+      uploadIds,
       cards: o.cards ?? [],
       createdAt: this.nowIso(),
+      // Like the orchestrator (F8): a message with uploads carries their name, mime, size and file id.
+      ...(uploadIds.length ? { attachments: uploadIds.flatMap((u) => this.attachment(u)) } : {}),
     };
     (this.state.messages[roomId] ??= []).push(message);
     this.emit({ type: "message.created", roomId, message });
     return message;
+  }
+
+  /** An upload as a message attachment; GET /files/upload-<id> serves it. */
+  private attachment(uploadId: string): MessageAttachment[] {
+    const u = this.state.uploads[uploadId];
+    if (!u) return [];
+    return [{ id: u.id, filename: u.filename, mime: u.mime, size: u.size, file: { id: `upload-${u.id}`, kind: "upload", filename: u.filename, mime: u.mime } }];
   }
 
   runState(runId: string): RunState {
@@ -371,7 +383,7 @@ export class MockBackend implements WebApi, EventFeed {
     return { messages: structuredClone(all.slice(start, upTo)), hasMore: start > 0 };
   }
 
-  async sendMessage(input: SendMessageInput): Promise<Message> {
+  async sendMessage(input: SendMessageInput): Promise<ChatMessage> {
     const room = this.room(input.roomId);
     const text = input.text.trim();
     const uploadIds = input.uploadIds ?? [];
@@ -409,7 +421,8 @@ export class MockBackend implements WebApi, EventFeed {
         messageId: null,
       };
       this.state.uploads[id] = upload;
-      this.state.fileUrls[id] = typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : `/dev/${file.name}`;
+      // The orchestrator serves it as GET /files/upload-<id>; the bare id stays for older callers.
+      this.state.fileUrls[`upload-${id}`] = this.state.fileUrls[id] = typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : `/dev/${file.name}`;
       uploads.push(upload);
     }
     return { uploads: structuredClone(uploads), rejected };

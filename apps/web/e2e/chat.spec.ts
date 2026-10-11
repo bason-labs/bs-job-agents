@@ -211,6 +211,61 @@ test("UC-24: attach files (chip → viewer, × removes, wrong type refused) and 
   await expect(page.locator('[data-testid=run-card]').last()).toContainText("Apply to file");
 });
 
+// A real 2×2 PNG, so the thumbnail and the viewer actually decode it.
+const PNG_2X2 = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFElEQVR4nGP4z8DAwPAfhP7/ZwAAHu8E/Gj7YDYAAAAASUVORK5CYII=";
+
+/** Cmd+V of a screenshot: a paste event whose clipboard holds one image file named "image.png". */
+async function pasteImage(page: Page) {
+  await composer(page).evaluate((el, b64) => {
+    const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const data = new DataTransfer();
+    data.items.add(new File([bytes], "image.png", { type: "image/png" }));
+    el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  }, PNG_2X2);
+}
+
+const decoded = (img: ReturnType<Page["locator"]>) => img.evaluate((el) => (el as HTMLImageElement).complete && (el as HTMLImageElement).naturalWidth > 0);
+
+test("F8: a pasted screenshot becomes a chip with a preview, is sent, and opens as an image (not 'No preview')", async ({ page }) => {
+  await open(page, "/chat");
+  await pasteImage(page);
+  const chip = page.getByTestId("attachment-chip");
+  await expect(chip).toHaveCount(1);
+  await expect(chip).toContainText(/pasted-image-\d{8}-\d{6}\.png/);
+  await expect.poll(() => decoded(chip.getByTestId("attachment-thumbnail"))).toBe(true);
+  // × removes it; paste again and send it with a question.
+  await chip.getByRole("button", { name: /^Remove pasted-image-/ }).click();
+  await expect(chip).toHaveCount(0);
+  await pasteImage(page);
+  await composer(page).fill("What's wrong in this screenshot?");
+  await composer(page).press("Enter");
+
+  const sent = page.locator("[data-testid=message][data-author=ba]").last().getByTestId("message-attachment");
+  await expect(sent).toHaveAttribute("data-kind", "image");
+  await expect(sent).toContainText(/pasted-image-\d{8}-\d{6}\.png/);
+  await expect.poll(() => decoded(sent.getByTestId("attachment-thumbnail"))).toBe(true);
+  await sent.click();
+  const viewer = page.getByTestId("file-viewer");
+  await expect(viewer.getByRole("img", { name: /pasted-image-/ })).toBeVisible();
+  await expect.poll(() => decoded(viewer.getByRole("img", { name: /pasted-image-/ }))).toBe(true);
+  await expect(viewer).not.toContainText("No preview for this file type.");
+  await expect(viewer.getByRole("link", { name: "Download" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  // Lead looked at it (the mock mirrors the orchestrator's scoped Read of the image).
+  await expect(lead(page).filter({ hasText: /I looked at pasted-image-/ })).toBeVisible();
+});
+
+test("F8: an uploaded PNG picked with Attach file opens as an image in the viewer", async ({ page }) => {
+  await open(page, "/chat");
+  await page.getByTestId("file-dropzone-input").setInputFiles({ name: "Screenshot at Oct 11 5-14-30 PM.png", mimeType: "image/png", buffer: Buffer.from(PNG_2X2, "base64") });
+  await expect(page.getByTestId("attachment-chip").getByTestId("attachment-thumbnail")).toBeVisible();
+  await page.getByTestId("send").click();
+  const sent = page.locator("[data-testid=message][data-author=ba]").last().getByTestId("message-attachment");
+  await expect(sent).toContainText("Screenshot at Oct 11 5-14-30 PM.png");
+  await sent.click();
+  await expect(page.getByTestId("file-viewer").getByRole("img", { name: "Screenshot at Oct 11 5-14-30 PM.png" })).toBeVisible();
+});
+
 test("UC-21b a: 'also include Đà Nẵng' asks just this run or save, and the choice sticks", async ({ page }) => {
   await open(page, "/chat");
   await page.getByRole("button", { name: "Also include Đà Nẵng" }).click();

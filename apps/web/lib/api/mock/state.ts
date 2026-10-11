@@ -9,7 +9,7 @@ import type {
   FactRequestItem,
   FileRef,
   MasterCv,
-  Message,
+  ChatMessage,
   PauseReason,
   PendingQuestion,
   ReviewCard,
@@ -79,7 +79,7 @@ export interface MockState {
   engines: EngineStatus[];
   chromeConnected: boolean;
   rooms: Room[];
-  messages: Record<string, Message[]>;
+  messages: Record<string, ChatMessage[]>;
   runs: Record<string, RunState>;
   /** The review queue, oldest first. */
   queue: ReviewCard[];

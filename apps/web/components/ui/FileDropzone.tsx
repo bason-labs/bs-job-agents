@@ -8,6 +8,8 @@ import { ACCEPT_ATTR, ACCEPTED_LABEL, validateFile } from "@/lib/files";
 export interface FileDropzoneHandle {
   /** Opens the file picker (wrap mode's own "Attach file" button). */
   open: () => void;
+  /** Takes files from elsewhere (a paste, F8) through the same checks as a drop. */
+  add: (files: File[]) => void;
 }
 
 export interface FileDropzoneProps {
@@ -51,8 +53,6 @@ export const FileDropzone = forwardRef<FileDropzoneHandle, FileDropzoneProps>(fu
   const [dragOver, setDragOver] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const errorId = useId();
-  useImperativeHandle(ref, () => ({ open: () => inputRef.current?.click() }), []);
-
   const handle = (list: FileList | File[] | null) => {
     if (!list) return;
     let files = Array.from(list);
@@ -67,6 +67,13 @@ export const FileDropzone = forwardRef<FileDropzoneHandle, FileDropzoneProps>(fu
     setErrors(rejected);
     if (accepted.length) onFiles(accepted);
   };
+  // No deps: the handle is rebuilt each render, so `add` uses the current props.
+  useImperativeHandle(ref, () => ({
+    open: () => inputRef.current?.click(),
+    add: (files: File[]) => {
+      if (!disabled) handle(files);
+    },
+  }));
 
   const isFileDrag = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes("Files");
   const wrap = children !== undefined;

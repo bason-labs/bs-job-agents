@@ -1,6 +1,6 @@
 import { ALLOWED_UPLOAD_TYPES, LIMITS, checkUploadFile } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
-import { ACCEPTED_EXTENSIONS, ACCEPT_ATTR, MAX_FILE_BYTES, formatBytes, kindForFile, validateFile } from "./files";
+import { ACCEPTED_EXTENSIONS, ACCEPT_ATTR, MAX_FILE_BYTES, filesFromClipboard, formatBytes, kindForFile, kindForMime, pastedImageName, validateFile } from "./files";
 
 describe("upload rules come from @bs-job-agents/shared (UC-24)", () => {
   it("uses the shared size limit and extensions, so the picker and the API agree", () => {
@@ -80,5 +80,34 @@ describe("formatBytes", () => {
     expect(formatBytes(512)).toBe("512 B");
     expect(formatBytes(2048)).toBe("2 KB");
     expect(formatBytes(1.5 * 1024 * 1024)).toBe("1.5 MB");
+  });
+});
+
+describe("pasted files (F8: Cmd+V of a screenshot)", () => {
+  const at = new Date(2026, 9, 11, 17, 14, 30);
+  const clipboard = (files: File[], text = "") => ({ files: files as unknown as FileList, getData: (t: string) => (t === "text/plain" ? text : "") });
+
+  it("names a clipboard image pasted-image-<time> with its type's extension", () => {
+    expect(pastedImageName("image/png", at)).toBe("pasted-image-20261011-171430.png");
+    expect(pastedImageName("image/jpeg", at)).toBe("pasted-image-20261011-171430.jpg");
+    const [shot, second] = filesFromClipboard(clipboard([new File(["png"], "image.png", { type: "image/png" }), new File(["x"], "", { type: "image/png" })]), at);
+    expect([shot!.name, shot!.type, second!.name]).toEqual(["pasted-image-20261011-171430.png", "image/png", "pasted-image-20261011-171430-2.png"]);
+  });
+
+  it("keeps a copied file's own name, and a text paste stays text", () => {
+    const pdf = new File(["%PDF"], "JD Acme.pdf", { type: "application/pdf" });
+    expect(filesFromClipboard(clipboard([pdf]), at)).toEqual([pdf]);
+    expect(filesFromClipboard(clipboard([new File(["png"], "image.png", { type: "image/png" })], "Hello from Word"), at)).toEqual([]);
+    expect(filesFromClipboard(clipboard([]), at)).toEqual([]);
+    expect(filesFromClipboard(null, at)).toEqual([]);
+  });
+
+  it("picks the viewer kind by mime for uploads (file.kind is just 'upload')", () => {
+    expect(kindForMime("image/png")).toBe("image");
+    expect(kindForMime("image/jpeg")).toBe("image");
+    expect(kindForMime("application/pdf")).toBe("pdf");
+    expect(kindForMime("text/plain; charset=utf-8")).toBe("text");
+    expect(kindForMime("application/msword")).toBe("other");
+    expect(kindForMime(undefined)).toBe("other");
   });
 });

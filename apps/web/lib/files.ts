@@ -49,3 +49,31 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
 }
+
+const PASTE_EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg" };
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** "pasted-image-20261011-171430.png": a clipboard image's name, by the local time it was pasted. */
+export function pastedImageName(mime: string, at: Date): string {
+  const stamp = `${at.getFullYear()}${pad(at.getMonth() + 1)}${pad(at.getDate())}-${pad(at.getHours())}${pad(at.getMinutes())}${pad(at.getSeconds())}`;
+  return `pasted-image-${stamp}.${PASTE_EXT[mime] ?? "png"}`;
+}
+
+/**
+ * The files a paste carries (Cmd+V of a screenshot, or of files copied in Finder), with clipboard
+ * images renamed `pasted-image-<time>.<ext>` (browsers call them all "image.png"). Empty when the
+ * clipboard holds text: pasting text (even from Word, which adds a picture of it) stays a text paste.
+ */
+export function filesFromClipboard(data: Pick<DataTransfer, "files" | "getData"> | null, at: Date): File[] {
+  if (!data || data.files.length === 0 || data.getData("text/plain").trim() !== "") return [];
+  return Array.from(data.files).map((file, i) => {
+    if (!file.type.startsWith("image/") || !(file.name === "" || /^image\.\w+$/i.test(file.name))) return file;
+    const name = pastedImageName(file.type, at).replace(/(\.\w+)$/, i === 0 ? "$1" : `-${i + 1}$1`);
+    return new File([file], name, { type: file.type, lastModified: file.lastModified });
+  });
+}
+
+/** The viewer kind for a file known only by its mime (an upload's `file.kind` is just "upload"). */
+export function kindForMime(mime: string | undefined): FileKind {
+  return mime ? kindForFile("", mime.split(";")[0]!.trim().toLowerCase()) : "other";
+}

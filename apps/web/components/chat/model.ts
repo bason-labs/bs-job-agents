@@ -1,7 +1,7 @@
 // Pure logic behind the chat screen (§11 Chat; UC-01, UC-12, UC-17, UC-25), kept apart from the
 // components so it is unit-tested: message merging, rich text, card liveness, pause-card copy
 // (PM S24 wording) and the run card's delegation trace (Lead → @Bot: task · status).
-import { parsePauseReason, type AppEvent, type Message, type PendingQuestion, type Step, type Task } from "@bs-job-agents/shared";
+import { parsePauseReason, type AppEvent, type ChatMessage, type Message, type PendingQuestion, type Step, type Task } from "@bs-job-agents/shared";
 import { stepPreview, type RunView, type StepView } from "@/lib/api/runs";
 
 // ---------------------------------------------------------------- messages
@@ -9,10 +9,16 @@ import { stepPreview, type RunView, type StepView } from "@/lib/api/runs";
 const byTime = (a: Message, b: Message) =>
   a.createdAt.localeCompare(b.createdAt) || (Number(a.id) - Number(b.id) || 0) || a.id.localeCompare(b.id);
 
-/** Server pages + live messages: one entry per id (the newest copy wins), in time order. */
-export function mergeMessages(list: readonly Message[], incoming: readonly Message[]): Message[] {
+/**
+ * Server pages + live messages: one entry per id (the newest copy wins), in time order. A copy
+ * without `attachments` (an older event shape) keeps the ones an earlier copy had (F8).
+ */
+export function mergeMessages(list: readonly ChatMessage[], incoming: readonly ChatMessage[]): ChatMessage[] {
   const map = new Map(list.map((m) => [m.id, m]));
-  for (const m of incoming) map.set(m.id, m);
+  for (const m of incoming) {
+    const before = map.get(m.id);
+    map.set(m.id, m.attachments === undefined && before?.attachments !== undefined ? { ...m, attachments: before.attachments } : m);
+  }
   return [...map.values()].sort(byTime);
 }
 
