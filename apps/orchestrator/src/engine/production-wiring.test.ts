@@ -198,7 +198,8 @@ describe("the production engine on the real adapters (createProductionEngine)", 
     expect(app).toMatchObject({ status: "needs_check", statusHistory: expect.arrayContaining([expect.objectContaining({ status: "needs_check", note: "screenshots not captured" })]) });
     expect(record.submission).toMatchObject({ preSubmitScreenshotPath: null, confirmationScreenshotPath: null });
     expect(record.submission).toMatchObject({ uploadedPath: `applications/${app.id}/BA_HUYNH_NOVAPAY_EN.pdf`, uploadedSha256: cv.pdfSha256 });
-    const apply = calls.find((c) => c.command === CLAUDE && c.args.includes("--chrome"))!;
+    // Research runs on Claude with Chrome too (E1 option A): pick Apply's spawn by its task.
+    const apply = calls.find((c) => c.command === CLAUDE && c.args.includes("--chrome") && taskFromPrompt(c.args[1]!).bot === "apply")!;
     expect(argValue(apply.args, "--add-dir")).toBe(join(dataDir, "applications", String(app.id)));
   });
 
@@ -223,7 +224,7 @@ describe("the production engine on the real adapters (createProductionEngine)", 
   it("start-up filled the bots table from bot.json and stored each ROLE.md for its prompt version", () => {
     expect(listBots(db).map((b) => b.name)).toEqual(["apply", "cv", "lead", "qa", "research"]);
     for (const name of ["apply", "cv", "lead", "qa", "research"]) {
-      expect(getPromptVersion(db, name, 1)?.roleMdText, name).toBe(readFileSync(join(botsDir, name, "ROLE.md"), "utf8"));
+      expect(getPromptVersion(db, name, loadBotDefinition(join(botsDir, name)).promptVersion)?.roleMdText, name).toBe(readFileSync(join(botsDir, name, "ROLE.md"), "utf8"));
     }
   });
 
