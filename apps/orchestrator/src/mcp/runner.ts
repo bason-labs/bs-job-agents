@@ -3,10 +3,11 @@
 // config: for a bot that uses the `orchestrator` server (only Lead, by checkBotSafety), this runner
 // mints a capability, builds a runner whose `mcpServers.orchestrator` is
 // `{ url: http://127.0.0.1:<port>/mcp/<token>, knownTools }`, runs the task with it and revokes the
-// token when the spawn returns. Claude gets the URL in its per-task mcp.json (not in argv), and the
+// token when the spawn returns. Claude gets the URL in its per-task mcp.json (not in argv; PM3 M1:
+// no other engine ever gets one), and the
 // six knownTools let it hide any tool Lead's bot.json does not allow. Every other bot runs on the
 // shared base runner unchanged.
-import type { Engine as EngineName } from "@bs-job-agents/shared";
+import { LEAD_ENGINE_RULE, type Engine as EngineName } from "@bs-job-agents/shared";
 import { ClaudeRunner, CodexRunner, ORCHESTRATOR_MCP_SERVER, resolveRunnerConfig, type McpServerConfig, type Runner, type RunnerConfig, type RunnerDeps } from "../runner/index.js";
 import type { RunnerEvent, RunnerResult, RunnerTask } from "../runner/index.js";
 import { chatModeOfKind, type CapabilityStore } from "./capabilities.js";
@@ -46,6 +47,9 @@ export class LeadMcpRunner implements Runner {
 
   async run(task: RunnerTask, onEvent: (event: RunnerEvent) => void): Promise<RunnerResult> {
     if (!task.bot.mcpServers.includes(ORCHESTRATOR_MCP_SERVER)) return this.base.run(task, onEvent);
+    // PM3 M1: only Claude keeps the capability URL out of argv (its per-task mcp.json) and limits
+    // the session to these tools; checkBotSafety refuses it earlier, this is the last stop.
+    if (this.engine !== "claude") return { status: "failed", error: LEAD_ENGINE_RULE, exitCode: null, durationMs: 0 };
     const server = this.opts.server();
     if (!server) return { status: "failed", error: "the orchestrator MCP server is not running", exitCode: null, durationMs: 0 };
     const token = this.opts.capabilities.mint({

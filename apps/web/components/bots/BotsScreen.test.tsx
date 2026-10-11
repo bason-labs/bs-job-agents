@@ -51,9 +51,9 @@ describe("BotsScreen (§11 Bots)", () => {
     expect(within(research).getByTestId("bot-residual-risk")).toBeInTheDocument();
   });
 
-  it("disables Apply's and CV's engine switch and says why (PM S25)", async () => {
+  it("disables Apply's, CV's and Lead's engine switch and says why (PM S25, PM3 M1)", async () => {
     await setup();
-    for (const name of ["apply", "cv"]) {
+    for (const name of ["apply", "cv", "lead"]) {
       const radios = within(card(name)).getAllByRole("radio");
       for (const r of radios) expect(r).toBeDisabled();
       expect(within(card(name)).getByTestId("bot-engine-lock")).toHaveTextContent(/^Locked to Claude/);

@@ -52,6 +52,21 @@ describe("LeadMcpRunner", () => {
     expect(spawned).toBe(0);
   });
 
+  it("PM3 M1: never mints a capability for a non-Claude runner (Codex would carry the URL in argv)", async () => {
+    const caps = new CapabilityStore();
+    const base = { ...recorder(), engine: "codex" as const };
+    let spawned = 0;
+    let minted = 0;
+    const mint = caps.mint.bind(caps);
+    caps.mint = (...a: Parameters<CapabilityStore["mint"]>) => (minted++, mint(...a));
+    const r = new LeadMcpRunner(base, { capabilities: caps, server: () => fakeServer, spawnRunner: () => (spawned++, recorder()) });
+    const res = await r.run(task("lead", "chat"), () => undefined);
+    expect(res).toMatchObject({ status: "failed", error: expect.stringMatching(/Lead must run on Claude/) });
+    expect(spawned).toBe(0);
+    expect(minted).toBe(0);
+    expect(base.runs).toHaveLength(0);
+  });
+
   it("gives a Lead chat spawn its own capability URL, mapped to {lead, work} and its room, revoked when the spawn returns", async () => {
     const caps = new CapabilityStore();
     const configs: McpServerConfig[] = [];

@@ -13,6 +13,7 @@ import {
   ENGINE_OPTIONS,
   TRUST_MEANINGS,
   engineLockReason,
+  engineSwitchDisabled,
   lowerTarget,
   memoryNotesOf,
   promoteAction,
@@ -90,7 +91,7 @@ export function BotCard({ bot, controller, warning, detailed = false }: BotCardP
             options={ENGINE_OPTIONS}
             value={bot.engine}
             onValueChange={(engine) => void controller.setEngine(bot, engine)}
-            disabled={!!lock}
+            disabled={engineSwitchDisabled(bot)}
             aria-labelledby={ids.engine}
             aria-describedby={lock ? ids.lock : undefined}
             data-testid="bot-engine"

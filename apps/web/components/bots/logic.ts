@@ -23,15 +23,26 @@ export const ENGINE_OPTIONS = (["claude", "codex"] as const).map((value) => ({ v
 
 /**
  * Bots whose engine switch is disabled, and why (§4.4: a browser bot that writes runs on
- * Claude, where the site allowlist is a hook; §6.2: the Figma guard is a Claude hook).
+ * Claude, where the site allowlist is a hook; §6.2: the Figma guard is a Claude hook; §3 rule 5:
+ * Lead's six-tool limit holds only on Claude).
  */
 const ENGINE_LOCKS: Record<string, string> = {
   apply: "Locked to Claude: Apply fills forms in your Chrome, and its site allowlist runs only on Claude.",
   cv: "Locked to Claude: CV edits Figma; its Drafts-only guard runs only on Claude.",
+  // PM3 M1 (rule 5): on Codex every session also has a shell and file tools.
+  lead: "Locked to Claude: Lead only divides work, and its tool limit holds only on Claude.",
 };
 
 export function engineLockReason(botName: string): string | null {
   return ENGINE_LOCKS[botName] ?? null;
+}
+
+/**
+ * The switch is disabled for a locked bot, except when it is stored on another engine (set before
+ * the rule existed): then Ba can switch it back to Claude, and the orchestrator refuses to run it.
+ */
+export function engineSwitchDisabled(bot: Pick<BotView, "name" | "engine">): boolean {
+  return engineLockReason(bot.name) !== null && bot.engine === "claude";
 }
 
 /** "System suggests promoting Apply to L2 (10 approved in a row without edits)." (prototype) */

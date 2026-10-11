@@ -7,7 +7,7 @@
 //   to Lead (rule 1) carries a handoff card ("Open Lead chat"); Lead's chat gets "Handed over from
 //   @Bot: …" and a lead.chat task, queued in the same transaction (ctx.enqueue).
 // - A conversation that failed for good gets a short note from the bot (no internals).
-import type { ConsultOutput, LeadAction, LeadOutput, MessageCard } from "@bs-job-agents/shared";
+import { LEAD_ENGINE_RULE, type ConsultOutput, type LeadAction, type LeadOutput, type MessageCard } from "@bs-job-agents/shared";
 import { getOrCreateLeadRoom, getRoom, type Room } from "../../db/index.js";
 import type { ConversationResult, ConversationSink, ConversationSinkContext, Logger } from "../../engine/index.js";
 import type { CapabilityStore, LeadToolAction } from "../../mcp/capabilities.js";
@@ -146,10 +146,23 @@ export class ChatSink implements ConversationSink {
     }
   }
 
-  failed(ctx: ConversationSinkContext, _error: string): void {
+  failed(ctx: ConversationSinkContext, error: string): void {
     this.capabilities?.takeActions(ctx.task.id);
     const room = this.roomOf(ctx);
     if (!room) return;
+    if (error.includes(LEAD_ENGINE_RULE)) {
+      // PM3 M1: the trust guard refused Lead on another engine; nothing ran.
+      postMessage(
+        ctx.conn,
+        {
+          room,
+          author: "system",
+          text: "Lead runs only on Claude, where its only tools are the orchestrator's (rule 5), but it is set to another engine. Switch Lead back to Claude on the Bots screen, then send your message again.",
+        },
+        this.now(),
+      );
+      return;
+    }
     // The error may name paths or CLI output: Ba gets a plain note; the step drawer has the details.
     postMessage(
       ctx.conn,

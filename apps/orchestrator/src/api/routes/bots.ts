@@ -1,7 +1,8 @@
 // Bots screen (§11 Bots, UC-19, PM S21). Ba's changes are refused when they break a Phase 1 rule:
 // - engine: checkBotSafety (§4.4 a browser bot that writes runs on Claude, where the site guard is a
 //   hook; §6.2 a Figma bot runs on Claude, where the Drafts-only guard is a hook) — so Apply and CV
-//   stay on Claude. A queued task keeps the engine it was queued on; the runner checks again.
+//   stay on Claude; §3 rule 5 (PM3 M1): Lead stays on Claude, where its only tools are the
+//   orchestrator's. A queued task keeps the engine it was queued on; the runner checks again.
 // - trust level: never above the Phase 1 cap (Apply: L1, every submit needs Ba's token), and up one
 //   level at a time (a promotion, or restoring a demoted bot); lowering is always allowed.
 import { join } from "node:path";

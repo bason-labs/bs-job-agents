@@ -39,6 +39,7 @@ describe("bots adapter (PM S21 rules)", () => {
     const data = make();
     expect(await err(data.update("apply", { engine: "codex" }))).toMatchObject({ status: 403, code: "forbidden", message: expect.stringMatching(/browser bot/) });
     expect(await err(data.update("cv", { engine: "codex" }))).toMatchObject({ status: 403, message: expect.stringMatching(/Figma/) });
+    expect(await err(data.update("lead", { engine: "codex" }))).toMatchObject({ status: 403, message: expect.stringMatching(/Lead must run on Claude/) });
   });
 
   it("raises one level at a time up to the Phase 1 cap; Apply stays L1 (403); lowering is allowed", async () => {
