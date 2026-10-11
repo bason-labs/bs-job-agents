@@ -46,6 +46,7 @@ import {
 } from "../db/index.js";
 import { buildApplyPromptInput, emitApplication, moveApplication, registrableHost } from "./apply.js";
 import { effectiveBot } from "./bots.js";
+import { companyMissing } from "./company.js";
 import { loadRunCtx, type RunCtx, type Scope } from "./context.js";
 import type { EngineCore } from "./core.js";
 import { EngineError, errorMessage, forbidden, invalidInput, invalidState, notFound } from "./errors.js";
@@ -87,6 +88,7 @@ export function startReview(core: EngineCore, conn: Conn, ctx: RunCtx, step: Hum
     qaPassed: cvVersions.every((c) => c.qaPassed),
     escalated: cvVersions.some((c) => c.escalated),
     needsInput: factRequests.length > 0,
+    companyMissing: companyMissing(conn, ctx.def, ctx.run.id, step.branch, item.jobId),
     decisions: (row?.output as HumanStepOutput | null | undefined)?.decisions ?? [],
   };
   openStep(core, conn, ctx, step.key, scope, "waiting", { output, preview: output.escalated ? "QA not passed · Ba decides" : "waiting for Ba" });
@@ -108,6 +110,7 @@ export function startReview(core: EngineCore, conn: Conn, ctx: RunCtx, step: Hum
     escalated: output.escalated,
     needsInput: output.needsInput,
     injectionFlagged: isApplyBlockedByInjection(job),
+    companyMissing: output.companyMissing ?? false,
   });
   return "active";
 }

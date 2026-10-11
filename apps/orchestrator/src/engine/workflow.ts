@@ -38,6 +38,7 @@ import {
   type Task,
 } from "../db/index.js";
 import { writeRecordStep } from "./apply.js";
+import { COMPANY_FAILED_PREVIEW, COMPANY_TASK_KEY, companyFailedOutput, isRerunMarked } from "./company.js";
 import { RUN_SCOPE, loadRunCtx, templateScope, type RunCtx, type Scope } from "./context.js";
 import type { EngineCore } from "./core.js";
 import { EngineError, errorMessage } from "./errors.js";
@@ -102,8 +103,9 @@ function advanceTaskStep(core: EngineCore, ctx: RunCtx, step: TaskStep, scope: S
   const row = getStepByKey(core.db, ctx.run.id, step.key, scope.branchKey);
   if (!row || row.status === "pending") {
     return guarded(core, ctx, step.key, scope, (tx) => {
-      // UC-05 a: a company profile younger than cacheDays is reused (cache hit shown on the node).
-      if (taskKey(step.task.bot, step.task.kind) === "research.company" && step.cacheDays && scope.item) {
+      // UC-05 a: a company profile younger than cacheDays is reused (cache hit shown on the node),
+      // unless Ba re-ran this step himself (PM2 S16).
+      if (taskKey(step.task.bot, step.task.kind) === COMPANY_TASK_KEY && step.cacheDays && scope.item && !isRerunMarked(row?.output)) {
         const job = getJob(tx, scope.item.jobId);
         const fresh = job ? getFreshCompanyProfile(tx, job.companyId, { now: core.now(), maxAgeDays: step.cacheDays }) : undefined;
         if (fresh?.profile) {
@@ -131,6 +133,11 @@ function advanceTaskStep(core: EngineCore, ctx: RunCtx, step: TaskStep, scope: S
         return "done";
       case "failed":
       case "interrupted":
+        // PM2 S16: a failed company profile does not drop a good job; the card is flagged instead.
+        if (taskKey(step.task.bot, step.task.kind) === COMPANY_TASK_KEY && scope.item) {
+          setStep(core, tx, row, "done", { output: companyFailedOutput(task.error ?? "the task failed"), preview: COMPANY_FAILED_PREVIEW });
+          return "done";
+        }
         setStep(core, tx, row, "failed", { error: task.error ?? "the task failed" });
         return "failed";
       case "paused":

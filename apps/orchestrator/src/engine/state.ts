@@ -122,6 +122,8 @@ export interface HumanStepOutput {
   qaPassed: boolean;
   escalated: boolean;
   needsInput: boolean;
+  /** PM2 S16: the company research failed for good; CV tailored without a profile (flag on the card). */
+  companyMissing?: boolean;
   decisions: ReviewDecision[];
 }
 
