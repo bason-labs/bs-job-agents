@@ -155,15 +155,48 @@ describe("mock backend: chat (UC-01, UC-24, UC-25)", () => {
     expect((await leadMessages()).length).toBe(4);
   });
 
-  it("UC-21b a: 'also include Đà Nẵng' asks just-this-run vs save, and a choice answers it", async () => {
+  it("UC-21b a (PM3 M3): 'also include Đà Nẵng' proposes; Save writes v4 from the stored change, like the orchestrator", async () => {
     await api.sendMessage({ roomId: LEAD_ROOM_ID, text: "Also include Đà Nẵng" });
     await api.idle();
     const msg = (await leadMessages()).at(-1)!;
-    expect(msg.cards[0]).toMatchObject({ type: "choice", key: "criteria", chosen: null });
-    await api.chooseOption({ messageId: msg.id, key: "criteria", optionId: "save" });
+    expect(msg.text).toBe("Save to your search criteria (now v3)? Add Đà Nẵng to locations.");
+    const card = msg.cards[0] as Extract<MessageCard, { type: "choice" }>;
+    expect(card).toMatchObject({ type: "choice", key: expect.stringMatching(/^criteria-save:[A-Za-z0-9_-]{12,}$/), chosen: null });
+    expect(card.options.map((o) => o.id)).toEqual(["just_this_run", "save"]);
+    expect(isApiError(await errorOf(api.chooseOption({ messageId: msg.id, key: "criteria-save:AAAAAAAAAAAAAAAA", optionId: "save" })))).toBe(true);
+    await api.chooseOption({ messageId: msg.id, key: card.key, optionId: "save" });
     await api.idle();
-    expect((await leadMessages()).at(-1)!.text).toMatch(/now \*\*v4\*\*/);
-    expect(isApiError(await errorOf(api.chooseOption({ messageId: msg.id, key: "criteria", optionId: "save" })))).toBe(true);
+    const lead = await leadMessages();
+    expect(lead.at(-1)!.text).toBe("Saved to your search criteria (now v4).");
+    expect(lead.at(-2)).toMatchObject({ author: { type: "ba" }, text: "Save to my criteria" });
+    expect(api.state.profiles.find((p) => p.active)?.locations).toContain("Đà Nẵng");
+    expect(isApiError(await errorOf(api.chooseOption({ messageId: msg.id, key: card.key, optionId: "save" })))).toBe(true);
+  });
+
+  it("UC-21b a: Just this run starts a scan with the per-run override and saves nothing", async () => {
+    await api.sendMessage({ roomId: LEAD_ROOM_ID, text: "Also include Đà Nẵng" });
+    await api.idle();
+    const msg = (await leadMessages()).at(-1)!;
+    const card = msg.cards[0] as Extract<MessageCard, { type: "choice" }>;
+    await api.chooseOption({ messageId: msg.id, key: card.key, optionId: "just_this_run" });
+    await api.idle();
+    expect((await leadMessages()).some((m) => m.text.startsWith("OK — Đà Nẵng only for this run."))).toBe(true);
+    expect(api.state.profiles.find((p) => p.active)?.version).toBe(3);
+  });
+
+  it("UC-21 (PM3 S1): 'scan every weekday at 9' proposes a schedule; Create schedule adds it", async () => {
+    const before = api.state.schedules.length;
+    await api.sendMessage({ roomId: LEAD_ROOM_ID, text: "Scan every weekday at 9" });
+    await api.idle();
+    const msg = (await leadMessages()).at(-1)!;
+    expect(msg.text).toMatch(/^Create the schedule “Weekday morning scan”\? Runs: Weekdays 09:00 · next run .+ · job scan with your active search criteria\.$/);
+    const card = msg.cards[0] as Extract<MessageCard, { type: "choice" }>;
+    expect(card.key).toMatch(/^schedule-create:/);
+    await api.chooseOption({ messageId: msg.id, key: card.key, optionId: "create" });
+    const schedules = api.state.schedules;
+    expect(schedules).toHaveLength(before + 1);
+    expect(schedules.at(-1)).toMatchObject({ name: "Weekday morning scan", cron: "0 9 * * 1-5", enabled: true });
+    expect((await leadMessages()).at(-1)!.text).toMatch(/^Created the schedule “Weekday morning scan” \(Weekdays 09:00\)\./);
   });
 
   it("UC-24: uploads are checked like checkUploadFile; a JD file starts apply-to-file with no apply link", async () => {

@@ -47,6 +47,7 @@ import { ApiRequestError } from "../errors";
 import { toBotSummary, toRoomSummary, toShellData } from "../map";
 import type { BotSummary, RoomSummary, ShellData } from "../types";
 import { toSavedLines } from "../transcript";
+import { chooseProposal } from "./lead-proposals";
 import { handleMockRequest } from "./routes";
 import { LEAD_ROOM_ID, createSeedState } from "./seed";
 import * as sim from "./sim";
@@ -488,6 +489,9 @@ export class MockBackend implements WebApi, EventFeed {
     const option = card.options.find((o) => o.id === input.optionId);
     if (!option) throw fail(400, "validation_failed", `unknown option ${input.optionId}`);
     if (card.chosen) throw fail(409, "conflict", "already chosen");
+    // PM3 M3 / S1: criteria-save:<id> and schedule-create:<id> act on the stored proposal.
+    const proposal = await chooseProposal(this, message, card, option.id);
+    if (proposal) return proposal;
     card.chosen = option.id;
     const answer = await this.post(message.roomId, { type: "ba" }, option.label);
     this.background(sim.afterChoice(this, message.roomId, input.key, option.id));

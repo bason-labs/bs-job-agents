@@ -800,6 +800,7 @@ export function createSeedState(): MockState {
     factRequests: seedFactRequests(),
     proposals: seedProposals(),
     savedWorkflows: {},
+    leadProposals: {},
     seq: 9000,
   };
 }

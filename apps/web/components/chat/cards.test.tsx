@@ -10,6 +10,7 @@ import { ApiProvider } from "@/lib/api/react";
 import { MOCK_BOTS } from "@/lib/mock/shell";
 import { ChatContext, type ChatContextValue } from "./ChatContext";
 import type { TaskPhase } from "./model";
+import { MessageCards } from "./MessageCards";
 import { PauseCard } from "./PauseCard";
 import { QuestionCard } from "./QuestionCard";
 
@@ -166,5 +167,25 @@ describe("PauseCard (UC-17, UC-11 e)", () => {
     setup(<PauseCard card={{ type: "pause", taskId: "t9", reason: "captcha(topcv.vn)" }} />, { phase: "ended" });
     expect(screen.getByText("This task has ended.")).toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+describe("proposal choice cards (PM3 M3, S1)", () => {
+  it("a chip posts /chat/choices with the card's typed key, then shows the choice", async () => {
+    const chooseOption = vi.fn(async () => {});
+    const card: MessageCard = {
+      type: "choice",
+      key: "criteria-save:AbCdEf123456",
+      options: [
+        { id: "just_this_run", label: "Just this run" },
+        { id: "save", label: "Save to my criteria" },
+      ],
+      chosen: null,
+    };
+    const message: Message = { ...messageFixture, id: "m7", text: "Save to your search criteria (now v3)? Add Đà Nẵng to locations.", cards: [card] };
+    setup(<MessageCards message={message} />, { api: { chooseOption } });
+    await userEvent.click(screen.getByRole("button", { name: "Save to my criteria" }));
+    expect(chooseOption).toHaveBeenCalledWith({ messageId: "m7", key: "criteria-save:AbCdEf123456", optionId: "save" });
+    expect(await screen.findByText("You chose “Save to my criteria”.")).toBeInTheDocument();
   });
 });
