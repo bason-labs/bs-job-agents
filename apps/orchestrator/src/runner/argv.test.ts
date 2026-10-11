@@ -348,6 +348,27 @@ describe("Codex argv (spike S1/S2/S4)", () => {
     ]);
   });
 
+  it("CV on Codex (Ba's opt-in, owner decision 2026-10-11): the pinned figma-console-mcp like Claude's config, 3 tools, read-only, no model", () => {
+    const def = { ...bot("cv"), engine: "codex" as const };
+    const figma = DEFAULT_MCP_SERVERS.figma as { command: string; args: string[] };
+    const inv = buildCodexInvocation({
+      bot: def, plan: planTools(def), prompt: "P", schema: getBotOutputJsonSchema("CvOutput"), workDir: W, config: CONFIG,
+      pluginsToDisable: ["browser@openai-bundled"], mcpServersToDisable: ["node_repl"],
+    });
+    expect(inv.display).toEqual([
+      "exec", "--json", "--skip-git-repo-check",
+      "--ignore-user-config", "--disable", "apps",
+      "--sandbox", "read-only", "-c", 'web_search="disabled"',
+      "--output-schema", `${W}/schema.json`, "-o", `${W}/last.json`,
+      "-c", `mcp_servers.figma.command=${JSON.stringify(figma.command)}`,
+      "-c", `mcp_servers.figma.args=${JSON.stringify(figma.args)}`,
+      "-c", 'mcp_servers.figma.default_tools_approval_mode="approve"',
+      "-c", 'mcp_servers.figma.enabled_tools=["figma_get_status","figma_execute","figma_capture_screenshot"]',
+      "<prompt: 1 chars>",
+    ]);
+    expect(def.model).toBe("sonnet");
+  });
+
   it("never bypasses the sandbox or approvals", () => {
     for (const args of [codex("qa", "review").args, codex("research", "fit").args]) {
       expect(args).not.toContain("--dangerously-bypass-approvals-and-sandbox");

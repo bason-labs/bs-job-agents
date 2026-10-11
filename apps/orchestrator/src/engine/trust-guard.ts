@@ -27,7 +27,8 @@ export type TrustDecision = { ok: true; needsApproval: boolean } | { ok: false; 
 export function checkTaskTrust(bot: EffectiveBot, kind: string): TrustDecision {
   const key = taskKey(bot.def.name, kind);
   if (!bot.enabled) return { ok: false, reason: "trust_level", detail: `${bot.def.name} is disabled` };
-  const unsafe = checkBotSafety({ ...bot.def, trustLevel: bot.def.trustLevel });
+  // Owner decision 2026-10-11: CV on Codex only with Ba's opt-in (never Apply or Lead).
+  const unsafe = checkBotSafety({ ...bot.def, trustLevel: bot.def.trustLevel }, { unguardedFigmaAcknowledged: bot.engineRiskAcknowledged === true });
   if (unsafe.length > 0) return { ok: false, reason: "trust_level", detail: unsafe.join("; ") };
   // Consult (UC-25) and discussion (UC-15) run with read-only tools; nothing outward happens.
   if (isConversationKind(kind)) return { ok: true, needsApproval: false };

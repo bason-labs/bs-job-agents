@@ -43,6 +43,12 @@ export interface RunnerTask {
    */
   hookSettings?: ClaudeHookSettings;
   /**
+   * Additive (owner decision 2026-10-11): Ba opted in to run this Figma bot (CV) on Codex, where its
+   * Drafts-only hook can't run (bots.engine_risk_ack_at). The runner refuses a Codex task with the
+   * Figma bridge without it; the engine's fingerprint before and after the task is the backstop.
+   */
+  unguardedFigmaAcknowledged?: boolean;
+  /**
    * Additive (PM2 S7): absolute folder for this attempt's screenshots (data/screenshots/<task>-<attempt>/).
    * The runner writes each Claude in Chrome image block there with a manifest and returns them in
    * RunnerResult.screenshots. Omitted: images are only dropped from the transcript.

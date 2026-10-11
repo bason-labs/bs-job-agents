@@ -357,6 +357,14 @@ describe("ClaudeRunner: refuses before spawning (fail closed)", () => {
     expect(result).toMatchObject({ status: "failed", error: expect.stringMatching(/Figma guard/) });
     expect(calls).toHaveLength(0);
   });
+
+  it("Ba's Codex opt-in never waives the Figma guard hook on Claude", async () => {
+    const { def, cwd } = kit.realBot("cv");
+    const { r, calls } = runner([play(claudeLines("structuredOk"))]);
+    const result = await r.run(kit.task(def, cwd, { kind: "tailor", input: cvTailorInputFixture, readDirs: [kit.dir("task9")], unguardedFigmaAcknowledged: true }), () => {});
+    expect(result).toMatchObject({ status: "failed", error: expect.stringMatching(/Figma guard/) });
+    expect(calls).toHaveLength(0);
+  });
 });
 
 describe("Chrome only for tasks that hold the browser lock (§10.3)", () => {

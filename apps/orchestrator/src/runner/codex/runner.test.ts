@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
+import { cvTailorInputFixture, researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
 import { codexLastMessage, codexLines, STDERR } from "../__fixtures__/index.js";
 import { argValue, fakeSpawn, type FakeScript } from "../__fixtures__/fake-cli.js";
 import { CONSULT_INPUT, eventLog, makeKit, type Kit } from "../__fixtures__/runner-kit.js";
@@ -115,6 +115,27 @@ describe("CodexRunner: a successful run", () => {
     expect(args).toContain('web_search="live"');
     // The prompt names the allowed sites (Codex has no hook: prompt-only, §4.4).
     expect(args.at(-1)).toContain("topcv.vn, itviec.com, linkedin.com");
+  });
+
+  it("CV on Codex with Ba's opt-in: no hook needed; the Figma bridge with its 3 tools, read-only, Ba's config ignored, read dirs in the prompt", async () => {
+    const { def, cwd } = kit.realBot("cv");
+    const readDir = kit.dir("task9");
+    const { r, work } = runner([play(codexLines("structuredOk"))], ["browser@openai-bundled"], ["node_repl"]);
+    const task = kit.task({ ...def, engine: "codex" }, cwd, { kind: "tailor", input: cvTailorInputFixture, readDirs: [readDir], unguardedFigmaAcknowledged: true });
+    const result = await r.run(task, () => {});
+    expect(result.status).not.toBe("failed");
+    const args = work()[0]!.args;
+    expect(args.slice(0, 6)).toEqual(["exec", "--json", "--skip-git-repo-check", "--ignore-user-config", "--disable", "apps"]);
+    expect(args.join(" ")).not.toMatch(/node_repl|plugins\.|notify/);
+    expect(argValue(args, "--sandbox")).toBe("read-only");
+    expect(args).toContain('web_search="disabled"');
+    expect(args).toContain('mcp_servers.figma.default_tools_approval_mode="approve"');
+    expect(args).toContain('mcp_servers.figma.enabled_tools=["figma_get_status","figma_execute","figma_capture_screenshot"]');
+    expect(args.some((a) => /^mcp_servers\.figma\.args=\[".*figma-console-mcp.*"\]$/.test(a))).toBe(true);
+    // bot.json's "sonnet" is a Claude model: on Codex the CLI's default is used.
+    expect(args).not.toContain("-m");
+    // Codex can't scope reads: the read dir is a prompt-level boundary.
+    expect(args.at(-1)).toContain(readDir);
   });
 
   it("by default reads Ba's MCP servers from his Codex config (PM2 M3)", async () => {
@@ -235,6 +256,24 @@ describe("CodexRunner: failures and limits", () => {
     const { r, calls } = runner([play(codexLines("structuredOk"))]);
     const result = await r.run(kit.task(def, cwd, { kind: "consult", input: CONSULT_INPUT }), () => {});
     expect(result).toMatchObject({ status: "failed", error: expect.stringMatching(/runs on claude/) });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses CV on Codex without Ba's opt-in, before spawning (owner decision 2026-10-11)", async () => {
+    const { def, cwd } = kit.realBot("cv");
+    const { r, calls } = runner([play(codexLines("structuredOk"))]);
+    const task = kit.task({ ...def, engine: "codex" }, cwd, { kind: "tailor", input: cvTailorInputFixture, readDirs: [kit.dir("task9")] });
+    const result = await r.run(task, () => {});
+    expect(result).toMatchObject({ status: "failed", error: expect.stringMatching(/Figma bridge must run on Claude/) });
+    expect(calls).toHaveLength(0);
+    expect(kit.workDirsLeft()).toEqual([]);
+  });
+
+  it("the opt-in never lets Apply onto Codex", async () => {
+    const { def, cwd } = kit.realBot("apply");
+    const { r, calls } = runner([play(codexLines("structuredOk"))]);
+    const result = await r.run(kit.task({ ...def, engine: "codex" }, cwd, { kind: "consult", input: CONSULT_INPUT, unguardedFigmaAcknowledged: true }), () => {});
+    expect(result).toMatchObject({ status: "failed", error: expect.stringMatching(/must run on Claude/) });
     expect(calls).toHaveLength(0);
   });
 

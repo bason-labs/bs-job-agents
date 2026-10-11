@@ -11,6 +11,12 @@ export interface EffectiveBot {
   /** The DB row's level when present (the trust guard reads it), else bot.json's. */
   trustLevel: TrustLevel;
   enabled: boolean;
+  /**
+   * Owner decision 2026-10-11: Ba acknowledged running this bot on an engine where its guard hook
+   * can't run (CV on Codex; bots.engine_risk_ack_at). The trust guard and the runner allow CV on
+   * Codex only with it; it never unlocks Apply or Lead. Optional for hand-built bots (= false).
+   */
+  engineRiskAcknowledged?: boolean;
 }
 
 export function effectiveBot(db: Conn, registry: BotRegistry, name: string): EffectiveBot {
@@ -21,6 +27,7 @@ export function effectiveBot(db: Conn, registry: BotRegistry, name: string): Eff
     def: { ...def, engine: row?.engine ?? def.engine, model: row?.modelOverride ?? def.model },
     trustLevel: (row?.trustLevel as TrustLevel | undefined) ?? def.trustLevel,
     enabled: (row?.enabled ?? true) && def.enabled,
+    engineRiskAcknowledged: (row?.engineRiskAckAt ?? null) !== null,
   };
 }
 
