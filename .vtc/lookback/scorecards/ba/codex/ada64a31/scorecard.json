@@ -1,0 +1,37 @@
+{
+  "v": 1,
+  "prompt": {
+    "role": "ba",
+    "host": "codex",
+    "locked_sha256": "602625fd1755f1ef851c3c9340430eb181a74e4fc672181befc3d50b9d4905d3",
+    "editable_sha256": "9cd85b37db427cbfe232065d7067f62d1ac90f0d7d63f82ecba0956549a31b30",
+    "effective_sha256": "ada64a312a1f4b1b4d511547238bf88816bf840a6731770ec93bc49a45985f21"
+  },
+  "grader_bundle_sha": "168c71e59b42d69856a403c3ade3e35d7413cf5f80a8df3ebf1eb5badb64059b",
+  "window": {
+    "from": "2026-10-17T01:13:03.392Z",
+    "to": "2026-10-17T01:49:04.328Z"
+  },
+  "metrics": {
+    "escalations_per_100": {
+      "value": null,
+      "ci_low": null,
+      "ci_high": null,
+      "n": 4
+    },
+    "cap_hits_per_100": {
+      "value": null,
+      "ci_low": null,
+      "ci_high": null,
+      "n": 4
+    },
+    "tokens_per_success": {
+      "value": null,
+      "ci_low": null,
+      "ci_high": null,
+      "n": 4
+    }
+  },
+  "breakdown": [],
+  "written_at": "2026-10-17T04:47:22.327Z"
+}
