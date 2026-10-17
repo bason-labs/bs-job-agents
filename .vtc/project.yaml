@@ -1,0 +1,35 @@
+# VTC project settings (spec §4.3). Every value below is the spec default; edit freely.
+# concurrency: parallel tasks, reviewers included (1 to 3).
+# hosts.dispatch: plugin_only runs a Claude Code Lead's roles as subagents of your Lead session
+#   (a Codex Lead's roles run as headless Codex runs the engine launches). headless_allowed also
+#   lets the engine launch roles itself: auto-resume with no Lead session, headless Claude runs.
+version: 1
+merge_level: 2
+caps:
+  low: 3
+  med: 4
+  high: 5
+budgets:
+  task_usd:
+    S: 1.5
+    M: 5
+    L: 15
+  final_review_share: 0.15
+  advisor_usd: 5
+risk_rules:
+  paths: []
+  max_diff_lines: 800
+  max_diff_files: 30
+allowlists:
+  dependencies: []
+  licenses: []
+hosts:
+  dispatch: plugin_only
+  cross_family_review: false
+concurrency: 2
+usage:
+  reserve_pct: 10
+git:
+  sign_commits: false
+auto_merge:
+  block_severity: medium

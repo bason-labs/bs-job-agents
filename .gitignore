@@ -29,6 +29,9 @@ blob-report/
 
 # agent worktrees
 .claude/
+.agents/
+.codex/
+.vtc/state/
 
 # bot memory is runtime state, like data/ (PM2 S5); start-up seeds a missing memory.md
 bots/*/memory.md
