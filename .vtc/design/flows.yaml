@@ -1,0 +1,59 @@
+fixtures:
+  derived-fact-text: "Set up CI/CD pipelines in GitHub Actions for 6 services"
+flows:
+  - id: check-source-access-path
+    start: /criteria
+    screens: [criteria]
+    paths: ["apps/web/components/criteria/**", "apps/web/app/(shell)/criteria/**"]
+    steps:
+      - { action: wait_for, selector: "[data-testid='source-itviec']" }
+      - { action: click, selector: "[data-testid='open-record-itviec']" }
+      - { action: wait_for, selector: "[data-testid='access-record']" }
+      - { action: wait_for, selector: "[data-testid='scan-checks']" }
+      - { action: press, key: Escape }
+      - { action: wait_for, selector: "[data-testid='source-itviec']" }
+  - id: read-scan-failure-notice
+    start: /chat/lead
+    screens: [scan-notices, activity]
+    paths: ["apps/web/components/chat/**", "apps/web/app/(shell)/chat/**"]
+    steps:
+      - { action: goto, route: "/chat/lead?state=adapter-broken" }
+      - { action: wait_for, selector: "[data-testid='scan-notice']" }
+      - { action: click, selector: "[data-testid='open-activity']" }
+      - { action: wait_for, selector: "[data-testid='activity-entry']" }
+  - id: review-skill-repair
+    start: /activity
+    screens: [activity]
+    paths: ["apps/web/components/activity/**", "apps/web/app/(shell)/activity/**"]
+    steps:
+      - { action: wait_for, selector: "[data-testid='activity-entry']" }
+      - { action: click, selector: "[data-testid='entry-toggle-1']" }
+      - { action: wait_for, selector: "[data-testid='skill-diff']" }
+  - id: review-and-undo-derived-facts
+    start: /cv
+    screens: [master-cv]
+    paths: ["apps/web/components/cv/**", "apps/web/app/(shell)/cv/**"]
+    steps:
+      - { action: goto, route: "/cv?state=undo-offered" }
+      - { action: wait_for, selector: "[data-testid='derived-fact']" }
+      - { action: click, selector: "[data-testid='undo-derived']" }
+      - { action: wait_for, selector: "[data-testid='fact']" }
+  - id: edit-derived-fact-in-place
+    start: /cv
+    screens: [master-cv]
+    paths: ["apps/web/components/cv/**"]
+    steps:
+      - { action: wait_for, selector: "[data-testid='derived-fact']" }
+      - { action: click, selector: "[data-testid='edit-f-31']" }
+      - { action: fill, selector: "#fact-f-31-text", fixture: derived-fact-text }
+      - { action: click, selector: "[data-testid='done-f-31']" }
+      - { action: wait_for, selector: "[data-testid='derived-fact']" }
+  - id: resolve-flagged-derived-fact
+    start: /cv
+    screens: [master-cv]
+    paths: ["apps/web/components/cv/**"]
+    steps:
+      - { action: goto, route: "/cv?state=source-changed" }
+      - { action: wait_for, selector: "[data-testid='source-changed']" }
+      - { action: click, selector: "[data-testid='keep-f-31']" }
+      - { action: wait_for, selector: "[data-testid='derived-fact']" }

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Master CV · bs-job-agents prototype</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/proto.css">
+</head>
+<body data-states="empty loading error success undo-offered undone source-changed rejected fact-request" data-default-state="success">
+<div class="proto" role="navigation" aria-label="Prototype states">
+  <span class="tag strong">Prototype: master-cv</span>
+  <a data-keeptheme href="?state=success">success</a>
+  <a data-keeptheme href="?state=undo-offered">undo-offered</a>
+  <a data-keeptheme href="?state=undone">undone</a>
+  <a data-keeptheme href="?state=source-changed">source-changed</a>
+  <a data-keeptheme href="?state=rejected">rejected</a>
+  <a data-keeptheme href="?state=fact-request">fact-request</a>
+  <a data-keeptheme href="?state=loading">loading</a>
+  <a data-keeptheme href="?state=empty">empty</a>
+  <a data-keeptheme href="?state=error">error</a>
+</div>
+<div class="shell">
+  <aside class="side">
+    <span class="brand">Job agents</span>
+    <nav aria-label="Main">
+      <a href="../chat/lead/">Chat</a>
+      <a href="../review/">Review</a>
+      <a href="../applications/">Applications</a>
+      <a href="./" aria-current="page">Master CV</a>
+      <a href="../criteria/">Search criteria</a>
+      <a href="../schedules/">Schedules</a>
+      <a href="../activity/">Activity</a>
+    </nav>
+  </aside>
+  <main class="main" id="main">
+    <div class="page">
+      <header class="head">
+        <h1>Master CV</h1>
+        <p class="muted">The facts every tailored CV draws on. Facts the system adds for you are marked and can be undone.</p>
+      </header>
+
+      <section data-show="error" class="error" role="alert" aria-labelledby="err-h">
+        <i data-icon="tri"></i>
+        <h2 id="err-h">Could not read the master CV</h2>
+        <p>The file is missing or invalid, so nothing is shown. Fix data/master-cv.yaml or restore a version, then retry.</p>
+        <button class="btn primary" type="button" data-goto-state="success">Retry</button>
+      </section>
+
+      <section data-show="empty" class="empty" aria-labelledby="empty-h">
+        <h2 id="empty-h">Your master CV has no facts yet</h2>
+        <p>Add the first one: a role, a project or a skill you can stand behind.</p>
+        <button class="btn primary" type="button">Add a fact</button>
+      </section>
+
+      <div data-show="loading" class="facts" aria-busy="true">
+        <div class="sk tall"></div><div class="sk tall"></div><div class="sk tall"></div>
+        <span class="sr-only">Loading the master CV</span>
+      </div>
+
+      <div class="bar" data-show="undo-offered" role="status" data-testid="undo-bar">
+        <p class="grow"><strong>Added 2 facts automatically (v15).</strong> <span class="badge idchip">f-31</span> <span class="badge idchip">f-32</span></p>
+        <button class="btn" type="button" data-goto-state="undone" data-testid="undo-derived">Undo</button>
+      </div>
+
+      <section class="req" data-show="fact-request" aria-labelledby="req-h" data-testid="fact-request">
+        <h2 id="req-h" style="font-size: var(--size-base)">Fact request: Kubernetes</h2>
+        <p>The job asks for Kubernetes and no fact of yours mentions it or a container orchestrator, so the CV leaves it out. Do you have experience with it? Tell Lead in your own words.</p>
+        <button class="btn" type="button">Answer</button>
+      </section>
+
+      <div class="toast" role="status" data-show="undone" data-testid="undone-toast">Undone: back to v14. The two automatic facts are removed.</div>
+
+      <div class="facts" data-show="success undo-offered undone source-changed rejected fact-request">
+        <article class="fact" id="fact-f-3" data-testid="fact">
+          <span class="badge idchip">f-3</span>
+          <div class="txt view"><p class="meta">Project · Gradion · 2023-2025</p><p>Built the customer portal in React and Next.js</p></div>
+          <div class="acts view"><button class="iconbtn" type="button" aria-label="Edit f-3"><i data-icon="pencil"></i></button><button class="iconbtn" type="button" aria-label="Delete f-3"><i data-icon="trash"></i></button></div>
+        </article>
+
+        <article class="fact" id="fact-f-7" data-show="success undo-offered undone source-changed rejected" data-testid="fact">
+          <span class="badge idchip">f-7</span>
+          <div class="txt view"><p class="meta">Project · Gradion · 2023-2025</p><p>Deployed services on EKS with Docker</p></div>
+          <div class="acts view"><button class="iconbtn" type="button" aria-label="Edit f-7"><i data-icon="pencil"></i></button><button class="iconbtn" type="button" aria-label="Delete f-7"><i data-icon="trash"></i></button></div>
+        </article>
+
+        <article class="fact" id="fact-f-12" data-show="success undo-offered undone rejected fact-request" data-testid="fact">
+          <span class="badge idchip">f-12</span>
+          <div class="txt view"><p class="meta">Project · Gradion · 2023-2025</p><p>Built CI pipelines in GitHub Actions for 6 services</p></div>
+          <div class="acts view"><button class="iconbtn" type="button" aria-label="Edit f-12"><i data-icon="pencil"></i></button><button class="iconbtn" type="button" aria-label="Delete f-12"><i data-icon="trash"></i></button></div>
+        </article>
+
+        <article class="fact" id="fact-f-31" data-show="success undo-offered source-changed rejected" data-testid="fact">
+          <span class="badge idchip">f-31</span>
+          <div class="txt view">
+            <p class="meta">Skill · Gradion · 2023-2025</p>
+            <p data-text>CI/CD with GitHub Actions for 6 services</p>
+            <div class="prov" data-testid="derived-fact">
+              <span class="badge brand"><i data-icon="wand"></i>Added automatically</span>
+              <span>Rests on <button class="linkid" type="button" data-cite="f-12" data-hide-when="source-changed">f-12</button><span data-show="source-changed">f-12 (deleted)</span></span>
+              <span class="badge warn" data-show="source-changed" data-flagged data-testid="source-changed"><i data-icon="tri"></i>Source fact changed</span>
+            </div>
+            <div data-show="source-changed" class="group" data-flagged>
+              <p class="note">Not used in new tailor tasks until you keep or delete it.</p>
+              <div style="display: flex; flex-wrap: wrap; gap: var(--space-2)">
+                <button class="btn" type="button" data-keep="fact-f-31" data-testid="keep-f-31">Keep</button>
+                <button class="btn danger-text" type="button">Delete</button>
+              </div>
+            </div>
+          </div>
+          <div class="acts view"><button class="iconbtn" type="button" aria-label="Edit f-31" data-edit="fact-f-31" data-edit-btn data-testid="edit-f-31"><i data-icon="pencil"></i></button><button class="iconbtn" type="button" aria-label="Delete f-31"><i data-icon="trash"></i></button></div>
+          <div class="edit">
+            <div class="field"><label for="fact-f-31-text">Text (English)</label><textarea id="fact-f-31-text" rows="2">CI/CD with GitHub Actions for 6 services</textarea></div>
+            <p class="muted xs">Added automatically. Rests on f-12. Organisation and dates come from the cited fact and cannot be changed here.</p>
+            <div style="display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap">
+              <button class="btn danger-text" type="button">Delete</button>
+              <button class="btn primary" type="button" data-done="fact-f-31" data-testid="done-f-31">Done</button>
+            </div>
+          </div>
+        </article>
+
+        <article class="fact" id="fact-f-32" data-show="success undo-offered source-changed rejected" data-testid="fact">
+          <span class="badge idchip">f-32</span>
+          <div class="txt view">
+            <p class="meta">Skill · Gradion · 2023-2025</p>
+            <p>Redux</p>
+            <div class="prov" data-testid="derived-fact">
+              <span class="badge brand"><i data-icon="wand"></i>Added automatically</span>
+              <span>Implied from <button class="linkid" type="button" data-cite="f-3">f-3</button></span>
+            </div>
+          </div>
+          <div class="acts view"><button class="iconbtn" type="button" aria-label="Edit f-32"><i data-icon="pencil"></i></button><button class="iconbtn" type="button" aria-label="Delete f-32"><i data-icon="trash"></i></button></div>
+        </article>
+      </div>
+
+      <section class="rej" data-show="rejected" data-testid="rejected-drafts">
+        <button type="button" data-expands="rej-list" aria-controls="rej-list"><span>Not added (2)</span><i class="chev" data-icon="chev"></i></button>
+        <ul id="rej-list">
+          <li><p class="muted">"CI/CD for 10 services" · cites f-12</p><p>Not added: it says 10 services, but f-12 says 6 services.</p></li>
+          <li><p class="muted">"Tech Lead, led the portal" · cites f-3</p><p>Not added: it names the title Tech Lead, but f-3 says Frontend Engineer.</p></li>
+        </ul>
+      </section>
+      <p class="illus" data-show="success undo-offered source-changed rejected fact-request">Illustrative facts.</p>
+    </div>
+  </main>
+</div>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var state = q.get("state") || "success";
+  if (state === "source-changed") {
+    document.getElementById("fact-f-31").setAttribute("data-flag", "");
+    document.querySelectorAll('[data-hide-when="source-changed"]').forEach(function (e) { e.hidden = true; });
+  }
+  if (state === "rejected") { var l = document.getElementById("rej-list"); if (l) l.hidden = false; }
+  else { var l2 = document.getElementById("rej-list"); if (l2) l2.hidden = true; }
+})();
+</script>
+<script src="../assets/proto.js"></script>
+</body>
+</html>

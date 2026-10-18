@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Search criteria · bs-job-agents prototype</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/proto.css">
+</head>
+<body data-states="empty loading error success record-open" data-default-state="success">
+<div class="proto" role="navigation" aria-label="Prototype states">
+  <span class="tag strong">Prototype: criteria</span>
+  <a data-keeptheme href="?state=success">success</a>
+  <a data-keeptheme href="?state=record-open">record-open</a>
+  <a data-keeptheme href="?state=loading">loading</a>
+  <a data-keeptheme href="?state=empty">empty</a>
+  <a data-keeptheme href="?state=error">error</a>
+</div>
+<div class="shell">
+  <aside class="side">
+    <span class="brand">Job agents</span>
+    <nav aria-label="Main">
+      <a href="../chat/lead/">Chat</a>
+      <a href="../review/">Review</a>
+      <a href="../applications/">Applications</a>
+      <a href="../cv/">Master CV</a>
+      <a href="./" aria-current="page">Search criteria</a>
+      <a href="../schedules/">Schedules</a>
+      <a href="../activity/">Activity</a>
+    </nav>
+  </aside>
+  <main class="main" id="main">
+    <div class="page">
+      <header class="head">
+        <h1>Search criteria</h1>
+        <p class="muted">What the research bot looks for, and where.</p>
+      </header>
+
+      <section data-show="error" aria-labelledby="err-h" class="error" role="alert">
+        <i data-icon="tri"></i>
+        <h2 id="err-h">Could not load your sources</h2>
+        <p>The orchestrator did not answer, so no change was made. Check that it is running on port 4100, then retry.</p>
+        <button class="btn primary" type="button" data-goto-state="success">Retry</button>
+      </section>
+
+      <section data-show="empty" class="empty" aria-labelledby="empty-h">
+        <h2 id="empty-h">No source is switched on</h2>
+        <p>A scan needs at least one. Turn on a board below; a public API board needs no browser.</p>
+      </section>
+
+      <section data-show="empty loading success record-open" class="card" aria-labelledby="src-h" data-testid="sources-card">
+        <div class="group">
+          <h2 class="card-label" id="src-h">Sources</h2>
+          <p class="muted" style="max-width: var(--space-measure)">Each board is read through the first path available: a public API, then the board's own web API with your account token, then the browser. Upwork is find only: you apply there yourself.</p>
+          <p class="illus">Illustrative paths. The real ones come from each board's access record.</p>
+        </div>
+        <div class="group" role="group" aria-labelledby="src-h" data-chips="boards"></div>
+        <div class="group" role="group" aria-labelledby="src-h" data-chips="feeds"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div data-drawer hidden>
+  <div class="scrim" data-close-drawer></div>
+  <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="rec-h" data-testid="access-record">
+    <header>
+      <div class="group">
+        <h2 id="rec-h" tabindex="-1">ITviec access record</h2>
+        <span class="badge brand"><i data-icon="key"></i>Account API</span>
+      </div>
+      <button class="iconbtn" type="button" aria-label="Close access record" data-close-drawer><i data-icon="x"></i></button>
+    </header>
+    <p class="illus">Illustrative content: the real record is written by the research of this run.</p>
+    <dl class="group">
+      <div class="rec"><dt>Public API</dt><dd>None found.</dd></div>
+      <div class="rec"><dt>Internal web API, get endpoints</dt><dd><ul><li class="mono">GET (job search endpoint from research)</li></ul></dd></div>
+      <div class="rec"><dt>Apply endpoints</dt><dd><ul><li><span class="mono">POST (apply endpoint from research)</span><span class="badge"><i data-icon="minus"></i>Documented only, not called</span></li></ul></dd></div>
+      <div class="rec"><dt>Terms of use on automated access, and account risk</dt><dd>Clause text and risk statement from research appear here, in full. Without a risk statement this board cannot be read through the account API.</dd></div>
+      <div class="rec"><dt>Chosen path</dt><dd><span class="badge brand"><i data-icon="key"></i>Account API</span></dd></div>
+    </dl>
+    <p class="muted xs">Token: read from local secret storage. The value is never shown.</p>
+    <section class="group checks" aria-labelledby="chk-h" data-testid="scan-checks">
+      <h3 id="chk-h">Last scan through this path</h3>
+      <p class="muted xs">Postings read through an API pass the same output checks and de-duplication as postings read in the browser.</p>
+      <p class="illus">Illustrative counts. The real ones come from the last scan of this board.</p>
+      <ul>
+        <li><i data-icon="check"></i><span><strong>Kept:</strong> 3 jobs.</span></li>
+        <li><i data-icon="tri"></i><span><strong>Rejected:</strong> 1 posting had no job URL. The other postings in the same response were kept.</span></li>
+        <li><i data-icon="minus"></i><span><strong>Merged:</strong> 1 posting has the same URL as a job an earlier browser scan found, so your list holds it once.</span></li>
+        <li><i data-icon="tri"></i><span><strong>Failed the full description check:</strong> 1 posting came back as a snippet only. A job read in the browser fails the same check. Open the board to read the full description, then scan again.</span></li>
+      </ul>
+    </section>
+  </aside>
+</div>
+
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var state = q.get("state") || "success";
+  var W = { "public-api": ["Public API", "plug"], "account-api": ["Account API", "key"], "browser": ["Browser", "window"] };
+  var boards = [
+    ["topcv", "TopCV", "browser", 1], ["itviec", "ITviec", "account-api", 1], ["vietnamworks", "VietnamWorks", "browser", 0],
+    ["linkedin", "LinkedIn", "account-api", 1], ["wellfound", "Wellfound", "browser", 0], ["upwork", "Upwork", "browser", 1]
+  ];
+  var feeds = [
+    ["remoteok", "Remote OK", "public-api", 0], ["weworkremotely", "We Work Remotely", "public-api", 0],
+    ["remotive", "Remotive", "public-api", 1], ["jobspresso", "Jobspresso", "public-api", 0]
+  ];
+  function build(host, list, title) {
+    var h = document.createElement("h3"); h.className = "muted xs strong"; h.textContent = title; host.appendChild(h);
+    var g = document.createElement("div"); g.className = "g12"; host.appendChild(g);
+    list.forEach(function (s) {
+      var on = state === "empty" ? false : !!s[3];
+      var w = W[s[2]];
+      var cell = document.createElement("div"); cell.className = "chiprow c4";
+      var path = state === "loading"
+        ? '<span class="pbar"></span><span class="sr-only">Access path loading</span>'
+        : '<i data-icon="' + w[1] + '"></i><span>' + w[0] + '</span>';
+      cell.innerHTML = '<button type="button" class="chip" aria-pressed="' + on + '" data-testid="source-' + s[0] + '"' + (state === "loading" ? ' aria-busy="true"' : '') + '>' +
+        '<span class="l1"><span>' + s[1] + '</span><i data-icon="check"></i></span><span class="l2">' + path + '</span></button>' +
+        (state === "loading" ? '' : '<button type="button" class="btn link" data-open-drawer data-testid="open-record-' + s[0] + '">Access record<span class="sr-only"> for ' + s[1] + '</span></button>');
+      g.appendChild(cell);
+    });
+  }
+  document.querySelectorAll("[data-chips]").forEach(function (host) {
+    if (host.getAttribute("data-chips") === "boards") build(host, boards, "Job boards");
+    else build(host, feeds, "Public feeds");
+  });
+})();
+</script>
+<script src="../assets/proto.js"></script>
+</body>
+</html>

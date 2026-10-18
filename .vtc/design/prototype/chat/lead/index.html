@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lead chat, scan notices · bs-job-agents prototype</title>
+<link rel="stylesheet" href="../../assets/tokens.css">
+<link rel="stylesheet" href="../../assets/proto.css">
+</head>
+<body data-states="empty loading error success missing-token token-rejected transient-failure adapter-broken" data-default-state="success">
+<div class="proto" role="navigation" aria-label="Prototype states">
+  <span class="tag strong">Prototype: scan-notices</span>
+  <a data-keeptheme href="?state=success">success</a>
+  <a data-keeptheme href="?state=missing-token">missing-token</a>
+  <a data-keeptheme href="?state=token-rejected">token-rejected</a>
+  <a data-keeptheme href="?state=transient-failure">transient-failure</a>
+  <a data-keeptheme href="?state=adapter-broken">adapter-broken</a>
+  <a data-keeptheme href="?state=loading">loading</a>
+  <a data-keeptheme href="?state=empty">empty</a>
+  <a data-keeptheme href="?state=error">error</a>
+</div>
+<div class="shell">
+  <aside class="side">
+    <span class="brand">Job agents</span>
+    <nav aria-label="Main">
+      <a href="./" aria-current="page">Chat</a>
+      <a href="../../review/">Review</a>
+      <a href="../../applications/">Applications</a>
+      <a href="../../cv/">Master CV</a>
+      <a href="../../criteria/">Search criteria</a>
+      <a href="../../schedules/">Schedules</a>
+      <a href="../../activity/">Activity</a>
+    </nav>
+  </aside>
+  <main class="main" id="main">
+    <div class="page">
+      <header class="head">
+        <h1>Lead</h1>
+        <p class="muted">Scan results and notices from your job scan.</p>
+      </header>
+
+      <div class="thread">
+        <section data-show="error" class="error" role="alert" aria-labelledby="err-h">
+          <i data-icon="tri"></i>
+          <h2 id="err-h">Could not load the conversation</h2>
+          <p>The orchestrator did not answer, so no messages are shown. Check that it is running on port 4100, then retry.</p>
+          <button class="btn primary" type="button" data-goto-state="success">Retry</button>
+        </section>
+
+        <section data-show="empty" class="empty" aria-labelledby="empty-h">
+          <h2 id="empty-h">No scans yet</h2>
+          <p>Start one from Lead. Failures and automatic repairs show up here, with what to do next.</p>
+        </section>
+
+        <div data-show="loading" aria-busy="true">
+          <div class="sk tall"></div><div class="sk tall" style="margin-top: var(--space-4)"></div>
+          <span class="sr-only">Loading the conversation</span>
+        </div>
+
+        <article data-show="success missing-token token-rejected transient-failure adapter-broken" class="msg">
+          <p><strong>Lead</strong> <span class="muted xs">Illustrative run summary</span></p>
+          <p>Scan started for 5 sources.</p>
+        </article>
+
+        <article data-show="success" class="msg" data-testid="run-summary">
+          <p><strong>Lead</strong></p>
+          <p>Scan finished. Every source completed. Nothing needs your attention.</p>
+        </article>
+
+        <article data-show="missing-token" class="notice" role="alert" data-testid="scan-notice">
+          <div class="row"><i data-icon="tri"></i>
+            <p><strong>LinkedIn scan failed:</strong> no LinkedIn token in local secret storage. The other sources go on.</p></div>
+          <div class="next"><p class="strong xs">What you can do</p>
+            <p>Add your LinkedIn token to local secret storage, then run the scan again. LinkedIn was not contacted.</p>
+            <time datetime="2026-10-17T09:00:00Z">17 Oct 2026, 16:00</time></div>
+        </article>
+
+        <article data-show="token-rejected" class="notice" role="alert" data-testid="scan-notice">
+          <div class="row"><i data-icon="tri"></i>
+            <p><strong>ITviec scan failed:</strong> the ITviec token was rejected (HTTP 401). The other sources go on.</p></div>
+          <div class="next"><p class="strong xs">What you can do</p>
+            <p>Renew the ITviec token in local secret storage, then run the scan again. This scan was not retried.</p>
+            <time datetime="2026-10-17T09:00:00Z">17 Oct 2026, 16:00</time></div>
+        </article>
+
+        <article data-show="transient-failure" class="notice" role="alert" data-testid="scan-notice">
+          <div class="row"><i data-icon="tri"></i>
+            <p><strong>Remote OK scan failed:</strong> HTTP 503 on every attempt. The other sources go on.</p></div>
+          <div class="next"><p class="strong xs">What you can do</p>
+            <p>Run the scan again later. Nothing is wrong with your settings.</p>
+            <button class="btn" type="button">Run the scan again</button>
+            <time datetime="2026-10-17T09:00:00Z">17 Oct 2026, 16:00</time></div>
+        </article>
+
+        <article data-show="adapter-broken" class="notice" role="alert" data-testid="scan-notice">
+          <div class="row"><i data-icon="tri"></i>
+            <div class="group">
+              <p><strong>TopCV adapter broken:</strong> no job cards on the results page (layout changed?)</p>
+              <p>Automatic repair failed: validation scan returned 0 jobs</p>
+            </div></div>
+          <div class="next"><p class="strong xs">What you can do</p>
+            <p>TopCV keeps its previous skill and later scans still use it. Open the activity log to see the attempt.</p>
+            <a class="btn" href="../../activity/" data-testid="open-activity">Open the activity log</a>
+            <time datetime="2026-10-17T09:00:00Z">17 Oct 2026, 16:00</time></div>
+        </article>
+      </div>
+      <p class="illus">Reasons and sources in this prototype are illustrative examples of the specified message formats.</p>
+    </div>
+  </main>
+</div>
+<script src="../../assets/proto.js"></script>
+</body>
+</html>

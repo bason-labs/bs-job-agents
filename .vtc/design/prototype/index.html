@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bs-job-agents design prototype</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/proto.css">
+</head>
+<body data-states="success" data-default-state="success">
+<main class="main" id="main">
+  <div class="page">
+    <header class="head">
+      <h1>Design prototype: API research, self-updating skills, derived CV facts</h1>
+      <p class="muted">Every screen renders each of its states at its route with <span class="mono">?state=&lt;state&gt;&amp;theme=&lt;light|dark|grayscale&gt;</span>. Content is illustrative.</p>
+    </header>
+    <div class="g12">
+      <section class="card c6"><h2 class="card-label">Search criteria <span class="muted xs">/criteria</span></h2>
+        <ul class="group"><li><a href="criteria/?state=success">success</a>, <a href="criteria/?state=record-open">record-open</a>, <a href="criteria/?state=loading">loading</a>, <a href="criteria/?state=empty">empty</a>, <a href="criteria/?state=error">error</a></li></ul></section>
+      <section class="card c6"><h2 class="card-label">Scan notices <span class="muted xs">/chat/lead</span></h2>
+        <ul class="group"><li><a href="chat/lead/?state=success">success</a>, <a href="chat/lead/?state=missing-token">missing-token</a>, <a href="chat/lead/?state=token-rejected">token-rejected</a>, <a href="chat/lead/?state=transient-failure">transient-failure</a>, <a href="chat/lead/?state=adapter-broken">adapter-broken</a>, <a href="chat/lead/?state=loading">loading</a>, <a href="chat/lead/?state=empty">empty</a>, <a href="chat/lead/?state=error">error</a></li></ul></section>
+      <section class="card c6"><h2 class="card-label">Activity log <span class="muted xs">/activity</span></h2>
+        <ul class="group"><li><a href="activity/?state=success">success</a>, <a href="activity/?state=repairing">repairing</a>, <a href="activity/?state=loading">loading</a>, <a href="activity/?state=empty">empty</a>, <a href="activity/?state=error">error</a></li></ul></section>
+      <section class="card c6"><h2 class="card-label">Master CV <span class="muted xs">/cv</span></h2>
+        <ul class="group"><li><a href="cv/?state=success">success</a>, <a href="cv/?state=undo-offered">undo-offered</a>, <a href="cv/?state=undone">undone</a>, <a href="cv/?state=source-changed">source-changed</a>, <a href="cv/?state=rejected">rejected</a>, <a href="cv/?state=fact-request">fact-request</a>, <a href="cv/?state=loading">loading</a>, <a href="cv/?state=empty">empty</a>, <a href="cv/?state=error">error</a></li></ul></section>
+    </div>
+  </div>
+</main>
+<script src="assets/proto.js"></script>
+</body>
+</html>
