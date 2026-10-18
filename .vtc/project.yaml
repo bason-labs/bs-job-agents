@@ -33,3 +33,4 @@ git:
   sign_commits: false
 auto_merge:
   block_severity: medium
+autopilot: true
