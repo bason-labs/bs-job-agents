@@ -126,8 +126,13 @@ describe("the tailor gate with CV guidance (AD-13)", () => {
 
   it("REQ-38.AC-2: a skill no experience fact mentions (Go) → not met, round 2 gets 'Remove Go', the revised CV without Go passes", async () => {
     const t = await setup();
+    // Ba has a skill fact "Go", but no experience or project fact mentions it.
+    const master = truthfulMaster();
+    master.facts.push({ id: "skill-go", type: "skill", text: "Go", textVi: null, tags: [], org: null, dates: null });
+    writeMaster(t.files, t.masterCv, master);
     const withGo: TailoredCv = structuredClone(cvOutputFixture.tailored);
     withGo.sections[1]!.items[0]!.bullets[0]!.text += ", Go";
+    withGo.sections[1]!.items[0]!.bullets[0]!.factIds.push("skill-go");
     t.runner.script({ bot: "cv", kind: "tailor", when: round(1), result: (task) => cvWith(task, withGo) });
     const r = run(t);
     await t.idle();
@@ -209,6 +214,50 @@ describe("the tailor gate with CV guidance (AD-13)", () => {
     expect(gate(t, r.id).rounds).toHaveLength(1);
     const failed = t.events("task.finished").find((e) => e.status === "failed");
     expect(failed?.error).toMatch(/truth check failed before QA \(SEC-25\).*says 30/);
+  });
+
+  it("F1: a guidance-driven round 2 whose tailor fails out of attempts hands the QA-passed round 1 to Ba, saying why", async () => {
+    const t = await setup();
+    t.runner.script({ bot: "cv", kind: "review", times: 1, result: review([notMetOrder]) });
+    t.runner.script({ bot: "cv", kind: "tailor", when: round(2), result: fake.failed("Figma went away") });
+    const r = run(t);
+    await t.idle();
+    const out = gate(t, r.id);
+    expect(t.step(r.id, "tailor", "1:en")?.status).toBe("done");
+    expect(out.outcome).toBe("passed");
+    expect(out.cvVersionId).toBe(out.rounds[0]!.cvVersionId);
+    const stored = getGuidanceReview(t.db, out.cvVersionId!)!.result;
+    expect(stored.note).toMatch(/^Round 2 could not be tailored \(cv\.tailor failed: .*Figma went away.*\); round 1, which passed QA, went to review instead\.$/);
+    // Only round 1 produced a CV to check.
+    expect(stored.rounds).toBe(1);
+    expect(t.review(r.id, 1)).toMatchObject({ qaPassed: true });
+  });
+
+  it("F7: the stored review counts the rounds of its own pass only", async () => {
+    const t = await setup();
+    t.runner.script({ bot: "cv", kind: "review", times: 1, result: review([notMetOrder]) });
+    const r = run(t);
+    await t.idle();
+    const out = gate(t, r.id);
+    expect(getGuidanceReview(t.db, out.cvVersionId!)!.result.rounds).toBe(2);
+    expect(getGuidanceReview(t.db, out.rounds[0]!.cvVersionId!)!.result.rounds ?? null).toBeNull();
+  });
+
+  it.each([
+    ["a skill", (c: TailoredCv): void => void (c.sections[1]!.items[0]!.bullets[0]!.text += ", Kubernetes"), /names the skill Kubernetes/],
+    ["a title", (c: TailoredCv): void => void (c.summary!.text = `Senior ${c.summary!.text}`), /names the title senior/],
+    ["an employer", (c: TailoredCv): void => void (c.sections[0]!.items[0]!.bullets[1]!.text = "Owned a multi-country purchase order system for Google."), /names Google/],
+  ] as const)("success item 4: a guidance fix that adds %s fails the attempt before export and QA, not a round", async (_what, edit, error) => {
+    const t = await setup();
+    const bad: TailoredCv = structuredClone(cvOutputFixture.tailored);
+    edit(bad);
+    t.runner.script({ bot: "cv", kind: "tailor", times: 1, result: (task) => cvWith(task, bad) });
+    const r = run(t);
+    await t.idle();
+    expect(t.tasks("cv.tailor")[0]).toMatchObject({ status: "done", attempt: 2 });
+    expect(t.runner.callsFor("qa.review")).toHaveLength(1);
+    expect(gate(t, r.id).rounds).toHaveLength(1);
+    expect(t.events("task.finished").find((e) => e.status === "failed")?.error).toMatch(error);
   });
 
   it("a failed cv.review never fails the CV: the round completes without its judgement", async () => {

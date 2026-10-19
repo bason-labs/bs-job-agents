@@ -76,6 +76,11 @@ describe("the review step's CV guidance panel (REQ-40)", () => {
     expect(screen.getByRole("tabpanel")).toHaveTextContent("All CV guidance rules met");
   });
 
+  it("F1: an earlier round handed to Ba says why", () => {
+    render(<GuidancePanel guidance={guidance([], { note: "Round 2 could not be tailored (cv.tailor failed: timed out); round 1, which passed QA, went to review instead." })} />);
+    expect(screen.getByTestId("guidance-hand-note")).toHaveTextContent("round 1, which passed QA, went to review instead.");
+  });
+
   it("shows nothing when no CV of the card has a guidance result", () => {
     const { container } = render(<ReviewGuidance card={{ cvOptions: reviewCardFixture.cvOptions }} lang="en" onSelect={() => {}} />);
     expect(container).toBeEmptyDOMElement();

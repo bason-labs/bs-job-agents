@@ -117,6 +117,8 @@ export interface GateStepOutput {
   guidance?: ResolvedGuidance | null;
   /** CV guidance: the pass used its rounds; the round handed to Ba waits for its cv.review. */
   handing?: { round: number; outcome: "passed" | "escalated" } | null;
+  /** F1: why the handed round is not the last one (a later round failed). */
+  handNote?: string | null;
 }
 
 /** Ba's decision on a review card (PM brief: kept for the §5.3 promotion rule and sub-project C). */

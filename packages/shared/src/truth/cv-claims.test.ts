@@ -41,7 +41,20 @@ describe("checkCvClaims (SEC-25)", () => {
     expect(checkCvClaims(c, facts).map((p) => p.where)).toEqual(["summary"]);
   });
 
-  it("job titles are left to QA (SEC-25 checks numbers, months, years and durations)", () => {
-    expect(checkCvClaims(cv(null, "Led the frontend team"), [fact("f-12", "Built the frontend")])).toEqual([]);
+  it("guidance-fix probes: a skill, a title or an employer the facts lack is rejected before QA", () => {
+    const facts = [fact("f-12", "Built REST APIs in Java and Spring Boot", "2023-2025"), fact("s-1", "Java, Spring Boot")];
+    const probe = (bullet: string, ids = ["f-12"]) => checkCvClaims(cv("2023 – 2025", bullet, ids), facts).flatMap((p) => p.problems);
+    expect(probe("Built REST APIs in Java and Spring Boot, deployed on Kubernetes")).toEqual([{ kind: "skill", value: "Kubernetes" }]);
+    expect(probe("Senior engineer who built REST APIs in Java")).toEqual(expect.arrayContaining([{ kind: "title", value: "senior" }]));
+    expect(probe("Built REST APIs in Java for Google")).toEqual([{ kind: "name", value: "Google" }]);
+    expect(cvClaimsError(checkCvClaims(cv(null, "Built REST APIs in Java for Google"), facts))).toMatch(/names Google/);
+  });
+
+  it("a term, title or employer the cited facts (or Ba's master CV) give passes", () => {
+    const facts = [fact("f-12", "Software Engineer: built REST APIs in Java and Spring Boot at Gradion", "2023-2025"), fact("s-1", "Kubernetes")];
+    expect(checkCvClaims(cv(null, "Engineer at Gradion: built REST APIs in Java and Spring Boot"), facts)).toEqual([]);
+    // A skill must come from a fact the bullet cites.
+    expect(checkCvClaims(cv(null, "Built REST APIs in Java on Kubernetes"), facts).flatMap((p) => p.problems)).toEqual([{ kind: "skill", value: "Kubernetes" }]);
+    expect(checkCvClaims(cv(null, "Built REST APIs in Java on Kubernetes", ["f-12", "s-1"]), facts)).toEqual([]);
   });
 });

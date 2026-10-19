@@ -59,11 +59,19 @@ export function GuidancePanel({ guidance }: { guidance: ReviewGuidance }) {
   const listId = useId();
   const [open, setOpen] = useState(false);
   const attention = guidanceAttention(guidance.result);
+  const note = guidance.note ? (
+    <p className="text-xs text-warn" data-testid="guidance-hand-note">
+      {guidance.note}
+    </p>
+  ) : null;
   if (attention.length === 0) {
     return (
-      <section data-testid="guidance-panel" className="flex items-center gap-2 rounded-2xl border border-border bg-surface/60 px-4 py-3 text-sm">
-        <CheckCircle2 aria-hidden className="size-4 text-ok" />
-        <span data-testid="guidance-all-met">All CV guidance rules met</span>
+      <section data-testid="guidance-panel" className="space-y-1 rounded-2xl border border-border bg-surface/60 px-4 py-3 text-sm">
+        <p className="flex items-center gap-2">
+          <CheckCircle2 aria-hidden className="size-4 text-ok" />
+          <span data-testid="guidance-all-met">All CV guidance rules met</span>
+        </p>
+        {note}
       </section>
     );
   }
@@ -75,6 +83,7 @@ export function GuidancePanel({ guidance }: { guidance: ReviewGuidance }) {
       <p className="text-xs text-muted" data-testid="guidance-summary">
         {reviewSummary(guidance, attention.length)}
       </p>
+      {note}
       <ul>
         {attention.map((item) => (
           <AttentionItem key={item.ruleId} item={item} lastRound={guidance.lastRound} />

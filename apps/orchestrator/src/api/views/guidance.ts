@@ -12,7 +12,7 @@ import {
   type GuidanceView,
   type ReviewGuidance,
 } from "@bs-job-agents/shared";
-import { listCvVersions, listEvents, type Db } from "../../db/index.js";
+import { listEvents, type Db } from "../../db/index.js";
 import { getGuidanceReview } from "../../db/repos/guidance-reviews.js";
 import { currentGuidanceRuleSet, getGuidanceSettings, getGuidanceSnapshot } from "../../db/repos/guidance.js";
 
@@ -66,13 +66,12 @@ export function activityEntries(db: Db): ActivityEntry[] {
     .reverse();
 }
 
-/** The review panel for one CV version: its stored review and how many guided rounds led to it. */
-export function reviewGuidance(db: Db, cv: { id: number; jobId: number; language: string }): ReviewGuidance | null {
+/** The review panel for one CV version: its stored review, the rounds of its own pass (F7), and why it was handed. */
+export function reviewGuidance(db: Db, cv: { id: number }): ReviewGuidance | null {
   const stored = getGuidanceReview(db, cv.id);
   if (!stored) return null;
   const parsed = GuidanceReviewResultSchema.safeParse(stored.result);
   if (!parsed.success) return null;
-  const guided = listCvVersions(db, cv.jobId).filter((v) => v.language === cv.language && getGuidanceReview(db, v.id) !== undefined);
-  const rounds = Math.max(1, guided.length);
-  return { result: parsed.data, rounds, revisions: rounds - 1, lastRound: rounds >= LIMITS.qaMaxRounds };
+  const rounds = parsed.data.rounds ?? 1;
+  return { result: parsed.data, rounds, revisions: rounds - 1, lastRound: rounds >= LIMITS.qaMaxRounds, note: parsed.data.note ?? null };
 }

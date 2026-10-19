@@ -111,7 +111,8 @@ export function startGate(
 }
 
 /** Failures and pauses of the current round's tasks; the transitions themselves happen when a task settles. */
-export function pollGate(core: EngineCore, conn: Conn, ctx: RunCtx, step: GateStep, row: Step): "active" | "failed" {
+export function pollGate(core: EngineCore, conn: Conn, ctx: RunCtx, step: GateStep, row: Step): "active" | "failed" | "done" {
+  const settled = (): "active" | "done" => (getStep(conn, row.id)?.status === "done" ? "done" : "active");
   const out = row.output as GateStepOutput;
   const last = out.handing ? roundOf(out, out.handing.round) : out.rounds.at(-1);
   if (!last) {
@@ -123,7 +124,7 @@ export function pollGate(core: EngineCore, conn: Conn, ctx: RunCtx, step: GateSt
   if (reviewer && (reviewer.status === "failed" || reviewer.status === "interrupted") && !last.guidance!.completed) {
     core.log.warn(`cv.review task ${reviewer.id} failed (${reviewer.error ?? "no attempts left"}); the round goes on without its judgement`);
     completeRound(core, conn, ctx, step, row, structuredClone(out), last.round, null);
-    return "active";
+    return settled();
   }
   const tasks = [
     out.handing ? undefined : getTask(conn, last.producerTaskId),
@@ -132,6 +133,15 @@ export function pollGate(core: EngineCore, conn: Conn, ctx: RunCtx, step: GateSt
   ].filter((t): t is Task => t !== undefined);
   const failed = tasks.find((t) => t !== reviewer && (t.status === "failed" || t.status === "interrupted"));
   if (failed) {
+    // F1: a later round (asked for by guidance) that failed never loses an earlier QA-passed CV.
+    const passed = [...out.rounds].reverse().find((r) => r.pass === out.pass && r.round < last.round && r.passed === true && r.cvVersionId !== null);
+    if (passed && !out.handing) {
+      const next = structuredClone(out);
+      next.handing = { round: passed.round, outcome: "passed" };
+      next.handNote = `Round ${last.round} could not be tailored (${failed.botName}.${failed.kind} failed: ${failed.error ?? "no attempts left"}); round ${passed.round}, which passed QA, went to review instead.`;
+      finishGate(core, conn, ctx, step, row, next);
+      return settled();
+    }
     setStep(core, conn, row, "failed", { error: `${failed.botName}.${failed.kind} failed: ${failed.error ?? "no attempts left"}` });
     return "failed";
   }
@@ -302,6 +312,7 @@ function completeRound(core: EngineCore, conn: Conn, ctx: RunCtx, step: GateStep
   if (qaPassed && !hasFixableMiss(result)) {
     out.outcome = "passed";
     out.cvVersionId = round.cvVersionId;
+    recordPass(core, conn, out, round.cvVersionId);
     appendRequests(conn, round.cvVersionId);
     setStep(core, conn, row, "done", { output: out, round: n, preview: `QA ${round.total} · passed${guidanceNote(conn, round.cvVersionId)}` });
     return;
@@ -334,6 +345,7 @@ function finishGate(core: EngineCore, conn: Conn, ctx: RunCtx, step: GateStep, r
   if (!handed || handed.cvVersionId === null || !out.handing) return;
   out.outcome = out.handing.outcome;
   out.cvVersionId = handed.cvVersionId;
+  recordPass(core, conn, out, handed.cvVersionId);
   appendRequests(conn, handed.cvVersionId);
   const qa = handed.qaReviewId === null ? undefined : getQaReview(conn, handed.qaReviewId);
   // PM2 S8: demotion follows the round handed to review.
@@ -343,6 +355,14 @@ function finishGate(core: EngineCore, conn: Conn, ctx: RunCtx, step: GateStep, r
   const last = Math.max(...out.rounds.filter((r) => r.pass === out.pass).map((r) => r.round));
   const preview = out.outcome === "passed" ? `QA ${handed.total} · passed${guidanceNote(conn, handed.cvVersionId)}` : `QA not passed after ${step.maxRounds} rounds`;
   setStep(core, conn, row, "done", { output: out, round: last, preview });
+}
+
+/** F7: the handed version's review records the rounds of its own pass, and why it was handed. */
+function recordPass(core: EngineCore, conn: Conn, out: GateStepOutput, cvVersionId: number): void {
+  const stored = getGuidanceReview(conn, cvVersionId);
+  if (!stored) return;
+  const rounds = out.rounds.filter((r) => r.pass === out.pass && r.cvVersionId !== null).length;
+  saveGuidanceReview(conn, { cvVersionId, result: { ...stored.result, rounds: Math.max(1, rounds), note: out.handNote ?? null } }, { now: core.now() });
 }
 
 function appendRequests(conn: Conn, cvVersionId: number): void {

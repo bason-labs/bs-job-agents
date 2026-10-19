@@ -86,5 +86,7 @@ export const ReviewGuidanceSchema = z.object({
   revisions: z.number().int().nonnegative(),
   /** The pass used all its rounds (the "Still not met after round 3" note). */
   lastRound: z.boolean(),
+  /** Why an earlier round was handed to Ba (a later round failed), or null. */
+  note: z.string().nullable().optional(),
 });
 export type ReviewGuidance = z.infer<typeof ReviewGuidanceSchema>;

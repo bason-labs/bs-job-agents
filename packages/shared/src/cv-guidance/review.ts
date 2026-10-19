@@ -61,6 +61,10 @@ export const GuidanceReviewResultSchema = z.object({
   /** One per fixable not_met item: what the next round is asked to fix. */
   fixes: z.array(z.object({ ruleId: z.string(), point: z.string(), instruction: z.string(), factIds: z.array(z.string()) })),
   factRequests: z.array(GuidanceFactRequestSchema),
+  /** Set when the pass ended: the rounds it ran (the review step's "Checked in n rounds"). */
+  rounds: z.number().int().positive().optional(),
+  /** Why this round went to review instead of a later one (a later round failed). */
+  note: z.string().nullable().optional(),
 });
 export type GuidanceReviewResult = z.infer<typeof GuidanceReviewResultSchema>;
 
