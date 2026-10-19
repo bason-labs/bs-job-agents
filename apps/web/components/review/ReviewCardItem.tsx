@@ -36,6 +36,7 @@ import {
   type NoticeTone,
 } from "./model";
 import { ApproveDialog, ConfirmInjectionDialog, RequestChangesDialog, SkipDialog } from "./ReviewDialogs";
+import { ReviewGuidance } from "./ReviewGuidancePanel";
 
 /** What Ba did to a card while it waits for the bots (prototype status lines). */
 export type ActedOutcome = { kind: "approved"; result: ApproveResult; dryRun: boolean } | { kind: "changes" };
@@ -247,6 +248,7 @@ export function ReviewCardItem({ card, acted, onApproved, onChangesRequested, on
         </div>
 
         <QaBox option={option} />
+        <ReviewGuidance card={card} lang={lang} onSelect={setLang} />
 
         {acted ? (
           <p className="text-xs text-accent" role="status" data-testid="acted">

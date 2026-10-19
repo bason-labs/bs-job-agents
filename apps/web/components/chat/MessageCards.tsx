@@ -155,6 +155,13 @@ export function MessageCards({ message }: { message: Message }) {
                 <Inbox aria-hidden className="size-3.5" /> Open review queue <ArrowRight aria-hidden className="size-3.5" />
               </Link>
             );
+          case "guidance_link":
+            // CV guidance: a failed refresh's notice (scan-notices.md).
+            return (
+              <Link key={key} href="/guidance" data-testid="guidance-link" className={cn(buttonClass({ size: "sm", pill: true }), "w-fit")}>
+                Open the CV guidance <ArrowRight aria-hidden className="size-3.5" />
+              </Link>
+            );
           case "question":
             return <QuestionCard key={key} card={card} />;
           case "pause":

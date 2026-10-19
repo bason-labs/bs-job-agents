@@ -4,8 +4,8 @@ import { NAV_ITEMS, botChatHref, isNavActive, isTeamActive, titleForPath } from 
 
 describe("NAV_ITEMS", () => {
   it("matches the prototype sidebar order and copy", () => {
-    expect(NAV_ITEMS.map((n) => n.label)).toEqual(["Chat", "Flows", "Review", "Applications", "Search criteria", "Schedules"]);
-    expect(NAV_ITEMS.map((n) => n.href)).toEqual(["/chat", "/flows", "/review", "/applications", "/criteria", "/schedules"]);
+    expect(NAV_ITEMS.map((n) => n.label)).toEqual(["Chat", "Flows", "Review", "Applications", "Search criteria", "Schedules", "Activity"]);
+    expect(NAV_ITEMS.map((n) => n.href)).toEqual(["/chat", "/flows", "/review", "/applications", "/criteria", "/schedules", "/activity"]);
   });
 });
 
@@ -24,6 +24,8 @@ describe("titleForPath", () => {
     ["/bots", "Bots"],
     ["/bots/apply", "Bots · Apply"],
     ["/cv", "Master CV"],
+    ["/guidance", "CV guidance"],
+    ["/activity", "Activity"],
     ["/rooms/cv-brainstorm", "# cv-brainstorm"],
   ])("%s → %s", (path, title) => {
     expect(titleForPath(path, bots, rooms)).toBe(title);

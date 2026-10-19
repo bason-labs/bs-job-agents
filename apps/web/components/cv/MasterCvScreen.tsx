@@ -377,6 +377,14 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, init
     el?.focus();
   };
 
+  /** CV guidance (§5.8): a months request opens the fact's own editor; Ba types the months himself. */
+  const editFact = (id: string) => {
+    const item = items.find((i) => i.fact.id === id);
+    if (!item) return;
+    setEditing(item.key);
+    requestAnimationFrame(() => focusFact(id));
+  };
+
   const undoDerivedAdd = async (add: DerivedAddView) => {
     setUndoingDerived(add.version);
     setUndoErrors((e) => ({ ...e, [add.version]: "" }));
@@ -497,6 +505,7 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, init
           onChange={(text) => setTexts((t) => ({ ...t, [r.id]: text }))}
           onSubmit={() => void draftFrom(r.id, texts[r.id] ?? "", r)}
           onDecline={() => void declineRequest(r)}
+          {...(r.origin === "guidance" && r.field === "dates" && r.factId ? { onEditFact: () => editFact(r.factId!) } : {})}
           drafting={drafting[r.id] === true}
           disabled={!exists || conflict !== null}
           note={notes[r.id] ?? null}
