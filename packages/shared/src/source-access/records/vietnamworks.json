@@ -1,0 +1,22 @@
+{
+  "source": "vietnamworks",
+  "researchedAt": "2026-10-19",
+  "publicApi": {
+    "usable": false,
+    "needsDeveloperKey": true,
+    "docsUrl": "https://rapidapi.com/zh/collection/github-jobs-api",
+    "endpoints": [],
+    "note": "A RapidAPI collection lists a 'VietnamWorks Job Seeker Portal' API (user management, job search, apply, matching score) that needs a consumer key requested through VietnamWorks' feedback form. Secondhand listing; no official docs found. Needs a developer key, so not usable (design 5.1)."
+  },
+  "internalApiGetEndpoints": "none found",
+  "applyEndpoints": "none found",
+  "auth": { "kind": "none", "names": [], "howToCopy": "Not applicable: no usable GET endpoint. (The site's own job search call is a POST without login cookies; the logged-in api-gateway calls use an 'Authorization: Bearer' header and an 'X-App-Id' header, names only, seen in the site's JavaScript.)" },
+  "termsOfUse": {
+    "url": "https://www.vietnamworks.com/operation-ecommerce",
+    "clauses": []
+  },
+  "accountRisk": "Not assessed in depth: no usable GET path was found, so the browser path stays. The only terms page found (vietnamworks.com/operation-ecommerce, titled 'Terms Of Use') covers an e-commerce trading floor, not the job site; no job-site clause on bots or automated access was found. robots.txt (2026-10-19) allows job pages and disallows profile, apply and /jobseekers/ajax.php paths.",
+  "riskLevel": "low",
+  "chosenPath": "browser",
+  "notes": "Job search is client-rendered: the page at www.vietnamworks.com/viec-lam?q=... ships no results in HTML; the site JS calls POST https://ms.vietnamworks.com/job-search/v1.0/search with a JSON body (headers Content-Type: application/json, X-Source: Page-Container; requested fields include jobId, jobTitle, alias, companyName, workingLocations, approvedOn, expiredOn, isSalaryVisible, ...). Not called (POST is off-limits). Other ms.vietnamworks.com paths seen in JS: /job-search/v1.0/count-jobs-by-job-function, /meta/v1.0/*, /api-gateway/v1.0/* (profile, save-job, job/:id/hide (POST) — never call). Job detail: https://www.vietnamworks.com/<alias>-<jobId>-jv (a short alias-<jobId>-jv redirects to the full alias with a long numeric prefix). It is a Next.js App Router page; the job object (jobId, jobTitle, jobDescription, jobRequirement, salaryMin/Max, isSalaryVisible, skills, benefits, workingLocations, ...) is embedded in the React Server Components payload (self.__next_f.push chunks), with jobDescription/jobRequirement as $-references to other chunks; no JSON-LD. A guest GET of a live job page returned this payload (64 KB). If a GET search route is found later (e.g. in Ba's Chrome network log), this board could move to account_api with that page as the detail endpoint. Third-party scrapers report search runs on Algolia; not confirmed. Chrome extension was not connected, so network requests were not observed; findings come from the site's public JavaScript and guest page GETs."
+}

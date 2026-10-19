@@ -1,0 +1,24 @@
+{
+  "source": "wellfound",
+  "researchedAt": "2026-10-19",
+  "publicApi": "none found",
+  "internalApiGetEndpoints": "none found",
+  "applyEndpoints": "none found",
+  "auth": {
+    "kind": "none",
+    "names": [],
+    "howToCopy": "Not applicable yet: no usable GET endpoint was observed. Wellfound sits behind an anti-bot layer (third parties name DataDome; a guest curl of robots.txt on 2026-10-19 got HTTP 403 'Security Check | Wellfound'), so any future account path would need Ba's session cookies, whose names must be read in DevTools > Application > Cookies > https://wellfound.com."
+  },
+  "termsOfUse": {
+    "url": "https://wellfound.com/terms",
+    "clauses": [
+      "use any automated system (including a spider, robot, or offline reader) to access the Site or Services",
+      "(including through the use of automated or non-automated harvesting, collection or \"scraping\")",
+      "in a manner that takes more bandwidth or produces greater load on Wellfound's network or servers than a human can reasonably produce"
+    ]
+  },
+  "accountRisk": "High. The terms (section III, prohibited conduct) forbid automated systems and scraping. Wellfound runs aggressive anti-bot protection (DataDome/Cloudflare per scraper vendors; a plain guest request is blocked with a 'Security Check' page), so automated reads with Ba's session are likely to be flagged, which can lock Ba out behind challenges or get the account blocked.",
+  "riskLevel": "high",
+  "chosenPath": "browser",
+  "notes": "Chrome extension was not connected, so network requests were not observed. Per ScrapFly's write-up, Wellfound is a Next.js + Apollo GraphQL site: search pages (/role/r/<role-slug>, /role/<role>, /role/l/<role>/<location>, ?page=N) embed results in script#__NEXT_DATA__ at props.pageProps.apolloState.data (keys JobListingSearchResult:<id>, StartupResult:<id>, a seoLandingPageJobSearchResults key with pageCount); client-side GraphQL calls go to a POST /graphql endpoint (not called, POST is off-limits; not confirmed whether any GET persisted-query variant exists). Job page: https://wellfound.com/jobs/<id>-<slug> with #job-description. To revisit: observe /role/r/<slug> and a job page in Ba's Chrome and check for GET GraphQL (persisted query) requests; until then browser."
+}

@@ -1,0 +1,29 @@
+{
+  "source": "upwork",
+  "researchedAt": "2026-10-19",
+  "publicApi": {
+    "usable": false,
+    "needsDeveloperKey": true,
+    "docsUrl": "https://www.upwork.com/developer/documentation/graphql/api/docs/index.html",
+    "endpoints": [],
+    "note": "Official GraphQL API (POST https://api.upwork.com/graphql) with OAuth2 (token endpoint https://www.upwork.com/api/v3/oauth2/token) and an API key requested from Upwork; job search uses the marketplace job postings search query with the 'Read marketplace Job Postings' scope. Needs a developer key/OAuth app, so not usable in this sub-project (design 5.1). It is the sanctioned route if Ba later gets a key."
+  },
+  "internalApiGetEndpoints": "none found",
+  "applyEndpoints": "none found",
+  "auth": {
+    "kind": "none",
+    "names": [],
+    "howToCopy": "Not applicable: no internal GET endpoint was observed. The upwork.com site's own data calls are believed to be POST GraphQL with session cookies plus an OAuth bearer header; names must be read from Ba's DevTools > Network if this is revisited."
+  },
+  "termsOfUse": {
+    "url": "https://www.upwork.com/legal",
+    "clauses": [
+      "use a robot, spider, scraper, or similar mechanisms on our site without written permission",
+      "Even if the tool says it was created for Upwork, it doesn't mean it's allowed, approved, or endorsed by us."
+    ]
+  },
+  "accountRisk": "High. Upwork's Terms of Use (section 3.5, quoted via search snippet; upwork.com/legal returned 403 to direct fetch) forbid robots, spiders and scrapers without written permission. Upwork's help article 'Use bots and other automation properly' (https://support.upwork.com/hc/en-us/articles/43342677368467) treats scraping and job-alert/search tools as prohibited automation and says violations can lead to warnings, temporary restrictions or permanent blocking. Ba's Upwork account is a freelancer account whose suspension would cost income and Connects; risk is high.",
+  "riskLevel": "high",
+  "chosenPath": "browser",
+  "notes": "Chrome extension was not connected, so network requests were not observed. upwork.com and support.upwork.com return 403 to non-browser fetches (Cloudflare). Search page: https://www.upwork.com/nx/search/jobs/?q=<role>&sort=recency (cards article[data-test=JobTile]); job page https://www.upwork.com/jobs/~<id>. Third-party sources indicate the web app loads search via POST GraphQL on www.upwork.com/api/graphql/v1 (not verified, not called). If a GET endpoint is observed later in Ba's Chrome, record it here; otherwise this board stays on browser. The second termsOfUse clause is from the help article above, not the ToS."
+}

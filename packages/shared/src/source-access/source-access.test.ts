@@ -148,6 +148,14 @@ describe("the six board records", () => {
     }
   });
 
+  it("all six researched records are wired in (none is the unresearched placeholder)", () => {
+    for (const r of sourceAccessRecords()) expect(r.researchedAt, r.source).not.toBe("unresearched");
+  });
+
+  it("LinkedIn's csrf-token is sent as a header, its cookies as cookies", () => {
+    expect(sourceAccessRecord("linkedin").auth).toMatchObject({ kind: "cookie+header", names: ["li_at", "JSESSIONID", "header:csrf-token"] });
+  });
+
   it("an unresearched board is read in the browser", () => {
     const r = unresearchedRecord("linkedin");
     expect(accessPathOf(r, { approved: true })).toBe("browser");
