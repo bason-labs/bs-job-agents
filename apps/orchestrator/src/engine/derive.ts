@@ -84,7 +84,14 @@ export interface DerivedFactSink {
    * Re-read, re-screen (`company`: the job's employer, never named; `limit`: how many may still be
    * added for this job) and append what still passes as one new revision; learned implications too.
    */
-  add(ctx: DerivedFactSinkContext, drafts: readonly DeriveCandidate[], opts: { company: string | null; limit: number }): DerivedAddResult;
+  add(ctx: DerivedFactSinkContext, drafts: readonly DeriveCandidate[], opts: DeriveAddOptions): DerivedAddResult;
+}
+
+/** What the sink re-screens with: the job's employer (never named), the cap left, the gaps asked about. */
+export interface DeriveAddOptions {
+  company: string | null;
+  limit: number;
+  gaps: readonly string[];
 }
 
 /** The derive step's output (steps.output_json), kept while the cv.derive task runs. */
@@ -127,12 +134,12 @@ function screenAndAdd(
   sink: DerivedFactSink,
   source: DeriveSource,
   drafts: readonly DeriveCandidate[],
-  ctx: { runId: number | null; jobId: number; task: Task | null; company: string | null; limit: number },
+  ctx: { runId: number | null; jobId: number; task: Task | null; company: string | null; limit: number; gaps: readonly string[] },
 ): { added: Fact[]; rejected: number } {
   if (drafts.length === 0) return { added: [], rejected: 0 };
   const table = implicationTable(source.learned);
-  const { accepted, rejected } = screenDerivedFacts(drafts, { cv: source.cv, table, forbiddenNames: ctx.company ? [ctx.company] : [], limit: ctx.limit });
-  const result = accepted.length > 0 ? sink.add({ conn, now: core.now(), runId: ctx.runId, jobId: ctx.jobId, task: ctx.task }, accepted, { company: ctx.company, limit: ctx.limit }) : { added: [], dropped: [], version: null };
+  const { accepted, rejected } = screenDerivedFacts(drafts, { cv: source.cv, table, forbiddenNames: ctx.company ? [ctx.company] : [], limit: ctx.limit, gaps: ctx.gaps });
+  const result = accepted.length > 0 ? sink.add({ conn, now: core.now(), runId: ctx.runId, jobId: ctx.jobId, task: ctx.task }, accepted, { company: ctx.company, limit: ctx.limit, gaps: ctx.gaps }) : { added: [], dropped: [], version: null };
   const all = [...rejected, ...result.dropped];
   auditRejected(core, conn, all, { runId: ctx.runId, taskId: ctx.task?.id ?? null, jobId: ctx.jobId });
   return { added: result.added, rejected: all.length };
@@ -173,7 +180,7 @@ function startDerive(core: EngineCore, tx: Conn, ctx: RunCtx, step: TaskStep, sc
   if (open.length === 0) return settle({ ...empty("every gap is covered"), gaps: gaps.length });
   // The table pass: code only.
   const { derivations, remaining } = tablePass(open, own, table);
-  const refs = { runId: ctx.run.id, jobId: job.id, task: null, company, limit: DERIVE_MAX_FACTS };
+  const refs = { runId: ctx.run.id, jobId: job.id, task: null, company, limit: DERIVE_MAX_FACTS, gaps };
   const fromTable = screenAndAdd(core, tx, sink, source, tableDrafts(derivations), refs);
   const out: DeriveStepOutput = { gaps: gaps.length, added: view(fromTable.added), rejected: fromTable.rejected, model: "none", taskId: null };
   // The tailor gate may start in this same advance: it must pin the version that holds these facts.
@@ -243,7 +250,10 @@ export function onDeriveDone(core: EngineCore, tx: Conn, task: Task, output: Der
   const company = job ? (getCompany(tx, job.companyId)?.name ?? null) : null;
   const drafts = output.drafts.map((d) => ({ ...d, via: "model" as const }));
   const limit = Math.max(0, DERIVE_MAX_FACTS - (out?.added.length ?? 0));
-  const r = screenAndAdd(core, tx, sink, source, drafts, { runId: task.runId, jobId, task, company, limit });
+  // Only the gaps this task was asked about (QA: "Rust from Python" when Rust is no gap).
+  const gaps = (task.input as { gaps?: unknown } | null)?.gaps;
+  const asked = Array.isArray(gaps) ? gaps.filter((g): g is string => typeof g === "string") : [];
+  const r = screenAndAdd(core, tx, sink, source, drafts, { runId: task.runId, jobId, task, company, limit, gaps: asked });
   if (row && out && !isTerminalStep(row)) {
     const next: DeriveStepOutput = { ...out, added: [...out.added, ...view(r.added)], rejected: out.rejected + r.rejected };
     setStep(core, tx, row, row.status, { output: next, preview: preview(next) });

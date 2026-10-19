@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { allowedNumbers, capitalisedNames, claimNumbersIn, claimsIn, durationsIn, monthsIn, numbersIn, titlesIn, unsupportedClaims, type ClaimSource } from "./claims.js";
+import { allowedNumbers, capitalisedNames, claimsIn, numbersIn, titlesIn, unsupportedClaims, type ClaimSource } from "./claims.js";
+
+const claimNumbersIn = (t: string) => claimsIn(t).numbers;
+const durationsIn = (t: string) => claimsIn(t).durations;
+const monthsIn = (t: string) => claimsIn(t).months;
 
 const src = (texts: string[], dates: string[] = []): ClaimSource => ({ texts, dates });
 

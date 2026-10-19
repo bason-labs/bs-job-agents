@@ -15,6 +15,10 @@ export interface KnownTerm {
   name: string;
   variants?: readonly string[];
   categories?: readonly SkillCategory[];
+  /** Matched only as written ("Swift" the language, not "SWIFT" the payment network). */
+  caseSensitive?: boolean;
+  /** A name that is not a tool ("American Express"): known only so its words are not read as one. */
+  notATool?: boolean;
 }
 
 const FE: SkillCategory[] = ["frontend"];
@@ -50,6 +54,10 @@ export const KNOWN_TERMS: readonly KnownTerm[] = [
   // backend
   { name: "Node.js", variants: ["NodeJS"], categories: BE },
   { name: "Express", variants: ["Express.js", "ExpressJS"], categories: BE },
+  // Names whose words are also tools: the longest match takes them first.
+  { name: "American Express", variants: ["Amex"], notATool: true },
+  { name: "Oracle Corporation", notATool: true },
+  { name: "SWIFT network", variants: ["SWIFT payments", "SWIFT messages"], notATool: true },
   { name: "NestJS", variants: ["Nest.js"], categories: BE },
   { name: "Java", categories: BE },
   { name: "Spring Boot", variants: ["Spring Framework"], categories: BE },
@@ -105,7 +113,7 @@ export const KNOWN_TERMS: readonly KnownTerm[] = [
   { name: "MySQL", categories: ["data", "backend"] },
   { name: "MariaDB", categories: ["data", "backend"] },
   { name: "SQL Server", variants: ["MSSQL"], categories: ["data", "backend"] },
-  { name: "Oracle", variants: ["Oracle Database"], categories: ["data", "backend"] },
+  { name: "Oracle Database", variants: ["Oracle DB", "Oracle SQL", "PL/SQL"], categories: ["data", "backend"] },
   { name: "SQLite", categories: ["data", "backend"] },
   { name: "NoSQL", categories: ["data", "backend"] },
   { name: "MongoDB", categories: ["data", "backend"] },
@@ -117,7 +125,7 @@ export const KNOWN_TERMS: readonly KnownTerm[] = [
   // mobile
   { name: "Mobile development", variants: ["mobile apps", "mobile app development"], categories: MOB },
   { name: "Flutter", categories: MOB },
-  { name: "Swift", variants: ["SwiftUI"], categories: MOB },
+  { name: "Swift", variants: ["SwiftUI"], categories: MOB, caseSensitive: true },
   { name: "Kotlin", categories: ["mobile", "backend"] },
   { name: "iOS", categories: MOB },
   { name: "Android", categories: MOB },
@@ -166,7 +174,7 @@ export const SEED_IMPLICATIONS: readonly Implication[] = [
   { skill: "HTML", impliedBy: ["React", "Vue", "Angular", "AngularJS", "Next.js", "Nuxt", "Svelte"], rationale: "Web UI frameworks render HTML." },
   { skill: "CSS", impliedBy: ["React", "Vue", "Angular", "AngularJS", "Next.js", "Nuxt", "Svelte", "Tailwind", "Sass"], rationale: "Web UI work styles pages with CSS." },
   { skill: "Node.js", impliedBy: ["Express", "NestJS"], rationale: "Express and NestJS are Node.js frameworks." },
-  { skill: "SQL", impliedBy: ["PostgreSQL", "MySQL", "MariaDB", "SQL Server", "Oracle", "SQLite"], rationale: "These are SQL databases." },
+  { skill: "SQL", impliedBy: ["PostgreSQL", "MySQL", "MariaDB", "SQL Server", "Oracle Database", "SQLite"], rationale: "These are SQL databases." },
   { skill: "NoSQL", impliedBy: ["MongoDB", "DynamoDB", "Redis", "Cassandra"], rationale: "These are NoSQL databases." },
   {
     skill: "CI/CD",
@@ -204,8 +212,9 @@ export const EMPTY_LEARNED: LearnedImplications = { allow: [], deny: [] };
 
 // ---------------------------------------------------------------- terms
 
-const fold = (s: string): string => lower(s).replace(/\s+/g, " ").trim();
-const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Case-folded, whitespace collapsed: how terms and gaps are compared everywhere. */
+export const fold = (s: string): string => lower(s).replace(/\s+/g, " ").trim();
+const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ /g, "\\s+");
 
 /** A whole-word match of `spelling`: "Java" is not in "JavaScript", "JS" not in "Next.js", "C" not in "C#". */
 const termRe = (spelling: string, flags: string): RegExp =>
@@ -250,24 +259,40 @@ function canonicalName(text: string, terms: readonly KnownTerm[]): string | null
 }
 
 /** Every spelling of a known term, longest first (so "SQL Server" wins over "SQL"). */
-function spellings(terms: readonly KnownTerm[]): { spelling: string; name: string }[] {
+function spellings(terms: readonly KnownTerm[]): { spelling: string; term: KnownTerm }[] {
   return terms
-    .flatMap((t) => [t.name, ...(t.variants ?? [])].map((s) => ({ spelling: fold(s), name: t.name })))
+    .flatMap((t) => [t.name, ...(t.variants ?? [])].map((s) => ({ spelling: t.caseSensitive ? s.normalize("NFC") : fold(s), term: t })))
     .sort((a, b) => b.spelling.length - a.spelling.length);
 }
 
-/** The known terms a text names, by canonical name, longest match first, in text order. */
-export function termsIn(text: string, table: Pick<ImplicationTable, "terms"> = { terms: KNOWN_TERMS }): string[] {
-  const s = fold(text);
-  const taken: { start: number; end: number; name: string }[] = [];
-  for (const { spelling, name } of spellings(table.terms)) {
-    for (const m of s.matchAll(termRe(spelling, "gu"))) {
+export interface TermSpan {
+  name: string;
+  start: number;
+  end: number;
+  notATool: boolean;
+}
+
+/**
+ * The known terms in a text as spans of `text.normalize("NFC")`, longest match first, so "React
+ * Native" is never also "React" and "American Express" never "Express"; in text order.
+ */
+export function termSpans(text: string, table: Pick<ImplicationTable, "terms"> = { terms: KNOWN_TERMS }): TermSpan[] {
+  const orig = text.normalize("NFC");
+  const low = orig.toLowerCase();
+  const taken: TermSpan[] = [];
+  for (const { spelling, term } of spellings(table.terms)) {
+    for (const m of (term.caseSensitive ? orig : low).matchAll(termRe(spelling, "gu"))) {
       const start = m.index;
       const end = start + m[0].length;
-      if (!taken.some((t) => start < t.end && end > t.start)) taken.push({ start, end, name });
+      if (!taken.some((t) => start < t.end && end > t.start)) taken.push({ name: term.name, start, end, notATool: term.notATool === true });
     }
   }
-  return [...new Set(taken.sort((a, b) => a.start - b.start).map((t) => t.name))];
+  return taken.sort((a, b) => a.start - b.start);
+}
+
+/** The known tools a text names, by canonical name, longest match first, in text order. */
+export function termsIn(text: string, table: Pick<ImplicationTable, "terms"> = { terms: KNOWN_TERMS }): string[] {
+  return [...new Set(termSpans(text, table).filter((t) => !t.notATool).map((t) => t.name))];
 }
 
 /** Categories of the known terms a text names (empty: no known category). */
@@ -277,25 +302,29 @@ export function categoriesOf(text: string, table: Pick<ImplicationTable, "terms"
   return out;
 }
 
-/** Whether a fact names a term (any spelling) in its text or tags. */
-export function factNames(fact: Pick<Fact, "text" | "tags">, name: string, table: Pick<ImplicationTable, "terms"> = { terms: KNOWN_TERMS }): boolean {
-  const term = table.terms.find((t) => t.name === name);
-  const forms = term ? [term.name, ...(term.variants ?? [])] : [name];
-  const fields = [fact.text, ...fact.tags];
-  return forms.some((form) => fields.some((field) => termIn(form, field)));
+/** A fact's text with its own organisation blanked out (an employer is never a tool: "Oracle", "SWIFT"). */
+function textWithoutOrg(fact: Pick<Fact, "text"> & { org?: string | null }): string {
+  const text = fact.text.normalize("NFC");
+  const org = fact.org?.trim();
+  if (!org) return text;
+  return text.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escape(org.normalize("NFC"))}(?![\\p{L}\\p{N}])`, "giu"), (m) => " ".repeat(m.length));
+}
+
+/** Where a fact names a term: its text (without its org) and each tag, as longest-match spans. */
+function factSpans(fact: Pick<Fact, "text" | "tags"> & { org?: string | null }, table: Pick<ImplicationTable, "terms">): { field: string; span: TermSpan }[] {
+  return [textWithoutOrg(fact), ...fact.tags].flatMap((field) => termSpans(field, table).map((span) => ({ field, span })));
+}
+
+/** Whether a fact names a tool (any spelling, longest match) in its text or tags; its org never counts. */
+export function factNames(fact: Pick<Fact, "text" | "tags"> & { org?: string | null }, name: string, table: Pick<ImplicationTable, "terms"> = { terms: KNOWN_TERMS }): boolean {
+  if (!table.terms.some((t) => t.name === name)) return [textWithoutOrg(fact), ...fact.tags].some((field) => termIn(name, field));
+  return factSpans(fact, table).some(({ span }) => span.name === name && !span.notATool);
 }
 
 /** The first spelling of `name` as written in the fact ("Next.js", "react"): the anchor the screen checks. */
-export function spellingIn(fact: Pick<Fact, "text" | "tags">, name: string, table: Pick<ImplicationTable, "terms">): string | null {
-  const term = table.terms.find((t) => t.name === name);
-  const forms = term ? [term.name, ...(term.variants ?? [])] : [name];
-  for (const field of [fact.text, ...fact.tags]) {
-    for (const form of forms.sort((a, b) => b.length - a.length)) {
-      const m = termRe(fold(form), "u").exec(lower(field));
-      if (m) return field.normalize("NFC").slice(m.index, m.index + m[0].length);
-    }
-  }
-  return null;
+export function spellingIn(fact: Pick<Fact, "text" | "tags"> & { org?: string | null }, name: string, table: Pick<ImplicationTable, "terms">): string | null {
+  const hit = factSpans(fact, table).find(({ span }) => span.name === name && !span.notATool);
+  return hit ? hit.field.normalize("NFC").slice(hit.span.start, hit.span.end) : null;
 }
 
 // ---------------------------------------------------------------- gaps

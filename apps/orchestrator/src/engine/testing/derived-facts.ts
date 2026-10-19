@@ -13,7 +13,7 @@ import {
   type MasterCvInput,
 } from "@bs-job-agents/shared";
 import { parse, stringify } from "yaml";
-import type { DeriveSource, DerivedAddResult, DerivedFactSink, DerivedFactSinkContext } from "../derive.js";
+import type { DeriveAddOptions, DeriveSource, DerivedAddResult, DerivedFactSink, DerivedFactSinkContext } from "../derive.js";
 import type { FakeMasterCv, MemoryFileStore } from "./fakes.js";
 
 export class MemoryDerivedFacts implements DerivedFactSink {
@@ -46,11 +46,11 @@ export class MemoryDerivedFacts implements DerivedFactSink {
     return cv ? { cv, learned: this.learned ?? EMPTY_LEARNED } : null;
   }
 
-  add(ctx: DerivedFactSinkContext, drafts: Parameters<DerivedFactSink["add"]>[1], opts: { company: string | null; limit: number }): DerivedAddResult {
+  add(ctx: DerivedFactSinkContext, drafts: Parameters<DerivedFactSink["add"]>[1], opts: DeriveAddOptions): DerivedAddResult {
     const cv = this.current();
     if (!cv) return { added: [], dropped: [], version: null };
     const table = implicationTable(this.learned);
-    const { accepted, rejected } = screenDerivedFacts(drafts, { cv, table, forbiddenNames: opts.company ? [opts.company] : [], limit: opts.limit });
+    const { accepted, rejected } = screenDerivedFacts(drafts, { cv, table, forbiddenNames: opts.company ? [opts.company] : [], limit: opts.limit, gaps: opts.gaps });
     if (accepted.length === 0) return { added: [], dropped: rejected, version: null };
     const added = buildDerivedFacts(accepted, cv, { jobId: String(ctx.jobId), taskId: ctx.task ? String(ctx.task.id) : null, now: ctx.now });
     const next = this.set({ ...cv, version: cv.version + 1, facts: [...cv.facts, ...added] });

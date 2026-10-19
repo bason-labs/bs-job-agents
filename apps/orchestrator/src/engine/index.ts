@@ -51,6 +51,7 @@ export { isFactDraftTask, screenFactDraft, type FactDraftResult, type FactDraftS
 export {
   DERIVE_REJECTED_EVENT,
   isDeriveTask,
+  type DeriveAddOptions,
   type DeriveSource,
   type DeriveStepOutput,
   type DerivedAddResult,

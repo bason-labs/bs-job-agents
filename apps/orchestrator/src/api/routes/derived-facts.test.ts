@@ -126,15 +126,15 @@ describe("staleness (SEC-17.AC-1): the sink re-reads and re-screens before it wr
     // Ba removed f-3 meanwhile: the draft cites a fact that is gone.
     const v1 = onDisk(h);
     expect((await h.put("/master-cv", { ...v1, facts: [f12] })).statusCode).toBe(200);
-    const gone = store.add(ctxOf(h), [redux], { company: null, limit: 5 });
+    const gone = store.add(ctxOf(h), [redux], { company: null, limit: 5, gaps: ["Redux"] });
     expect(gone).toMatchObject({ added: [], version: null, dropped: [{ reasons: ["cites f-3, which is not in your master CV"] }] });
     expect(onDisk(h)).toMatchObject({ version: 2, facts: [f12] });
     // Ba added Redux himself: the requirement is covered.
     expect((await h.put("/master-cv", { ...onDisk(h), facts: [f12, f3, fact("f-4", "Redux", { type: "skill" })] })).statusCode).toBe(200);
-    expect(store.add(ctxOf(h), [redux], { company: null, limit: 5 }).dropped[0]!.reasons).toEqual(["your facts already cover it"]);
+    expect(store.add(ctxOf(h), [redux], { company: null, limit: 5, gaps: ["Redux"] }).dropped[0]!.reasons).toEqual(["your facts already cover it"]);
     // Still valid: appended to his newest revision, never over it.
     expect((await h.put("/master-cv", { ...onDisk(h), facts: [f12, f3], headlineOptions: [{ en: "Ba's own headline", vi: null }] })).statusCode).toBe(200);
-    const ok = store.add(ctxOf(h), [redux], { company: null, limit: 5 });
+    const ok = store.add(ctxOf(h), [redux], { company: null, limit: 5, gaps: ["Redux"] });
     expect(ok.version).toBe(5);
     expect(onDisk(h)).toMatchObject({ version: 5, headlineOptions: [{ en: "Ba's own headline", vi: null }], facts: [f12, f3, { id: "f-d1", text: "Redux" }] });
   });
@@ -142,7 +142,7 @@ describe("staleness (SEC-17.AC-1): the sink re-reads and re-screens before it wr
   it("a model-judged implication that passes is learned", async () => {
     h = await setup();
     const store = new DerivedFactStore({ dataDir: h.dataDir });
-    store.add(ctxOf(h), [{ ...redux, requirement: "Zustand", text: "Zustand", textVi: "Zustand", tags: ["zustand"] }], { company: null, limit: 5 });
+    store.add(ctxOf(h), [{ ...redux, requirement: "Zustand", text: "Zustand", textVi: "Zustand", tags: ["zustand"] }], { company: null, limit: 5, gaps: ["Zustand"] });
     expect(readLearned(h.dataDir).allow).toEqual([expect.objectContaining({ skill: "Zustand", impliedBy: "React", factId: "f-3" })]);
     expect(Object.values(readApiState(h.dataDir).derivedAdds)).toEqual([expect.objectContaining({ version: 2, facts: [{ id: "f-d1", text: "Zustand" }] })]);
   });

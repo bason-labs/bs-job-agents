@@ -102,6 +102,15 @@ describe("the derive step: deterministic first (§5.4)", () => {
     expect(texts.some((x) => /could not finish its derive task/.test(x))).toBe(false);
   });
 
+  it("QA 3: a model draft for a requirement that was not one of the sent gaps is refused (Rust from Python)", async () => {
+    const py = fact("f-py", "Built data pipelines in Python");
+    const rust: DerivedDraft = { requirement: "Rust", type: "skill", text: "Rust", textVi: "Rust", tags: ["rust"], restsOn: [{ factId: "f-py", relation: "implied_from" }], fromTerms: ["Python"], rationale: "x" };
+    const { t, out } = await scan([py], ["payments domain knowledge"], (t) => t.runner.script({ bot: "cv", kind: "derive", result: fake.ok(deriveOut([rust])) }));
+    expect(out).toMatchObject({ added: [], rejected: 1 });
+    const audit = listEvents(t.db).filter((e) => e.type === DERIVE_REJECTED_EVENT);
+    expect(JSON.stringify(audit[0]!.payload)).toContain("answers a requirement that is not one of this job's gaps");
+  });
+
   it("an undone (denied) skill is not derived again and goes to no task", async () => {
     const { t, out } = await scan([f3], ["Redux"], (t) => {
       t.derived!.learned = { allow: [], deny: [{ skill: "redux", restsOn: ["f-3"], at: "2026-10-19T08:00:00Z" }] };

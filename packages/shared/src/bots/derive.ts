@@ -18,13 +18,14 @@ import {
   analyseGap,
   categoriesOf,
   factNames,
+  fold,
   termIn,
   termsIn,
   type ImplicationTable,
   type LearnedImplications,
   type TableDerivation,
 } from "../cv-derive/implications.js";
-import { capitalisedNames, claimsIn, describeClaim, lower, titlesIn, unsupportedClaims } from "../truth/claims.js";
+import { MONTHS, capitalisedNames, claimsIn, describeClaim, titlesIn, unsupportedClaims } from "../truth/claims.js";
 import { botEnvelopeShape } from "./self-check.js";
 
 /** At most this many derived facts per job and run (SEC-16.AC-3), table and model together. */
@@ -82,9 +83,40 @@ export interface DeriveScreenContext {
   forbiddenNames?: readonly string[];
   /** How many may still be accepted for this job (default DERIVE_MAX_FACTS). */
   limit?: number;
+  /** The gaps the drafts were asked for: a draft for any other requirement is refused ("Rust" when Rust was no gap). */
+  gaps?: readonly string[];
 }
 
-const fold = (s: string): string => lower(s).replace(/\s+/g, " ").trim();
+/** Function words a derived line may use beyond its facts' own words (EN and VI). */
+const STOP_WORDS = new Set([
+  "a", "an", "the", "and", "or", "of", "in", "on", "at", "for", "with", "to", "from", "by", "as", "via", "using", "into", "across", "within", "its", "their", "our", "his", "both", "also",
+  "và", "của", "cho", "với", "trong", "tại", "bằng", "các", "những", "là", "được", "đã", "lên", "từ", "ở", "theo", "cùng", "sử", "dụng",
+]);
+
+/** A word compared loosely: case-folded, a plural or -ed/-ing ending dropped ("pipelines" = "pipeline"). */
+function stem(word: string): string {
+  let w = word;
+  if (w.length > 4 && w.endsWith("s") && !w.endsWith("ss")) w = w.slice(0, -1);
+  if (w.length > 5 && w.endsWith("ing")) w = w.slice(0, -3);
+  else if (w.length > 4 && w.endsWith("ed")) w = w.slice(0, -2);
+  return w;
+}
+
+/** The words of a text, normalised as the claims are (NFKC, lower case), punctuation at the ends dropped. */
+function wordsOf(text: string): string[] {
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}\p{M}+#./'’-]+/u)
+    .map((w) => w.replace(/^[./'’-]+|[./'’-]+$/g, ""))
+    .filter((w) => /[\p{L}\p{N}]/u.test(w));
+}
+
+/** Tokens the claim checks own (numbers, number words, months, titles): the word check skips them. */
+const claimToken = (w: string): boolean =>
+  /^[\d.,%+x]+$/.test(w) || MONTHS.has(w) || CLAIM_WORDS.has(w) || claimsIn(w).numbers.length > 0 || claimsIn(w).months.length > 0 || titlesIn(w).length > 0;
+/** Words the duration and date checks read ("since 2021", "tháng 6"). */
+const CLAIM_WORDS = new Set(["since", "present", "từ", "tháng", "năm", "hiện", "tại"]);
 /** Letters that are neither Latin (English, Vietnamese) nor shared punctuation, digits and marks. */
 const FOREIGN_SCRIPT = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u;
 const plural = (ids: readonly string[]) => `${ids.join(", ")} ${ids.length === 1 ? "does" : "do"}`;
@@ -108,14 +140,18 @@ export function screenDerivedFacts(drafts: readonly DeriveCandidate[], ctx: Deri
   const accepted: DeriveCandidate[] = [];
   const acceptedKeys = new Set<string>();
   const rejected: RejectedDerivedDraft[] = [];
-  for (const d of drafts) {
+  const askedGaps = ctx.gaps ? new Set(ctx.gaps.map(fold)) : null;
+  for (const draft of drafts) {
+    let d = draft;
     const reasons: string[] = [];
     const note = (r: string) => {
       if (!reasons.includes(r)) reasons.push(r);
     };
     const ids = [...new Set(d.restsOn.map((r) => r.factId))];
+    // Only the gaps CV was asked about: "Rust from Python" when Rust is no gap of this job is refused.
+    if (askedGaps && !askedGaps.has(fold(d.requirement))) note("answers a requirement that is not one of this job's gaps");
     // Look-alike letters from other scripts ("Lеad" with a Cyrillic е) would slip past every word check.
-    if ([d.text, d.textVi ?? "", ...d.tags, ...d.fromTerms].some((t) => FOREIGN_SCRIPT.test(t))) note("uses letters from another script");
+    if ([d.text, d.textVi ?? "", ...d.fromTerms].some((t) => FOREIGN_SCRIPT.test(t))) note("uses letters from another script");
     // SEC-16: only Ba's own facts, present in the current master CV.
     if (ids.length === 0) note("cites no fact");
     const cited: Fact[] = [];
@@ -127,8 +163,13 @@ export function screenDerivedFacts(drafts: readonly DeriveCandidate[], ctx: Deri
     }
     if (cited.length > 0) {
       const citedIds = cited.map((f) => f.id);
-      // The anchor: the model must point at Ba's own words.
-      const inFact = (term: string, f: Fact) => termIn(term, f.text) || f.tags.some((t) => termIn(term, t));
+      // The anchor: the model must point at Ba's own words. A known tool must be named by the fact
+      // itself, as the longest match and never as its employer ("React" is not in "React Native").
+      const inFact = (term: string, f: Fact) => {
+        const known = termsIn(term, ctx.table);
+        if (known.length > 0) return known.every((name) => factNames(f, name, ctx.table));
+        return termIn(term, f.text) || f.tags.some((t) => termIn(term, t));
+      };
       if (d.fromTerms.length === 0) note(`points at none of ${citedIds.join(", ")}'s words`);
       for (const term of d.fromTerms) if (!cited.some((f) => inFact(term, f))) note(`“${term}” is not in ${citedIds.join(", ")}`);
       for (const f of cited) if (d.fromTerms.length > 0 && !d.fromTerms.some((t) => inFact(t, f))) note(`${f.id} has none of the words it rests on`);
@@ -138,30 +179,45 @@ export function screenDerivedFacts(drafts: readonly DeriveCandidate[], ctx: Deri
         const from = categoriesOf(term, ctx.table);
         if (wanted.size > 0 && from.size > 0 && ![...from].some((c) => wanted.has(c))) note(`${d.type === "skill" ? d.text : d.requirement} does not follow from ${term}`);
       }
-      // Between two terms the table knows, the table decides (Kubernetes is not implied by Docker).
+      // A requirement the table knows is answered only as the table says: a fact that names it
+      // (supports) or one of its impliedBy terms, never another word ("Kubernetes" from "services").
       const asked = [...new Set([...termsIn(d.requirement, ctx.table), ...(d.type === "skill" ? termsIn(d.text, ctx.table) : [])])];
-      for (const term of d.fromTerms) {
-        for (const by of termsIn(term, ctx.table)) {
-          const linked = asked.some((t) => t === by || ctx.table.implications.some((i) => i.skill === t && i.impliedBy.includes(by)));
-          if (asked.length > 0 && !linked) note(`the implication table does not take ${asked.join(", ")} from ${by}`);
+      const supports = d.restsOn.some((r) => r.relation === "supports");
+      if (asked.length > 0) {
+        for (const term of d.fromTerms) {
+          const linked = termsIn(term, ctx.table).some((by) => asked.some((t) => (t === by && supports) || ctx.table.implications.some((i) => i.skill === t && i.impliedBy.includes(by))));
+          if (!linked) note(`the implication table does not take ${asked.join(", ")} from ${term}`);
         }
       }
       // Numbers, years, months, durations and titles (SEC-15, REQ-27, REQ-28).
       const source = { texts: cited.flatMap((f) => [f.text, f.textVi ?? "", ...f.tags]), dates: cited.map((f) => f.dates ?? "") };
-      for (const field of [d.text, d.textVi ?? "", ...d.tags]) {
+      for (const field of [d.text, d.textVi ?? ""]) {
         for (const p of unsupportedClaims(field, source)) note(`${describeClaim(p)}, which ${plural(citedIds)} not say`);
       }
       // Names: a tool, product or employer that is neither the requirement, in the cited facts,
       // nor a skill the table says the cited facts imply.
       const implied = ctx.table.implications.filter((i) => i.impliedBy.some((by) => cited.some((f) => factNames(f, by, ctx.table))));
       const citedText = cited.map((f) => [f.text, f.org ?? "", ...f.tags].join(" ")).join("\n");
+      const named = new Set<string>();
       for (const field of [d.text, d.textVi ?? ""]) {
         for (const name of capitalisedNames(field)) {
           if (titlesIn(name).length > 0) continue;
           const known = termIn(name, d.requirement) || termIn(name, citedText) || implied.some((i) => termIn(name, i.skill));
-          if (!known) note(`names “${name}”, which ${plural(citedIds)} not`);
+          if (!known) {
+            note(`names “${name}”, which ${plural(citedIds)} not`);
+            for (const w of wordsOf(name)) named.add(w);
+          }
         }
       }
+      // Every other word comes from the cited facts, the requirement or the skills they imply, in
+      // any case ("for google", "hundreds of users", "Led a team", "Multi-year" fail).
+      const allowed = new Set(
+        [...cited.flatMap((f) => [f.text, f.textVi ?? "", f.org ?? "", f.dates ?? "", ...f.tags]), d.requirement, ...implied.map((i) => i.skill)].flatMap(wordsOf).map(stem),
+      );
+      const extra = (text: string) => wordsOf(text).filter((w) => !STOP_WORDS.has(w) && !claimToken(w) && !allowed.has(stem(w)));
+      for (const w of extra(d.text)) if (!named.has(w)) note(`says “${w}”, which ${plural(citedIds)} not`);
+      // Vietnamese wording with words its facts lack is dropped (the English line is kept).
+      if (d.textVi && extra(d.textVi).length > 0) d = { ...d, textVi: d.type === "skill" ? d.text : null };
       const citedOrgs = new Set(cited.map((f) => f.org).filter((o): o is string => !!o).map(fold));
       for (const org of allOrgs) if (!citedOrgs.has(fold(org)) && [d.text, d.textVi ?? ""].some((t) => termIn(org, t))) note(`names the employer ${org}, which ${plural(citedIds)} not`);
       for (const name of ctx.forbiddenNames ?? []) if (name.trim() && [d.text, d.textVi ?? ""].some((t) => termIn(name, t))) note(`names ${name}, the job's company`);
@@ -277,7 +333,8 @@ export function buildDerivedFacts(accepted: readonly DeriveCandidate[], cv: Pick
       type: d.type,
       text,
       textVi: d.textVi?.trim() || (d.type === "skill" ? text : null),
-      tags: [...new Set([...(d.type === "skill" ? [text] : []), ...d.tags].map((t) => t.trim().toLowerCase()).filter(Boolean))],
+      // Tags by code, from the screened text only: a bot's tags could smuggle a skill in.
+      tags: [...new Set([...(d.type === "skill" ? [text] : []), ...termsIn(text)].map((t) => t.trim().toLowerCase()).filter(Boolean))],
       ...derivedOrgAndDates(cited.map((c) => c.f)),
       derived: {
         restsOn: cited.map(({ r, f }) => ({ factId: f.id, relation: r.relation, sourceHash: factSourceHash(f) })),

@@ -123,16 +123,15 @@ describe("screenDerivedFacts: invented details (SEC-15, REQ-27, REQ-28)", () => 
     expect(screen([draft()]).accepted).toHaveLength(1);
   });
 
-  it("REQ-27.AC-3: dates the cited facts lack fail, in text or tags", () => {
+  it("REQ-27.AC-3: dates the cited facts lack fail", () => {
     expect(reasons(ci("CI/CD with GitHub Actions, 2021-2025"), ctx)).toEqual(["says 2021, which f-12 does not say"]);
-    expect(reasons(ci("CI/CD with GitHub Actions", { tags: ["ci/cd", "2019"] }), ctx)).toEqual(["says 2019, which f-12 does not say"]);
     expect(reasons(ci("CI/CD with GitHub Actions since Jun 2023"), ctx)).toEqual(["says since 2023-06, which f-12 does not say"]);
   });
 
   it("REQ-28.AC-1, OQ-9: a title or an employer the cited facts do not contain fails", () => {
     const lead = draft({ requirement: "Redux", type: "experience", text: "Tech Lead for the React portal", textVi: null, restsOn: [{ factId: "f-3", relation: "implied_from" }, { factId: "f-role", relation: "supports" }], fromTerms: ["React", "Frontend Engineer"] });
-    expect(reasons(lead)).toEqual(["names the title lead, which f-3, f-role do not say"]);
-    expect(screen([{ ...lead, text: "Frontend Engineer on the React portal" }]).accepted).toHaveLength(1);
+    expect(reasons(lead)).toContain("names the title lead, which f-3, f-role do not say");
+    expect(screen([{ ...lead, requirement: "frontend ownership", text: "Frontend Engineer on the customer portal", fromTerms: ["Frontend Engineer", "customer portal"] }]).accepted).toHaveLength(1);
     expect(reasons(draft({ type: "experience", text: "Redux for the React portal at Acme", textVi: null }))).toContain("names the employer Acme, which f-3 does not");
     expect(reasons(draft({ type: "experience", text: "Redux for the React portal at Amazon", textVi: null }))).toContain("names “Amazon”, which f-3 does not");
     expect(reasons(draft({ type: "experience", text: "Redux for the Hubble portal", textVi: null }), { forbiddenNames: ["Hubble"] })).toContain("names Hubble, the job's company");
@@ -141,18 +140,80 @@ describe("screenDerivedFacts: invented details (SEC-15, REQ-27, REQ-28)", () => 
   it("names: no tool beyond the requirement, the cited facts and what the table says they imply", () => {
     expect(reasons(draft({ text: "Redux and Kubernetes", textVi: null }))).toEqual(["names “Kubernetes”, which f-3 does not"]);
     // JavaScript is what the table says React implies, so it may appear beside the requirement.
-    expect(screen([draft({ type: "experience", text: "Redux state in a React and JavaScript portal", textVi: null })]).accepted).toHaveLength(1);
+    expect(screen([draft({ type: "experience", text: "Redux in a React and JavaScript portal", textVi: null })]).accepted).toHaveLength(1);
   });
 
   it("adversarial forms: fullwidth digits, look-alike letters, a title in the tags, a number in the Vietnamese text", () => {
     expect(reasons(ci("CI/CD with GitHub Actions for １０ services"), ctx)).toEqual(["says 10, which f-12 does not say"]);
     expect(reasons(draft({ type: "experience", text: "Tech Lеad for the React portal", textVi: null }))).toContain("uses letters from another script");
-    expect(reasons(draft({ tags: ["redux", "senior"] }))).toEqual(["names the title senior, which f-3 does not say"]);
     expect(reasons(draft({ textVi: "Redux cho 5 dịch vụ" }))).toEqual(["says 5, which f-3 does not say"]);
     expect(reasons(draft({ type: "experience", text: "Redux on the React portal in May 2023", textVi: null }))).toEqual(["says 05/2023, which f-3 does not say"]);
     // The requirement's own numbers never become allowed ("3+ years of Redux" → only "Redux" passes).
     expect(reasons(draft({ requirement: "3+ years of Redux", text: "3 years of Redux", textVi: null }))).toEqual(["says 3 years, which f-3 does not say"]);
     expect(screen([draft({ requirement: "3+ years of Redux" })]).accepted).toHaveLength(1);
+  });
+
+  // QA probes (2026-10-19): each one must be refused.
+  it("QA 1: a requirement the table knows is answered only by that term (supports) or its table impliedBy", () => {
+    const java = { factId: "f-1", relation: "implied_from" as const };
+    for (const fromTerms of [["Go"], ["services"], ["Built"], ["REST APIs"]]) {
+      const k8s = draft({ requirement: "Kubernetes", text: "Kubernetes", textVi: "Kubernetes", tags: [], restsOn: [java], fromTerms });
+      expect(screen([k8s]).accepted, fromTerms[0]).toEqual([]);
+    }
+    expect(screen([draft({ requirement: "TypeScript", text: "TypeScript", textVi: "TypeScript", tags: [], fromTerms: ["Built"] })]).accepted).toEqual([]);
+    expect(screen([draft({ requirement: "TypeScript", text: "TypeScript", textVi: "TypeScript", tags: [], fromTerms: ["portal"] })]).accepted).toEqual([]);
+    // Naming the term itself needs relation supports (and is then usually already covered).
+    expect(reasons(draft({ requirement: "Java", text: "Java", textVi: "Java", tags: [], restsOn: [java], fromTerms: ["Java"] }))).toContain("the implication table does not take Java from Java");
+  });
+
+  it("QA 2: the bot's tags never reach the fact; tags are set by code from the screened text", () => {
+    const tagged = draft({ tags: ["kubernetes", "aws", "terraform", "2019", "senior"] });
+    expect(screen([tagged]).accepted).toHaveLength(1);
+    const [built] = buildDerivedFacts([tagged], cv, { jobId: "1", taskId: null, now: new Date("2026-10-19T08:00:00Z") });
+    expect(built!.tags).toEqual(["redux"]);
+    // So a later Kubernetes gap is not "covered" by it.
+    expect(analyseGap("Kubernetes", [...cv.facts, built!], table).covered).toBe(false);
+  });
+
+  it("QA 3: a draft for a requirement that was not one of the gaps is refused (Rust from Python)", () => {
+    const py = fact("f-py", "Built data pipelines in Python");
+    const rust = draft({ requirement: "Rust", text: "Rust", textVi: "Rust", tags: [], restsOn: [{ factId: "f-py", relation: "implied_from" }], fromTerms: ["Python"] });
+    expect(screenDerivedFacts([rust], { cv: { facts: [...cv.facts, py] }, table, gaps: ["Kubernetes"] }).rejected[0]!.reasons).toContain("answers a requirement that is not one of this job's gaps");
+    expect(screenDerivedFacts([draft()], { cv, table, gaps: [" redux "] }).accepted).toHaveLength(1);
+  });
+
+  it("QA 4: an experience line uses only its facts' words: no lowercase or sentence-initial employer, vague numbers, team or seniority claims", () => {
+    const line = (text: string) => draft({ type: "experience", text, textVi: null });
+    for (const text of [
+      "Google portal built in React",
+      "Built the customer portal in React for google",
+      "Built the React portal for hundreds of users",
+      "Built the React portal for millions of users",
+      "Led a team building the React portal",
+      "Managed the team on the React portal",
+      "Staff-level React portal work",
+      "Multi-year React portal",
+      "Built the React portal since last year",
+    ]) {
+      expect(screen([line(text)]).accepted, text).toEqual([]);
+    }
+    expect(screen([line("Built the customer portal in React and Next.js with Redux")]).accepted).toHaveLength(1);
+    // A Vietnamese line with words its facts lack is dropped, the English line kept.
+    const kept = screen([draft({ type: "experience", text: "Redux in the React portal", textVi: "Redux cho cổng khách hàng của google" })]).accepted;
+    expect(kept.map((d) => d.textVi)).toEqual([null]);
+  });
+
+  it("QA 5: tools are read by longest match and never from the fact's employer", () => {
+    const rn = fact("f-rn", "Built a mobile app in React Native");
+    const ctx5 = { cv: { facts: [rn] }, table };
+    for (const skill of ["HTML", "CSS", "Redux"]) {
+      expect(screenDerivedFacts([draft({ requirement: skill, text: skill, textVi: skill, tags: [], restsOn: [{ factId: "f-rn", relation: "implied_from" }], fromTerms: ["React"] })], ctx5).accepted, skill).toEqual([]);
+    }
+    const own = (f: Fact) => tablePass([analyseGap("SQL", [f], table), analyseGap("Node.js", [f], table), analyseGap("Mobile development", [f], table), analyseGap("REST APIs", [f], table)], [f], table).derivations;
+    expect(own(fact("f-o", "Software Engineer at Oracle", { org: "Oracle" }))).toEqual([]);
+    expect(own(fact("f-ae", "Built card tools at American Express"))).toEqual([]);
+    expect(own(fact("f-sw", "Integrated SWIFT payments for the bank"))).toEqual([]);
+    expect(own(fact("f-ok", "Built REST services with Express and PostgreSQL")).map((d) => d.implication.skill)).toEqual(["SQL", "Node.js"]);
   });
 
   it("SEC-15.AC-3: nothing beyond the cited facts passes", () => {

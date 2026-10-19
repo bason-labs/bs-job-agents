@@ -27,7 +27,7 @@ import {
   type RejectedDerivedDraft,
 } from "@bs-job-agents/shared";
 import { appendAppEvent, getJob, getCompany, listEvents, type Db } from "../db/index.js";
-import { DERIVE_REJECTED_EVENT, type DeriveSource, type DerivedAddResult, type DerivedFactSink, type DerivedFactSinkContext } from "../engine/index.js";
+import { DERIVE_REJECTED_EVENT, type DeriveAddOptions, type DeriveSource, type DerivedAddResult, type DerivedFactSink, type DerivedFactSinkContext } from "../engine/index.js";
 import { zodMessage } from "./errors.js";
 import { keepMasterCvVersionSync, readMasterCv, readMasterCvHistory, writeMasterCvSync } from "./master-cv.js";
 import { readApiState, updateApiState, type ApiState, type StoredDerivedAdd } from "./state.js";
@@ -95,14 +95,14 @@ export class DerivedFactStore implements DerivedFactSink {
     return read.kind === "ok" ? { cv: read.cv, learned: readLearned(this.dir()) } : null;
   }
 
-  add(ctx: DerivedFactSinkContext, drafts: Parameters<DerivedFactSink["add"]>[1], opts: { company: string | null; limit: number }): DerivedAddResult {
+  add(ctx: DerivedFactSinkContext, drafts: Parameters<DerivedFactSink["add"]>[1], opts: DeriveAddOptions): DerivedAddResult {
     const dataDir = this.dir();
     // SEC-17: the master CV as it is now (Ba, or another branch, may have saved since the draft).
     const source = this.read();
     if (!source) return { added: [], dropped: drafts.map((d) => dropped(d, "the master CV cannot be read")), version: null };
     const current = source.cv;
     const table = implicationTable(source.learned);
-    const { accepted, rejected } = screenDerivedFacts(drafts, { cv: current, table, forbiddenNames: opts.company ? [opts.company] : [], limit: opts.limit });
+    const { accepted, rejected } = screenDerivedFacts(drafts, { cv: current, table, forbiddenNames: opts.company ? [opts.company] : [], limit: opts.limit, gaps: opts.gaps });
     if (accepted.length === 0) return { added: [], dropped: rejected, version: null };
     const facts = buildDerivedFacts(accepted, current, { jobId: String(ctx.jobId), taskId: ctx.task ? String(ctx.task.id) : null, now: ctx.now });
     const parsed = MasterCvSchema.safeParse({ ...current, version: current.version + 1, facts: [...current.facts, ...facts] });

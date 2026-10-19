@@ -241,21 +241,6 @@ export function claimsIn(text: string): Claims {
   return out;
 }
 
-/** The numbers a text claims (see claimsIn). */
-export function claimNumbersIn(text: string): string[] {
-  return claimsIn(text).numbers;
-}
-
-/** The durations a text claims: "3y", "18m", "since:2021" (see claimsIn). */
-export function durationsIn(text: string): string[] {
-  return claimsIn(text).durations;
-}
-
-/** The year-months a text claims: "2023-06", or "*-06" without a year (see claimsIn). */
-export function monthsIn(text: string): string[] {
-  return claimsIn(text).months;
-}
-
 /** Job-title words (a closed list, EN and VI), as canonical English words, in text order. */
 const TITLES: { re: RegExp; title: string }[] = [
   { re: /(?<![\p{L}])trưởng nhóm(?![\p{L}])/gu, title: "lead" },
