@@ -20,6 +20,7 @@ export * from "./common/timezone.js";
 export * from "./source-access/index.js";
 // truth: the number, date, duration and title comparison (CV auto-extend §5.2)
 export * from "./truth/claims.js";
+export * from "./cv-derive/implications.js";
 
 // strict JSON Schema (§5.5, spike S4)
 export * from "./json-schema/strict.js";
