@@ -1,6 +1,7 @@
 // Task input fixtures (one per bot task kind).
 import type {
   ApplySubmitInput,
+  CvDeriveInput,
   CvFactDraftInput,
   CvTailorInput,
   QaReviewInput,
@@ -69,6 +70,18 @@ export const cvFactDraftInputFixture: CvFactDraftInput = {
     { id: "skill-1", type: "skill", org: null, dates: null },
   ],
   masterCvVersion: 3,
+};
+
+/** cv.derive: one gap the table could not resolve, against Ba's own facts (CV auto-extend). */
+export const cvDeriveInputFixture: CvDeriveInput = {
+  jobId: "job_1",
+  gaps: ["state management at scale"],
+  requirements: ["Experience with state management at scale (Redux, Zustand or similar)."],
+  facts: [
+    { id: "grad-3", type: "experience", text: "Built the customer portal in React and Next.js", tags: ["react", "next.js"], org: "Gradion", dates: "2023 – 2025" },
+    { id: "grad-12", type: "experience", text: "Built CI pipelines in GitHub Actions for 6 services", tags: ["ci"], org: "Gradion", dates: "2023 – 2025" },
+  ],
+  masterCvVersion: 14,
 };
 
 const { selfCheck: _s, memoryNotes: _m, ...draft } = cvOutputFixture;

@@ -103,7 +103,7 @@ describe("WorkflowDefinitionSchema (§7.1)", () => {
     (wf.steps.find((s) => s.type === "gate")!.checker as { kind: string }).kind = "tailor";
     const r = WorkflowDefinitionSchema.safeParse(wf);
     expect(r.success).toBe(false);
-    expect(r.error?.issues[0]?.path).toEqual(["steps", 7, "checker", "kind"]);
+    expect(r.error?.issues[0]?.path).toEqual(["steps", 8, "checker", "kind"]);
   });
 
   it("apply.submit may only run in an action step (PM S4, §10.2 rule 1)", () => {
@@ -136,9 +136,9 @@ describe("WorkflowDefinitionSchema (§7.1)", () => {
     expect(WorkflowDefinitionSchema.safeParse(wf).success).toBe(true);
   });
 
-  it("stepsInBranch lists the per-job pipeline (company → CV → QA gate → review → apply → record)", () => {
+  it("stepsInBranch lists the per-job pipeline (company → derive facts → CV ⇄ QA gate → review → apply → record)", () => {
     const wf = WorkflowDefinitionSchema.parse(jobScanWorkflow);
-    expect(stepsInBranch(wf, "top").map((s) => s.key)).toEqual(["company", "tailor", "review", "apply", "record"]);
+    expect(stepsInBranch(wf, "top").map((s) => s.key)).toEqual(["company", "derive", "tailor", "review", "apply", "record"]);
   });
 });
 

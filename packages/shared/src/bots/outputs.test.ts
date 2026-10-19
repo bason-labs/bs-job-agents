@@ -43,6 +43,7 @@ describe("bot output registry", () => {
         "ApplyOutput",
         "ConsultOutput",
         "CvOutput",
+        "DeriveOutput",
         "FactDraftOutput",
         "LeadOutput",
         "QaOutput",

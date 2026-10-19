@@ -196,10 +196,12 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   /**
    * Additive (owner request 2026-10-11): data/master-cv.yaml has a new version: Ba saved it, facts
    * drafted from his words were added (taskId = the cv.fact_draft task), or he undid that.
+   * CV auto-extend (additive): facts derived from his facts were added (facts_derived; taskId = the
+   * cv.derive task, null for the table), he undid such an addition, or kept a flagged fact.
    */
   ev("master_cv.updated", {
     version: z.number().int().positive(),
-    change: z.enum(["saved", "facts_added", "undo"]),
+    change: z.enum(["saved", "facts_added", "undo", "facts_derived", "derived_undo", "derived_keep"]),
     factIds: z.array(z.string()),
     taskId: IdSchema.nullable(),
   }),

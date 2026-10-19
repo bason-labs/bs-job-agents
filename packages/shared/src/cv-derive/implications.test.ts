@@ -16,6 +16,8 @@ describe("terms", () => {
     expect(termsIn("3+ years of Redux")).toEqual(["Redux"]);
     expect(termsIn("experience with CI/CD")).toEqual(["CI/CD"]);
     expect(termsIn("PostgreSQL, MySQL")).toEqual(["PostgreSQL", "MySQL"]);
+    expect(termIn("JS", "Built it in Next.js")).toBe(false);
+    expect(termsIn("React.js and Node.js apps")).toEqual(["React", "Node.js"]);
   });
 
   it("knows each seed term and gives it categories", () => {

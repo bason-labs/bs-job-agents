@@ -1,5 +1,6 @@
 // bot.json fixtures for the five Phase 1 bots (§5.2, §5.3). W2b writes the real files.
 import type { BotDefinitionInput } from "../bots/definition.js";
+import { DERIVE_SELF_CHECK } from "../bots/derive.js";
 import { FACT_DRAFT_SELF_CHECK } from "../bots/fact-draft.js";
 
 export const researchBotJson = {
@@ -61,8 +62,8 @@ export const botDefinitionFixtures: BotDefinitionInput[] = [
     allowedTools: ["Read", "mcp:figma:figma_get_status", "mcp:figma:figma_execute", "mcp:figma:figma_capture_screenshot"],
     browser: null,
     mcpServers: ["figma"],
-    outputSchema: { tailor: "CvOutput", fact_draft: "FactDraftOutput" },
-    selfCheckByKind: { fact_draft: [...FACT_DRAFT_SELF_CHECK] },
+    outputSchema: { tailor: "CvOutput", fact_draft: "FactDraftOutput", derive: "DeriveOutput" },
+    selfCheckByKind: { fact_draft: [...FACT_DRAFT_SELF_CHECK], derive: [...DERIVE_SELF_CHECK] },
     selfCheck: [
       "One A4 page",
       "No hidden, clipped or overflowing text frames",

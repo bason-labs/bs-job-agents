@@ -207,11 +207,15 @@ export const EMPTY_LEARNED: LearnedImplications = { allow: [], deny: [] };
 const fold = (s: string): string => lower(s).replace(/\s+/g, " ").trim();
 const escape = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Whether `term` occurs in `text` as a whole word (case-folded; "Java" is not in "JavaScript"). */
+/** A whole-word match of `spelling`: "Java" is not in "JavaScript", "JS" not in "Next.js", "C" not in "C#". */
+const termRe = (spelling: string, flags: string): RegExp =>
+  new RegExp(`(?<![\\p{L}\\p{N}.])${escape(spelling)}(?![\\p{L}\\p{N}+#]|\\.[\\p{L}\\p{N}])`, flags);
+
+/** Whether `term` occurs in `text` as a whole word (case-folded). */
 export function termIn(term: string, text: string): boolean {
   const t = fold(term);
   if (!t) return false;
-  return new RegExp(`(?<![\\p{L}\\p{N}])${escape(t)}(?![\\p{L}\\p{N}]|\\+|#)`, "u").test(fold(text));
+  return termRe(t, "u").test(fold(text));
 }
 
 /** The table a run uses: the seed plus the learned allow entries. */
@@ -257,7 +261,7 @@ export function termsIn(text: string, table: Pick<ImplicationTable, "terms"> = {
   const s = fold(text);
   const taken: { start: number; end: number; name: string }[] = [];
   for (const { spelling, name } of spellings(table.terms)) {
-    for (const m of s.matchAll(new RegExp(`(?<![\\p{L}\\p{N}])${escape(spelling)}(?![\\p{L}\\p{N}]|\\+|#)`, "gu"))) {
+    for (const m of s.matchAll(termRe(spelling, "gu"))) {
       const start = m.index;
       const end = start + m[0].length;
       if (!taken.some((t) => start < t.end && end > t.start)) taken.push({ start, end, name });
@@ -287,8 +291,8 @@ export function spellingIn(fact: Pick<Fact, "text" | "tags">, name: string, tabl
   const forms = term ? [term.name, ...(term.variants ?? [])] : [name];
   for (const field of [fact.text, ...fact.tags]) {
     for (const form of forms.sort((a, b) => b.length - a.length)) {
-      const m = new RegExp(`(?<![\\p{L}\\p{N}])${escape(form)}(?![\\p{L}\\p{N}]|\\+|#)`, "iu").exec(field.normalize("NFC"));
-      if (m) return m[0];
+      const m = termRe(fold(form), "u").exec(lower(field));
+      if (m) return field.normalize("NFC").slice(m.index, m.index + m[0].length);
     }
   }
   return null;

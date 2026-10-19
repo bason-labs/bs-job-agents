@@ -42,6 +42,7 @@ import {
   WorkflowProposalsResponseSchema,
 } from "./chat.js";
 import { API_ROUTES, BridgesResponseSchema, HealthStatusSchema, OkResponseSchema, OrchestratorStatusSchema } from "./common.js";
+import { DerivedFactsViewSchema, DerivedKeepRequestSchema, DerivedUndoRequestSchema, DerivedUndoResultSchema } from "./derived-facts.js";
 import { FactDraftRequestSchema, FactDraftStartedSchema, FactDraftViewSchema, FactUndoRequestSchema } from "./fact-drafts.js";
 import { CriteriaResponseSchema, CriteriaUpdateRequestSchema, CriteriaVersionsResponseSchema, SearchProfilesResponseSchema } from "./criteria.js";
 import {
@@ -147,6 +148,9 @@ export const API_CONTRACT = {
   masterCvFactsUndo: { POST: ep(MasterCvSchema, FactUndoRequestSchema) },
   sourceAccess: { GET: ep(SourceAccessResponseSchema) },
   sourceApproval: { POST: ep(SourceAccessViewSchema, SourceApprovalRequestSchema), DELETE: ep(SourceAccessViewSchema) },
+  masterCvDerived: { GET: ep(DerivedFactsViewSchema) },
+  masterCvDerivedUndo: { POST: ep(DerivedUndoResultSchema, DerivedUndoRequestSchema) },
+  masterCvDerivedKeep: { POST: ep(MasterCvSchema, DerivedKeepRequestSchema) },
 } as const satisfies { [K in ApiRouteKey]: Partial<Record<ApiMethod, ApiEndpoint>> };
 
 /** Every (method, route) pair of the contract, e.g. `{ key: "bot", method: "PATCH", path: "/bots/:name", … }`. */

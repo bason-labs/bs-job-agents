@@ -22,8 +22,8 @@ const fact = (over: Partial<DraftedFact> = {}): DraftedFact => ({ ...factDraftOu
 
 describe("cv.fact_draft task (owner request 2026-10-11)", () => {
   it("is a CV task kind that runs with no tools", () => {
-    expect(BOT_TASK_KINDS.cv).toEqual(["tailor", "fact_draft"]);
-    expect(TOOLLESS_TASK_KEYS).toEqual(["cv.fact_draft"]);
+    expect(BOT_TASK_KINDS.cv).toEqual(["tailor", "fact_draft", "derive"]);
+    expect(TOOLLESS_TASK_KEYS).toEqual(["cv.fact_draft", "cv.derive"]);
     expect(isToollessTask("cv", "fact_draft")).toBe(true);
     expect(isToollessTask("cv", "tailor")).toBe(false);
     expect(isToollessTask("cv", "consult")).toBe(false);

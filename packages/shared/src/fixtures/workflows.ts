@@ -1,8 +1,8 @@
 // Workflow definitions matching §7.2–7.3b, as the YAML would parse. W3a owns workflows/*.yaml.
 import type { WorkflowDefinitionInput, WorkflowStepInput } from "../workflow/definition.js";
 
-/** §7.2 steps 6–10: one pipeline per selected job. */
-const perJob = (branch: string): WorkflowStepInput[] => [
+/** §7.2 steps 6–10: one pipeline per selected job; job-scan derives master facts before tailoring (CV auto-extend). */
+const perJob = (branch: string, opts: { derive?: boolean } = {}): WorkflowStepInput[] => [
   {
     key: "company",
     type: "task",
@@ -10,6 +10,7 @@ const perJob = (branch: string): WorkflowStepInput[] => [
     task: { bot: "research", kind: "company", input: { name: "$item.company", website: "$item.companyWebsite" } },
     cacheDays: 30,
   },
+  ...(opts.derive ? [{ key: "derive", type: "task", branch, task: { bot: "cv", kind: "derive", input: { job: "$item" } } } satisfies WorkflowStepInput] : []),
   {
     key: "tailor",
     type: "gate",
@@ -39,7 +40,7 @@ const perJob = (branch: string): WorkflowStepInput[] => [
 
 export const jobScanWorkflow = {
   name: "job-scan",
-  version: 1,
+  version: 2,
   description: "Scan sources, score fit, then tailor, QA, review and apply per job.",
   triggers: ["chat", "schedule"],
   steps: [
@@ -60,7 +61,7 @@ export const jobScanWorkflow = {
       from: "fit-join",
       options: { threshold: "$profile.fitThreshold", take: "$profile.maxJobs" },
     },
-    ...perJob("top"),
+    ...perJob("top", { derive: true }),
   ],
 } satisfies WorkflowDefinitionInput;
 
