@@ -18,6 +18,8 @@ export * from "./common/timezone.js";
 
 // API research: access records per board (design 2026-10-19 §5.1)
 export * from "./source-access/index.js";
+// truth: the number, date, duration and title comparison (CV auto-extend §5.2)
+export * from "./truth/claims.js";
 
 // strict JSON Schema (§5.5, spike S4)
 export * from "./json-schema/strict.js";

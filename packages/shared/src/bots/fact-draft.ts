@@ -4,6 +4,7 @@
 // guard below) and adds them as a new master version that Ba can undo (§6.1: Ba-owned data).
 import { z } from "zod";
 import { FACT_ID_PATTERN, FactTypeSchema, type Fact } from "../domain/master-cv.js";
+import { allowedNumbers, capitalisedNames, lower, numbersIn } from "../truth/claims.js";
 import { botEnvelopeShape } from "./self-check.js";
 
 /** At most this many facts per answer. */
@@ -63,60 +64,8 @@ export interface RejectedDraftFact {
   reasons: string[];
 }
 
-const NUMBER_WORDS: Record<string, string> = {
-  one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10",
-  twelve: "12", twenty: "20", hundred: "100", thousand: "1000",
-  // Not "năm": it also means "year".
-  "một": "1", hai: "2", ba: "3", "bốn": "4", "sáu": "6", "bảy": "7", "tám": "8", "chín": "9", "mười": "10",
-  "trăm": "100", "nghìn": "1000", "ngàn": "1000",
-};
-
-/** Month names a fact may spell out when Ba gave the month as a number (the year is still checked). */
-const MONTHS = new Set([
-  "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december",
-  "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
-]);
-
-const lower = (s: string) => s.normalize("NFC").toLowerCase();
-
-/** Numbers as digit strings ("1,000" and "1.000" → "1000", "40%" → "40"). */
-function numbersIn(s: string): string[] {
-  return [...s.matchAll(/\d+(?:[.,]\d+)*/g)].map((m) => m[0].replace(/[.,]/g, "").replace(/^0+(?=\d)/, ""));
-}
-
-function allowedNumbers(corpus: string): Set<string> {
-  const out = new Set(numbersIn(corpus));
-  for (const word of lower(corpus).split(/[^\p{L}]+/u)) {
-    const n = NUMBER_WORDS[word];
-    if (n) out.add(n);
-  }
-  return out;
-}
-
-/**
- * Capitalised names in a text that look like tools, products or employers: a word with a capital
- * after its first letter or a digit among letters (GraphQL, AWS, K8s, EC2), or any capitalised word
- * that does not start a sentence. Only ASCII words count (Vietnamese words carry diacritics).
- */
-export function capitalisedNames(text: string): string[] {
-  const out: string[] = [];
-  let sentenceStart = true;
-  for (const m of text.matchAll(/[\p{L}\p{N}][\p{L}\p{N}+#.\-/]*|[.!?•\n]/gu)) {
-    const raw = m[0];
-    if (/^[.!?•\n]$/.test(raw)) {
-      sentenceStart = true;
-      continue;
-    }
-    const word = raw.replace(/[.\-/]+$/, "");
-    const atStart = sentenceStart;
-    sentenceStart = raw.endsWith(".");
-    if (!/^[A-Za-z0-9+#.\-/]+$/.test(word) || !/[A-Z]/.test(word)) continue;
-    if (MONTHS.has(word.toLowerCase()) || word === "I") continue;
-    const inner = /[A-Z]/.test(word.slice(1)) || (/\d/.test(word) && /[A-Za-z]/.test(word));
-    if (inner || !atStart) out.push(word);
-  }
-  return out;
-}
+// The number, month and name comparison lives in the shared truth module (CV auto-extend §5.2).
+export { capitalisedNames };
 
 /**
  * The invented-detail guard (owner request 2026-10-11): facts come only from Ba's text. A drafted
