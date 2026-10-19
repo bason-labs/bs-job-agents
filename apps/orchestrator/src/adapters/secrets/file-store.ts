@@ -4,22 +4,18 @@
 // the file on every call, so a renewed token works without a restart. A missing file, board or value
 // is a missing credential, never an error; the file's content never reaches a log line.
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { defaultSecretsFile } from "../../config.js";
 import type { Logger, SecretStore } from "../../engine/ports.js";
 import { Redactor } from "./redactor.js";
+
+export { defaultSecretsFile };
 
 export class SecretsFileRefusedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SecretsFileRefusedError";
   }
-}
-
-/** ~/.config/bs-job-agents/secrets.json ($XDG_CONFIG_HOME when set). */
-export function defaultSecretsFile(env: NodeJS.ProcessEnv = process.env): string {
-  const config = env.XDG_CONFIG_HOME?.trim() || join(env.HOME?.trim() || homedir(), ".config");
-  return join(config, "bs-job-agents", "secrets.json");
 }
 
 /** The path with symlinks resolved as far as it exists (the file itself may not exist yet). */

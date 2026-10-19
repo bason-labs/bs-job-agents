@@ -44,6 +44,13 @@ describe("resolveConfig", () => {
     expect(() => resolveConfig({ ORCH_WEB_ORIGINS: "*" })).toThrow(/ORCH_WEB_ORIGINS/);
   });
 
+  it("reads board credentials from ORCH_SECRETS_FILE, by default in the user's config folder (AD-4)", () => {
+    expect(resolveConfig({ HOME: "/Users/ba" }).secretsFile).toBe("/Users/ba/.config/bs-job-agents/secrets.json");
+    expect(resolveConfig({ ORCH_SECRETS_FILE: "/Users/ba/secrets.json" }).secretsFile).toBe("/Users/ba/secrets.json");
+    // Relative: against the repo root, where FileSecretStore refuses it.
+    expect(resolveConfig({ ORCH_SECRETS_FILE: "secrets.json" }).secretsFile).toBe(join(root, "secrets.json"));
+  });
+
   it("keeps the ORCH_PORT override", () => {
     expect(resolveConfig({ ORCH_PORT: "5000" }).port).toBe(5000);
   });
