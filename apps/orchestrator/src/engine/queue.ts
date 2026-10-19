@@ -784,6 +784,10 @@ export class TaskQueue {
     const observed = new Set(opened.map(key));
     const jobs = output.jobs.filter((j) => j.url !== null && observed.has(key(j.url)));
     const pageViews = opened.length;
+    if (jobs.length === 0 && output.jobs.length > 0 && opened.length === 0 && (result.unattributedOpens ?? 0) > 0) {
+      // A distinct reason, so a Chrome reply format the runner does not read is easy to diagnose.
+      return { kind: "failed", error: `could not attribute opened pages to the repair tab (${result.unattributedOpens} confirmed navigation${result.unattributedOpens === 1 ? "" : "s"} in other tabs)`, output, retryable: false, ...(outcome.safety ? { safety: outcome.safety } : {}) };
+    }
     if (jobs.length === 0 && output.jobs.length > 0) {
       return { kind: "failed", error: `the validation scan returned no job whose page the browser opened (${output.jobs.length} reported)`, output, retryable: false, ...(outcome.safety ? { safety: outcome.safety } : {}) };
     }

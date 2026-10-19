@@ -32,6 +32,18 @@ function withScheme(raw: unknown): string | null {
   return /^https?:\/\//i.test(url) ? url : null;
 }
 
+/**
+ * Tab ids in a Chrome tool reply, whatever its shape (the real format is not pinned down): JSON
+ * `{"tabId": 7}` / `tab_id`, "Tab ID: 7", "tabId 7", "id=7".
+ */
+export function tabIdsIn(text: string): string[] {
+  const out = new Set<string>();
+  for (const re of [/"?tab_?id"?\s*[:=]\s*"?(\d+)/gi, /\btab\s*id\s*[:#=]?\s*(\d+)/gi, /\btabid\s+(\d+)/gi, /(?:^|[\s,{(])"?id"?\s*[=:]\s*"?(\d+)/gi]) {
+    for (const m of text.matchAll(re)) out.add(m[1]!);
+  }
+  return [...out];
+}
+
 /** One page a navigate call opened, and when the bot asked for it (W4a: LinkedIn's 3–8 s pauses). */
 export interface PageVisit {
   url: string;
@@ -50,7 +62,11 @@ export class PageUrlCollector {
    * included). Never a tab listing of Ba's own tabs, never a navigate target the reply did not confirm.
    */
   readonly opened: string[] = [];
+  /** Confirmed navigates that could not be attributed to the bot's own tab (a reply format mismatch shows here). */
+  unattributed = 0;
   private readonly ownTabs = new Set<string>();
+  /** Ba's tabs: the ids the task's first tabs_context_mcp reply listed (null until it came). */
+  private baTabs: Set<string> | null = null;
   private readonly calls = new Map<string, { tool: string; input: unknown; at: number }>();
 
   constructor(private readonly now: () => number = Date.now) {}
@@ -76,6 +92,17 @@ export class PageUrlCollector {
     }
   }
 
+  /**
+   * Whether a confirmed navigate ran in the bot's own tab: a tab its tabs_create_mcp reply named;
+   * failing that, a tab not among Ba's tabs of the first tabs_context_mcp listing; when neither
+   * reply gave any id, every confirmed navigate (a tab listing alone never counts).
+   */
+  private ownTab(tab: string | null): boolean {
+    if (this.ownTabs.size > 0) return tab !== null && this.ownTabs.has(tab);
+    if (this.baTabs !== null && this.baTabs.size > 0) return tab !== null && !this.baTabs.has(tab);
+    return true;
+  }
+
   private add(url: string): void {
     const u = trimUrl(url);
     if (!/^https?:\/\//i.test(u) || this.seen.has(u)) return;
@@ -85,13 +112,18 @@ export class PageUrlCollector {
 
   private fromResult(call: { tool: string; input: unknown; at: number }, text: string): void {
     if (call.tool === "tabs_create_mcp") {
-      const id = /"?tab_?id"?\s*[:=#]?\s*"?(\d+)/i.exec(text)?.[1] ?? /\btab\s+(\d+)\b/i.exec(text)?.[1];
-      if (id) this.ownTabs.add(id);
+      const ids = tabIdsIn(text);
+      for (const id of ids.length > 0 ? ids : [/\btab\s+(\d+)\b/i.exec(text)?.[1]].filter((x): x is string => Boolean(x))) this.ownTabs.add(id);
     }
+    if (call.tool === "tabs_context_mcp" && this.baTabs === null) this.baTabs = new Set(tabIdsIn(text).filter((id) => !this.ownTabs.has(id)));
     if (call.tool === "navigate") {
       const found = [...text.matchAll(URL_RE)].map((m) => m[0]);
-      const tab = (call.input as { tabId?: unknown } | null)?.tabId;
-      if (found.length > 0 && (typeof tab === "number" || typeof tab === "string") && this.ownTabs.has(String(tab))) this.opened.push(trimUrl(found[0]!));
+      if (found.length > 0) {
+        const raw = (call.input as { tabId?: unknown } | null)?.tabId;
+        const tab = typeof raw === "number" || typeof raw === "string" ? String(raw) : null;
+        if (this.ownTab(tab)) this.opened.push(trimUrl(found[0]!));
+        else this.unattributed++;
+      }
       const target = withScheme((call.input as { url?: unknown } | null)?.url);
       if (found.length > 0) found.forEach((u) => this.add(u));
       else if (target) this.add(target);

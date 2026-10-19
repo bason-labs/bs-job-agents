@@ -223,6 +223,17 @@ describe("QA H1: a validation job counts only when the browser opened its page",
     expect(repairs(t)[0]!.reason).toMatch(/no job whose page the browser opened/);
   });
 
+  it("QA M-b: when no opened page could be attributed to the repair tab, the Activity entry and the notice say so", async () => {
+    const { t } = await engine();
+    t.runner.script({ bot: "research", kind: "scan", when: (task) => isValidation(task.input), result: (task) => ({ ...scanWith([fabricated], [])(task), unattributedOpens: 2 }) });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    const reason = "the validation scan failed: could not attribute opened pages to the repair tab (2 confirmed navigations in other tabs)";
+    expect(repairs(t)[0]!.reason).toBe(reason);
+    expect(activity(t.db, null).find((e) => e.kind === "skill_not_adopted")!.reason).toBe(reason);
+    expect(leadTexts(t).some((x) => x.startsWith(`Automatic repair failed: ${reason}.`))).toBe(true);
+  });
+
   it("QA M1: a checker that throws fails the validation instead of passing it", async () => {
     const throwing: ScanOutputChecker = {
       check: (i) => {

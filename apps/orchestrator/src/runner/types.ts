@@ -112,6 +112,8 @@ export interface RunnerResultExtras {
   pageVisits?: { url: string; at: string }[];
   /** Skill self-repair (QA M-b): pages confirmed opened by navigate in tabs the bot created (PageUrlCollector.opened). */
   openedUrls?: string[];
+  /** Confirmed navigates that could not be attributed to the bot's own tab. */
+  unattributedOpens?: number;
 }
 
 export type RunnerResult = RunnerResultCore & RunnerResultExtras;
