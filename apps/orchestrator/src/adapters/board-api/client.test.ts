@@ -14,7 +14,7 @@ const linkedin: SourceAccessRecord = SourceAccessRecordSchema.parse({
   researchedAt: "2026-10-19T08:00:00.000Z",
   publicApi: "none found",
   internalApiGetEndpoints: [
-    { method: "GET", host: "www.linkedin.com", pathPattern: "/voyager/api/voyagerJobsDashJobCards", query: ["keywords"], purpose: "search", requiresAuth: true },
+    { method: "GET", host: "www.linkedin.com", pathPattern: "/voyager/api/voyagerJobsDashJobCards", query: ["keywords", "start"], purpose: "search", requiresAuth: true },
     { method: "GET", host: "www.linkedin.com", pathPattern: "/voyager/api/jobs/jobPostings/:id", purpose: "detail", requiresAuth: true },
   ],
   applyEndpoints: [
@@ -72,6 +72,28 @@ describe("BoardApiClient", () => {
     await expect(c.get({ host: "www.linkedin.com", path: "/voyager/api/me" })).rejects.toThrow(EndpointNotAllowed);
     await expect(c.get({ host: "evil.example", path: "/voyager/api/voyagerJobsDashJobCards" })).rejects.toThrow(EndpointNotAllowed);
     expect(f.calls).toHaveLength(0);
+  });
+
+  it("a query parameter the endpoint does not list throws EndpointNotAllowed before fetch is called", async () => {
+    const f = fakeFetch();
+    const { c } = client({ fetch: f.fn });
+    // The search endpoint takes keywords and start only; the detail endpoint lists no query at all.
+    await expect(c.get({ host: "www.linkedin.com", path: "/voyager/api/voyagerJobsDashJobCards", query: { keywords: "react", count: 100 } })).rejects.toThrow(
+      /with query parameters keywords, count/,
+    );
+    await expect(c.get({ host: "www.linkedin.com", path: "/voyager/api/jobs/jobPostings/1", query: { decorationId: "x" } })).rejects.toThrow(EndpointNotAllowed);
+    expect(f.calls).toHaveLength(0);
+    await c.get({ host: "www.linkedin.com", path: "/voyager/api/voyagerJobsDashJobCards", query: { keywords: "react" } });
+    expect(f.calls).toHaveLength(1);
+  });
+
+  it("when two endpoints match a path, the one listing the query names allows it (ITviec search and detail share /it-jobs/:x)", async () => {
+    const f = fakeFetch();
+    const { c } = client({ fetch: f.fn, record: sourceAccessRecords().find((r) => r.source === "itviec")!, credentials: null });
+    await c.get({ host: "itviec.com", path: "/it-jobs/react-developer", query: { page: 2 } });
+    await c.get({ host: "itviec.com", path: "/it-jobs/fintech-frontend-dev-javascript-react-new-wealth-2706" });
+    await expect(c.get({ host: "itviec.com", path: "/it-jobs/react-developer", query: { sort: "new" } })).rejects.toThrow(EndpointNotAllowed);
+    expect(f.calls.map((x) => x.url)).toEqual(["https://itviec.com/it-jobs/react-developer?page=2", "https://itviec.com/it-jobs/fintech-frontend-dev-javascript-react-new-wealth-2706"]);
   });
 
   it("every apply endpoint of this record and of every real record throws before fetch (REQ-23.AC-1)", async () => {

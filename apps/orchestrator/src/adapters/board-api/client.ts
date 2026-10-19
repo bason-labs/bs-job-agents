@@ -1,7 +1,7 @@
 // AD-2 (REQ-23, NFR-1, design §5.2): the only way the orchestrator talks to a board's API. Built
 // from the board's access record, it allows a GET to an endpoint the record lists for its path
 // (the usable public API, or the internal GET endpoints for the account API) and nothing else:
-// any other method, host or path throws EndpointNotAllowed before any network I/O. Apply endpoints
+// any other method, host, path or query parameter name throws EndpointNotAllowed before any network I/O. Apply endpoints
 // are only read to refuse them; nothing here builds one. Requests go through the shared per-host
 // gate (≥ 1500 ms per host), and each is reported with its method, host and path only (no query,
 // no header). Every error text passes the redactor.
@@ -18,8 +18,12 @@ import { Redactor } from "../secrets/redactor.js";
 export const BOARD_API_USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36";
 
 export class EndpointNotAllowed extends Error {
-  constructor(source: string, method: string, host: string, path: string) {
-    super(`${method} ${host}${path} is not a GET endpoint in the ${source} access record`);
+  constructor(source: string, method: string, host: string, path: string, query: readonly string[] = []) {
+    super(
+      query.length > 0
+        ? `${method} ${host}${path} with query parameter${query.length === 1 ? "" : "s"} ${query.join(", ")} is not a GET endpoint in the ${source} access record`
+        : `${method} ${host}${path} is not a GET endpoint in the ${source} access record`,
+    );
     this.name = "EndpointNotAllowed";
   }
 }
@@ -126,11 +130,16 @@ export class BoardApiClient {
     this.redactor = opts.redactor ?? new Redactor();
   }
 
-  /** The record's endpoint a request would hit, or EndpointNotAllowed (apply endpoints always refused). */
-  endpointFor(host: string, path: string): GetEndpoint {
-    const refuse = () => new EndpointNotAllowed(this.source, "GET", host, path);
+  /**
+   * The record's endpoint a request would hit, or EndpointNotAllowed (apply endpoints always
+   * refused). Every query parameter name must be in that endpoint's `query` list (none listed: no
+   * query allowed); when several endpoints match the path, one that takes all the names is used.
+   */
+  endpointFor(host: string, path: string, queryNames: readonly string[] = []): GetEndpoint {
+    const refuse = () => new EndpointNotAllowed(this.source, "GET", host, path, queryNames);
     if (applyEndpointsOf(this.opts.record).some((e) => sameHost(e.host, host) && matchesPathPattern(e.pathPattern, path))) throw refuse();
-    const endpoint = this.allowed.find((e) => sameHost(e.host, host) && matchesPathPattern(e.pathPattern, path));
+    const takes = (e: GetEndpoint) => queryNames.every((n) => (e.query ?? []).includes(n));
+    const endpoint = this.allowed.find((e) => sameHost(e.host, host) && matchesPathPattern(e.pathPattern, path) && takes(e));
     if (!endpoint) throw refuse();
     return endpoint;
   }
@@ -138,7 +147,7 @@ export class BoardApiClient {
   /** One GET to a listed endpoint: the response body. */
   async get(req: BoardRequest, signal?: AbortSignal): Promise<string> {
     if (req.path.includes("?") || req.path.includes("#")) throw new EndpointNotAllowed(this.source, "GET", req.host, req.path);
-    this.endpointFor(req.host, req.path);
+    this.endpointFor(req.host, req.path, Object.keys(req.query ?? {}));
     const headers: Record<string, string> = { "User-Agent": this.opts.userAgent ?? BOARD_API_USER_AGENT, Accept: "application/json, text/html;q=0.9, */*;q=0.5", ...req.headers };
     if (this.opts.path === "account_api") Object.assign(headers, this.authHeaders());
     const url = new URL(`https://${req.host}${req.path}`);
