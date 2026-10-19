@@ -57,7 +57,57 @@ All are optional. Set them in the shell before starting the orchestrator.
 | `ORCH_WEB_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | The web app's address. Change it only if you run the web app on another port. |
 | `ORCH_NOTIFY` | on | `0` turns off the macOS notifications ("review cards ready", "Lead needs you", "Chrome is closed"). |
 | `ORCH_PORT` | `4100` | The API port (on `127.0.0.1` only). If you change it, start the web app with the same `ORCH_PORT`. |
+| `ORCH_SECRETS_FILE` | `~/.config/bs-job-agents/secrets.json` (`$XDG_CONFIG_HOME/bs-job-agents/secrets.json` when that is set) | Board tokens for the account API. See [Board tokens](#board-tokens). Refused at start if it points inside the repo. |
 | `BSJA_API_MODE` | `auto` | Set `live` for the web app, so it never falls back to the sample data when the orchestrator is down. Turbo passes it through to the web app (`apps/web/turbo.json`), along with `BSJA_MOCK_SPEED`, `ORCH_URL` and `ORCH_PORT`. The **Sample data** badge check below is still worth a glance. |
+
+### Board tokens
+
+Some job boards can be read by the orchestrator itself, through an API, instead of by Research in your Chrome. That is faster and uses no Claude quota. Each board's research is in `packages/shared/src/source-access/records/<source>.json`; it decides how the board is read, in this order: its **public API**, then the board's own web API (the **account API**), then the **browser**.
+
+**How each board is read today**
+
+| Board | Path | Token |
+|---|---|---|
+| TopCV, ITviec | Read directly as a guest: the orchestrator fetches the public search and job pages and reads the job data they embed. Label **Direct (no login)**. About 1 search page per role and city, then 1 page per posting (at most the scan's job limit), 1.5 s apart. | None. Your account is not involved. |
+| LinkedIn | Browser. Its record lists an account API, but no API reader is built for it yet (the endpoints are unverified), so it stays in your Chrome even if you approve it. | Not used yet. When it is: `li_at`, `JSESSIONID` and `csrf-token` (below). |
+| VietnamWorks, Wellfound, Upwork | Browser. No usable read-only endpoint was found. | None. |
+| Remote OK, We Work Remotely, Remotive, Jobspresso | Public feeds, read by the orchestrator. | None. |
+
+**The secrets file.** Tokens live in one JSON file outside the repo, never in the repo, a prompt or a log:
+
+- Location: `ORCH_SECRETS_FILE`, default `~/.config/bs-job-agents/secrets.json`. The orchestrator refuses to start with a path inside the repository, and warns if anyone but you can read the file.
+- Format: one object per board, one value per name in that board's record (`auth.names`):
+
+  ```json
+  {
+    "linkedin": {
+      "li_at": "<cookie value>",
+      "JSESSIONID": "<cookie value>",
+      "csrf-token": "<header value>"
+    }
+  }
+  ```
+
+  Key each value by its **bare name**. A record writes a header as `header:<name>` (LinkedIn: `header:csrf-token`) and a cookie as `<name>` (or `cookie:<name>`); the file uses `csrf-token`, not `header:csrf-token`. Cookies are sent in one `Cookie` header, headers by their name.
+- Create it with your own rights only:
+
+  ```bash
+  mkdir -p ~/.config/bs-job-agents
+  touch ~/.config/bs-job-agents/secrets.json && chmod 600 ~/.config/bs-job-agents/secrets.json
+  ```
+
+- The file is read on every scan, so a renewed token works without a restart.
+
+**Where to copy each value** (from the board's record, `auth.howToCopy`):
+
+- **LinkedIn** (only once it gets an API reader and you approve it): in Chrome, signed in to linkedin.com, open DevTools → Application → Cookies → `https://www.linkedin.com`. Copy the value of `li_at` and of `JSESSIONID`. The `csrf-token` value is the `JSESSIONID` value without its surrounding quotes (check it in DevTools → Network: any `/voyager/api/` request → Request Headers → `csrf-token`).
+- **TopCV, ITviec, VietnamWorks, Wellfound, Upwork**: nothing to copy.
+
+**Approval (Search criteria screen).** Each source toggle shows how it is read: **Public API**, **Direct (no login)**, **Account API**, **Account API (needs approval)**, **Account API (token missing)** or **Browser**. A board marked `high` risk in its record (its terms forbid bots, or accounts are restricted for automation) says **Account API (needs approval)** and is read in the browser until you click **Approve**. Approve first shows the record's terms quote and risk statement; you can **Revoke** later. An approval is tied to the record's `researchedAt`: when the board is researched again, it lapses and the board goes back to the browser until you approve it again. A low-risk board needs no approval.
+
+**The fallback notice.** If an account-API board has no token in the file, or the board answers 401/403 (the token expired), that run reads the board in the browser instead, and Lead posts: "*<Source>* token missing — scanned through the browser this time. Renew the *<Source>* token in your secrets file." (or "token rejected"). Nothing is lost: the browser scan covers the board for that run. Copy a fresh value into the secrets file; the next scan uses it. Other failures (the board is down, rate limits) are retried, then that source fails with "*<Source>* scan failed: …" and the other sources go on, without a browser fallback.
+
+**What is never sent.** Only the GET endpoints listed in a board's record, with only the query parameters listed for each, are allowed; anything else, and every apply endpoint, is refused before a request leaves the Mac. Requests to one host are at least 1.5 s apart. Each request shows on the task as method, host and path only (no query, no header, no token).
 
 ### Start
 
@@ -131,7 +181,7 @@ Then `launchctl load ~/Library/LaunchAgents/com.bason.job-agents.plist`, and run
 - **Schedules.** Create them on **Schedules**, or ask Lead ("scan every weekday at 9") and click **Create schedule** on its card. Lead never creates one by itself.
 - **Criteria from chat.** When Lead suggests a change ("also look in Đà Nẵng"), **Save to my criteria** saves a new version; **Just this run** doesn't.
 - **Sources** (Search criteria; TopCV, ITviec and LinkedIn are on by default, the rest off):
-  - *Vietnam boards*: TopCV, ITviec, VietnamWorks — Research reads them in your Chrome.
+  - *Vietnam boards*: TopCV and ITviec — the orchestrator reads their public pages itself (no bot, no Chrome, see [Board tokens](#board-tokens)); VietnamWorks — Research reads it in your Chrome.
   - *Remote boards*: Remote OK, We Work Remotely, Remotive, Jobspresso — the orchestrator reads their public feeds itself (no bot, no Claude/Codex quota; responses are cached, Remotive's for 6 h as it asks). Each posting links back to the board.
   - *Global*: LinkedIn, plus Wellfound and Upwork, which Research reads with **your own login** (at most 30 pages per scan, 3–8 s apart). Signed out → a login card, as in UC-17.
   - **Upwork is find only**: its jobs come as review cards with **Open on Upwork**; Approve is refused and nothing is ever bid, proposed or spent (no Connects). Apply there yourself, then Skip the card.
