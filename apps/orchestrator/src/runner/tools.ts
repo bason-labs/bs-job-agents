@@ -134,6 +134,14 @@ export function toollessPlan(): ToolPlan {
   return { read: false, webSearch: false, skills: [], chrome: null, mcp: [] };
 }
 
+/**
+ * CV guidance source discovery (SEC-20): web search and nothing else, so a page it finds can make it
+ * open nothing (no Chrome, Read, skills or MCP); the orchestrator fetches the URLs it returns.
+ */
+export function webSearchOnlyPlan(plan: ToolPlan): ToolPlan {
+  return { read: false, webSearch: plan.webSearch, skills: [], chrome: null, mcp: [] };
+}
+
 export interface ClaudeToolFlags {
   /** --tools: built-in tools ("" when empty). StructuredOutput is added by the CLI. */
   tools: string[];

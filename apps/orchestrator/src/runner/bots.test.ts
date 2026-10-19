@@ -113,7 +113,7 @@ describe("ROLE.md and memory.md", () => {
 describe("bots/<name>/schemas/*.json (spike S4)", () => {
   it("lists every schema a bot can produce", () => {
     const research = loadBotDefinition(join(BOTS, "research"));
-    expect(botSchemaNames(research)).toEqual(["ConsultOutput", "ResearchCompanyOutput", "ResearchFitOutput", "ResearchScanOutput"]);
+    expect(botSchemaNames(research)).toEqual(["ConsultOutput", "GuidanceDiscoverOutput", "GuidanceExtractOutput", "ResearchCompanyOutput", "ResearchFitOutput", "ResearchScanOutput"]);
     expect(botSchemaNames(loadBotDefinition(join(BOTS, "apply")))).toEqual(["ApplyOutput", "ConsultOutput"]);
   });
 

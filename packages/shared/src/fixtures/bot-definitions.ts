@@ -2,6 +2,8 @@
 import type { BotDefinitionInput } from "../bots/definition.js";
 import { DERIVE_SELF_CHECK } from "../bots/derive.js";
 import { FACT_DRAFT_SELF_CHECK } from "../bots/fact-draft.js";
+import { CV_REVIEW_SELF_CHECK } from "../bots/cv-review.js";
+import { GUIDANCE_DISCOVER_SELF_CHECK, GUIDANCE_EXTRACT_SELF_CHECK } from "../bots/research-guidance.js";
 
 export const researchBotJson = {
   name: "research",
@@ -20,12 +22,15 @@ export const researchBotJson = {
     file: "ResearchScanOutput",
     fit: "ResearchFitOutput",
     company: "ResearchCompanyOutput",
+    guidance_extract: "GuidanceExtractOutput",
+    guidance_discover: "GuidanceDiscoverOutput",
   },
   selfCheck: [
     "Every job has a reachable URL",
     "Every job has full JD text (not a snippet)",
     "No job is a duplicate of another in this output",
   ],
+  selfCheckByKind: { guidance_extract: [...GUIDANCE_EXTRACT_SELF_CHECK], guidance_discover: [...GUIDANCE_DISCOVER_SELF_CHECK] },
   promptVersion: 1,
 } satisfies BotDefinitionInput;
 
@@ -62,8 +67,8 @@ export const botDefinitionFixtures: BotDefinitionInput[] = [
     allowedTools: ["Read", "mcp:figma:figma_get_status", "mcp:figma:figma_execute", "mcp:figma:figma_capture_screenshot"],
     browser: null,
     mcpServers: ["figma"],
-    outputSchema: { tailor: "CvOutput", fact_draft: "FactDraftOutput", derive: "DeriveOutput" },
-    selfCheckByKind: { fact_draft: [...FACT_DRAFT_SELF_CHECK], derive: [...DERIVE_SELF_CHECK] },
+    outputSchema: { tailor: "CvOutput", fact_draft: "FactDraftOutput", derive: "DeriveOutput", review: "CvReviewOutput" },
+    selfCheckByKind: { fact_draft: [...FACT_DRAFT_SELF_CHECK], derive: [...DERIVE_SELF_CHECK], review: [...CV_REVIEW_SELF_CHECK] },
     selfCheck: [
       "One A4 page",
       "No hidden, clipped or overflowing text frames",

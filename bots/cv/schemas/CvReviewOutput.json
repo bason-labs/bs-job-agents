@@ -1,0 +1,142 @@
+{
+  "title": "CvReviewOutput",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ruleId": {
+            "type": "string",
+            "description": "A ruleId from the input rules"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "met",
+              "not_met",
+              "needs_fact",
+              "not_applicable"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "One line: why"
+          },
+          "fixable": {
+            "type": "boolean",
+            "description": "not_met only: a revision can meet the rule with the cited facts alone"
+          },
+          "fix": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "instruction": {
+                    "type": "string",
+                    "description": "What the next round changes, e.g. move the Java role above the React one"
+                  },
+                  "factIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "The fact ids the fix uses (from facts)"
+                  }
+                },
+                "required": [
+                  "instruction",
+                  "factIds"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "needsFact": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "factId": {
+                    "type": "string",
+                    "description": "The one fact the missing detail belongs to"
+                  },
+                  "question": {
+                    "type": "string",
+                    "description": "The question for Ba, e.g. What result did the order service work have?"
+                  }
+                },
+                "required": [
+                  "factId",
+                  "question"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "ruleId",
+          "status",
+          "reason",
+          "fixable",
+          "fix",
+          "needsFact"
+        ],
+        "additionalProperties": false
+      },
+      "description": "One item per input rule"
+    },
+    "selfCheck": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "The checklist item, copied from bot.json selfCheck"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it passed or failed; null when nothing to add"
+          }
+        },
+        "required": [
+          "item",
+          "passed",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "One entry per selfCheck item in bot.json. Any failed item fails the attempt."
+    },
+    "memoryNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "description": "Up to 3 short lessons for this bot's memory, e.g. 'TopCV upload limit is 5MB'. Empty if none."
+    }
+  },
+  "required": [
+    "items",
+    "selfCheck",
+    "memoryNotes"
+  ],
+  "additionalProperties": false
+}

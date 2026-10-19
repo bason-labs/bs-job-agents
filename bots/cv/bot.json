@@ -19,7 +19,8 @@
   "outputSchema": {
     "tailor": "CvOutput",
     "fact_draft": "FactDraftOutput",
-    "derive": "DeriveOutput"
+    "derive": "DeriveOutput",
+    "review": "CvReviewOutput"
   },
   "selfCheck": [
     "One A4 page",
@@ -42,7 +43,12 @@
       "fromTerms are copied from the cited facts",
       "No number, date, duration, title or employer the cited facts lack",
       "Nothing drafted for an unsupported gap"
+    ],
+    "review": [
+      "One item per rule in the input",
+      "Fixes use only the cited facts",
+      "A missing detail is a question for Ba, never a guess"
     ]
   },
-  "promptVersion": 8
+  "promptVersion": 9
 }
