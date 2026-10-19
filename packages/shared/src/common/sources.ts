@@ -1,8 +1,9 @@
 // Search sources (§7.5 "sources", W5 2026-10-11): what each toggle on the Search criteria screen
 // is, how the orchestrator reads it and whether the app may apply there.
-// - kind "browser": Research reads the board in Ba's Chrome (a skill per source, §12 adapters).
-// - kind "feed": a public JSON/RSS feed the orchestrator fetches itself. No bot, no LLM, no
-//   Claude/Codex quota; the scan's fit step (an LLM task) still scores what it finds.
+// - kind "browser": a board with an access record (src/source-access). Its path (public API,
+//   account API or Research in Ba's Chrome) comes from accessPathOfSource, never from `kind`.
+// - kind "feed": a public JSON/RSS feed the orchestrator fetches itself (path public_api by
+//   construction). No bot, no LLM, no Claude/Codex quota; the scan's fit step still scores it.
 // - canApply false: find only. The job shows up on a review card, but Approve is refused and no
 //   bot ever applies, bids or spends anything there (Upwork: no proposals, no Connects).
 // - remote: the board lists remote jobs. Its scan ignores the city filter, matches "Remote" and
@@ -53,7 +54,7 @@ export function isSearchSource(source: unknown): source is SearchSource {
   return typeof source === "string" && (SearchSourceSchema.options as readonly string[]).includes(source);
 }
 
-/** A source the orchestrator fetches itself (no bot). */
+/** A feed source (FeedScanner): public_api by construction, see accessPathOfSource. */
 export function isFeedSource(source: unknown): source is FeedSource {
   return isSearchSource(source) && SEARCH_SOURCES[source].kind === "feed";
 }

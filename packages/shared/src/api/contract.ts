@@ -73,6 +73,7 @@ import {
   ScheduleViewSchema,
   SchedulesResponseSchema,
 } from "./schedules.js";
+import { SourceAccessResponseSchema, SourceAccessViewSchema, SourceApprovalRequestSchema } from "./source-access.js";
 import { UploadsResponseSchema } from "./uploads.js";
 
 export type ApiMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -144,6 +145,8 @@ export const API_CONTRACT = {
   masterCvFactDrafts: { POST: ep(FactDraftStartedSchema, FactDraftRequestSchema) },
   masterCvFactDraft: { GET: ep(FactDraftViewSchema) },
   masterCvFactsUndo: { POST: ep(MasterCvSchema, FactUndoRequestSchema) },
+  sourceAccess: { GET: ep(SourceAccessResponseSchema) },
+  sourceApproval: { POST: ep(SourceAccessViewSchema, SourceApprovalRequestSchema), DELETE: ep(SourceAccessViewSchema) },
 } as const satisfies { [K in ApiRouteKey]: Partial<Record<ApiMethod, ApiEndpoint>> };
 
 /** Every (method, route) pair of the contract, e.g. `{ key: "bot", method: "PATCH", path: "/bots/:name", … }`. */
