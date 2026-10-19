@@ -81,6 +81,15 @@ describe("tablePass (no LLM)", () => {
     expect(r.remaining.map((g) => g.gap)).toEqual(["payments domain"]);
   });
 
+  it("a skill with several entries uses the one a fact supports; Azure Pipelines and Jest stay related", () => {
+    const r = run(["Azure", "Unit testing"], [fact("f-1", "Built release pipelines in Azure Pipelines"), fact("f-2", "Wrote tests in Jest")]);
+    expect(r.derivations.map((d) => [d.implication.skill, d.implication.kind, d.facts[0]!.fromTerm])).toEqual([
+      ["Azure", "related", "Azure Pipelines"],
+      ["Unit testing", "related", "Jest"],
+    ]);
+    expect(run(["Azure"], [fact("f-3", "Ran services on AKS")]).derivations[0]!.implication.kind).toBe("is_a");
+  });
+
   it("learned allow entries resolve a pair the model judged before, by code", () => {
     const learned = implicationTable({ allow: [{ skill: "Zustand", impliedBy: "React", firstSeen: "2026-10-19T08:00:00Z", factId: "f-3", rationale: "x" }], deny: [] });
     const r = run(["Zustand"], [fact("f-3", "React portal")], learned);

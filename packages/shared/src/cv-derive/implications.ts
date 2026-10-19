@@ -195,9 +195,11 @@ export const SEED_IMPLICATIONS: readonly Implication[] = [
   { skill: "Git", impliedBy: ["GitHub", "GitLab", "Bitbucket"], kind: "related", rationale: "GitHub, GitLab and Bitbucket host Git repositories." },
   { skill: "AWS", impliedBy: ["EKS", "ECS", "EC2", "S3", "Lambda", "DynamoDB", "CloudFormation", "AWS CDK"], kind: "is_a", rationale: "These are AWS services." },
   { skill: "GCP", impliedBy: ["GKE", "BigQuery", "Cloud Run"], kind: "is_a", rationale: "These are Google Cloud services." },
-  { skill: "Azure", impliedBy: ["AKS", "Azure Pipelines"], kind: "is_a", rationale: "These are Azure services." },
+  { skill: "Azure", impliedBy: ["AKS"], kind: "is_a", rationale: "AKS is an Azure service." },
+  { skill: "Azure", impliedBy: ["Azure Pipelines"], kind: "related", rationale: "Azure Pipelines is part of Azure DevOps, not the Azure cloud." },
   { skill: "Infrastructure as Code", impliedBy: ["Terraform", "CloudFormation", "Pulumi", "AWS CDK"], kind: "is_a", rationale: "These are infrastructure-as-code tools." },
-  { skill: "Unit testing", impliedBy: ["Jest", "Vitest", "Mocha", "JUnit", "pytest"], kind: "is_a", rationale: "These are unit-test frameworks." },
+  { skill: "Unit testing", impliedBy: ["JUnit", "pytest"], kind: "is_a", rationale: "These are unit-test frameworks." },
+  { skill: "Unit testing", impliedBy: ["Jest", "Vitest", "Mocha"], kind: "related", rationale: "These runners also run integration and end-to-end tests." },
   { skill: "E2E testing", impliedBy: ["Playwright", "Cypress", "Selenium"], kind: "is_a", rationale: "These are end-to-end test tools." },
   { skill: "GraphQL", impliedBy: ["Apollo"], kind: "related", rationale: "Apollo is a GraphQL client and server." },
   { skill: "Machine learning", impliedBy: ["TensorFlow", "PyTorch", "scikit-learn"], kind: "related", rationale: "These are machine-learning libraries." },
@@ -398,17 +400,24 @@ export function tablePass(
     let open = g.terms.length === 0;
     for (const term of g.uncovered) {
       if (done.has(term)) continue;
-      const implication = table.implications.find((i) => fold(i.skill) === fold(term));
-      const facts = implication
-        ? ownFacts
-            .map((f) => {
-              const by = implication.impliedBy.find((name) => factNames(f, name, table));
-              const fromTerm = by ? spellingIn(f, by, table) : null;
-              return fromTerm ? { factId: f.id, fromTerm } : null;
-            })
-            .filter((x): x is { factId: string; fromTerm: string } => x !== null)
-            .slice(0, TABLE_MAX_CITED)
-        : [];
+      // A skill can have several entries (is_a and related, seed and learned): use the first that
+      // one of Ba's facts supports.
+      let implication: Implication | undefined;
+      let facts: { factId: string; fromTerm: string }[] = [];
+      for (const candidate of table.implications.filter((i) => fold(i.skill) === fold(term))) {
+        facts = ownFacts
+          .map((f) => {
+            const by = candidate.impliedBy.find((name) => factNames(f, name, table));
+            const fromTerm = by ? spellingIn(f, by, table) : null;
+            return fromTerm ? { factId: f.id, fromTerm } : null;
+          })
+          .filter((x): x is { factId: string; fromTerm: string } => x !== null)
+          .slice(0, TABLE_MAX_CITED);
+        if (facts.length > 0) {
+          implication = candidate;
+          break;
+        }
+      }
       if (implication && facts.length > 0) {
         derivations.push({ gap: g.gap, implication, facts });
         done.add(term);
