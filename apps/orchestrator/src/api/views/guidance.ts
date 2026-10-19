@@ -4,13 +4,10 @@
 import {
   GuidanceReviewResultSchema,
   LIMITS,
-  isDisputed,
-  plainText,
-  resolveGuidance,
+  guidanceRuleViews,
   type ActivityEntry,
   type GuidanceRefreshSummary,
   type GuidanceRuleSet,
-  type GuidanceRuleView,
   type GuidanceSource,
   type GuidanceView,
   type ReviewGuidance,
@@ -20,44 +17,6 @@ import { getGuidanceReview } from "../../db/repos/guidance-reviews.js";
 import { currentGuidanceRuleSet, getGuidanceSettings, getGuidanceSnapshot } from "../../db/repos/guidance.js";
 
 const ref = (s: GuidanceSource) => ({ id: s.id, title: s.title, publisher: s.publisher, url: s.url, repoPath: s.repoPath, retrievedAt: s.retrievedAt, kind: s.kind, market: s.market });
-
-function ruleViews(set: GuidanceRuleSet, turnedOff: readonly string[]): GuidanceRuleView[] {
-  // A position's standing for Vietnam jobs and for global ones (the market tie-break, §5.5).
-  const vn = resolveGuidance(set, { masterContact: { links: ["x"] }, jobMarket: "vn", turnedOff: [] });
-  const global = resolveGuidance(set, { masterContact: { links: ["x"] }, jobMarket: "global", turnedOff: [] });
-  return set.rules.map((rule) => {
-    const v = vn.rules.find((r) => r.ruleId === rule.id)!;
-    const g = global.rules.find((r) => r.ruleId === rule.id)!;
-    const off = turnedOff.includes(rule.id);
-    const status: GuidanceRuleView["status"] = off ? "turned_off" : rule.overriddenBy.length > 0 ? "overridden" : isDisputed(rule) ? "disputed" : "agree";
-    const reason = off ? "Turned off by you: not sent to the CV writer or the review." : v.reason === g.reason ? g.reason : `For Vietnam jobs: ${v.reason} For global jobs: ${g.reason}`;
-    return {
-      ruleId: rule.id,
-      topic: rule.topic,
-      point: rule.point,
-      check: rule.check,
-      appliesWhen: rule.appliesWhen,
-      overriddenBy: rule.overriddenBy,
-      status,
-      turnedOff: off,
-      reason,
-      positions: rule.positions.map((p, i) => {
-        const inVn = v.positions[i]!.status !== "not_applied";
-        const inGlobal = g.positions[i]!.status !== "not_applied";
-        return {
-          id: p.id,
-          text: p.text,
-          hosts: g.positions[i]!.hosts,
-          applies: inVn && inGlobal ? ("applied" as const) : inVn ? ("applied_vn" as const) : inGlobal ? ("applied_global" as const) : ("not_applied" as const),
-          sources: p.sourceIds
-            .map((id) => set.sources.find((s) => s.id === id))
-            .filter((s): s is GuidanceSource => s !== undefined)
-            .map((s) => ({ ...ref(s), title: s.title ? plainText(s.title, 200) : null, evidence: p.evidence.find((e) => e.sourceId === s.id)?.quote ?? null })),
-        };
-      }),
-    };
-  });
-}
 
 function refreshOf(row: { createdAt: string; payload: unknown }): GuidanceRefreshSummary {
   const p = row.payload as { runId: string | null; outcome: GuidanceRefreshSummary["outcome"]; pagesChecked: number; failed: number; rulesChanged: number; error: string | null };
@@ -75,7 +34,7 @@ export function guidanceView(db: Db): GuidanceView {
     sourceCount: current?.ruleSet.sources.length ?? 0,
     lastRefresh: last ? refreshOf(last) : null,
     lastSuccessAt: success?.createdAt ?? null,
-    rules: current ? ruleViews(current.ruleSet, settings.turnedOff) : [],
+    rules: current ? guidanceRuleViews(current.ruleSet, settings.turnedOff) : [],
   };
 }
 

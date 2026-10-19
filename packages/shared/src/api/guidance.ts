@@ -14,6 +14,7 @@ export type GuidanceSourceView = z.infer<typeof GuidanceSourceViewSchema>;
 
 /** How a position fares: for every job, for Vietnam jobs only, for global jobs only, or never. */
 export const GuidancePositionAppliesSchema = z.enum(["applied", "applied_vn", "applied_global", "not_applied"]);
+export type GuidancePositionApplies = z.infer<typeof GuidancePositionAppliesSchema>;
 
 export const GuidanceRuleViewSchema = z.object({
   ruleId: z.string().min(1),

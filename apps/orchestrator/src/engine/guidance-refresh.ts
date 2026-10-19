@@ -361,7 +361,8 @@ function finish(core: EngineCore, tx: Conn, ctx: RunCtx, row: Step, out: Guidanc
       rulesChanged = committed.changes.length;
     } catch (err) {
       for (const c of screened.changes) {
-        appendAppEvent(tx, { type: c.kind === "rule_added" ? "guidance.rule_added" : "guidance.rule_changed", snapshot: (snapshot ?? 0) + 1, runId: String(ctx.run.id), ruleId: c.ruleId, point: c.point, previousText: c.previousText, newText: c.newText, sourceIds: c.sourceIds, applied: false }, { now: core.now() });
+        const entry = { snapshot: (snapshot ?? 0) + 1, runId: String(ctx.run.id), ruleId: c.ruleId, point: c.point, previousText: c.previousText, newText: c.newText, sourceIds: c.sourceIds, applied: false };
+        appendAppEvent(tx, c.kind === "rule_added" ? { type: "guidance.rule_added", ...entry } : { type: "guidance.rule_changed", ...entry }, { now: core.now() });
       }
       return fail(core, tx, ctx, row, { ...out, snapshot }, `the new rule set could not be saved (${errorMessage(err)})`);
     }

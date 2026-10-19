@@ -8,3 +8,4 @@ export * from "./resolve.js";
 export * from "./checks.js";
 export * from "./review.js";
 export * from "./diff.js";
+export * from "./view.js";

@@ -51,21 +51,8 @@ export function commitGuidanceRuleSet(db: Conn, input: CommitGuidanceInput, opts
     tx.insert(guidanceRuleSets).values({ snapshot, runId: input.runId, ruleSet, createdAt }).run();
     const changes = diffRuleSets(previous?.ruleSet ?? null, ruleSet);
     for (const c of changes) {
-      appendAppEvent(
-        tx,
-        {
-          type: c.kind === "rule_added" ? "guidance.rule_added" : "guidance.rule_changed",
-          snapshot,
-          runId: input.runId === null ? null : String(input.runId),
-          ruleId: c.ruleId,
-          point: c.point,
-          previousText: c.previousText,
-          newText: c.newText,
-          sourceIds: c.sourceIds,
-          applied: true,
-        },
-        { now: new Date(createdAt) },
-      );
+      const entry = { snapshot, runId: input.runId === null ? null : String(input.runId), ruleId: c.ruleId, point: c.point, previousText: c.previousText, newText: c.newText, sourceIds: c.sourceIds, applied: true };
+      appendAppEvent(tx, c.kind === "rule_added" ? { type: "guidance.rule_added", ...entry } : { type: "guidance.rule_changed", ...entry }, { now: new Date(createdAt) });
     }
     input.failAfterEvents?.();
     return { snapshot, changes };
