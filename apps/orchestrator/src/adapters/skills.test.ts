@@ -1,11 +1,17 @@
 // W4a (PM2 S26): the adapter runs as a skill Research reads plus this code. Keep the two in step:
-// the skills state the selectors the parsers use, the URLs sources.ts builds, LinkedIn's limits and
-// the exact self-check notes the checker reacts to.
+// the skills pass the same screen a self-repaired skill must pass (shared screenSkillDraft, SEC-9),
+// state the URLs sources.ts builds, LinkedIn's limits and the exact self-check notes the checker
+// reacts to.
+// Skill self-repair (sub-project 4 §8): the skills no longer have to name the parsers' selectors or
+// an "observed 2026-10" date. Those tied skill text to the developer-time parsers in parsers/, which
+// is exactly what a repair changes; the parsers keep their own fixture tests (parsers.test.ts).
 import { readFileSync } from "node:fs";
+import { screenSkillDraft } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
+import { loadBots } from "../runner/bots.js";
 import { SourceScanChecker } from "./checker.js";
-import { PARSERS } from "./pages.js";
-import { SOURCE_ADAPTERS } from "./sources.js";
+import { skillScreenContext } from "./skill-screen.js";
+import { SOURCE_ADAPTERS, type AdapterSource } from "./sources.js";
 
 const skill = (name: string) => readFileSync(new URL(`../../../../bots/research/skills/source-${name}/SKILL.md`, import.meta.url), "utf8");
 
@@ -20,19 +26,17 @@ const SKILLS = {
 } as const;
 
 describe("bots/research/skills/source-*", () => {
+  const research = loadBots(new URL("../../../../bots", import.meta.url).pathname).find((b) => b.name === "research")!;
+
   it.each(Object.entries(SKILLS))("%s: has a front matter name and description, and is read-only", (_source, dir) => {
     const md = skill(dir);
     expect(md).toMatch(new RegExp(`^---\\nname: source-${dir}\\ndescription: .+\\n---\\n`));
     expect(md).toMatch(/Read-only/);
-    expect(md).toMatch(/observed 2026-10/);
   });
 
-  it.each(Object.entries(SKILLS))("%s: names the card and JD selectors the parser uses", (source, dir) => {
+  it.each(Object.entries(SKILLS))("%s: passes the screen a repaired skill must pass (SEC-9)", (source, dir) => {
     const md = skill(dir);
-    const parser = PARSERS[source as keyof typeof PARSERS];
-    const card = parser.cardSelector.split(",")[0]!.trim().replace(/\[.*$/, "");
-    expect(md).toContain(card);
-    expect(md).toContain(parser.jdSelector.split(",")[0]!.trim());
+    expect(screenSkillDraft(md, skillScreenContext(source as AdapterSource, { allowedTools: research.allowedTools, current: md }))).toEqual({ ok: true });
   });
 
   it("the TopCV and ITviec city codes match the search URLs the code builds", () => {

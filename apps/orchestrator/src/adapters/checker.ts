@@ -55,6 +55,10 @@ const LAYOUT_NOTE = /^\s*(layout changed|adapter broken)\s*[:-]\s*(.+)$/is;
 /** A self-check note in which the bot confirms the search itself found nothing. */
 const NO_RESULTS_NOTE = /\b(no results|no jobs found|0 (results|jobs|việc làm)|zero results|không tìm thấy)\b/i;
 
+/** Skill self-repair (SEC-9): the screen checks a drafted skill keeps notes this checker reads. */
+export const isLayoutChangedNote = (note: string): boolean => LAYOUT_NOTE.test(note);
+export const isNoResultsNote = (note: string): boolean => NO_RESULTS_NOTE.test(note);
+
 const MAX_FUTURE_MS = 36 * 3_600_000;
 const EARLIEST_POSTED = Date.UTC(2000, 0, 1);
 
