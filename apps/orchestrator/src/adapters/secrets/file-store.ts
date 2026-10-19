@@ -28,17 +28,23 @@ function realish(path: string): string {
     rest.unshift(existing.slice(parent.length).replace(/^[\\/]/, ""));
     existing = parent;
   }
-  return join(realpathSync(existing), ...rest);
+  return join(realpathSync.native(existing), ...rest);
 }
 
-function isInside(path: string, root: string): boolean {
-  const rel = relative(realish(root), realish(path));
+/** macOS and Windows file systems ignore letter case by default: "/Users/x/Repo" is "/users/x/repo". */
+const CASE_INSENSITIVE_FS = process.platform === "darwin" || process.platform === "win32";
+
+export function isInside(path: string, root: string, caseInsensitive = CASE_INSENSITIVE_FS): boolean {
+  const fold = (p: string) => (caseInsensitive ? p.toLowerCase() : p);
+  const rel = relative(fold(realish(root)), fold(realish(path)));
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
 export interface FileSecretStoreOptions {
   path: string;
   repoRoot: string;
+  /** Compare paths ignoring letter case (default: on macOS and Windows). */
+  caseInsensitive?: boolean;
   redactor?: Redactor;
   log?: Logger;
 }
@@ -50,7 +56,7 @@ export class FileSecretStore implements SecretStore {
 
   constructor(opts: FileSecretStoreOptions) {
     this.path = resolve(opts.path);
-    if (isInside(this.path, opts.repoRoot)) {
+    if (isInside(this.path, opts.repoRoot, opts.caseInsensitive)) {
       throw new SecretsFileRefusedError(`the secrets file ${this.path} is inside the repository (${opts.repoRoot}); keep it outside, e.g. ${defaultSecretsFile()} (ORCH_SECRETS_FILE)`);
     }
     this.redactor = opts.redactor ?? new Redactor();

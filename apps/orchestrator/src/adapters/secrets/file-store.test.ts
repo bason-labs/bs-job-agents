@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { findRepoRoot } from "../../config.js";
+import { isInside } from "./file-store.js";
 import { FileSecretStore, Redactor, SecretsFileRefusedError, defaultSecretsFile } from "./index.js";
 
 const TOKEN = "li_at-AQEDAR-very-secret-value-123";
@@ -39,6 +40,14 @@ describe("FileSecretStore", () => {
     expect(store.credentials("itviec")).toBeNull();
     expect(store.has("itviec")).toBe(false);
     expect(redactor.redact(`Cookie: li_at=${TOKEN}; csrf ${CSRF}`)).toBe("Cookie: li_at=[redacted]; csrf [redacted]");
+  });
+
+  it("refuses a path inside the repository written with other letter case (macOS file systems ignore case)", () => {
+    const upper = repoRoot.toUpperCase();
+    expect(() => new FileSecretStore({ path: join(upper, "data", "secrets.json"), repoRoot, caseInsensitive: true })).toThrow(SecretsFileRefusedError);
+    // Folding applies to the part of the path that does not exist yet, too.
+    expect(isInside(join(repoRoot, "NEW-FOLDER", "secrets.json"), join(repoRoot, "new-folder"), true)).toBe(true);
+    if (process.platform === "darwin") expect(() => new FileSecretStore({ path: join(upper, "data", "secrets.json"), repoRoot })).toThrow(/inside the repository/);
   });
 
   it("refuses a path inside the repository (REQ-24.AC-2)", () => {
