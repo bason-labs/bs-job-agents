@@ -1,0 +1,61 @@
+{
+  "_capture": {
+    "method": "GET",
+    "url": "https://www.topcv.vn/viec-lam/nhan-vien-reactjs-front-end-developer-middle/2320500.html",
+    "responseContentType": "text/html; charset=utf-8",
+    "extract": "script[type='application/ld+json'] with @type 'JobPosting'; full JD HTML in description",
+    "capturedAt": "2026-10-19",
+    "auth": "none (guest request, no cookies)",
+    "note": ""
+  },
+  "data": {
+    "@context": "http://schema.org/",
+    "@type": "JobPosting",
+    "title": "Nhân Viên ReactJS Front End Developer (Middle)",
+    "description": "<h2>Mô tả công việc</h2>\n<ul><li data-list-item-id=\"e005866830859707a90af608de2b4976c\">Phát triển, xây dựng và bảo trì các website/web app theo yêu cầu</li><li data-list-item-id=\"e8b87e74a9f4f18ce5c86b3d27dab8a52\">Tham gia phân tích yêu cầu, thiết kế hệ thống và đề xuất giải pháp kỹ thuật.</li><li data-list-item-id=\"e3ca727dbafaa042d03cae6eb8a1a875c\">Thiết kế và phát triển các tính năng web crm, hrm, backoffice và các hệ thống nghiệp vụ liên quan.</li><li data-list-item-id=\"e80cddd0a37d507a225207006d39c0bc4\">Xây dựng responsive UI, reusable components và shared modules.</li><li data-list-item-id=\"e01d0dfc1b45c14cbd04a2875bc6ee5c5\">Tích hợp API back-end với giao diện người dùng, xử lý và hiển thị dữ liệu theo thời gian thực thông qua Socket/WebSocket.</li><li data-list-item-id=\"e5c1aedd0afd4b9754a3d3288552ae712\">Tối ưu hiệu năng, khả năng tương thích, bảo mật và khả năng mở rộng của ứng dụng.</li><li data-list-item-id=\"ee10e0b1da91993cd67d618b5e449cc3f\">Bảo trì, xử lý lỗi và nâng cấp các tính năng theo yêu cầu.</li><li data-list-item-id=\"e97968c8ded3dcefc98a2472031fc8fdf\">Phối hợp với Designer, BA, Tester, Back-end trong mô hình Agile để hoàn thiện tính năng theo sprint.</li><li data-list-item-id=\"e1b821515f3d1b9feae24b63251863ff4\">Viết tài liệu kỹ thuật và hướng dẫn sử dụng khi cần.</li></ul>\n<h2>Yêu cầu ứng viên</h2>\n<p><strong>Kiến thức:</strong></p><ul><li data-list-item-id=\"e3dc648a037e4d877b4f82d555b5a6635\">Có ít nhất 2 năm kinh nghiệm làm việc với React , typescript với dự án</li><li data-list-item-id=\"eb2355c06ca8645976089aff0b7b6f9f8\">Có nền tảng tốt về lập trình (ví dụ: nguyên tắc OOP, design patterns, thuật toán cơ bản - basic data structure và cấu trúc dữ liệu)</li><li data-list-item-id=\"e24e532e69d4d4772cd6f9cd034dc674c\">Có kinh nghiệm về công nghệ phổ biến trong hệ sinh thái React như Redux, Hooks, HOC, Context , React Query, Typescript…</li><li data-list-item-id=\"e35d51d785e4b70a77d9a070b483a75d0\">Có kinh nghiệm test với JS / ReactJS với Jest</li><li data-list-item-id=\"eb73363fa197441e300cb536a28f7f64b\">Có kinh nghiệm phát triển RESTful API, Websocket, JSON, Html5, tailwindcss</li><li data-list-item-id=\"edfd06384dba4cda39efc2280f27cfcea\">Có kinh nghiệm làm việc với nextjs , shadcn&nbsp;</li><li data-list-item-id=\"e51e192a86e2278622d54c48949fc5946\">Có kinh nghiệm làm việc với mô hình microfrontend, monorepo</li><li data-list-item-id=\"e94a61cfca89e14cc19e72d730b6e9e67\">Có kinh nghiệm làm việc với Git, Github, Docker, CI / CD là 1 điểm cộng</li></ul><p><br>&nbsp;</p><p>Kỹ năng mềm:</p><ul><li data-list-item-id=\"e108de3fe218ad3d01c4071432e88fe23\">Đọc hiểu tiếng Anh chuyên ngành</li><li data-list-item-id=\"e587397fee3f4b2ffab7c3309e172fa99\">Tư duy sáng tạo và giải quyết vấn đề giỏi</li></ul><p>Thái độ:</p><ul><li data-list-item-id=\"e6a4160f0b28608f53f37a5ae66cbe0be\">Tự động viên bản thân với thái độ tích cực “CAN DO” và tinh thần đồng đội</li><li data-list-item-id=\"effd228c7fd61ccb8948e72db8c594a1b\">Cởi mở và ham học hỏi</li></ul>\n<h2>Quyền lợi được hưởng</h2>\n<ul><li data-list-item-id=\"e85c7d723354f29f5b6c3cc4675e12c93\">Môi trường trẻ trung, tư duy sáng tạo với GenZ</li><li data-list-item-id=\"e912765a7e1c03e2df42f44aab6c51f2c\">Không gian làm việc thoải mái</li><li data-list-item-id=\"e715c43971ff65c28fad984af141b066f\">Hỗ trợ tiền ăn trưa , tiền onsite khi làm việc trực tiếp với khách hàng</li><li data-list-item-id=\"e0994f38f75e8be9318a33c006380176f\">Tận hưởng ăn trưa công ty, tea-break và ăn vặt được chuẩn bị sẵn trong Pantry</li><li data-list-item-id=\"e21a98fd4a95be10eb40bfd2388058762\">Tham gia các hoạt động ngoài công ty: Team building, Year End Party…</li><li data-list-item-id=\"e6c126eed9a4b7afe7c5366c895b6106e\">Thưởng Lễ, Tết, lương tháng 13 theo quy định</li><li data-list-item-id=\"ee56dd2cd7d0b344eef80f984db11a00e\">BHXH đầy đủ theo quy định của luật</li><li data-list-item-id=\"ecd843327aab0a4e7ac4ad9352e47f72c\">Được công ty hỗ trợ ai claude cho quá trình làm việc</li></ul>",
+    "identifier": {
+      "@type": "PropertyValue",
+      "name": "CÔNG TY CỔ PHẦN CHUYỂN ĐỔI SỐ AIONTECH",
+      "value": 75602
+    },
+    "datePosted": "2026-10-08",
+    "validThrough": "2026-11-07T23:59:59+07:00",
+    "employmentType": "FULL_TIME",
+    "hiringOrganization": {
+      "@type": "Organization",
+      "name": "CÔNG TY CỔ PHẦN CHUYỂN ĐỔI SỐ AIONTECH",
+      "sameAs": "https://www.topcv.vn/cong-ty/cong-ty-co-phan-chuyen-doi-so-aiontech/75602.html",
+      "logo": "https://cdn-new.topcv.vn/unsafe/https://static.topcv.vn/company_logos/cong-ty-co-phan-chuyen-doi-so-adt-61416b8dc8d3d.jpg"
+    },
+    "jobLocation": {
+      "@type": "Place",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "106 đường Hoàng Quốc Việt",
+        "addressLocality": "Phường Nghĩa Đô",
+        "addressRegion": "Hà Nội",
+        "postalCode": 100000,
+        "addressCountry": "VN"
+      }
+    },
+    "baseSalary": {
+      "@type": "MonetaryAmount",
+      "currency": "VND",
+      "value": {
+        "@type": "QuantitativeValue",
+        "unitText": "MONTH",
+        "value": "Thoả thuận"
+      }
+    },
+    "industry": "IT phần mềm, Công nghệ thông tin",
+    "jobBenefits": "<ul><li data-list-item-id=\"e85c7d723354f29f5b6c3cc4675e12c93\">Môi trường trẻ trung, tư duy sáng tạo với GenZ</li><li data-list-item-id=\"e912765a7e1c03e2df42f44aab6c51f2c\">Không gian làm việc thoải mái</li><li data-list-item-id=\"e715c43971ff65c28fad984af141b066f\">Hỗ trợ tiền ăn trưa , tiền onsite khi làm việc trực tiếp với khách hàng</li><li data-list-item-id=\"e0994f38f75e8be9318a33c006380176f\">Tận hưởng ăn trưa công ty, tea-break và ăn vặt được chuẩn bị sẵn trong Pantry</li><li data-list-item-id=\"e21a98fd4a95be10eb40bfd2388058762\">Tham gia các hoạt động ngoài công ty: Team building, Year End Party…</li><li data-list-item-id=\"e6c126eed9a4b7afe7c5366c895b6106e\">Thưởng Lễ, Tết, lương tháng 13 theo quy định</li><li data-list-item-id=\"ee56dd2cd7d0b344eef80f984db11a00e\">BHXH đầy đủ theo quy định của luật</li><li data-list-item-id=\"ecd843327aab0a4e7ac4ad9352e47f72c\">Được công ty hỗ trợ ai claude cho quá trình làm việc</li></ul>",
+    "employerOverview": "<ul><li data-list-item-id=\"e005866830859707a90af608de2b4976c\">Phát triển, xây dựng và bảo trì các website/web app theo yêu cầu</li><li data-list-item-id=\"e8b87e74a9f4f18ce5c86b3d27dab8a52\">Tham gia phân tích yêu cầu, thiết kế hệ thống và đề xuất giải pháp kỹ thuật.</li><li data-list-item-id=\"e3ca727dbafaa042d03cae6eb8a1a875c\">Thiết kế và phát triển các tính năng web crm, hrm, backoffice và các hệ thống nghiệp vụ liên quan.</li><li data-list-item-id=\"e80cddd0a37d507a225207006d39c0bc4\">Xây dựng responsive UI, reusable components và shared modules.</li><li data-list-item-id=\"e01d0dfc1b45c14cbd04a2875bc6ee5c5\">Tích hợp API back-end với giao diện người dùng, xử lý và hiển thị dữ liệu theo thời gian thực thông qua Socket/WebSocket.</li><li data-list-item-id=\"e5c1aedd0afd4b9754a3d3288552ae712\">Tối ưu hiệu năng, khả năng tương thích, bảo mật và khả năng mở rộng của ứng dụng.</li><li data-list-item-id=\"ee10e0b1da91993cd67d618b5e449cc3f\">Bảo trì, xử lý lỗi và nâng cấp các tính năng theo yêu cầu.</li><li data-list-item-id=\"e97968c8ded3dcefc98a2472031fc8fdf\">Phối hợp với Designer, BA, Tester, Back-end trong mô hình Agile để hoàn thiện tính năng theo sprint.</li><li data-list-item-id=\"e1b821515f3d1b9feae24b63251863ff4\">Viết tài liệu kỹ thuật và hướng dẫn sử dụng khi cần.</li></ul>",
+    "occupationalCategory": "Nhân viên",
+    "experienceRequirements": {
+      "@type": "OccupationalExperienceRequirements",
+      "monthsOfExperience": 24
+    },
+    "skills": "Redux, TypeScript, ReactJS, Sáng tạo, Giải quyết vấn đề",
+    "totalJobOpenings": 1
+  }
+}

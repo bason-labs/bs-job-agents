@@ -1,0 +1,42 @@
+{
+  "_capture": {
+    "method": "GET",
+    "url": "https://itviec.com/it-jobs/react-developer/ho-chi-minh-hcm",
+    "responseContentType": "text/html; charset=utf-8",
+    "extract": "script[type='application/ld+json'] with @type 'ItemList'; job URLs at itemListElement[].url",
+    "capturedAt": "2026-10-19",
+    "auth": "none (guest request, no cookies)",
+    "note": "Trimmed to 5 of 20 items. Pagination: ?page=N. Cards in HTML (div.job-card, data-search--job-selection-job-slug-value) carry title/company/posted."
+  },
+  "data": {
+    "@context": "https://schema.org/",
+    "@type": "ItemList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "url": "https://itviec.com/it-jobs/fintech-frontend-dev-javascript-react-new-wealth-2706"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "url": "https://itviec.com/it-jobs/java-fullstack-developer-react-elasticsearch-aws-hitachi-digital-services-4739"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "url": "https://itviec.com/it-jobs/senior-full-stack-developer-net-react-azure-cong-ty-tnhh-mtv-tm-thuy-moc-3833"
+      },
+      {
+        "@type": "ListItem",
+        "position": 4,
+        "url": "https://itviec.com/it-jobs/senior-c-developer-c-11-algorithms-linux-itviec-recruitment-consulting-1137"
+      },
+      {
+        "@type": "ListItem",
+        "position": 5,
+        "url": "https://itviec.com/it-jobs/software-developer-net-c-c-hansen-technologies-0421"
+      }
+    ]
+  }
+}
