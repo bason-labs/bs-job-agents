@@ -29,6 +29,7 @@ import { APPROVAL_TTL_MS } from "./repos/approvals.js";
 import { QA_PASS_TOTAL } from "./repos/cv.js";
 import { UNDO_WINDOW_MS } from "./repos/schedules.js";
 import { SEARCH_PROFILE_DEFAULTS } from "./repos/search-profiles.js";
+import { SKILL_REPAIR_STATUSES } from "./schema.js";
 
 /** `<table>.<column>` → the shared literals its CHECK constraint must allow. */
 const EXPECTED: Record<string, readonly (string | number)[]> = {
@@ -51,6 +52,8 @@ const EXPECTED: Record<string, readonly (string | number)[]> = {
   "search_profiles.salary_policy": SalaryPolicySchema.options,
   "engine_state.engine": EngineSchema.options,
   "engine_state.reason": EnginePauseReasonSchema.options,
+  // Skill self-repair: an orchestrator-only lifecycle (never sent to the web as is).
+  "skill_repairs.status": SKILL_REPAIR_STATUSES,
 };
 
 /** Every `CHECK("col" IS NULL OR "col" IN (...))` in the live schema, keyed `table.column`. */

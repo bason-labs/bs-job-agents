@@ -262,6 +262,19 @@ function baseFakeResult(task: RunnerTask): RunnerResult {
       return fake.ok({ ...researchScanFixture, jobs: [candidate(novapay, { source: "link", url: String(input.url ?? novapay.url) })] });
     case "research.file":
       return fake.ok({ ...researchScanFixture, jobs: [candidate(novapay, { source: "file" })] });
+    case "research.repair":
+      // Skill self-repair: the current skill with one line rewritten, as a faithful redraft would be.
+      return fake.ok({
+        skillMd: `${String(input.currentSkill ?? "").trimEnd()}\n- Cards are now article.job-card (redrafted from the board's pages).\n`,
+        otherChanges: [],
+        notes: "The listing's card element changed.",
+        pageViews: 2,
+        blocked: null,
+        injectionSuspected: false,
+        injectionNote: null,
+        selfCheck: [],
+        memoryNotes: [],
+      });
     case "research.fit":
       return fake.ok(researchFitFixture);
     case "research.company": {

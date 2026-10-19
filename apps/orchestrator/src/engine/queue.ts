@@ -31,6 +31,7 @@ import {
   type QaOutput,
   type ResearchCompanyOutput,
   type ResearchFitOutput,
+  type ResearchRepairOutput,
   type SafetyDenialReason,
 } from "@bs-job-agents/shared";
 import { CHROME_TOOL_PREFIX, evaluateChromeToolCall } from "../bridges/chrome/site-guard/guard.js";
@@ -92,6 +93,7 @@ import { hostOfUrl, pauseSite, siteBlocksOf, siteKey, type SiteBlock } from "./s
 import { adapterBrokenError, scanRejectedError, type ScanCheckResult } from "./scan-check.js";
 import { checkTaskTrust } from "./trust-guard.js";
 import { ApiTaskRunner } from "./api-tasks.js";
+import { adoptValidatedRepair, isSkillRepairTask, onBrowserScanSucceeded, onRepairDraftDone, onValidationDone, skillOverrideFor, validationRepairId } from "./skill-repair.js";
 
 const ENGINES = EngineSchema.options;
 
@@ -402,6 +404,8 @@ export class TaskQueue {
     let exported: CvExport | undefined;
     if (task.usesFigma) ({ outcome, exported } = await this.afterFigmaTask(task, prepared, outcome));
     this.settle(task, prepared, outcome, exported);
+    // Skill self-repair (SEC-14): a passed validation is adopted once its settle transaction committed.
+    if (outcome.kind === "ok" && validationRepairId(task) !== null) adoptValidatedRepair(core, task);
   }
 
   private async probe(fn: () => Promise<boolean>): Promise<boolean> {
@@ -538,6 +542,15 @@ export class TaskQueue {
       }
     }
     if (!stillRunning(core.db, task.id)) return null;
+    // Skill self-repair §5.4: a validation scan follows its repair's drafted skill, from the prompt.
+    let skillOverride: { skillMd: string } | null = null;
+    if (validationRepairId(task) !== null) {
+      skillOverride = skillOverrideFor(core.db, task);
+      if (!skillOverride) {
+        this.failBeforeSpawn(task, "the drafted skill to validate is gone");
+        return null;
+      }
+    }
     // PM2 S7: a Claude task that drives Chrome keeps its screenshots (Apply's record cites copies of them).
     const screenshotDir = claude && task.usesBrowser ? core.paths.abs(core.paths.screenshotDir(task.id, task.attempt)) : null;
     return {
@@ -564,6 +577,7 @@ export class TaskQueue {
         ...(allowedSites ? { allowedSites } : {}),
         usesBrowser: task.usesBrowser,
         ...(screenshotDir ? { screenshotDir } : {}),
+        ...(skillOverride ? { skillOverride } : {}),
         ...(hooks.length > 0 ? { hookSettings: mergeHookSettings(...hooks) } : {}),
         // Owner decision 2026-10-11: CV on Codex runs without the Figma hook only with Ba's opt-in
         // (the trust guard checked it above); the fingerprint before and after is the backstop. A
@@ -822,6 +836,8 @@ export class TaskQueue {
           return { kind: "failed", error: `self-check failed: ${failed.join("; ")}`, output, retryable: true, safety: pageMismatch(key, failed) };
         }
         const pause = this.selfPause(task, output);
+        // Skill self-repair: a background repair or validation scan never waits for Ba; a block ends the attempt.
+        if (pause && isSkillRepairTask(task)) return { kind: "failed", error: `blocked: ${pause.code} on ${pause.site ?? "the site"}`, output, retryable: false };
         return pause ? { kind: "paused", reason: pause, output } : { kind: "ok", output };
       }
       case "self_check_failed":
@@ -1075,7 +1091,8 @@ export class TaskQueue {
       if (spawnedApply) onApplyFailedAfterSpawn(core, tx, task, error);
       return;
     }
-    if (retry && task.attempt < core.config.maxAttempts) {
+    // Skill self-repair (§6 caps): a repair costs at most one repair and one validation session.
+    if (retry && task.attempt < core.config.maxAttempts && !isSkillRepairTask(task)) {
       emitTaskFinished(core, tx, task, "failed", error);
       requeueTask(tx, task.id, { newAttempt: true });
       return;
@@ -1116,6 +1133,15 @@ export class TaskQueue {
       case "cv.derive":
         // CV auto-extend: the deterministic screen, then the API adds what passes (SEC-15, SEC-16).
         onDeriveDone(core, tx, task, output as DeriveOutput);
+        return;
+      case "research.repair":
+        // Skill self-repair: screen the draft, then queue its validation scan.
+        onRepairDraftDone(core, tx, task, output as ResearchRepairOutput);
+        return;
+      case "research.scan":
+        // Skill self-repair: a validation scan decides adoption; any other browser scan lifts a pause.
+        if (validationRepairId(task) !== null) onValidationDone(core, tx, task, output as ResearchScanOutput);
+        else onBrowserScanSucceeded(tx, task);
         return;
       case "apply.submit":
         onApplyDone(core, tx, task, output as ApplyOutput, recordFiles, recordCheck ?? null);
@@ -1183,6 +1209,8 @@ export class TaskQueue {
   }
 
   private appendMemory(task: Task, output: unknown): void {
+    // Skill self-repair: lessons from a draft or a scan that followed one are not kept.
+    if (isSkillRepairTask(task)) return;
     const notes = (output as { memoryNotes?: string[] } | null)?.memoryNotes ?? [];
     const writer = this.core.deps.memory;
     if (!writer || notes.length === 0) return;

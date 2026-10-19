@@ -34,8 +34,10 @@ export type {
   GuidanceFetchPort,
   GuidanceFetchRequest,
   GuidanceFetchResult,
+  SkillFiles,
   WorkflowSource,
 } from "./ports.js";
+export { SkillRepairActionError, SKILL_REPAIR_DAILY_CAP, SKILL_REPAIR_PAUSE_AFTER, type StartResult as SkillRepairStartResult } from "./skill-repair.js";
 export { nodeFileStore, systemClock } from "./system.js";
 export {
   botRegistryFrom,

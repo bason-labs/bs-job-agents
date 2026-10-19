@@ -20,6 +20,7 @@ import type {
   GuardHooks,
   GuidanceDeps,
   Logger,
+  SkillFiles,
   MasterCvSource,
   MemoryWriter,
   OrphanKiller,
@@ -64,6 +65,8 @@ export interface EngineDeps {
   boards?: BoardScanPort;
   /** CV guidance (sub-project 3): the guidance fetcher and seed. Optional: without it there is no rule set, no refresh and no guidance review. */
   guidance?: GuidanceDeps;
+  /** Skill self-repair (AD-7): the source skill files. Optional: without it no repair starts. */
+  skills?: SkillFiles;
   logger?: Logger;
 }
 

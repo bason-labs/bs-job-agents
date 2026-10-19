@@ -11,6 +11,7 @@
 import { CONVERSATION_TASK_KINDS, SEARCH_SOURCES, formatPauseReason, taskKey, type Engine, type MessageCard, type PauseReason } from "@bs-job-agents/shared";
 import { appendMessage, getApplication, getCompany, getJob, getOrCreateLeadRoom, getStep, listEvents, listTasks, mappers, type Conn, type Task } from "../db/index.js";
 import type { EngineCore } from "./core.js";
+import { isSkillRepairTask, onScanFailedForGood, skillRepairTaskFailed } from "./skill-repair.js";
 
 /** Audit row that marks a once-only notice (e.g. a run's cards-ready summary) as posted. */
 export const NOTICE_EVENT = "lead.notice";
@@ -125,6 +126,11 @@ const LANG = (input: unknown): string => String((input as { language?: unknown }
  */
 export function noticeTaskFailed(core: EngineCore, conn: Conn, task: Task, error: string): void {
   if ((CONVERSATION_TASK_KINDS as readonly string[]).includes(task.kind) || task.botName === "lead" || task.botName === "apply") return;
+  // Skill self-repair: a repair or validation task ends its attempt ("Automatic repair failed: …").
+  if (isSkillRepairTask(task)) {
+    skillRepairTaskFailed(core, conn, task, error);
+    return;
+  }
   // A fact draft's failure shows on the Master CV screen, where Ba asked for it (FactDraftSink.failed).
   if (taskKey(task.botName, task.kind) === "cv.fact_draft") return;
   // CV auto-extend: a failed cv.derive is logged; the job is tailored without the model's facts.
@@ -167,6 +173,8 @@ export function noticeTaskFailed(core: EngineCore, conn: Conn, task: Task, error
       text = `${botLabel(task.botName)} could not finish its ${task.kind} task: ${error}.`;
   }
   postNotice(core, conn, { text, runId: task.runId });
+  // Skill self-repair §5.1: after the "adapter broken" line, a browser scan's broken skill is repaired.
+  if (taskKey(task.botName, task.kind) === "research.scan") onScanFailedForGood(core, conn, task, error);
 }
 
 /** Apply was stopped before it spawned (a denied or expired token, an engine error): the card waits. */

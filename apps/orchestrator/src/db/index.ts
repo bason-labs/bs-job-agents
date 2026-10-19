@@ -47,5 +47,6 @@ export * from "./repos/rooms.js";
 export * from "./repos/files.js";
 export * from "./repos/saved-answers.js";
 export * from "./repos/source-approvals.js";
+export * from "./repos/skill-repairs.js";
 // DB rows → shared domain types (`mappers.toJob(row, company)`, …) for the API and SSE.
 export * as mappers from "./mappers.js";

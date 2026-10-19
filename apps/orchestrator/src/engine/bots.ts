@@ -34,7 +34,7 @@ export function effectiveBot(db: Conn, registry: BotRegistry, name: string): Eff
 export const isConversationKind = (kind: string): boolean => (CONVERSATION_TASK_KINDS as readonly string[]).includes(kind);
 
 /** Tasks that drive Ba's Chrome (§10.3 browser lock). Search-only Research tasks don't need it. */
-export const BROWSER_TASK_KEYS: readonly string[] = ["research.scan", "research.single", "apply.submit"];
+export const BROWSER_TASK_KEYS: readonly string[] = ["research.scan", "research.single", "research.repair", "apply.submit"];
 /** Tasks that use the Figma bridge (§6.2 Figma lock). */
 export const FIGMA_TASK_KEYS: readonly string[] = ["cv.tailor"];
 /** Tasks whose bot reads Ba's master facts: they get a per-task folder with a copy of master-cv.yaml. */

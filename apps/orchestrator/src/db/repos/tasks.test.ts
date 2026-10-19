@@ -114,6 +114,16 @@ describe("claimNextTask", () => {
     expect(getTask(db, first.id)?.status).toBe("running");
   });
 
+  it("skill self-repair §5.1: a browser task outside any run (a repair) waits behind every run's queued tasks; a consult does not", () => {
+    const ctx = seedRun(db);
+    const repair = createTask(db, { runId: null, stepId: null, botName: "research", kind: "repair", engine: "codex", input: {}, promptVersion: 1, usesBrowser: true }, { now: at(1) });
+    const consult = createTask(db, { runId: null, stepId: null, botName: "qa", kind: "consult", engine: "codex", input: {}, promptVersion: 1 }, { now: at(2) });
+    const scan = seedTask(db, ctx, { usesBrowser: true }, at(3));
+    expect(claimNextTask(db, { now: at(5) })?.id).toBe(consult.id);
+    expect(claimNextTask(db, { now: at(5) })?.id).toBe(scan.id);
+    expect(claimNextTask(db, { now: at(5) })?.id).toBe(repair.id);
+  });
+
   it("returns undefined when nothing is runnable", () => {
     expect(claimNextTask(db)).toBeUndefined();
   });
