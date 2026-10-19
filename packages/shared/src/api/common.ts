@@ -100,6 +100,12 @@ export const API_ROUTES = {
   masterCvDerived: "/master-cv/derived",
   masterCvDerivedUndo: "/master-cv/derived/undo",
   masterCvDerivedKeep: "/master-cv/derived/:factId/keep",
+  /** CV guidance (additive): the rule set with its sources; Ba turns a rule off or on (§5.9). */
+  guidance: "/guidance",
+  guidanceRuleOff: "/guidance/rules/:id/off",
+  guidanceRuleOn: "/guidance/rules/:id/on",
+  /** CV guidance (additive): the activity log (rule added or changed; sub-project 4 adds skill repairs). */
+  activity: "/activity",
 } as const;
 
 /** GET /bridges (W3a, additive): whether each engine's Chrome extension answers; null = unknown (engine stopped). */

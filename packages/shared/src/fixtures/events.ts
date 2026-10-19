@@ -101,5 +101,8 @@ export const sampleEvents: AppEvent[] = [
     type: "export.ready",
     export: { id: "exp_1", createdAt: at, path: "data/exports/applications-2026-10-10.zip", applicationCount: 3 },
   },
+  { id: id(), at, type: "guidance.rule_added", snapshot: 2, runId: "run_13", ruleId: "summary-short", point: "A short summary opens the CV", previousText: "", newText: "Open with a two-line summary.", sourceIds: ["hr-1"], applied: true },
+  { id: id(), at, type: "guidance.rule_changed", snapshot: 2, runId: "run_13", ruleId: "length-pages", point: "How many pages the CV has", previousText: "Keep the CV to 1–2 pages.", newText: "Keep the CV to 1–2 pages.\nOne page early in a career.", sourceIds: ["vnpt-2026-10", "indeed-effective-resume"], applied: true },
+  { id: id(), at, type: "guidance.refresh", runId: "run_13", outcome: "unchanged", snapshot: 1, pagesChecked: 3, unchanged: 3, changed: 0, failed: 0, draftsAccepted: 0, draftsRejected: 0, rulesChanged: 0, discovery: false, extraction: false, reasons: [], error: null },
   { id: id(), at, type: "master_cv.updated", version: 4, change: "facts_added", factIds: ["grad-2"], taskId: "task_31" },
 ];

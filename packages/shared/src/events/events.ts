@@ -18,6 +18,17 @@ const base = {
 const ev = <T extends string, S extends z.ZodRawShape>(type: T, shape: S) =>
   z.object({ ...base, type: z.literal(type), ...shape }).strict();
 
+const guidanceRuleEvent = {
+  snapshot: z.number().int().positive(),
+  runId: IdSchema.nullable(),
+  ruleId: z.string().min(1),
+  point: z.string(),
+  previousText: z.string(),
+  newText: z.string(),
+  sourceIds: z.array(z.string()),
+  applied: z.boolean(),
+};
+
 const stepRef = {
   runId: IdSchema,
   stepId: IdSchema,
@@ -199,6 +210,31 @@ export const AppEventSchema = z.discriminatedUnion("type", [
    * CV auto-extend (additive): facts derived from his facts were added (facts_derived; taskId = the
    * cv.derive task, null for the table), he undid such an addition, or kept a flagged fact.
    */
+  /**
+   * CV guidance (additive, REQ-36, SEC-24): one entry per rule a committed snapshot added or changed:
+   * the rule, its previous text (empty when added), its new text and its source ids. Never page text,
+   * tokens or contact data. `applied` is false only for a change whose commit failed (SEC-24.AC-3).
+   */
+  ev("guidance.rule_added", guidanceRuleEvent),
+  ev("guidance.rule_changed", guidanceRuleEvent),
+  /** CV guidance (additive, §5.4): one per refresh: counts and reasons only, no page text. */
+  ev("guidance.refresh", {
+    runId: IdSchema.nullable(),
+    outcome: z.enum(["unchanged", "updated", "failed", "used_other_run"]),
+    snapshot: z.number().int().positive().nullable(),
+    pagesChecked: z.number().int().nonnegative(),
+    unchanged: z.number().int().nonnegative(),
+    changed: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    draftsAccepted: z.number().int().nonnegative(),
+    draftsRejected: z.number().int().nonnegative(),
+    rulesChanged: z.number().int().nonnegative(),
+    discovery: z.boolean(),
+    extraction: z.boolean(),
+    /** Short reasons (failed pages, rejected drafts), no page text. */
+    reasons: z.array(z.string()),
+    error: z.string().nullable(),
+  }),
   ev("master_cv.updated", {
     version: z.number().int().positive(),
     change: z.enum(["saved", "facts_added", "undo", "facts_derived", "derived_undo", "derived_keep"]),

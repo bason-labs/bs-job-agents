@@ -3,6 +3,9 @@ import type {
   ApplySubmitInput,
   CvDeriveInput,
   CvFactDraftInput,
+  CvReviewInput,
+  GuidanceDiscoverInput,
+  GuidanceExtractInput,
   CvTailorInput,
   QaReviewInput,
   ResearchCompanyInput,
@@ -105,6 +108,26 @@ export const qaReviewInputFixture: QaReviewInput = {
   expectedLanguages: ["en"],
   masterCvVersion: 3,
 };
+
+/** cv.review: one tailored CV against the applied judgement rules (CV guidance §5.7). */
+export const cvReviewInputFixture: CvReviewInput = {
+  jobId: "job_1",
+  cvVersionId: "cvv_2",
+  language: "en",
+  job: novapay,
+  draft: { ...draft, pdfPath: "data/pdf/NOVAPAY_SENIOR-FRONTEND_EN_v1.pdf" },
+  pdfText: "Ba Huynh\nSoftware Engineer — React / Next.js / Node.js\n…",
+  facts: [{ id: "grad-1", type: "experience", text: "Owned a React/Node.js app used by about 300 employees", textVi: null, tags: ["react"], org: "Gradion", dates: "Sep 2025 – Present" }],
+  rules: [{ ruleId: "order-most-relevant-first", point: "The most relevant experience comes first", text: "Lead with the experience most relevant to the role." }],
+};
+
+/** research.guidance_extract: one changed page as quoted data (CV guidance §5.4). */
+export const guidanceExtractInputFixture: GuidanceExtractInput = {
+  rules: [{ ruleId: "dates-month-year", topic: "dates", point: "Education and experience dates give month and year", positions: [{ positionId: "vnpt-month-year", text: "Give month and year on every date." }] }],
+  pages: [{ url: "https://hr.example.com/cv-guide", title: "CV guide", text: "Open with a short summary of the experience most relevant to the role." }],
+};
+
+export const guidanceDiscoverInputFixture: GuidanceDiscoverInput = { knownHosts: ["indeed.com", "topcv.vn"], wanted: ["an ATS vendor's CV guide"], maxUrls: 10 };
 
 export const applyInputFixture: ApplySubmitInput = {
   applicationId: "app_1",

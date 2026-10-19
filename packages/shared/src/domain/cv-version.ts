@@ -4,6 +4,18 @@ import { CvLanguageSchema, IdSchema, IsoDateTimeSchema, LIMITS, Sha256Schema, Ur
 import { FactRequestSchema, TailoredCvSchema } from "../bots/cv.js";
 import { QaFixSchema, QaHardFailSchema, QaScoresSchema } from "../bots/qa.js";
 
+/**
+ * A stored CV version's fact request (CV guidance §5.8, additive): CV's own (no origin), or one a
+ * guidance rule raised, tied to one fact and one field. CvOutput's FactRequestSchema is unchanged.
+ */
+export const CvFactRequestSchema = FactRequestSchema.extend({
+  origin: z.enum(["cv", "guidance"]).optional(),
+  ruleId: z.string().min(1).optional(),
+  factId: z.string().min(1).optional(),
+  field: z.enum(["dates", "result", "contact.phone", "detail"]).optional(),
+});
+export type CvFactRequest = z.infer<typeof CvFactRequestSchema>;
+
 export const CvVersionSchema = z.object({
   id: IdSchema,
   jobId: IdSchema,
@@ -17,7 +29,7 @@ export const CvVersionSchema = z.object({
   /** SHA-256 of the exported PDF; Apply's upload must match it (§9.1). */
   pdfSha256: Sha256Schema.nullable(),
   changeNotes: z.array(z.string()),
-  factRequests: z.array(FactRequestSchema),
+  factRequests: z.array(CvFactRequestSchema),
   masterVersion: z.number().int().positive(),
   promptVersion: z.number().int().positive(),
   createdAt: IsoDateTimeSchema,

@@ -44,6 +44,15 @@ export const FactRequestItemSchema = z.object({
   topic: z.string(),
   question: z.string(),
   reason: z.string(),
+  /** CV guidance (additive, §5.8): a request a guidance rule raised, about one fact and one field. */
+  origin: z.enum(["cv", "guidance"]).optional(),
+  ruleId: z.string().optional(),
+  /** The rule's point ("From CV guidance: <rule>"). */
+  ruleLabel: z.string().optional(),
+  factId: z.string().optional(),
+  field: z.enum(["dates", "result", "contact.phone", "detail"]).optional(),
+  /** Other jobs that raised the same request (asked once across jobs). */
+  alsoJobIds: z.array(z.string()).optional(),
 });
 export type FactRequestItem = z.infer<typeof FactRequestItemSchema>;
 export const FactRequestsResponseSchema = z.object({ requests: z.array(FactRequestItemSchema) });

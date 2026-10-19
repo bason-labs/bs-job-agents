@@ -98,12 +98,36 @@ describe("WorkflowDefinitionSchema (§7.1)", () => {
     expect(r.error?.issues[0]?.message).toMatch(/not one of research's kinds/);
   });
 
+  it("AD-12, AD-13: job-scan has one guidance refresh step (no branch, optional, after top, before every branch step) and a cv.review reviewer", () => {
+    const wf = WorkflowDefinitionSchema.parse(jobScanWorkflow);
+    const guidance = wf.steps.filter((s) => s.type === "task" && s.task.bot === "research" && s.task.kind === "guidance_extract");
+    expect(guidance).toHaveLength(1);
+    const g = guidance[0]!;
+    expect(g.branch).toBeUndefined();
+    expect(g).toMatchObject({ optional: true, skipIfEmpty: "top" });
+    const at = wf.steps.indexOf(g);
+    expect(at).toBe(wf.steps.findIndex((s) => s.key === "top") + 1);
+    for (const [i, s] of wf.steps.entries()) if (s.branch) expect(i, s.key).toBeGreaterThan(at);
+    const gate = wf.steps.find((s) => s.type === "gate")!;
+    expect(gate.type === "gate" && gate.reviewer).toMatchObject({ bot: "cv", kind: "review" });
+    expect(gate.type === "gate" && gate.maxRounds).toBe(3);
+  });
+
+  it("skipIfEmpty must name an earlier step; a reviewer's kind is checked", () => {
+    const wf = clone(jobScanWorkflow) as { steps: Array<Record<string, unknown>> };
+    wf.steps.find((s) => s.key === "guidance")!.skipIfEmpty = "nowhere";
+    expect(WorkflowDefinitionSchema.safeParse(wf).error?.issues[0]?.message).toMatch(/must name an earlier step/);
+    const wf2 = clone(jobScanWorkflow) as { steps: Array<Record<string, unknown>> };
+    (wf2.steps.find((s) => s.type === "gate")!.reviewer as { kind: string }).kind = "nope";
+    expect(WorkflowDefinitionSchema.safeParse(wf2).error?.issues[0]?.path).toEqual(["steps", 9, "reviewer", "kind"]);
+  });
+
   it("checks the gate's producer and checker kinds too (PM S4)", () => {
     const wf = clone(jobScanWorkflow) as { steps: Array<Record<string, unknown>> };
     (wf.steps.find((s) => s.type === "gate")!.checker as { kind: string }).kind = "tailor";
     const r = WorkflowDefinitionSchema.safeParse(wf);
     expect(r.success).toBe(false);
-    expect(r.error?.issues[0]?.path).toEqual(["steps", 8, "checker", "kind"]);
+    expect(r.error?.issues[0]?.path).toEqual(["steps", 9, "checker", "kind"]);
   });
 
   it("apply.submit may only run in an action step (PM S4, §10.2 rule 1)", () => {

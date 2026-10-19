@@ -6,6 +6,7 @@ import { CvVersionSchema, QaReviewRecordSchema } from "../domain/cv-version.js";
 import { CompanySchema, JobSchema, SkipDecisionSchema } from "../domain/job.js";
 import { ApplicationOriginSchema, ApplicationStatusSchema } from "../domain/application.js";
 import { FileRefSchema } from "./common.js";
+import { ReviewGuidanceSchema } from "./guidance.js";
 
 export const ReviewCardFlagsSchema = z.object({
   qaPassed: z.boolean(),
@@ -60,6 +61,8 @@ export const ReviewCvOptionSchema = z.object({
   /** All QA rounds for this language, oldest first. */
   qaRounds: z.array(QaReviewRecordSchema),
   pdf: FileRefSchema.nullable(),
+  /** CV guidance (additive, REQ-40): the review result of the CV round shown, or null when there is none. */
+  guidance: ReviewGuidanceSchema.nullable().optional(),
 });
 
 export const ReviewCardSchema = z.object({
