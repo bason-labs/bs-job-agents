@@ -77,7 +77,7 @@ import type { MockBackend } from "./backend";
 import { activeProfile, saveCriteria } from "./criteria";
 import { allSourceAccess, approveSource, revokeSource } from "./source-access";
 import { keepDerived, readDerived, undoDerived } from "./derived-facts";
-import { readActivity, readGuidance, setGuidanceRuleOff } from "./guidance";
+import { readActivity, readGuidance, restoreSkill, retrySkillRepair, setGuidanceRuleOff } from "./guidance";
 import { readFactDraft, startFactDraft, undoFacts } from "./fact-drafts";
 import { figmaGuardOffFor, residualRiskFor } from "./seed-bots";
 import * as sim from "./sim";
@@ -532,6 +532,8 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
   route("POST", API_ROUTES.guidanceRuleOff, GuidanceViewSchema, (core, req) => setGuidanceRuleOff(core, req.params.id!, true)),
   route("POST", API_ROUTES.guidanceRuleOn, GuidanceViewSchema, (core, req) => setGuidanceRuleOff(core, req.params.id!, false)),
   route("GET", API_ROUTES.activity, ActivityResponseSchema, (core) => readActivity(core)),
+  route("POST", API_ROUTES.skillRepairRestore, ActivityResponseSchema, (core, req) => restoreSkill(core, req.params.id!)),
+  route("POST", API_ROUTES.skillRepairRetry, ActivityResponseSchema, (core, req) => retrySkillRepair(core, req.params.source!)),
 
   // ------------------------------------------------ workflow proposals (rule 3, PM S22)
   route("GET", API_ROUTES.workflowProposals, WorkflowProposalsResponseSchema, (core) => ({ proposals: [...core.state.proposals].reverse() })),

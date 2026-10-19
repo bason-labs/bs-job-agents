@@ -162,6 +162,13 @@ export function MessageCards({ message }: { message: Message }) {
                 Open the CV guidance <ArrowRight aria-hidden className="size-3.5" />
               </Link>
             );
+          case "activity_link":
+            // Skill self-repair: a repair or API notice (scan-notices.md).
+            return (
+              <Link key={key} href="/activity" data-testid="activity-link" className={cn(buttonClass({ size: "sm", pill: true }), "w-fit")}>
+                Open the activity log <ArrowRight aria-hidden className="size-3.5" />
+              </Link>
+            );
           case "question":
             return <QuestionCard key={key} card={card} />;
           case "pause":
