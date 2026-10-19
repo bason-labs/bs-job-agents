@@ -17,7 +17,7 @@ import { findJobPosting, hasLdType, ldJsonBlocks, ldObjects } from "../parsers/d
 import { parsePostedDate } from "../posted-date.js";
 import { scanJobLimit, searchUrls } from "../sources.js";
 import { cleanText, detectLanguage } from "../text.js";
-import { BoardApiError, type BoardApiClient } from "./client.js";
+import { BoardApiError, RedirectRefused, type BoardApiClient } from "./client.js";
 import type { BoardScanResult } from "./types.js";
 
 /** Result pages read per search (the browser skills' limit). */
@@ -93,6 +93,13 @@ const DROP_NOTES: Record<DropReason, string> = {
   snippet: "no full JD",
 };
 
+/** A URL of the same search at a page before `page` (no page parameter: page 1). */
+function isEarlierPage(url: URL, path: string, page: number): boolean {
+  if (url.pathname !== path) return false;
+  const n = Number(url.searchParams.get("page") ?? "1");
+  return Number.isInteger(n) && n < page;
+}
+
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 export async function scanJsonLdBoard(board: JsonLdBoard, client: BoardApiClient, input: ResearchScanInput, signal?: AbortSignal): Promise<BoardScanResult> {
@@ -113,9 +120,20 @@ export async function scanJsonLdBoard(board: JsonLdBoard, client: BoardApiClient
       // Another search page only while the queued links would not already use up the job limit or
       // the rest of the request budget.
       if (queue.length >= Math.min(limit, budget - 1)) break searches;
-      const html = await client.get({ host: board.host, path, ...(page > 1 ? { query: { page } } : {}) }, signal);
+      let fetched: { body: string; url: URL };
+      try {
+        fetched = await client.getPage({ host: board.host, path, ...(page > 1 ? { query: { page } } : {}) }, signal);
+      } catch (err) {
+        // Past the last page the board redirects back to an earlier one (TopCV: ?page=1&u_sr_id=…).
+        // That hop was refused (unlisted query) and nothing was sent: the search has no more pages.
+        if (page > 1 && err instanceof RedirectRefused && isEarlierPage(err.target, path, page)) break;
+        throw err;
+      }
       budget--;
       searchPages++;
+      // A redirect the record allows, back to an earlier page: no more pages either.
+      if (page > 1 && fetched.url.searchParams.get("page") !== String(page) && isEarlierPage(fetched.url, path, page)) break;
+      const html = fetched.body;
       const listed = listedJobs(html);
       if (listed === null) throw new BoardApiError("failed", `${board.label}: no job data on ${board.host}${path} (the page changed, or a bot check answered)`);
       let added = 0;

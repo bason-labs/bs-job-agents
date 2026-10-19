@@ -165,4 +165,72 @@ describe("BoardApiClient", () => {
     await c.get({ host: "www.linkedin.com", path: "/voyager/api/jobs/jobPostings/1" });
     expect(f.calls[0]!.headers.Cookie).toBeUndefined();
   });
+
+  describe("redirects (never followed blindly)", () => {
+    type Hop = { status: number; location?: string; body?: string };
+    function redirecting(plan: Record<string, Hop>) {
+      const calls: { url: string; redirect: string | undefined; headers: Record<string, string> }[] = [];
+      const fn: HttpFetch = async (url, init) => {
+        calls.push({ url, redirect: init.redirect, headers: init.headers });
+        const a = plan[url] ?? { status: 404 };
+        return { ok: a.status < 300, status: a.status, text: async () => a.body ?? "", headers: { get: (n: string) => (n.toLowerCase() === "location" ? (a.location ?? null) : null) } };
+      };
+      return { fn, calls };
+    }
+    const SEARCH = "https://www.linkedin.com/voyager/api/voyagerJobsDashJobCards";
+
+    it("a same-host hop to a listed endpoint is checked, gated (≥ 1500 ms) and recorded like a request; fetch never follows by itself", async () => {
+      const f = redirecting({ [`${SEARCH}?keywords=react`]: { status: 302, location: "/voyager/api/jobs/jobPostings/7" }, "https://www.linkedin.com/voyager/api/jobs/jobPostings/7": { status: 200, body: "ok" } });
+      const at: number[] = [];
+      const { c, requests, clock } = client({ fetch: async (u, i) => (at.push(clock()), f.fn(u, i)) });
+      const page = await c.getPage({ host: "www.linkedin.com", path: "/voyager/api/voyagerJobsDashJobCards", query: { keywords: "react" } });
+      expect(page.body).toBe("ok");
+      expect(page.url.toString()).toBe("https://www.linkedin.com/voyager/api/jobs/jobPostings/7");
+      expect(f.calls.map((x) => x.redirect)).toEqual(["manual", "manual"]);
+      expect(at[1]! - at[0]!).toBeGreaterThanOrEqual(1_500);
+      expect(requests.map((r) => r.path)).toEqual(["/voyager/api/voyagerJobsDashJobCards", "/voyager/api/jobs/jobPostings/7"]);
+    });
+
+    it("a hop to an apply endpoint, an unlisted query, another host or plain http is refused before it is sent", async () => {
+      for (const location of [
+        "/voyager/api/jobs/jobPostings/7/apply",
+        "/voyager/api/jobs/jobPostings/7?trk=1",
+        "https://evil.example/voyager/api/jobs/jobPostings/7",
+        "http://www.linkedin.com/voyager/api/jobs/jobPostings/7",
+      ]) {
+        const f = redirecting({ [`${SEARCH}?keywords=react`]: { status: 301, location } });
+        const { c } = client({ fetch: f.fn });
+        await expect(c.get({ host: "www.linkedin.com", path: "/voyager/api/voyagerJobsDashJobCards", query: { keywords: "react" } }), location).rejects.toThrow(EndpointNotAllowed);
+        expect(f.calls, location).toHaveLength(1);
+      }
+    });
+
+    it("more than three hops fail the request", async () => {
+      const f = redirecting({
+        [`${SEARCH}?keywords=a`]: { status: 302, location: `${SEARCH}?keywords=b` },
+        [`${SEARCH}?keywords=b`]: { status: 302, location: `${SEARCH}?keywords=c` },
+        [`${SEARCH}?keywords=c`]: { status: 302, location: `${SEARCH}?keywords=d` },
+        [`${SEARCH}?keywords=d`]: { status: 302, location: `${SEARCH}?keywords=e` },
+      });
+      const { c } = client({ fetch: f.fn });
+      await expect(c.get({ host: "www.linkedin.com", path: "/voyager/api/voyagerJobsDashJobCards", query: { keywords: "a" } })).rejects.toMatchObject({ name: "BoardApiError", message: expect.stringMatching(/redirected more than 3 times/) });
+      expect(f.calls).toHaveLength(4);
+    });
+  });
+
+  it("a body over the size cap stops being read part way (streamed with a running byte count)", async () => {
+    let pulled = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(ctrl) {
+        pulled++;
+        if (pulled > 100) ctrl.close();
+        else ctrl.enqueue(new Uint8Array(1024));
+      },
+    });
+    const f: HttpFetch = async () => ({ ok: true, status: 200, text: async () => "", body });
+    let now = 0;
+    const c = new BoardApiClient({ record: linkedin, path: "account_api", fetch: f, gate: new HostGate({ now: () => now, sleep: async (ms) => void (now += ms) }), credentials: { li_at: LI_AT, "csrf-token": CSRF }, maxBodyBytes: 4096 });
+    await expect(c.get({ host: "www.linkedin.com", path: "/voyager/api/jobs/jobPostings/1" })).rejects.toMatchObject({ message: expect.stringMatching(/answered more than 4096 bytes/) });
+    expect(pulled).toBeLessThan(10);
+  });
 });

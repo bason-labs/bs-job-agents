@@ -51,7 +51,7 @@ const input = (source: "topcv" | "itviec", over: Partial<ResearchScanInput> & { 
   ...over,
 });
 
-function harness(source: "topcv" | "itviec", answer: (url: URL) => { status: number; body?: string }) {
+function harness(source: "topcv" | "itviec", answer: (url: URL) => { status: number; body?: string; location?: string }) {
   const calls: string[] = [];
   const at: number[] = [];
   let now = 0;
@@ -59,7 +59,7 @@ function harness(source: "topcv" | "itviec", answer: (url: URL) => { status: num
     calls.push(url);
     at.push(now);
     const a = answer(new URL(url));
-    return { ok: a.status < 300, status: a.status, text: async () => a.body ?? "" };
+    return { ok: a.status < 300, status: a.status, text: async () => a.body ?? "", headers: { get: (n: string) => (n.toLowerCase() === "location" ? (a.location ?? null) : null) } };
   };
   // A fake clock: the gate's waits move it, so `clock()` is the scan's wall time under the 1.5 s gap.
   const gate = new HostGate({ now: () => now, sleep: async (ms) => void (now += Math.max(0, ms)) });
@@ -141,6 +141,24 @@ describe("TopCV mapper", () => {
     expect(h.calls.filter((u) => u.includes("tim-viec-lam"))).toEqual(["https://www.topcv.vn/tim-viec-lam-react-developer-tai-ha-noi-kl1", "https://www.topcv.vn/tim-viec-lam-react-developer-tai-ha-noi-kl1?page=2"]);
     expect(result.jobs).toHaveLength(4);
     expect(result.note).toContain("1 an excluded keyword");
+  });
+
+  it("past the last page TopCV redirects ?page=2 back to page 1 with a tracking id: the hop is not followed and paging ends", async () => {
+    const h = harness("topcv", (url) =>
+      url.pathname === "/tim-viec-lam-react-developer" && url.searchParams.get("page") === "2"
+        ? { status: 302, location: "https://www.topcv.vn/tim-viec-lam-react-developer?page=1&u_sr_id=TRACK123" }
+        : answer(url),
+    );
+    const result = await topcvMapper.scan(h.client, input("topcv", { candidateLimit: 6 }));
+    expect(h.calls.filter((u) => u.includes("tim-viec-lam"))).toEqual(["https://www.topcv.vn/tim-viec-lam-react-developer", "https://www.topcv.vn/tim-viec-lam-react-developer?page=2"]);
+    expect(h.calls.some((u) => u.includes("u_sr_id"))).toBe(false);
+    expect(result.jobs).toHaveLength(5);
+  });
+
+  it("a redirect from a search page to anything else is refused and fails the scan (nothing is sent to it)", async () => {
+    const h = harness("topcv", (url) => (url.pathname === "/tim-viec-lam-react-developer" ? { status: 302, location: "https://evil.example/tim-viec-lam-react-developer" } : answer(url)));
+    await expect(topcvMapper.scan(h.client, input("topcv"))).rejects.toThrow(/evil\.example/);
+    expect(h.calls).toHaveLength(1);
   });
 
   it("a job page without a company, a location or a full JD is left out, not filled in; a 404 job page is skipped", async () => {
