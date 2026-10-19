@@ -6,6 +6,7 @@
 import { z } from "zod";
 import type { GuidanceFactField, GuidanceItem } from "./checks.js";
 import { GUIDANCE_TOPICS, GUIDANCE_CHECKS, type GuidanceTopic } from "./schema.js";
+import { screenGuidanceFix } from "./text.js";
 import type { ResolvedGuidance, ResolvedRule } from "./resolve.js";
 
 export const GUIDANCE_REVIEW_STATUSES = ["met", "not_met", "needs_fact", "not_applicable", "overridden", "disputed_not_applied", "turned_off", "not_reviewed"] as const;
@@ -90,8 +91,15 @@ export function completeGuidanceReview(
   checkerItems: readonly GuidanceItem[],
   reviewerItems: readonly ReviewerItem[] | null,
   activeFactIds: readonly string[],
+  /** F4: the cited facts' texts; when given, a reviewer's fix must pass screenGuidanceFix. */
+  citedFacts?: readonly { id: string; text: string; textVi?: string | null; tags?: readonly string[]; org?: string | null }[],
 ): GuidanceReviewResult {
   const active = new Set(activeFactIds);
+  const screenFix = (item: ReviewerItem): ReviewerItem => {
+    if (!citedFacts || item.status !== "not_met" || !item.fix) return item;
+    const problem = screenGuidanceFix(item.fix.instruction, citedFacts.filter((f) => item.fix!.factIds.length === 0 || item.fix!.factIds.includes(f.id)));
+    return problem ? { ...item, fixable: false, fix: null, reason: `${item.reason} (its fix was refused: ${problem})` } : item;
+  };
   const items: GuidanceReviewEntry[] = resolved.rules.map((r) => {
     const base = {
       ruleId: r.ruleId,
@@ -111,7 +119,8 @@ export function completeGuidanceReview(
     if (checker) {
       return { ...base, ...validate(r, checker.status, checker.reason, checker.fixable, checker.fix, checker.factRequests, active), by: "code" as const };
     }
-    const reviewer = reviewerItems?.find((i) => i.ruleId === r.ruleId);
+    const found = reviewerItems?.find((i) => i.ruleId === r.ruleId);
+    const reviewer = found ? screenFix(found) : undefined;
     if (!reviewer) {
       return { ...base, status: "not_reviewed" as const, reason: reviewerItems ? "The review did not cover this rule." : "Judged by the CV review on the round shown to you.", by: "review" as const, fixable: false, fix: null, factRequests: [] };
     }

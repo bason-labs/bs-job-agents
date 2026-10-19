@@ -52,6 +52,10 @@ describe("the guidance step (AD-12)", () => {
     expect(t.runner.callsFor("research.guidance_extract")).toEqual([]);
     expect(t.runner.callsFor("research.guidance_discover")).toEqual([]);
     expect(t.runner.callsFor("cv.tailor")).toHaveLength(3);
+    // F5: the fetch got the step's budget as an abort signal.
+    expect(fetch.signals).toHaveLength(1);
+    expect(fetch.signals[0]).toBeInstanceOf(AbortSignal);
+    expect(fetch.signals[0]!.aborted).toBe(false);
     // Ended before any branch step started: the refresh row precedes every company / tailor task.
     const refreshId = Number(refreshes(t)[0]!.id);
     const firstBranchTask = listTasks(t.db).find((x) => x.kind === "company" || x.kind === "tailor")!;
@@ -162,6 +166,19 @@ describe("the guidance step (AD-12)", () => {
       [String(second.id), "used_other_run"],
     ]);
     expect(t.runner.callsFor("cv.tailor")).toHaveLength(2);
+  });
+
+  it("F8: an unreadable newest snapshot: no refresh, no seed re-commit, the notice; the last readable rules stay in force", async () => {
+    const { t, fetch } = await setup({ jobs: 1 });
+    t.db.$client.prepare("INSERT INTO guidance_rule_sets (snapshot, run_id, rule_set_json, created_at) VALUES (2, NULL, '[]', ?)").run(t.clock.now().toISOString());
+    const run = start(t);
+    await t.idle();
+    expect(fetch.requests).toEqual([]);
+    expect(leadTexts(t).filter((x) => x.startsWith("CV guidance refresh failed: the stored rule set (snapshot 2) cannot be read"))).toHaveLength(1);
+    expect(t.step(run.id, "guidance")?.status).toBe("failed");
+    expect(t.db.$client.prepare("SELECT COUNT(*) AS n FROM guidance_rule_sets").get()).toEqual({ n: 2 });
+    // Tailoring goes on with snapshot 1.
+    expect((t.runner.callsFor("cv.tailor")[0]!.input as { guidance?: unknown[] }).guidance?.length).toBeGreaterThan(0);
   });
 
   it("no top job: no refresh at all", async () => {

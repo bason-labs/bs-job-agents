@@ -72,7 +72,7 @@ export const jobScanWorkflow = {
 /** §7.3: research.scan kind single, no threshold/top-N (fit still computed and shown). */
 export const applyToLinkWorkflow = {
   name: "apply-to-link",
-  version: 2,
+  version: 3,
   description: "Apply to one pasted job link.",
   triggers: ["link", "chat"],
   steps: [
@@ -80,7 +80,7 @@ export const applyToLinkWorkflow = {
     { key: "fit", type: "map", over: "$steps.scan.output.jobs", task: { bot: "research", kind: "fit", input: { job: "$item" } } },
     { key: "fit-join", type: "join", of: "fit" },
     { key: "selected", type: "filter", fn: "dedupe", from: "fit-join", options: { applyAgain: "$params.applyAgain" } },
-    ...perJob("selected", { derive: true }),
+    ...perJob("selected", { derive: true, review: true }),
   ],
 } satisfies WorkflowDefinitionInput;
 

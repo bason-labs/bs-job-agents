@@ -33,6 +33,7 @@ import {
   commitGuidanceRuleSet,
   currentGuidanceRuleSet,
   getGuidanceSettings,
+  guidanceStoreState,
   guidanceLockHolder,
   markGuidanceDiscovery,
   releaseGuidanceLock,
@@ -52,6 +53,8 @@ type TaskStep = z.infer<typeof TaskStepSchema>;
 export const GUIDANCE_TASK_KEY = "research.guidance_extract";
 /** §6 OQ-6 caps. */
 export const GUIDANCE_STEP_BUDGET_MS = 5 * 60_000;
+/** F5: the lock outlives the budget, so a slow refresh is never taken over while it still runs. */
+export const GUIDANCE_LOCK_STALE_MS = GUIDANCE_STEP_BUDGET_MS + 2 * 60_000;
 export const GUIDANCE_MAX_PAGES = 15;
 export const GUIDANCE_DISCOVERY_EVERY_MS = 7 * 24 * 3600_000;
 export const GUIDANCE_MIN_HOSTS = 3;
@@ -103,14 +106,17 @@ export function guidancePending(core: EngineCore): Promise<void>[] {
   return [...jobsOf(core).values()];
 }
 
-function startFetch(core: EngineCore, runId: number, stepId: number, requests: GuidanceFetchRequest[], then: (tx: Conn, results: GuidanceFetchResult[]) => void): void {
+function startFetch(core: EngineCore, runId: number, stepId: number, startedAt: string, requests: GuidanceFetchRequest[], then: (tx: Conn, results: GuidanceFetchResult[]) => void): void {
   const jobs = jobsOf(core);
   if (jobs.has(stepId)) return;
   const fetcher = core.deps.guidance!.fetch;
+  // F5: every hop of every page stops when the step's budget runs out.
+  const remaining = Math.max(1, GUIDANCE_STEP_BUDGET_MS - (core.now().getTime() - Date.parse(startedAt)));
+  const signal = AbortSignal.timeout(remaining);
   const promise = (async () => {
     let results: GuidanceFetchResult[];
     try {
-      results = requests.length === 0 ? [] : await fetcher.fetchPages(requests);
+      results = requests.length === 0 ? [] : await fetcher.fetchPages(requests, { signal });
     } catch (err) {
       results = requests.map((r) => ({ url: r.url, status: "failed" as const, reason: `the fetcher failed (${errorMessage(err)})` }));
     }
@@ -132,7 +138,13 @@ export function ensureGuidanceSeed(core: EngineCore, conn: Conn): void {
   const deps = core.deps.guidance;
   if (!deps) return;
   const seed = deps.seed ?? GUIDANCE_SEED;
-  const current = currentGuidanceRuleSet(conn);
+  const state = guidanceStoreState(conn);
+  // F8: an unreadable newest snapshot is never covered up by re-committing the seed.
+  if (state.corrupt) {
+    core.log.warn(`CV guidance snapshot ${state.latestNumber} cannot be read; snapshot ${state.current?.snapshot ?? "none"} stays in force and the seed is not re-committed`);
+    return;
+  }
+  const current = state.current;
   const merged = mergeGuidanceSeed(current?.ruleSet ?? { sources: [], rules: [] }, seed);
   if (!merged.changed) return;
   commitGuidanceRuleSet(conn, { runId: null, ruleSet: merged.ruleSet }, { now: core.now() });
@@ -181,7 +193,15 @@ export function advanceGuidanceStep(core: EngineCore, ctx: RunCtx, step: TaskSte
       if (step.skipIfEmpty && sourceEmpty(tx, ctx, step.skipIfEmpty)) return skip(core, tx, ctx, step, scope, "no top job, no refresh");
       if (!core.deps.guidance) return skip(core, tx, ctx, step, scope, "CV guidance is not wired");
       ensureGuidanceSeed(core, tx);
-      const lock = takeGuidanceLock(tx, ctx.run.id, core.now(), GUIDANCE_STEP_BUDGET_MS);
+      const store = guidanceStoreState(tx);
+      if (store.corrupt) {
+        // F8: no refresh on top of an unreadable snapshot; the last readable one stays in force.
+        const out = emptyOutput(core, "fetching");
+        const opened = openStep(core, tx, ctx, step.key, scope, "running", { output: out });
+        fail(core, tx, ctx, opened, out, `the stored rule set (snapshot ${store.latestNumber}) cannot be read, so snapshot ${store.current?.snapshot ?? "none"} stays in force`);
+        return "done";
+      }
+      const lock = takeGuidanceLock(tx, ctx.run.id, core.now(), GUIDANCE_LOCK_STALE_MS);
       if (!lock.held) {
         const out = { ...emptyOutput(core, "waiting_lock"), holder: lock.holder };
         openStep(core, tx, ctx, step.key, scope, "running", { output: out, preview: preview(out) });
@@ -206,8 +226,8 @@ function poll(core: EngineCore, tx: Conn, ctx: RunCtx, row: Step): StepState {
   if (isTerminalStep(row)) return "done";
   const elapsed = core.now().getTime() - Date.parse(out.startedAt);
   if (out.phase === "waiting_lock") {
-    const holder = guidanceLockHolder(tx, core.now(), GUIDANCE_STEP_BUDGET_MS);
-    if (holder !== null && holder !== ctx.run.id && elapsed <= GUIDANCE_STEP_BUDGET_MS) return "active";
+    const holder = guidanceLockHolder(tx, core.now(), GUIDANCE_LOCK_STALE_MS);
+    if (holder !== null && holder !== ctx.run.id && elapsed <= GUIDANCE_LOCK_STALE_MS) return "active";
     // The other run's refresh ended (or timed out): this run uses its result.
     const snapshot = currentGuidanceRuleSet(tx)?.snapshot ?? null;
     const done: GuidanceStepOutput = { ...out, phase: "done", outcome: "used_other_run", snapshot, rulesChanged: 0 };
@@ -253,7 +273,7 @@ function startSourceFetch(core: EngineCore, ctx: RunCtx, row: Step): void {
   const set = currentGuidanceRuleSet(core.db)?.ruleSet;
   const sources = (set?.sources ?? []).filter((s) => s.url !== null).slice(0, GUIDANCE_MAX_PAGES);
   const requests = sources.map((s) => ({ url: s.url!, etag: s.etag, lastModified: s.lastModified }));
-  startFetch(core, ctx.run.id, row.id, requests, (tx, results) => {
+  startFetch(core, ctx.run.id, row.id, (row.output as GuidanceStepOutput).startedAt, requests, (tx, results) => {
     const current = getStepByKey(tx, ctx.run.id, row.stepKey, row.branchKey);
     if (!current || isTerminalStep(current)) return;
     const out = structuredClone(current.output as GuidanceStepOutput);
@@ -311,7 +331,7 @@ function discoveredUrls(conn: Conn, out: GuidanceStepOutput): string[] {
 }
 
 function startCandidateFetch(core: EngineCore, ctx: RunCtx, row: Step, urls: string[]): void {
-  startFetch(core, ctx.run.id, row.id, urls.map((url) => ({ url, etag: null, lastModified: null })), (tx, results) => {
+  startFetch(core, ctx.run.id, row.id, (row.output as GuidanceStepOutput).startedAt, urls.map((url) => ({ url, etag: null, lastModified: null })), (tx, results) => {
     const current = getStepByKey(tx, ctx.run.id, row.stepKey, row.branchKey);
     if (!current || isTerminalStep(current)) return;
     const out = structuredClone(current.output as GuidanceStepOutput);

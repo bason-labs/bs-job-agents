@@ -260,6 +260,27 @@ describe("the tailor gate with CV guidance (AD-13)", () => {
     expect(t.events("task.finished").find((e) => e.status === "failed")?.error).toMatch(error);
   });
 
+  it("F4: a cv.review fix that would add a skill the facts lack is refused: no round 2, the rule stays not met", async () => {
+    const t = await setup();
+    t.runner.script({ bot: "cv", kind: "review", result: review([{ ...notMetOrder, fix: { instruction: "Add Kubernetes and AWS to the skills section.", factIds: ["grad-1"] } }]) });
+    const r = run(t);
+    await t.idle();
+    expect(t.runner.callsFor("cv.tailor")).toHaveLength(1);
+    const item = getGuidanceReview(t.db, gate(t, r.id).cvVersionId!)!.result.items.find((i) => i.ruleId === "order-most-relevant-first")!;
+    expect(item).toMatchObject({ status: "not_met", fixable: false, fix: null });
+    expect(item.reason).toMatch(/its fix was refused: the fix names Kubernetes/);
+  });
+
+  it("REQ-37: apply-to-link reviews its CV with the rule set in force, without a refresh", async () => {
+    const t = await setup();
+    const fetch = t.engine.deps.guidance!.fetch as FakeGuidanceFetch;
+    const r = t.engine.startWorkflow({ workflow: "apply-to-link", params: { url: NOVAPAY.url!, applyAgain: false, searchProfileId: null } }, { trigger: "link" });
+    await t.idle();
+    expect(t.runner.callsFor("cv.review")).toHaveLength(1);
+    expect(fetch.requests).toEqual([]);
+    expect(getGuidanceReview(t.db, gate(t, r.id).cvVersionId!)).toBeDefined();
+  });
+
   it("a failed cv.review never fails the CV: the round completes without its judgement", async () => {
     const t = await setup();
     t.runner.script({ bot: "cv", kind: "review", result: fake.failed("model unavailable") });

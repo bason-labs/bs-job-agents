@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GuidanceFetcher, isPublicAddress, type GuidanceHttpFetch, type GuidanceHttpResponse } from "./fetcher.js";
+import { GuidanceFetcher, isPublicAddress, validatingLookup, type GuidanceHttpFetch, type GuidanceHttpResponse } from "./fetcher.js";
 import { htmlTitle, mainText } from "./text.js";
 
 const enc = new TextEncoder();
@@ -149,6 +149,43 @@ describe("GuidanceFetcher (SEC-21)", () => {
   it("isPublicAddress refuses loopback, private, link-local, CGNAT and mapped forms", () => {
     for (const ip of ["127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.0.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:127.0.0.1"]) expect(isPublicAddress(ip), ip).toBe(false);
     for (const ip of ["93.184.216.34", "8.8.8.8", "2606:4700::1111"]) expect(isPublicAddress(ip), ip).toBe(true);
+  });
+
+  it("F6: IPv4 hidden in IPv6 (mapped, compatible, 6to4, NAT64) and site-local are not public", () => {
+    for (const ip of ["::ffff:7f00:1", "::ffff:127.0.0.1", "::127.0.0.1", "::7f00:1", "2002:7f00:1::", "2002:c0a8:101::1", "64:ff9b::a00:5", "fec0::1", "[::1]", "fe80::1%en0", "2001:db8::1", "2001:0:4136:e378::1"])
+      expect(isPublicAddress(ip), ip).toBe(false);
+    for (const ip of ["2002:5db8:d822::1", "::ffff:93.184.216.34", "2a00:1450:4001:82a::200e"]) expect(isPublicAddress(ip), ip).toBe(true);
+  });
+
+  it("F6: the connect-time lookup refuses a name that resolves to a private address (DNS rebinding)", async () => {
+    const lookup = validatingLookup((host, _o, cb) => cb(null, host === "rebind.example.net" ? [{ address: "93.184.216.34", family: 4 }, { address: "127.0.0.1", family: 4 }] : [{ address: "93.184.216.34", family: 4 }]));
+    const call = (host: string, all: boolean) => new Promise<{ err: string | null; address: unknown }>((resolve) => lookup(host, { all }, (err, address) => resolve({ err: err?.message ?? null, address })));
+    expect(await call("rebind.example.net", false)).toMatchObject({ err: "rebind.example.net resolves to a non-public address (127.0.0.1)" });
+    expect(await call("hr.example.com", false)).toEqual({ err: null, address: "93.184.216.34" });
+    expect(await call("hr.example.com", true)).toEqual({ err: null, address: [{ address: "93.184.216.34", family: 4 }] });
+  });
+
+  it("F5: one 20 s deadline per page across its redirects, and the caller's signal stops every hop", async () => {
+    let t = 0;
+    const calls: string[] = [];
+    const fetcher = new GuidanceFetcher({
+      fetch: async (url) => {
+        calls.push(url);
+        t += 15_000;
+        return response(302, null, { location: `${url}x` });
+      },
+      resolve: async () => ["93.184.216.34"],
+      sleep: async () => undefined,
+      now: () => t,
+    });
+    const [r] = await fetcher.fetchPages([{ url: "https://hr.example.com/a", etag: null, lastModified: null }]);
+    expect(r).toMatchObject({ status: "failed", reason: "no answer within 20 s" });
+    expect(calls).toHaveLength(2);
+    const stopped = new GuidanceFetcher({ fetch: (_u, init) => new Promise((_res, rej) => init.signal.addEventListener("abort", () => rej(new Error("aborted")))), resolve: async () => ["93.184.216.34"], sleep: async () => undefined });
+    const controller = new AbortController();
+    const pending = stopped.fetchPages([{ url: "https://hr.example.com/slow", etag: null, lastModified: null }], { signal: controller.signal });
+    controller.abort();
+    expect(await pending).toEqual([{ url: "https://hr.example.com/slow", status: "failed", reason: "cancelled" }]);
   });
 
   it("text helpers: a page with no article starts at its h1; titles are plain and capped", () => {

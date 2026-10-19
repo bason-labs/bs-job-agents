@@ -2,6 +2,8 @@
 // deny-lists, table-tested in screen.test.ts), the constraint mapping (overriddenBy, set by code)
 // and how a fetched page's host, kind and market are classified. Pure.
 import { parse } from "tldts";
+import { termIn, termsIn } from "../cv-derive/implications.js";
+import { capitalisedNames, titlesIn } from "../truth/claims.js";
 import type { CvConstraintId, GuidanceMarket, GuidanceSourceKind, GuidanceTopic } from "./schema.js";
 import { GUIDANCE_LIMITS } from "./schema.js";
 
@@ -18,10 +20,43 @@ export function normaliseForMatch(s: string): string {
     .trim();
 }
 
-/** SEC-23: the quote occurs in the page's text (after normalising whitespace and case). */
-export function evidenceInText(quote: string, pageText: string): boolean {
+const STOP_WORDS = new Set([
+  // EN
+  "the", "and", "for", "with", "your", "you", "that", "this", "from", "are", "have", "will", "can", "should", "each", "every", "all", "not", "any", "more", "most", "their",
+  "them", "they", "our", "its", "into", "about", "when", "what", "which", "who", "how", "than", "then", "also", "only", "use", "using", "but", "was", "were", "has", "had",
+  "one", "out", "make", "sure", "way", "get", "may", "might", "just", "like", "such", "these", "those", "there", "here", "own", "very", "much", "many", "some", "help",
+  // VI
+  "của", "và", "các", "những", "cho", "với", "trong", "được", "này", "một", "là", "có", "không", "khi", "để", "bạn", "nên", "cần", "từ", "theo", "như", "hay", "hoặc", "rất",
+  "nhiều", "đã", "sẽ", "đến", "về", "lên", "ra", "vào", "thì", "mà", "cũng", "đó", "nào", "hãy", "phải", "bằng", "trên", "dưới", "người", "việc", "nếu",
+]);
+
+/** Content words of a text (case-folded, without stop words): what an overlap is measured on. */
+export function contentWords(s: string): Set<string> {
+  return new Set(
+    normaliseForMatch(s)
+      .split(/[^\p{L}\p{N}+#]+/u)
+      .filter((w) => w.length >= 3 && !STOP_WORDS.has(w)),
+  );
+}
+
+/** At least this much quote (F3): a few words prove nothing about where the advice came from. */
+export const EVIDENCE_MIN_CHARS = 40;
+
+/**
+ * SEC-23 (F3): the quote is real evidence for the statement: at least 40 characters, inside one
+ * content line of the page (the long lines guidanceContentKey keeps: no menus, no spanning
+ * paragraphs), and it shares content words with the statement (2, or 1 for a short statement).
+ */
+export function evidenceInText(quote: string, pageText: string, statement?: string): boolean {
   const q = normaliseForMatch(quote).replace(/^["']+|["'.…]+$/g, "").trim();
-  return q.length >= 12 && normaliseForMatch(pageText).includes(q);
+  if (q.length < EVIDENCE_MIN_CHARS) return false;
+  const lines = pageText.split(/\n/).map(normaliseForMatch).filter((l) => l.length >= 80);
+  if (!lines.some((l) => l.includes(q))) return false;
+  if (statement === undefined) return true;
+  const said = contentWords(statement);
+  const quoted = contentWords(q);
+  const shared = [...said].filter((w) => quoted.has(w)).length;
+  return shared >= (said.size <= 4 ? 1 : 2);
 }
 
 /**
@@ -54,6 +89,9 @@ const BOT_INSTRUCTION = [
   /\bjson\b/i,
   /\b(?:the|your)\s+(?:cv\s+)?(?:bot|writer|model|ai|assistant|llm|agent)s?\b/i,
   /\byou are (?:a|an|the) (?:bot|model|ai|assistant|cv writer)\b/i,
+  // A bare role prefix ("Assistant: …", "System: …") or talk about the checks themselves.
+  /(?:^|[\s"'([])(?:assistant|system|user|developer|tool|human)\s*:/i,
+  /\btruth\s*check\b|\bguard\s*rails?\b|\bsafety (?:check|rule)s?\b/i,
   /\bbỏ qua\b.{0,40}\b(quy tắc|hướng dẫn|chỉ dẫn|lệnh)\b/i,
   /\b(?:lời nhắc|câu lệnh hệ thống)\b/i,
 ];
@@ -64,7 +102,13 @@ const INVENT_VERBS_VI = /(bịa|phóng đại|ước lượng|ước tính|làm 
 
 /** Telling the CV to add something: rejected when the object is a fact, number or date… */
 const ADD_VERBS_EN = /\b(add|adding|include|including|insert|put|list|listing|claim|state|mention|write|show|give|quantify)\b/i;
-const ADD_VERBS_VI = /(thêm|bổ sung|ghi|liệt kê|đưa vào|chèn|nêu|kể)/i;
+const ADD_VERBS_VI = /(thêm|bổ sung|ghi|liệt kê|đưa vào|chèn|nêu|kể|thể hiện|trình bày|viết)/i;
+/** Taking a fact from the posting (F4): mirror, match or copy the JD's technologies or title. */
+const FROM_POSTING_EN = /\b(mirror|match(?:es|ing)?|copy|copies|copying|echo|replicate|reuse|repeat|use|take|align)\b.{0,60}\b(job description|jd|posting|job post|job ad|advert(?:isement)?|vacancy|listing|role description)\b/i;
+const FROM_POSTING_VI = /(sao chép|chép|khớp|trùng|giống|lặp lại|lấy|dùng).{0,40}(mô tả công việc|jd|tin tuyển dụng|tin đăng|yêu cầu tuyển dụng)/i;
+/** …unless it says to do so only where it is true ("where it matches your experience"). */
+const WHERE_TRUE = /\b(?:where|if|when|that|which|only)\b.{0,40}\b(?:your (?:real |actual )?experience|you (?:have|did|used)|true|truthful|honest(?:ly)?|backed|apply to you)\b|(?:nếu|khi|chỉ).{0,30}(?:đúng|thật|có kinh nghiệm|đã làm)/i;
+const SELF_TITLE = /\b(describe|present|introduce|call|brand|label|position|title|sell)\s+(?:yourself|you)\s+as\b|\b(?:always|just)\s+(?:say|write|claim)\s+(?:you(?:'re| are)|i am)\b|(?:tự giới thiệu|tự nhận|xưng|gọi mình) là/i;
 /** …a number-like object: adding one is inventing one unless the facts have it. */
 const NUMBER_OBJECT_EN = /\b((?<!phone |contact |mobile )numbers?|figures?|metrics?|percent(?:age)?s?|%|statistics?|stats|kpis?|results? figures?|amounts?)\b|%/i;
 const NUMBER_OBJECT_VI = /(con số|số liệu|phần trăm|chỉ số|%)/i;
@@ -104,6 +148,12 @@ export function screenStatement(text: string): string | null {
   if ((addEn && FACT_OBJECT_EN.test(t) && REGARDLESS_EN.test(t)) || (addVi && FACT_OBJECT_VI.test(t) && REGARDLESS_VI.test(t))) {
     return "the statement tells the CV to list a fact, skill or date Ba may not have";
   }
+  // F4: a specific figure ("30% growth") is a number the CV would have to state.
+  if (/\d+(?:[.,]\d+)?\s*%/.test(t)) return "the statement gives a figure the CV would have to state (only Ba's facts may give one)";
+  if ((FROM_POSTING_EN.test(t) || FROM_POSTING_VI.test(t)) && (FACT_OBJECT_EN.test(t) || FACT_OBJECT_VI.test(t) || /\b(stack|requirements?)\b/i.test(t)) && !WHERE_TRUE.test(t)) {
+    return "the statement tells the CV to take a skill, title or requirement from the posting rather than Ba's facts";
+  }
+  if (SELF_TITLE.test(t) && (titlesIn(t).length > 0 || /\b(expert|guru|ninja|rockstar)\b/i.test(t))) return "the statement tells the CV to claim a title Ba's facts may not give";
   return null;
 }
 
@@ -130,11 +180,12 @@ export function constraintsOverriding(topic: GuidanceTopic, text: string): CvCon
 
 // ---------------------------------------------------------------- sources
 
-/** The registrable domain of an https URL ("indeed.com"), or null. */
+/** The ICANN registrable domain of an https URL ("indeed.com", "blogspot.com"), or null. */
 export function registrableHost(url: string): string | null {
   try {
     const u = new URL(url);
-    const p = parse(u.hostname, { allowPrivateDomains: true });
+    // F2: ICANN registrable domains only: a.blogspot.com and b.blogspot.com are one publisher host.
+    const p = parse(u.hostname, { allowPrivateDomains: false });
     return p.domain ?? null;
   } catch {
     return null;
@@ -169,4 +220,29 @@ export function slugFrom(s: string, max = 40): string {
     .slice(0, max)
     .replace(/-+$/g, "");
   return slug || "x";
+}
+
+// ---------------------------------------------------------------- cv.review fixes (F4)
+
+/** A fix that removes or reorders refers to what the CV already says; any other may only use the cited facts. */
+const REMOVE_OR_MOVE = /^\s*(remove|drop|delete|cut|shorten|trim|move|reorder|put|swap|merge|split|lead with|start with|bỏ|xóa|xoá|rút gọn|chuyển|đưa)\b/i;
+
+/**
+ * F4: a cv.review fix reaches tailor only if it passes the content screen and names no skill, tool,
+ * figure or name the cited facts lack (a removal may name what it removes). Null when it may go.
+ */
+export function screenGuidanceFix(instruction: string, cited: readonly { text: string; textVi?: string | null; tags?: readonly string[]; org?: string | null }[]): string | null {
+  const problem = screenStatement(instruction);
+  if (problem) return problem;
+  // Removing or reordering refers to what the CV already says (the pre-QA truth check still runs on the result).
+  if (REMOVE_OR_MOVE.test(instruction)) return null;
+  const corpus = cited.flatMap((f) => [f.text, f.textVi ?? "", ...(f.tags ?? []), f.org ?? ""]).join("\n");
+  for (const term of termsIn(instruction)) if (!termIn(term, corpus)) return `the fix names ${term}, which the cited facts do not`;
+  const numbers = instruction.match(/\d+(?:[.,]\d+)?/g) ?? [];
+  for (const n of numbers) if (!corpus.includes(n)) return `the fix gives the figure ${n}, which the cited facts do not`;
+  for (const name of capitalisedNames(instruction)) {
+    if (/^(CV|JD|ATS|PDF)$/.test(name)) continue;
+    if (!termIn(name, corpus)) return `the fix names ${name}, which the cited facts do not`;
+  }
+  return null;
 }

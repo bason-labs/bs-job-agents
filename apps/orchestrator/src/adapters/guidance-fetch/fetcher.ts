@@ -8,10 +8,13 @@
 // - no cookie, Authorization or board token: the request headers are this fixed list;
 // - 2 MiB and 20 s per page; the caller caps pages per refresh (15).
 // Conditional GETs (If-None-Match / If-Modified-Since) make an unchanged page a 304 with no body.
-// Known gap (documented): the address is checked before the request, and Node's fetch resolves the
-// name again, so a DNS answer that changes between the two is not caught (rebinding).
+// DNS rebinding (F6): the default transport is node:https with a lookup hook that validates the
+// very addresses the socket connects to, so a name that resolves publicly for the check and
+// privately for the connection is refused at connect time.
 import { createHash } from "node:crypto";
+import { lookup as dnsLookup, type LookupAddress } from "node:dns";
 import { lookup } from "node:dns/promises";
+import { request } from "node:https";
 import { isIP } from "node:net";
 import { classifySource, guidanceContentKey, publicHostProblem, registrableHost } from "@bs-job-agents/shared";
 import type { GuidanceFetchPort, GuidanceFetchRequest, GuidanceFetchResult } from "../../engine/ports.js";
@@ -71,22 +74,54 @@ function v4ToInt(ip: string): number {
   return ip.split(".").reduce((n, part) => (n << 8) + Number(part), 0) >>> 0;
 }
 
-/** A public unicast address (SEC-21): not loopback, private, link-local, CGNAT, multicast or reserved. */
+/** An IPv6 address as 8 numbers (an embedded dotted IPv4 tail included), or null. */
+function v6Parts(ip: string): number[] | null {
+  let a = ip.toLowerCase().replace(/^\[|\]$/g, "").replace(/%.*$/, "");
+  const v4 = /(\d+\.\d+\.\d+\.\d+)$/.exec(a);
+  if (v4) {
+    if (isIP(v4[1]!) !== 4) return null;
+    const n = v4ToInt(v4[1]!);
+    a = `${a.slice(0, -v4[1]!.length)}${(n >>> 16).toString(16)}:${(n & 0xffff).toString(16)}`;
+  }
+  const halves = a.split("::");
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const fill = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  const parts = [...head, ...Array.from({ length: fill }, () => "0"), ...tail].map((h) => parseInt(h, 16));
+  return parts.length === 8 && parts.every((p) => Number.isInteger(p) && p >= 0 && p <= 0xffff) ? parts : null;
+}
+
+const embeddedV4 = (hi: number, lo: number): string => [hi >>> 8, hi & 0xff, lo >>> 8, lo & 0xff].join(".");
+
+/**
+ * A public unicast address (SEC-21, F6): not loopback, private, link-local, CGNAT, multicast or
+ * reserved; for IPv6 also not site-local, unique-local, documentation, and never an IPv4 address
+ * hidden in it (IPv4-mapped or -compatible, 6to4, NAT64) that is not public itself.
+ */
 export function isPublicAddress(ip: string): boolean {
-  const kind = isIP(ip);
+  const kind = isIP(ip.replace(/^\[|\]$/g, "").replace(/%.*$/, ""));
   if (kind === 4) {
     const n = v4ToInt(ip);
     return !V4_BLOCKED.some(([base, bits]) => (n >>> (32 - bits)) === (base >>> (32 - bits)));
   }
-  if (kind === 6) {
-    const a = ip.toLowerCase();
-    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(a);
-    if (mapped) return isPublicAddress(mapped[1]!);
-    if (a === "::" || a === "::1") return false;
-    if (/^f[cd]/.test(a) || /^fe[89ab]/.test(a) || /^ff/.test(a) || a.startsWith("64:ff9b:") || a.startsWith("2001:db8") || a.startsWith("100::")) return false;
-    return true;
-  }
-  return false;
+  if (kind !== 6) return false;
+  const p = v6Parts(ip);
+  if (!p) return false;
+  const [a, b] = p as [number, number, ...number[]];
+  if (p.every((x) => x === 0)) return false; // ::
+  if (p.slice(0, 7).every((x) => x === 0) && p[7] === 1) return false; // ::1
+  // ::ffff:a.b.c.d (mapped), ::a.b.c.d (compatible), 64:ff9b::a.b.c.d (NAT64): the IPv4 decides.
+  if (p.slice(0, 5).every((x) => x === 0) && (p[5] === 0xffff || p[5] === 0)) return isPublicAddress(embeddedV4(p[6]!, p[7]!));
+  if (a === 0x64 && b === 0xff9b) return isPublicAddress(embeddedV4(p[6]!, p[7]!));
+  if (a === 0x2002) return isPublicAddress(embeddedV4(b, p[2]!)); // 6to4
+  if ((a & 0xfe00) === 0xfc00) return false; // fc00::/7 unique local
+  if ((a & 0xffc0) === 0xfe80 || (a & 0xffc0) === 0xfec0) return false; // link-local, site-local
+  if ((a & 0xff00) === 0xff00) return false; // multicast
+  if (a === 0x2001 && b === 0x0db8) return false; // documentation
+  if (a === 0x0100 && p[1] === 0 && p[2] === 0 && p[3] === 0) return false; // discard-only
+  if (a === 0x2001 && b === 0) return false; // Teredo (embeds a client IPv4)
+  return true;
 }
 
 const sleepFor = (ms: number, signal?: AbortSignal): Promise<void> =>
@@ -107,6 +142,45 @@ const defaultResolve: GuidanceResolver = async (host) => (await lookup(host, { a
 
 class PageError extends Error {}
 
+type LookupCallback = (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void;
+type LookupFn = (hostname: string, options: { all?: boolean; family?: number }, callback: (err: NodeJS.ErrnoException | null, addresses: LookupAddress[]) => void) => void;
+
+/** A socket lookup that refuses any non-public address it would connect to (F6, SEC-21). */
+export function validatingLookup(resolve: LookupFn = (h, o, cb) => dnsLookup(h, { ...o, all: true }, cb)) {
+  return (hostname: string, options: { all?: boolean; family?: number }, callback: LookupCallback): void => {
+    resolve(hostname, { family: options.family ?? 0, all: true }, (err, addresses) => {
+      if (err) return callback(err, "");
+      const bad = addresses.find((a) => !isPublicAddress(a.address));
+      if (bad || addresses.length === 0) {
+        const e = new Error(`${hostname} resolves to a non-public address (${bad?.address ?? "none"})`) as NodeJS.ErrnoException;
+        e.code = "ENOTPUBLIC";
+        return callback(e, "");
+      }
+      if (options.all) callback(null, addresses);
+      else callback(null, addresses[0]!.address, addresses[0]!.family);
+    });
+  };
+}
+
+/** The default transport: node:https, the validating lookup, no redirects followed, no agent cookies. */
+export const pinnedHttpsFetch: GuidanceHttpFetch = (url, init) =>
+  new Promise((resolve, reject) => {
+    const req = request(url, { method: "GET", headers: init.headers, signal: init.signal, lookup: validatingLookup() as never }, (res) =>
+      resolve({
+        status: res.statusCode ?? 0,
+        headers: {
+          get: (name) => {
+            const v = res.headers[name.toLowerCase()];
+            return Array.isArray(v) ? v.join(", ") : (v ?? null);
+          },
+        },
+        body: res,
+      }),
+    );
+    req.on("error", reject);
+    req.end();
+  });
+
 export class GuidanceFetcher implements GuidanceFetchPort {
   private readonly fetchFn: GuidanceHttpFetch;
   private readonly resolve: GuidanceResolver;
@@ -121,7 +195,7 @@ export class GuidanceFetcher implements GuidanceFetchPort {
   private readonly lastRequestAt = new Map<string, number>();
 
   constructor(opts: GuidanceFetcherOptions = {}) {
-    this.fetchFn = opts.fetch ?? ((url, init) => fetch(url, init) as unknown as Promise<GuidanceHttpResponse>);
+    this.fetchFn = opts.fetch ?? pinnedHttpsFetch;
     this.resolve = opts.resolve ?? defaultResolve;
     this.sleep = opts.sleep ?? sleepFor;
     this.now = opts.now ?? (() => Date.now());
@@ -200,13 +274,21 @@ export class GuidanceFetcher implements GuidanceFetchPort {
 
   private async fetchFollowing(req: GuidanceFetchRequest, signal?: AbortSignal): Promise<GuidanceFetchResult> {
     let current = req.url;
+    // F5: one 20 s deadline for the page, across every redirect hop (not 20 s per hop).
+    const deadline = this.now() + this.timeoutMs;
+    const timedOut = () => new PageError(`no answer within ${Math.round(this.timeoutMs / 1000)} s`);
     for (let hop = 0; ; hop++) {
+      if (signal?.aborted) throw new PageError("cancelled");
+      if (this.now() >= deadline) throw timedOut();
       const url = await this.checkUrl(current);
       await this.politeWait(url.hostname, signal);
+      if (signal?.aborted) throw new PageError("cancelled");
+      if (this.now() >= deadline) throw timedOut();
       const controller = new AbortController();
       const onAbort = () => controller.abort();
       signal?.addEventListener("abort", onAbort, { once: true });
-      const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+      if (signal?.aborted) controller.abort();
+      const timer = setTimeout(() => controller.abort(), Math.max(0, deadline - this.now()));
       try {
         // Validators only for the page as stored; never across a redirect.
         const res = await this.fetchFn(url.href, { method: "GET", headers: guidanceRequestHeaders(this.userAgent, hop === 0 ? req : null), redirect: "manual", signal: controller.signal });
@@ -242,7 +324,8 @@ export class GuidanceFetcher implements GuidanceFetchPort {
           market,
         };
       } catch (err) {
-        if (controller.signal.aborted && !signal?.aborted && !(err instanceof PageError)) throw new PageError(`no answer within ${Math.round(this.timeoutMs / 1000)} s`);
+        if (signal?.aborted && !(err instanceof PageError)) throw new PageError("cancelled");
+        if (controller.signal.aborted && !(err instanceof PageError)) throw timedOut();
         throw err;
       } finally {
         clearTimeout(timer);

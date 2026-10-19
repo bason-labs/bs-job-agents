@@ -10,6 +10,8 @@ import type { FakeMasterCv, MemoryFileStore } from "./fakes.js";
 export class FakeGuidanceFetch implements GuidanceFetchPort {
   /** Every URL asked for, in order (the "mocked network"). */
   readonly requests: GuidanceFetchRequest[] = [];
+  /** The signal each batch was given (F5: the step's remaining budget). */
+  readonly signals: (AbortSignal | undefined)[] = [];
   readonly pages = new Map<string, GuidanceFetchResult>();
   /** Every page fails (all sources unreachable). */
   unreachable = false;
@@ -26,7 +28,8 @@ export class FakeGuidanceFetch implements GuidanceFetchPort {
     this.gate = null;
   }
 
-  async fetchPages(requests: readonly GuidanceFetchRequest[]): Promise<GuidanceFetchResult[]> {
+  async fetchPages(requests: readonly GuidanceFetchRequest[], opts: { signal?: AbortSignal } = {}): Promise<GuidanceFetchResult[]> {
+    this.signals.push(opts.signal);
     if (this.gate) await this.gate;
     return requests.map((r) => {
       this.requests.push(r);

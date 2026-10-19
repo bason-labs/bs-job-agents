@@ -303,7 +303,7 @@ export function onReviewerDone(core: EngineCore, conn: Conn, ctx: RunCtx, task: 
 function completeRound(core: EngineCore, conn: Conn, ctx: RunCtx, step: GateStep, row: Step, out: GateStepOutput, n: number, reviewer: ReviewerItem[] | null, qa?: QaOutput): void {
   const round = roundOf(out, n);
   if (!round?.guidance || round.cvVersionId === null || !out.guidance) return;
-  const result = completeGuidanceReview(out.guidance, round.guidance.checks, reviewer, round.guidance.facts.map((f) => f.id));
+  const result = completeGuidanceReview(out.guidance, round.guidance.checks, reviewer, round.guidance.facts.map((f) => f.id), round.guidance.facts);
   saveGuidanceReview(conn, { cvVersionId: round.cvVersionId, result }, { now: core.now() });
   round.guidance.completed = true;
   round.guidance.fixes = result.fixes.length;

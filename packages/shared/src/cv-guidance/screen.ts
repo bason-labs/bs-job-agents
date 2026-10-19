@@ -139,7 +139,7 @@ export function screenGuidanceUpdate(
     const page = fetchedPages.find((p) => sameUrl(p.url, d.sourceUrl) || sameUrl(p.finalUrl, d.sourceUrl));
     if (!page) return reject("the source was not fetched in this refresh (SEC-23)", d.ruleId);
     if (d.evidence.length > GUIDANCE_LIMITS.textChars) return reject(`the quote has more than ${GUIDANCE_LIMITS.textChars} characters`, d.ruleId);
-    if (!evidenceInText(d.evidence, page.text)) return reject("the quote is not in the fetched page's text (SEC-23)", d.ruleId);
+    if (!evidenceInText(d.evidence, page.text, d.text)) return reject("the quote is not a passage of the fetched page that backs the statement (SEC-23: 40 characters or more, in one content line, sharing its words)", d.ruleId);
     // Content (SEC-22).
     const text = d.text.trim();
     const problem = screenStatement(text);

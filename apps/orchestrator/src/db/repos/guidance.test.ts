@@ -2,7 +2,7 @@ import { GUIDANCE_SEED, type GuidanceRuleSet } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
 import { openTestDb } from "../client.js";
 import { listEvents } from "./events.js";
-import { commitGuidanceRuleSet, currentGuidanceRuleSet, getGuidanceSettings, releaseGuidanceLock, setGuidanceRuleOff, takeGuidanceLock } from "./guidance.js";
+import { commitGuidanceRuleSet, currentGuidanceRuleSet, getGuidanceSettings, guidanceStoreState, releaseGuidanceLock, setGuidanceRuleOff, takeGuidanceLock } from "./guidance.js";
 
 const AT = new Date("2026-10-18T08:00:00.000Z");
 
@@ -40,6 +40,15 @@ describe("guidance store (AD-10)", () => {
     expect(currentGuidanceRuleSet(db)?.snapshot).toBe(1);
     expect(currentGuidanceRuleSet(db)?.ruleSet).toEqual(GUIDANCE_SEED);
     expect(listEvents(db).length).toBe(before);
+  });
+
+  it("F8: a corrupt newest snapshot leaves the last readable one in force, and the next commit does not reuse its number", () => {
+    const db = openTestDb();
+    commitGuidanceRuleSet(db, { runId: null, ruleSet: GUIDANCE_SEED }, { now: AT });
+    db.$client.prepare("INSERT INTO guidance_rule_sets (snapshot, run_id, rule_set_json, created_at) VALUES (2, NULL, '{\"rules\": 7}', ?)").run(AT.toISOString());
+    expect(guidanceStoreState(db)).toMatchObject({ latestNumber: 2, corrupt: true, current: { snapshot: 1 } });
+    expect(currentGuidanceRuleSet(db)?.ruleSet).toEqual(GUIDANCE_SEED);
+    expect(commitGuidanceRuleSet(db, { runId: 3, ruleSet: changedSeed() }, { now: AT }).snapshot).toBe(3);
   });
 
   it("snapshots are append-only: the database refuses UPDATE and DELETE", () => {

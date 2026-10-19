@@ -67,6 +67,18 @@ describe("resolveGuidance (AD-11)", () => {
     expect(both.disposition).toBe("disputed_not_applied");
   });
 
+  it("F2: a refresh position with one host cannot replace a pinned post's position, even on a market tie-break; with 2 hosts it can", () => {
+    const vnpt: GuidanceSource = { ...src("vnpt", "attachment:vnpt", "vn"), kind: "attachment", url: null, repoPath: "docs/x.png" };
+    const blogs = ["a", "b", "c"].map((n) => src(`blog-${n}`, "blogspot.com"));
+    const one = disputed([vnpt], blogs);
+    for (const jobMarket of ["global", "vn"] as const) {
+      const r = resolveGuidance(one, { ...ctx, jobMarket }).rules[0]!;
+      expect(r.applied?.id, jobMarket).toBe("p1");
+    }
+    const two = disputed([vnpt], [src("x", "x.example.com"), src("y", "y.example.org")]);
+    expect(resolveGuidance(two, ctx).rules[0]!.applied?.id).toBe("p2");
+  });
+
   it("REQ-34.AC-1: the page-length rule is overridden by over_one_page", () => {
     const r = resolveGuidance(GUIDANCE_SEED, ctx).rules.find((x) => x.ruleId === "length-pages")!;
     expect(r.disposition).toBe("overridden");

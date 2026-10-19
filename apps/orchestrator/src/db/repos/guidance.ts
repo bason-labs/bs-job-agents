@@ -10,14 +10,35 @@ import { guidanceRuleSets, guidanceSettings } from "../schema.js";
 import { nowIso, type ClockOpts } from "../time.js";
 import { appendAppEvent } from "./events.js";
 
-/** The current snapshot (the highest number), or null before the first commit. */
-export function currentGuidanceRuleSet(db: Conn): GuidanceSnapshot | null {
-  const row = db.select().from(guidanceRuleSets).orderBy(desc(guidanceRuleSets.snapshot)).limit(1).get();
-  if (!row) return null;
+export interface GuidanceStoreState {
+  /** The latest snapshot that validates (the rule set in force), or null. */
+  current: GuidanceSnapshot | null;
+  /** The highest snapshot number stored (valid or not), or null when there is none. */
+  latestNumber: number | null;
+  /** F8: the latest row does not validate; the last readable one stays in force, nothing overwrites it. */
+  corrupt: boolean;
+}
+
+const toSnapshot = (row: typeof guidanceRuleSets.$inferSelect): GuidanceSnapshot | null => {
   const parsed = GuidanceRuleSetSchema.safeParse(row.ruleSet);
-  // A stored set that no longer validates is never used half-way: callers treat it as none.
-  if (!parsed.success) return null;
-  return { snapshot: row.snapshot, createdAt: row.createdAt, runId: row.runId, ruleSet: parsed.data };
+  return parsed.success ? { snapshot: row.snapshot, createdAt: row.createdAt, runId: row.runId, ruleSet: parsed.data } : null;
+};
+
+export function guidanceStoreState(db: Conn): GuidanceStoreState {
+  const rows = db.select().from(guidanceRuleSets).orderBy(desc(guidanceRuleSets.snapshot)).all();
+  if (rows.length === 0) return { current: null, latestNumber: null, corrupt: false };
+  const latest = toSnapshot(rows[0]!);
+  if (latest) return { current: latest, latestNumber: latest.snapshot, corrupt: false };
+  for (const row of rows.slice(1)) {
+    const s = toSnapshot(row);
+    if (s) return { current: s, latestNumber: rows[0]!.snapshot, corrupt: true };
+  }
+  return { current: null, latestNumber: rows[0]!.snapshot, corrupt: true };
+}
+
+/** The rule set in force: the latest snapshot that validates (F8: a corrupt newer row never empties it). */
+export function currentGuidanceRuleSet(db: Conn): GuidanceSnapshot | null {
+  return guidanceStoreState(db).current;
 }
 
 export function getGuidanceSnapshot(db: Conn, snapshot: number): GuidanceSnapshot | null {
@@ -45,8 +66,9 @@ export interface CommitGuidanceResult {
 export function commitGuidanceRuleSet(db: Conn, input: CommitGuidanceInput, opts?: ClockOpts): CommitGuidanceResult {
   const ruleSet = GuidanceRuleSetSchema.parse(input.ruleSet);
   return db.transaction((tx) => {
-    const previous = currentGuidanceRuleSet(tx);
-    const snapshot = (previous?.snapshot ?? 0) + 1;
+    const state = guidanceStoreState(tx);
+    const previous = state.current;
+    const snapshot = (state.latestNumber ?? 0) + 1;
     const createdAt = nowIso(opts);
     tx.insert(guidanceRuleSets).values({ snapshot, runId: input.runId, ruleSet, createdAt }).run();
     const changes = diffRuleSets(previous?.ruleSet ?? null, ruleSet);
