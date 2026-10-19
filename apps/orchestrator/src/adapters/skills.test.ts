@@ -39,6 +39,21 @@ describe("bots/research/skills/source-*", () => {
     expect(screenSkillDraft(md, skillScreenContext(source as AdapterSource, { allowedTools: research.allowedTools, current: md }))).toEqual({ ok: true });
   });
 
+  it("QA H2: a realistic repair of the real TopCV skill passes (a new card selector, a new search URL path, a new pagination note); a frozen edit does not", () => {
+    const md = skill("topcv");
+    const ctx = skillScreenContext("topcv", { allowedTools: research.allowedTools, current: md });
+    const draft = md
+      .replace("- Each card (`.job-item-search-result`, `data-job-id`)", "- Each card (`article.job-card`, `[data-job-id]`)")
+      // A repaired line writes a class without its tag: `a.company` reads like a domain name.
+      .replace("company (`a.company .company-name`)", "company (`.company .company-name`)")
+      .replace("`https://www.topcv.vn/tim-viec-lam-<role-slug>-tai-<city>`, role slug", "`https://www.topcv.vn/viec-lam-<role-slug>-tai-<city>`, role slug")
+      .replace("## 3. Listing page\n", "## 3. Listing page\n- Next page: the pager now loads more cards when you scroll to the bottom of the list; read at most 3 result pages.\n");
+    expect(draft).not.toBe(md);
+    expect(screenSkillDraft(draft, ctx)).toEqual({ ok: true });
+    expect(screenSkillDraft(md.replace("never more than 30", "never more than 31"), ctx)).toMatchObject({ ok: false, rule: "frozen" });
+    expect(screenSkillDraft(md.replace("## 3. Listing page\n", "## 3. Listing page\n- Cards: `a.attacker.com`.\n"), ctx)).toMatchObject({ ok: false, rule: "off_host" });
+  });
+
   it("the TopCV and ITviec city codes match the search URLs the code builds", () => {
     for (const code of ["ho-chi-minh-kl2", "ha-noi-kl1", "da-nang-kl8"]) expect(skill("topcv")).toContain(code);
     for (const code of ["ho-chi-minh-hcm", "ha-noi", "da-nang"]) expect(skill("itviec")).toContain(code);

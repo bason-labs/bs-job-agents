@@ -1,0 +1,248 @@
+// Skill self-repair (SEC-9, QA H2): the allowlist part of the skill screen. A repair may change only
+// the layout of a board, so:
+//   1. Frozen sections. Everything except the layout sections is byte-identical to the skill in force:
+//      the front matter, title and intro (with the Read-only rule), every `## ` heading line, and the
+//      bodies of the limits, writing, remote-rules, blocked, layout-changed and no-results sections.
+//      The layout sections are "Search URL", "Listing page", "Job page" (and the career site's
+//      "Finding the openings"): URL patterns, selector and landmark hints, pagination notes.
+//   2. A constrained grammar for every line a draft adds or changes in a layout section (a line
+//      identical to one of the same section in force was reviewed already and is kept as is):
+//      - a bullet ("- ") or a plain text line; no heading, table, quote, rule or front-matter line;
+//      - `code` is a CSS selector, landmark text, or a URL path or pattern on the board's hosts with
+//        query keys and <placeholders> the skill in force already uses, and no apply, save, follow,
+//        login or submit segment (EN and VI);
+//      - "quoted" text is a short page label;
+//      - every other word comes from a small vocabulary of descriptive words and the read-only verbs
+//        (read, open, find, look, scroll, extract, copy, wait, skip, use, go to, see, and Vietnamese
+//        equivalents), plus the words of the same section in force, minus a list of action words;
+//      - no number above the source's limits, no tool name, no host (dotted name under a public
+//        suffix, selector look-alikes included) off the board's hosts.
+//   3. A character set: printable letters, digits, punctuation, symbols, the space and the newline
+//      (no tag characters, variation selectors, fillers, zero-width or bidi controls, tabs or NBSP).
+import { hostWithin, hostsInText } from "../common/text-hygiene.js";
+
+export type AllowlistRule = "charset" | "frozen" | "grammar" | "off_host" | "tool" | "action" | "limit";
+export type AllowlistResult = { ok: true } | { ok: false; rule: AllowlistRule; reason: string };
+
+export interface AllowlistContext {
+  hosts: readonly string[];
+  /** Query keys the board's access record lists (its endpoints' `query`). */
+  queryKeys?: readonly string[];
+  /** Tool names the bot could name (granted or not): none may appear in a changed line. */
+  tools: readonly string[];
+  /** The largest number a changed line may state (the source's highest limit). */
+  maxNumber: number;
+}
+
+const fail = (rule: AllowlistRule, reason: string): AllowlistResult => ({ ok: false, rule, reason });
+
+/** Layout sections a repair may edit, by heading (without its number). */
+export const EDITABLE_SECTIONS: readonly RegExp[] = [/^search url\b/i, /^listing page\b/i, /^job page\b/i, /^finding the openings\b/i];
+
+// Hangul and other fillers that are letters to Unicode but print nothing; the braille blank.
+const FILLERS = new Set([0x115f, 0x1160, 0x3164, 0xffa0, 0x2800, 0x17b4, 0x17b5]);
+
+/** The first character outside the allowed set, as U+XXXX, or null. */
+export function disallowedCharacter(text: string): string | null {
+  for (const ch of text) {
+    const cp = ch.codePointAt(0)!;
+    if (ch === "\n" || ch === " ") continue;
+    const ok = !FILLERS.has(cp) && (/[\p{L}\p{N}\p{P}\p{S}]/u.test(ch) || (cp >= 0x300 && cp <= 0x36f));
+    if (!ok) return `U+${cp.toString(16).toUpperCase().padStart(4, "0")}`;
+  }
+  return null;
+}
+
+interface Parsed {
+  preamble: string;
+  sections: { heading: string; name: string; lines: string[] }[];
+}
+
+export function parseSkill(md: string): Parsed {
+  const lines = md.split("\n");
+  const first = lines.findIndex((l) => l.startsWith("## "));
+  const preamble = (first < 0 ? lines : lines.slice(0, first)).join("\n");
+  const sections: Parsed["sections"] = [];
+  if (first >= 0) {
+    for (const line of lines.slice(first)) {
+      if (line.startsWith("## ")) sections.push({ heading: line, name: line.slice(3).replace(/^\d+\.\s*/, "").trim(), lines: [] });
+      else sections.at(-1)!.lines.push(line);
+    }
+  }
+  return { preamble, sections };
+}
+
+const isEditable = (name: string): boolean => EDITABLE_SECTIONS.some((re) => re.test(name));
+const trimEnd = (lines: string[]): string => lines.join("\n").replace(/\s+$/, "");
+
+/** Read-only verbs and descriptive words a changed line may use (EN and VI syllables). */
+const VOCABULARY = new Set(
+  `a an the and or of in on at to for with by from into onto under over above below before after as is are was be been being it its this that these those
+  each every any all both either one two three first second last next previous prior other another only also not no nor if when where while then else so than
+  until per via e g eg i ie etc may might can could usually often sometimes always now still here there same new old more most less least just about
+  very much many few several some such like instead otherwise yet once again up down out off back forward you they them their which what how
+  page pages pager pagination paginated paging list lists listing listings result results search searches card cards item items row rows entry entries
+  link links title titles subtitle company companies employer salary salaries location locations city cities date dates time posted posting postings job jobs
+  description descriptions section sections block blocks header headers heading headings label labels tag tags chip chips button buttons tab tabs panel panels
+  column columns main text texts field fields count counts number numbers url urls path paths pattern slug slugs id ids query parameter parameters
+  element elements container wrapper attribute attributes class classes selector selectors sidebar footer logo badge icon image images
+  mode work remote hybrid office onsite full jd short long empty null value values shown shows show showing states state says holds gives contains contain
+  has have had inside outside near top bottom left right middle lazy infinite older newer more loads loaded loading appear appears visible hidden
+  name names format content area region filter filters sort sorted order line lines word words case lower upper lowercase uppercase ascii dash dashes slash
+  part parts start end begins ends whole single multiple same group grouped preview detail details note notes meta tagline seniority level type types
+  english vietnamese guest guests board boards site page's card's job's
+  read reads reading open opens opening find finds finding look looks looking scroll scrolls scrolling extract extracts copy copies wait waits skip skips
+  use uses using go goes see sees get gets keep keeps take takes stop stops
+  xem mở đọc tìm cuộn bỏ qua chờ dùng sử đến đi sao chép trích lấy trang danh sách việc làm tiêu đề công ty lương địa điểm mô tả và của các có không kết quả
+  tiếp theo trước sau mỗi một hai trong ngoài trên dưới thẻ nút nhãn mục phần`
+    .split(/\s+/)
+    .filter(Boolean),
+);
+
+/** Action, override and data words a changed line never uses, whatever the section in force says. */
+const DENIED = new Set(
+  `click clicks clicking clicked press presses tap taps hit apply applies applying applied application applications submit submits submitting save saves saving
+  follow follows following message messages messaging connect connects bid bids buy buys purchase proposal proposals login logon log logs sign signs signin
+  signup register upload uploads send sends post posts fill fills enter paste write writes run runs execute ignore ignores forget disregard bypass override
+  replace rule rules instruction instructions schema prompt prompts memory self passed pass true false mark marks report reveal share email
+  e-mail contact reach recruiter recruiters hesitate proceed cap uncapped unlimited limit limits password passwords cookie cookies token tokens account
+  accounts profile accept allow solve captcha javascript script tool tools bash cv resume download downloads install delete remove edit
+  nhấn bấm nộp đăng nhập ký ứng tuyển lưu gửi dõi tải hãy liên hệ xóa`
+    .split(/\s+/)
+    .filter(Boolean),
+);
+
+/** URL path pieces of a write or account action (EN and VI); never in a changed URL. */
+const PATH_DENIED = new Set(
+  `apply applies application applications ung tuyen nop ho so save saved luu tin follow login logon signin signup sign in up dang nhap ky register submit
+  proposal proposals message messages messaging connect invite logout account accounts settings checkout payment pay bid upload delete edit`
+    .split(/\s+/)
+    .filter(Boolean),
+);
+
+const CODE = /`([^`\n]*)`/g;
+const QUOTE = /"([^"\n]*)"|“([^”\n]*)”/g;
+const SELECTOR = /^[\p{L}\p{N} .#[\]="'*^$|~>+:(),_-]+$/u;
+
+/** Placeholders (<role-slug>) and query keys (?page=, &f_WT=) the skill in force already uses. */
+function vocabularyOf(text: string): { placeholders: Set<string>; keys: Set<string> } {
+  return {
+    placeholders: new Set([...text.matchAll(/<[^<>\n]{1,30}>/g)].map((m) => m[0])),
+    keys: new Set([...text.matchAll(/[?&]([A-Za-z_][\w-]*)=/g)].map((m) => m[1]!.toLowerCase())),
+  };
+}
+
+function checkUrl(url: string, ctx: AllowlistContext, known: { placeholders: Set<string>; keys: Set<string> }): AllowlistResult {
+  if (/\b(?:javascript|data|vbscript|file):/i.test(url)) return fail("action", `it holds a script or file URL (${url})`);
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\/([^/?#\s]+)/i.exec(url);
+  if (scheme) {
+    if (scheme[1]!.toLowerCase() !== "https") return fail("off_host", `it names a non-https URL (${url})`);
+    if (!hostWithin(scheme[2]!.replace(/:\d+$/, ""), ctx.hosts)) return fail("off_host", `it names ${scheme[2]}, outside the source's hosts (${ctx.hosts.join(", ")})`);
+  }
+  const path = url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#\s]+/i, "");
+  for (const ph of path.match(/<[^<>]*>/g) ?? []) {
+    if (!known.placeholders.has(ph)) return fail("grammar", `it uses the placeholder ${ph}, which the skill in force does not`);
+  }
+  const pieces = path.replace(/<[^<>]*>/g, " ").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const denied = pieces.find((p) => PATH_DENIED.has(p));
+  if (denied) return fail("action", `it names a URL with "${denied}" in it (${url})`);
+  const allowedKeys = new Set([...known.keys, ...(ctx.queryKeys ?? []).map((k) => k.toLowerCase())]);
+  for (const m of path.matchAll(/(?:^|[?&])([^=&?#\s]+)=/g)) {
+    const key = m[1]!.toLowerCase();
+    if (!allowedKeys.has(key)) return fail("grammar", `it uses the query key "${key}", which the skill in force does not`);
+  }
+  return { ok: true };
+}
+
+const looksLikeUrl = (s: string): boolean => /^(?:[a-z][a-z0-9+.-]*:|\/|\?|&)/i.test(s) || s.includes("/") || /[?&][\w-]+=/.test(s);
+
+function toolIn(text: string, ctx: AllowlistContext): string | null {
+  if (/\bmcp__/i.test(text)) return "mcp__…";
+  for (const tool of ctx.tools) {
+    const escaped = tool.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = tool.includes("_") || /^(?:bash|webfetch|websearch|notebookedit|multiedit|todowrite|computer)$/i.test(tool) ? new RegExp(`\\b${escaped}\\b`, "i") : new RegExp(`\`${escaped}\``, "i");
+    if (re.test(text)) return tool;
+  }
+  return null;
+}
+
+/** One added or changed line of a layout section. */
+function checkLine(line: string, ctx: AllowlistContext, words: Set<string>, known: { placeholders: Set<string>; keys: Set<string> }): AllowlistResult {
+  if (line.length > 400) return fail("grammar", "a changed line is longer than 400 characters");
+  if (/^\s*(?:#|=|\||>|<|```|-{3,}|\*{3,}|_{3,}|\+ |\* |\d+[.)] )/.test(line) || /^\s*[-=*_]+\s*$/.test(line)) {
+    return fail("grammar", `a changed line is not a bullet or a plain line ("${line.slice(0, 60)}")`);
+  }
+  if ((line.match(/`/g) ?? []).length % 2 !== 0) return fail("grammar", "a changed line has an unclosed `code` span");
+  const tool = toolIn(line, ctx);
+  if (tool) return fail("tool", `it names the tool ${tool}`);
+  // Every dotted name under a public suffix, inside code or not (selector look-alikes included).
+  const outside = hostsInText(line).filter((h) => !hostWithin(h, ctx.hosts));
+  if (outside.length > 0) return fail("off_host", `it names ${outside.join(", ")}, outside the source's hosts (${ctx.hosts.join(", ") || "none"})`);
+  for (const m of line.matchAll(CODE)) {
+    const code = m[1]!.trim();
+    if (code === "") return fail("grammar", "a changed line has an empty `code` span");
+    if (looksLikeUrl(code)) {
+      const r = checkUrl(code, ctx, known);
+      if (!r.ok) return r;
+    } else if (!SELECTOR.test(code) || code.length > 80) {
+      return fail("grammar", `\`${code.slice(0, 60)}\` is neither a CSS selector, landmark text nor a URL path`);
+    }
+  }
+  let prose = line.replace(CODE, " ");
+  for (const m of prose.matchAll(QUOTE)) {
+    const label = m[1] ?? m[2] ?? "";
+    if (label.length > 60) return fail("grammar", "a quoted page label is longer than 60 characters");
+  }
+  prose = prose.replace(QUOTE, " ");
+  if ((prose.match(/"/g) ?? []).length > 0) return fail("grammar", "a changed line has an unclosed quote");
+  if (/\b(?:javascript|data|vbscript):/i.test(prose)) return fail("action", "it holds a script URL");
+  for (const m of prose.matchAll(/(?:https?:\/\/|\/)[^\s)]+/gi)) {
+    const r = checkUrl(m[0], ctx, known);
+    if (!r.ok) return r;
+  }
+  prose = prose.replace(/(?:https?:\/\/|\/)[^\s)]+/gi, " ");
+  for (const m of prose.matchAll(/\d+(?:[.,]\d+)?/g)) {
+    if (Number(m[0].replace(",", ".")) > ctx.maxNumber) return fail("limit", `it states ${m[0]}, above the source's limits`);
+  }
+  for (const raw of prose.toLowerCase().match(/[\p{L}][\p{L}\p{M}'’]*/gu) ?? []) {
+    const word = raw.replace(/’/g, "'");
+    const bare = word.replace(/'s$/, "");
+    if (DENIED.has(word) || DENIED.has(bare)) return fail("action", `it uses "${bare}", an action or rule word a layout hint never needs ("${line.slice(0, 80)}")`);
+    if (!words.has(word) && !words.has(bare)) return fail("grammar", `"${raw}" is not a word a layout hint may use ("${line.slice(0, 80)}")`);
+  }
+  return { ok: true };
+}
+
+/** The words of a section's prose (outside code and quotes), minus the denied ones. */
+function sectionWords(lines: readonly string[]): string[] {
+  const prose = lines.join("\n").replace(CODE, " ").replace(QUOTE, " ").toLowerCase();
+  return (prose.match(/[\p{L}][\p{L}\p{M}'’]*/gu) ?? []).map((w) => w.replace(/’/g, "'")).filter((w) => !DENIED.has(w) && !DENIED.has(w.replace(/'s$/, "")));
+}
+
+export function screenSkillAllowlist(md: string, current: string, ctx: AllowlistContext): AllowlistResult {
+  const bad = disallowedCharacter(md);
+  if (bad) return fail("charset", `it holds the character ${bad}, outside printable letters, digits, punctuation, the space and the newline`);
+  const draft = parseSkill(md);
+  const now = parseSkill(current.replace(/\r\n?/g, "\n"));
+  if (draft.preamble !== now.preamble) return fail("frozen", "it changes the front matter, the title or the Read-only rules (frozen)");
+  const headings = (p: Parsed) => p.sections.map((s) => s.heading);
+  if (JSON.stringify(headings(draft)) !== JSON.stringify(headings(now))) return fail("frozen", "it adds, drops, renames or reorders a section (frozen)");
+  const known = vocabularyOf(current);
+  for (const [i, section] of draft.sections.entries()) {
+    const was = now.sections[i]!;
+    if (!isEditable(section.name)) {
+      if (trimEnd(section.lines) !== trimEnd(was.lines)) {
+        return fail("frozen", `it changes "${section.name}", which a repair may not change (frozen)`);
+      }
+      continue;
+    }
+    const kept = new Set(was.lines);
+    const words = new Set([...VOCABULARY, ...sectionWords(was.lines)]);
+    for (const line of section.lines) {
+      if (line.trim() === "" || kept.has(line)) continue;
+      const r = checkLine(line, ctx, words, known);
+      if (!r.ok) return r;
+    }
+  }
+  return { ok: true };
+}

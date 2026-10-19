@@ -52,9 +52,17 @@ export function skillHosts(source: AdapterSource): string[] {
   return [...hosts];
 }
 
-export function skillScreenContext(source: AdapterSource, opts: { allowedTools: readonly string[]; current: string | null }): SkillScreenContext {
+/** Query keys the board's access record lists for its GET endpoints. */
+function recordQueryKeys(source: AdapterSource): string[] {
+  if (!isBoardSource(source)) return [];
+  const record = sourceAccessRecord(source);
+  return [...new Set([...usablePublicEndpoints(record), ...internalGetEndpoints(record)].flatMap((e) => e.query ?? []))];
+}
+
+export function skillScreenContext(source: AdapterSource, opts: { allowedTools: readonly string[]; current: string }): SkillScreenContext {
   const adapter = SOURCE_ADAPTERS[source];
   return {
+    queryKeys: recordQueryKeys(source),
     dir: skillDirOf(source),
     hosts: skillHosts(source),
     tools: { granted: grantedToolNames(opts.allowedTools), known: [...BUILT_IN_TOOLS, ...CLAUDE_CHROME_TOOLS] },

@@ -263,9 +263,9 @@ function baseFakeResult(task: RunnerTask): RunnerResult {
     case "research.file":
       return fake.ok({ ...researchScanFixture, jobs: [candidate(novapay, { source: "file" })] });
     case "research.repair":
-      // Skill self-repair: the current skill with one line rewritten, as a faithful redraft would be.
+      // Skill self-repair: the current skill with one layout line added, as a faithful redraft would be.
       return fake.ok({
-        skillMd: `${String(input.currentSkill ?? "").trimEnd()}\n- Cards are now article.job-card (redrafted from the board's pages).\n`,
+        skillMd: String(input.currentSkill ?? "").replace(/^(## \d+\. Listing page[^\n]*\n)/m, "$1- Cards are now `article.job-card`.\n"),
         otherChanges: [],
         notes: "The listing's card element changed.",
         pageViews: 2,

@@ -207,7 +207,7 @@ describe("screen (SEC-9)", () => {
     t.engine.startWorkflow(START, { trigger: "chat" });
     await t.idle();
     expect(validationCalls(t)).toHaveLength(0);
-    expect(repairs(t)[0]!.reason).toMatch(/safety screen: it tells the bot to/);
+    expect(repairs(t)[0]!.reason).toMatch(/safety screen: it uses "send", an action or rule word/);
   });
 
   it("a repair task that met an injection, a block, or returned the same skill ends the attempt", async () => {

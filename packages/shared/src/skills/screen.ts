@@ -1,7 +1,10 @@
 // Skill self-repair (sub-project 4 §5.3, SEC-9): the deterministic screen every drafted source skill
 // passes before its validation scan. Pure, no I/O. The same function runs in CI over every committed
 // skill (apps/orchestrator/src/adapters/skills.test.ts), so the runtime screen and the repo tests are
-// one rule set. A draft is rejected, with the rule and a plain reason, when it:
+// one rule set.
+// First the allowlist (allowlist.ts, QA H2): only the layout sections may change, every changed line
+// follows a small grammar, and only printable characters are allowed. Then, as defence in depth, the
+// earlier blacklist over the whole draft. A draft is rejected, with the rule and a plain reason, when it:
 //   - is over 20 KiB, has hidden characters, or lacks the front matter `name: source-<dir>` + `description:`
 //   - drops "Read-only" or the backticked `Layout changed: …` / `No results: …` notes the checker reads
 //   - changes the skill's section structure (its `## ` headings), adds raw HTML or prompt markers
@@ -14,6 +17,7 @@
 // Quoted page labels ("Ứng tuyển", `Easy Apply`) are names of things on the page, not instructions;
 // a sentence that forbids an action ("Never click …") is the skill's own read-only rule.
 import { SECRET_PATTERNS, hasOpaqueToken, hostWithin, hostsInText } from "../common/text-hygiene.js";
+import { screenSkillAllowlist, type AllowlistRule } from "./allowlist.js";
 
 /** The largest skill the screen accepts (SEC-9). */
 export const SKILL_MAX_BYTES = 20 * 1024;
@@ -31,7 +35,8 @@ export type SkillScreenRule =
   | "action"
   | "override"
   | "secret"
-  | "limit";
+  | "limit"
+  | AllowlistRule;
 
 export interface SkillScreenContext {
   /** The skill's folder name after `source-` (topcv, career-site). */
@@ -40,8 +45,10 @@ export interface SkillScreenContext {
   hosts: readonly string[];
   /** Tool names as the bot sees them: the ones its grant gives (Read, navigate, …) and every other one it could name. */
   tools: { granted: readonly string[]; known: readonly string[] };
-  /** The skill in force: the draft keeps its `## ` headings. Null: no structure check (a new skill). */
-  current: string | null;
+  /** The skill in force: everything but its layout sections stays byte-identical (CI passes the skill itself). */
+  current: string;
+  /** Query keys the board's access record lists; a changed URL may also use the keys the skill in force uses. */
+  queryKeys?: readonly string[];
   /** The orchestrator's limits for this source. */
   limits: {
     /** Postings per scan (30). */
@@ -200,11 +207,16 @@ export function screenSkillDraft(draft: string, ctx: SkillScreenContext): SkillS
   const empty = /`(No results: [^`]+)`/.exec(md)?.[1];
   if (!layout || !ctx.notes.layoutChanged(layout)) return reject("required_notes", "it drops the `Layout changed: …` note the checker reads");
   if (!empty || !ctx.notes.noResults(empty)) return reject("required_notes", "it drops the `No results: …` note the checker reads");
-  if (ctx.current !== null) {
-    const want = skillHeadings(ctx.current);
-    const got = skillHeadings(md);
-    if (JSON.stringify(want) !== JSON.stringify(got)) return reject("structure", `its sections changed (${got.join(", ") || "none"}; the skill has ${want.join(", ")})`);
-  }
+  const allow = screenSkillAllowlist(md, ctx.current, {
+    hosts: ctx.hosts,
+    ...(ctx.queryKeys ? { queryKeys: ctx.queryKeys } : {}),
+    tools: ctx.tools.known,
+    maxNumber: Math.max(ctx.limits.jobLimit, ctx.limits.maxPageViews ?? 0),
+  });
+  if (!allow.ok) return allow;
+  const want = skillHeadings(ctx.current);
+  const got = skillHeadings(md);
+  if (JSON.stringify(want) !== JSON.stringify(got)) return reject("structure", `its sections changed (${got.join(", ") || "none"}; the skill has ${want.join(", ")})`);
   if ((md.match(/^# /gm) ?? []).length !== 1) return reject("structure", "it must have exactly one title line");
   const body = md.replace(/`[^`\n]*`/g, " ");
   if (/<\s*\/?\s*[a-z][a-z0-9-]*[\s>/]/i.test(body) || /```/.test(md)) return reject("markup", "it holds raw HTML or a code block");
