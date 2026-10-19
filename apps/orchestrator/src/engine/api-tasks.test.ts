@@ -5,7 +5,7 @@
 import { SourceAccessRecordSchema, type BoardSource, type JobCandidate, type SourceAccessRecord } from "@bs-job-agents/shared";
 import { researchScanFixture } from "@bs-job-agents/shared/fixtures";
 import { describe, expect, it } from "vitest";
-import { BoardApiScanner, type BoardMapper } from "../adapters/board-api/index.js";
+import { BoardApiScanner, DirectReadBlocked, type BoardMapper } from "../adapters/board-api/index.js";
 import { HostGate, type HttpFetch } from "../adapters/http/index.js";
 import { Redactor } from "../adapters/secrets/index.js";
 import { readFileSync } from "node:fs";
@@ -377,6 +377,17 @@ describe("skill self-repair §5.8: the API changed", () => {
     await t.idle();
     expect(scanOf(t, "itviec")).toMatchObject({ status: "done", usesBrowser: true });
     expect(t.events("source_api.changed")).toEqual([expect.objectContaining({ source: "itviec", method: null, reason: expect.stringMatching(/^ITviec: none of the 2 postings the API gave is valid/) })]);
+  });
+
+  it("QA L4: a 200 bot-check page is a blocked direct read: the browser this run, a 'blocked' notice, the API health untouched", async () => {
+    const blocking: BoardMapper = { source: "itviec", scan: async () => { throw new DirectReadBlocked("itviec", "itviec.com", "/it-jobs"); } };
+    const port = new BoardApiScanner({ fetch: fakeFetch(() => ({ status: 200 })).fn, gate: new HostGate({ sleep: async () => undefined }), secrets: secrets({ itviec: { _session: TOKEN } }), mappers: { itviec: blocking }, records: () => record("itviec") });
+    const t = await createTestEngine({ sources: ["itviec"], boards: port });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(scanOf(t, "itviec")).toMatchObject({ status: "done", usesBrowser: true });
+    expect(leadTexts(t)).toContain("ITviec blocked the direct read — scanned through the browser this time.");
+    expect(t.events("source_api.changed")).toEqual([]);
   });
 
   it("a transient error is not a changed API: retried, then the source fails (no fallback, no notice)", async () => {

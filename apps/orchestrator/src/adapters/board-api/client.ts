@@ -91,6 +91,27 @@ export class ApiChanged extends BoardApiError {
   }
 }
 
+/**
+ * QA L4: the board answered 200 with a bot-check page (Cloudflare "Just a moment…", a CAPTCHA) instead
+ * of its content. Not a changed API: this run reads the board in the browser and the API health is
+ * left as it is.
+ */
+export class DirectReadBlocked extends Error {
+  constructor(
+    readonly source: string,
+    readonly host: string,
+    readonly path: string,
+  ) {
+    super(`${host}${path} answered with a bot check`);
+    this.name = "DirectReadBlocked";
+  }
+}
+
+/** A 200 page that is a bot check, not the board's content. */
+export function isBotCheckPage(html: string): boolean {
+  return /just a moment|cf-chl|challenge-platform|cf-browser-verification|captcha|verify you are (?:a )?human|are you a robot|attention required|access denied|enable javascript and cookies to continue|ddos-guard|perimeterx|px-captcha/i.test(html.slice(0, 50_000));
+}
+
 export interface RecordedRequest {
   method: "GET";
   host: string;

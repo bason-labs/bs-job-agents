@@ -17,7 +17,7 @@ import { findJobPosting, hasLdType, ldJsonBlocks, ldObjects } from "../parsers/d
 import { parsePostedDate } from "../posted-date.js";
 import { scanJobLimit, searchUrls } from "../sources.js";
 import { cleanText, detectLanguage } from "../text.js";
-import { ApiChanged, BoardApiError, RedirectRefused, type BoardApiClient } from "./client.js";
+import { ApiChanged, BoardApiError, DirectReadBlocked, RedirectRefused, isBotCheckPage, type BoardApiClient } from "./client.js";
 import type { BoardScanResult } from "./types.js";
 
 /** Result pages read per search (the browser skills' limit). */
@@ -135,6 +135,8 @@ export async function scanJsonLdBoard(board: JsonLdBoard, client: BoardApiClient
       if (page > 1 && fetched.url.searchParams.get("page") !== String(page) && isEarlierPage(fetched.url, path, page)) break;
       const html = fetched.body;
       const listed = listedJobs(html);
+      // QA L4: a bot check is a blocked direct read, not a changed API.
+      if (listed === null && isBotCheckPage(html)) throw new DirectReadBlocked(board.source, board.host, path);
       // Skill self-repair §5.8: a 2xx page the reader cannot read is a changed API.
       if (listed === null) throw new ApiChanged(board.host, path, `${board.label}: no job data on ${board.host}${path} (the page changed, or a bot check answered)`);
       let added = 0;

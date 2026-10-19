@@ -18,7 +18,7 @@
 //   and access records or mappers are never changed automatically.
 // Every text built on the board-API path passes the secret store's redactor.
 import { ResearchScanInputSchema, SEARCH_SOURCES, isBoardSource, isFeedSource, type ResearchScanInput, type SelfCheckItem } from "@bs-job-agents/shared";
-import { ApiChanged, AuthRejected, BoardApiError, MissingCredential } from "../adapters/board-api/index.js";
+import { ApiChanged, AuthRejected, BoardApiError, DirectReadBlocked, MissingCredential } from "../adapters/board-api/index.js";
 import { claimNextTask, getRun, getTask, holdEngineTasks, isEnginePaused, markSourceApiBroken, markSourceApiHealthy, requeueTask, routeTaskToBrowser, type Conn, type Task } from "../db/index.js";
 import { sourceAccess } from "./access.js";
 import type { EngineCore } from "./core.js";
@@ -51,6 +51,11 @@ export function tokenFallbackNotice(source: string, why: "missing" | "rejected")
 /** §5.8: Ba's notice when a board's API stops working (posted once, when it turns broken). */
 export function apiChangedNotice(source: string, reason: string): string {
   return `${sourceLabel(source)} API changed: ${reason}. Scanned through the browser this time; scans use the browser until the API works again.`;
+}
+
+/** QA L4: the board answered a direct read with a bot check (not a changed API). */
+export function directReadBlockedNotice(source: string): string {
+  return `${sourceLabel(source)} blocked the direct read — scanned through the browser this time.`;
 }
 
 /** §5.8: once, when a broken API works again. */
@@ -205,6 +210,8 @@ export class ApiTaskRunner {
     } catch (err) {
       if (signal.aborted) this.settleFailure(task, "cancelled", false);
       else if (err instanceof MissingCredential) this.toBrowser(task, tokenFallbackNotice(source, "missing"));
+      // QA L4: a bot check: the browser this run, the API health untouched.
+      else if (err instanceof DirectReadBlocked) this.toBrowser(task, directReadBlockedNotice(source), undefined, `direct-read-blocked:${source}`);
       // §5.8: the API changed: this run reads the board in the browser; Ba hears it once.
       else if (err instanceof ApiChanged) this.apiChanged(task, err);
       // Whatever was fetched before the 401/403 is discarded: the browser scan covers the board.
@@ -242,7 +249,7 @@ export class ApiTaskRunner {
   }
 
   /** Design §5.4: back to the queue as a browser scan of the same source, with Ba's renew notice. */
-  private toBrowser(task: Task, notice: string | null, also?: (tx: Conn) => void): void {
+  private toBrowser(task: Task, notice: string | null, also?: (tx: Conn) => void, onceKey?: string): void {
     const core = this.core;
     const source = String((task.input as { source?: unknown } | null)?.source ?? "");
     try {
@@ -250,7 +257,7 @@ export class ApiTaskRunner {
         if (getTask(tx, task.id)?.status !== "running") return;
         const queued = routeTaskToBrowser(tx, task.id);
         if (isEnginePaused(tx, queued.engine, { now: core.now() })) holdEngineTasks(tx, queued.engine);
-        if (notice) postNotice(core, tx, { text: notice, runId: task.runId, once: `token-fallback:${source}` });
+        if (notice) postNotice(core, tx, { text: notice, runId: task.runId, once: onceKey ?? `token-fallback:${source}` });
         also?.(tx);
       });
     } catch (err) {

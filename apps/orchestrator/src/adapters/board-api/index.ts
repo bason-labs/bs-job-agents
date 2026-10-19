@@ -2,6 +2,8 @@
 export {
   ApiChanged,
   AuthRejected,
+  DirectReadBlocked,
+  isBotCheckPage,
   BOARD_API_USER_AGENT,
   BoardApiClient,
   BoardApiError,
