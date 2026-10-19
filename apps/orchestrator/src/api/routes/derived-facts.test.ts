@@ -117,6 +117,17 @@ describe("DerivedFactStore through a job-scan (REQ-14, REQ-15, REQ-18)", () => {
     expect(readApiState(h.dataDir).derivedRevisions).toEqual([2, 3]);
   });
 
+  it("QA 7: a hand edit made before the addition (version kept) survives Undo: the stale history copy is not restored", async () => {
+    h = await setup();
+    const v1 = onDisk(h);
+    writeFileSync(join(h.dataDir, "master-cv.yaml"), stringify({ ...v1, headlineOptions: [{ en: "Edited before", vi: null }] }));
+    await scanWith(h, ["Redux"]);
+    expect(onDisk(h)).toMatchObject({ version: 2, headlineOptions: [{ en: "Edited before", vi: null }] });
+    const undo = DerivedUndoResultSchema.parse((await h.post("/master-cv/derived/undo", { version: 2 })).json());
+    expect(undo).toMatchObject({ restoredTo: null, removed: [{ id: "f-d1", text: "Redux" }] });
+    expect(onDisk(h)).toMatchObject({ version: 3, headlineOptions: [{ en: "Edited before", vi: null }], facts: [f12, f3] });
+  });
+
   it("deleting a derived fact on the screen (a save without it) denies its skill", async () => {
     h = await setup();
     await scanWith(h, ["Kubernetes"]);

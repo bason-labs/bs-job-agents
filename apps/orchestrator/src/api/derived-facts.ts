@@ -32,6 +32,11 @@ import { DERIVE_REJECTED_EVENT, type DeriveAddOptions, type DeriveSource, type D
 import { zodMessage } from "./errors.js";
 import { keepMasterCvVersionSync, masterCvPath, readMasterCv, readMasterCvHistory, writeMasterCvSync } from "./master-cv.js";
 
+/** SHA-256 of a master CV's content (its parsed form, so YAML layout and comments do not count). */
+export function masterContentSha256(cv: MasterCv): string {
+  return createHash("sha256").update(JSON.stringify(MasterCvSchema.parse(cv))).digest("hex");
+}
+
 /** SHA-256 of data/master-cv.yaml as it is on disk, or null when it is missing. */
 export function masterFileSha256(dataDir: string): string | null {
   const path = masterCvPath(dataDir);
@@ -147,6 +152,7 @@ export class DerivedFactStore implements DerivedFactSink {
         facts: facts.map((f) => ({ id: f.id, text: f.text })),
         undoneAt: null,
         fileSha256: null,
+        beforeSha256: masterContentSha256(current),
       }),
     );
     const learned = learnedAllowFrom(accepted, table, ctx.now);
@@ -214,10 +220,12 @@ export function undoDerivedAdd(dataDir: string, current: MasterCv, version: numb
   if (!add || add.undoneAt !== null) return { kind: "not_undoable" };
   const ids = new Set(add.facts.map((f) => f.id));
   const untouched = add.fileSha256 === null || add.fileSha256 === masterFileSha256(dataDir);
-  if (current.version === add.version && untouched) {
-    const before = readMasterCvHistory(dataDir, add.previousVersion);
-    const content = before ?? { ...current, facts: current.facts.filter((f) => !ids.has(f.id)) };
-    return { kind: "ok", cv: { ...content, version: current.version + 1 }, restoredTo: add.previousVersion, removed: add.facts, add };
+  // The history copy is restored only if it is what the addition was made on: a hand edit before
+  // the addition (version kept) leaves an older copy under the same version number.
+  const before = readMasterCvHistory(dataDir, add.previousVersion);
+  const beforeHolds = before !== null && (add.beforeSha256 === null || masterContentSha256(before) === add.beforeSha256);
+  if (current.version === add.version && untouched && beforeHolds) {
+    return { kind: "ok", cv: { ...before, version: current.version + 1 }, restoredTo: add.previousVersion, removed: add.facts, add };
   }
   // Only facts still derived: one Ba kept (made his own) is his now.
   const gone = current.facts.filter((f) => ids.has(f.id) && f.derived);

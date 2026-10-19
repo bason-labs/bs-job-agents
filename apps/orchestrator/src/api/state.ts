@@ -61,6 +61,8 @@ export const StoredDerivedAddSchema = z.object({
   undoneAt: z.string().nullable(),
   /** SHA-256 of data/master-cv.yaml as this addition wrote it: a later hand edit without a version bump shows. */
   fileSha256: z.string().nullable().default(null),
+  /** Content hash of the master CV just before this addition: Undo restores a history copy only if it matches. */
+  beforeSha256: z.string().nullable().default(null),
 });
 export type StoredDerivedAdd = z.infer<typeof StoredDerivedAddSchema>;
 
