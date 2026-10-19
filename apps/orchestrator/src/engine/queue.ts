@@ -93,6 +93,7 @@ import { hostOfUrl, pauseSite, siteBlocksOf, siteKey, type SiteBlock } from "./s
 import { adapterBrokenError, scanRejectedError, type ScanCheckResult } from "./scan-check.js";
 import { checkTaskTrust } from "./trust-guard.js";
 import { ApiTaskRunner } from "./api-tasks.js";
+import { canonicalJobUrl } from "../adapters/canonical-url.js";
 import { adoptValidatedRepair, isSkillRepairTask, onBrowserScanSucceeded, onRepairDraftDone, onValidationDone, skillOverrideFor, validationRepairId } from "./skill-repair.js";
 
 const ENGINES = EngineSchema.options;
@@ -391,6 +392,7 @@ export class TaskQueue {
     outcome = this.withGuardLog(outcome, blocks);
     outcome = this.checkSiteGuard(task, outcome, siteBlocksOf(blocks, result));
     outcome = this.checkInjectionReport(task, outcome);
+    outcome = this.checkValidationEvidence(task, outcome, result);
     outcome = await this.checkScanOutput(task, prepared, outcome, result);
     outcome = this.checkReviewOutput(task, outcome);
     if (prepared.apply) outcome = this.checkApplyPages(task, outcome, result);
@@ -746,6 +748,8 @@ export class TaskQueue {
         ...(result.pageVisits ? { pageVisits: result.pageVisits } : {}),
       });
     } catch (err) {
+      // QA M1: a validation scan is adopted only on a passed check, never on a checker that broke.
+      if (validationRepairId(task) !== null) return { kind: "failed", error: `the scan check failed: ${errorMessage(err)}`, output: outcome.output, retryable: false, safety: outcome.safety };
       this.core.log.warn(`scan check for task ${task.id} failed, output accepted: ${errorMessage(err)}`);
       return outcome;
     }
@@ -754,6 +758,35 @@ export class TaskQueue {
     return verdict.adapterBroken
       ? { kind: "failed", error: adapterBrokenError(reason, verdict.screenshot), output: outcome.output, retryable: false, safety: outcome.safety }
       : { kind: "failed", error: scanRejectedError(reason), output: outcome.output, retryable: true, safety: outcome.safety };
+  }
+
+  /**
+   * Skill self-repair (QA H1): a validation scan counts only jobs whose page the browser really
+   * opened (the URLs the runner saw in Chrome's tool results, compared canonically), and its page
+   * views are the runner's count, never the bot's report. A draft cannot hand back a posting it
+   * made up; no observed job fails the attempt.
+   */
+  private checkValidationEvidence(task: Task, outcome: Outcome, result: RunnerResult): Outcome {
+    if (outcome.kind !== "ok" || validationRepairId(task) === null) return outcome;
+    const output = outcome.output as ResearchScanOutput;
+    const key = (url: string): string => {
+      const canonical = canonicalJobUrl(url);
+      if (canonical) return canonical;
+      try {
+        const u = new URL(url);
+        return `${u.protocol}//${u.hostname.toLowerCase()}${u.pathname.replace(/\/+$/, "")}`;
+      } catch {
+        return url;
+      }
+    };
+    const observedUrls = [...(result.pageUrls ?? []), ...(result.pageVisits ?? []).map((v) => v.url)];
+    const observed = new Set(observedUrls.map(key));
+    const jobs = output.jobs.filter((j) => j.url !== null && observed.has(key(j.url)));
+    const pageViews = result.pageVisits?.length ?? new Set(observedUrls).size;
+    if (jobs.length === 0 && output.jobs.length > 0) {
+      return { kind: "failed", error: `the validation scan returned no job whose page the browser opened (${output.jobs.length} reported)`, output, retryable: false, ...(outcome.safety ? { safety: outcome.safety } : {}) };
+    }
+    return { ...outcome, output: { ...output, jobs, pageViews } };
   }
 
   /**

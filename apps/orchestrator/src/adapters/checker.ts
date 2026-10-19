@@ -141,6 +141,9 @@ export class SourceScanChecker implements ScanOutputChecker {
     }
 
     // 5. Zero jobs on consecutive scans, where the page never said "0 results" (UC-03 d allows one).
+    // QA M2: a skill repair's validation scan neither counts towards nor resets the source's streak.
+    const validation = parsed.success && parsed.data.skillOverride !== undefined;
+    if (validation) return { ok: true };
     if (jobs.length === 0 && output.blocked === null && output.pageViews > 0) {
       const confirmedEmpty = output.selfCheck.some((s) => NO_RESULTS_NOTE.test(s.note ?? ""));
       if (!confirmedEmpty) {

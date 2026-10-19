@@ -41,7 +41,10 @@ function checker(broken: readonly string[] = ["topcv"]): ScanOutputChecker {
 }
 
 const topcvJob = researchScanFixture.jobs.find((j) => j.source === "topcv")!;
-const scanWith = (jobs: unknown[]) => (task: RunnerTask) => fake.ok({ ...researchScanFixture, jobs, selfCheck: resolveSelfCheckItems(task.bot, "scan").map(pass) });
+/** A validation output with these jobs; the browser opened `opened` (default: every job's page). */
+const scanWith =
+  (jobs: { url: string | null }[], opened: string[] = jobs.map((j) => j.url!).filter(Boolean)) =>
+  (task: RunnerTask) => ({ ...fake.ok({ ...researchScanFixture, jobs, selfCheck: resolveSelfCheckItems(task.bot, "scan").map(pass) }), pageUrls: opened });
 const pass = (item: string) => ({ item, passed: true, note: null });
 
 async function engine(opts: { skills?: SkillFiles; sources?: ("topcv" | "itviec")[]; broken?: string[]; config?: object } = {}) {
@@ -183,6 +186,46 @@ describe("validation (REQ-9, SEC-11)", () => {
     await t.idle();
     expect(repairs(t)[0]!.status).toBe("adopted");
     expect(listJobs(t.db).some((j) => j.url?.includes("/999.html"))).toBe(false);
+  });
+});
+
+describe("QA H1: a validation job counts only when the browser opened its page", () => {
+  const fabricated = { ...topcvJob, url: "https://www.topcv.vn/viec-lam/x/1234567.html" };
+
+  it("a draft that makes the bot hand back a posting it never opened is not adopted", async () => {
+    const { t, skills } = await engine();
+    t.runner.script({ bot: "research", kind: "scan", when: (task) => isValidation(task.input), result: scanWith([fabricated], ["https://www.topcv.vn/tim-viec-lam-frontend-engineer-tai-ho-chi-minh-kl2"]) });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(skills.read("topcv")).toBe(TOPCV);
+    expect(repairs(t)[0]).toMatchObject({ status: "not_adopted", reason: "the validation scan failed: the validation scan returned no job whose page the browser opened (1 reported)" });
+  });
+
+  it("only the jobs the browser opened count; page views are the runner's, not the bot's (a tracking query does not matter)", async () => {
+    const { t } = await engine();
+    const real = { ...topcvJob, url: "https://www.topcv.vn/viec-lam/real/7654321.html" };
+    t.runner.script({ bot: "research", kind: "scan", when: (task) => isValidation(task.input), result: scanWith([real, fabricated], [`${real.url}?ta_source=x`]) });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(repairs(t).map((r) => r.status)).toEqual(["adopted"]);
+    const validation = t.tasks("research.scan").find((x) => isValidation(x.input))!;
+    expect((validation.output as { jobs: { url: string }[]; pageViews: number }).jobs.map((j) => j.url)).toEqual([real.url]);
+    expect((validation.output as { pageViews: number }).pageViews).toBe(1);
+  });
+
+  it("QA M1: a checker that throws fails the validation instead of passing it", async () => {
+    const throwing: ScanOutputChecker = {
+      check: (i) => {
+        if (isValidation(i.input)) throw new Error("checker bug");
+        return { ok: false, adapterBroken: true, reason: BROKEN, screenshot: null };
+      },
+    };
+    const skills = new MemorySkillFiles({ topcv: TOPCV });
+    const t = await createTestEngine({ sources: ["topcv"], scanChecker: throwing, skills, config: LONG_WAIT_CONFIG });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(skills.read("topcv")).toBe(TOPCV);
+    expect(repairs(t)[0]!.reason).toBe("the validation scan failed: the scan check failed: checker bug");
   });
 });
 
