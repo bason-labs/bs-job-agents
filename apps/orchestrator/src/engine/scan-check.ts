@@ -33,6 +33,8 @@ export interface ScanCheckInput {
    * (the runner's clock), in order. Absent when the runner reported none (Codex, or no navigate).
    */
   pageVisits?: readonly { url: string; at: string }[];
+  /** API research (AD-6): "api" when the orchestrator fetched it (no Chrome: no page views, no screenshots). */
+  via?: "api";
 }
 
 export type ScanCheckResult =
