@@ -44,14 +44,23 @@ describe("bots/research/skills/source-*", () => {
     const ctx = skillScreenContext("topcv", { allowedTools: research.allowedTools, current: md });
     const draft = md
       .replace("- Each card (`.job-item-search-result`, `data-job-id`)", "- Each card (`article.job-card`, `[data-job-id]`)")
-      // A repaired line writes a class without its tag: `a.company` reads like a domain name.
-      .replace("company (`a.company .company-name`)", "company (`.company .company-name`)")
       .replace("`https://www.topcv.vn/tim-viec-lam-<role-slug>-tai-<city>`, role slug", "`https://www.topcv.vn/viec-lam-<role-slug>-tai-<city>`, role slug")
       .replace("## 3. Listing page\n", "## 3. Listing page\n- Next page: the pager now loads more cards when you scroll to the bottom of the list; read at most 3 result pages.\n");
     expect(draft).not.toBe(md);
     expect(screenSkillDraft(draft, ctx)).toEqual({ ok: true });
     expect(screenSkillDraft(md.replace("never more than 30", "never more than 31"), ctx)).toMatchObject({ ok: false, rule: "frozen" });
     expect(screenSkillDraft(md.replace("## 3. Listing page\n", "## 3. Listing page\n- Cards: `a.attacker.com`.\n"), ctx)).toMatchObject({ ok: false, rule: "off_host" });
+  });
+
+  it("QA re-check: the ITviec city table and a line naming the granted get_page_text may change", () => {
+    const md = skill("itviec");
+    const ctx = skillScreenContext("itviec", { allowedTools: research.allowedTools, current: md });
+    const table = md.replace("| Hà Nội | `ha-noi` |", "| Hà Nội | `ha-noi-hn` |");
+    expect(table).not.toBe(md);
+    expect(screenSkillDraft(table, ctx)).toEqual({ ok: true });
+    const tool = md.replace("- If `get_page_text` returns little, use `read_page` / `find`", "- If `get_page_text` returns little on the job page, use `read_page` / `find`");
+    expect(tool).not.toBe(md);
+    expect(screenSkillDraft(tool, ctx)).toEqual({ ok: true });
   });
 
   it("the TopCV and ITviec city codes match the search URLs the code builds", () => {

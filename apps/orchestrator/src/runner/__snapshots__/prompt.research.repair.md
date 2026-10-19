@@ -103,7 +103,7 @@ Rules checked after you answer (breaking one costs a repair round):
 - skillMd keeps Read-only and the backticked `Layout changed: …` and `No results: …` notes exactly as the current skill has them.
 - skillMd names only the source's hosts, only your read tools, and never tells the bot to log in, click, apply, save, follow, message, fill, submit or open other sites.
 - Only the Search URL, Listing page and Job page sections may change; every other line stays exactly as it is in currentSkill.
-- A changed line is a bullet or a plain line: selectors, landmarks and URL paths in backticks, labels in quotes, and plain words (read, open, find, look, scroll, extract, copy, wait, skip, use, go to, see). Write a class without its tag (`.company`, not `a.company`): a tag.class that reads like a domain name is rejected.
+- A changed line is a bullet or a plain line: selectors, landmarks and URL paths in backticks, labels in quotes, and plain words (read, open, find, look, scroll, extract, copy, wait, skip, use, go to, see). Never name a host other than the source's, even inside a selector.
 - Anything the skill cannot fix (an allowed site, code) goes in otherChanges with its file; never in skillMd.
 
 # Self-check before you hand in (rule 4)

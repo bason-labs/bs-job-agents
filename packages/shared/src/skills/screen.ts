@@ -211,6 +211,7 @@ export function screenSkillDraft(draft: string, ctx: SkillScreenContext): SkillS
     hosts: ctx.hosts,
     ...(ctx.queryKeys ? { queryKeys: ctx.queryKeys } : {}),
     tools: ctx.tools.known,
+    granted: ctx.tools.granted,
     maxNumber: Math.max(ctx.limits.jobLimit, ctx.limits.maxPageViews ?? 0),
   });
   if (!allow.ok) return allow;
