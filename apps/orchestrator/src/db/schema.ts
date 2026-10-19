@@ -641,6 +641,16 @@ export const engineState = sqliteTable(
   ],
 );
 
+// ---------------------------------------------------------------------------
+// API research (design 2026-10-19 §5.1): Ba's approval to read a high-risk board through its
+// account API. Bound to the access record's researchedAt: a re-researched record needs a new one.
+
+export const sourceApprovals = sqliteTable("source_approvals", {
+  source: text("source").primaryKey(),
+  approvedAt: text("approved_at").notNull(),
+  researchedAt: text("researched_at").notNull(),
+});
+
 export const events = sqliteTable(
   "events",
   {

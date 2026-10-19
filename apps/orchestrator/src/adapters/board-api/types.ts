@@ -4,8 +4,7 @@
 // per-host gap and the credentials. Its jobs then go through settleScanOutput (engine/scan-settle.ts):
 // each posting is validated alone (an invalid one is dropped), "full JD text" is checked, then the
 // scan checker and the scan's dedupe step.
-import type { JobCandidate, ResearchScanInput } from "@bs-job-agents/shared";
-import type { BoardSource } from "@bs-job-agents/shared";
+import type { BoardSource, JobCandidate, ResearchScanInput } from "@bs-job-agents/shared";
 import type { BoardApiClient } from "./client.js";
 
 export interface BoardScanResult {
