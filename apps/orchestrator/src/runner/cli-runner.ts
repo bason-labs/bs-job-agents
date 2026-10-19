@@ -178,6 +178,7 @@ export abstract class CliRunner implements Runner {
     }
     if (pageUrls.length > 0) result = { ...result, pageUrls: [...pageUrls] };
     if (prepared.pages.visits.length > 0) result = { ...result, pageVisits: [...prepared.pages.visits] };
+    if (prepared.pages.opened.length > 0) result = { ...result, openedUrls: [...prepared.pages.opened] };
     transcript.note({ type: "runner.result", status: result.status });
     await transcript.close();
     await rm(prepared.workDir, { recursive: true, force: true }).catch(() => undefined);

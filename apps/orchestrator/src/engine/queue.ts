@@ -779,10 +779,11 @@ export class TaskQueue {
         return url;
       }
     };
-    const observedUrls = [...(result.pageUrls ?? []), ...(result.pageVisits ?? []).map((v) => v.url)];
-    const observed = new Set(observedUrls.map(key));
+    // QA M-b: only pages navigate confirmed in the bot's own tabs (never a listing of Ba's tabs).
+    const opened = result.openedUrls ?? [];
+    const observed = new Set(opened.map(key));
     const jobs = output.jobs.filter((j) => j.url !== null && observed.has(key(j.url)));
-    const pageViews = result.pageVisits?.length ?? new Set(observedUrls).size;
+    const pageViews = opened.length;
     if (jobs.length === 0 && output.jobs.length > 0) {
       return { kind: "failed", error: `the validation scan returned no job whose page the browser opened (${output.jobs.length} reported)`, output, retryable: false, ...(outcome.safety ? { safety: outcome.safety } : {}) };
     }

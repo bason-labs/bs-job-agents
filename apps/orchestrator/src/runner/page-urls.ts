@@ -44,6 +44,13 @@ export class PageUrlCollector {
   readonly urls: string[] = [];
   /** Every successful navigate, in order, repeats included. */
   readonly visits: PageVisit[] = [];
+  /**
+   * Skill self-repair (QA M-b): pages the bot really opened in a tab it created in this task: a
+   * navigate in such a tab whose reply names the page it reached (that URL, in order, repeats
+   * included). Never a tab listing of Ba's own tabs, never a navigate target the reply did not confirm.
+   */
+  readonly opened: string[] = [];
+  private readonly ownTabs = new Set<string>();
   private readonly calls = new Map<string, { tool: string; input: unknown; at: number }>();
 
   constructor(private readonly now: () => number = Date.now) {}
@@ -77,8 +84,14 @@ export class PageUrlCollector {
   }
 
   private fromResult(call: { tool: string; input: unknown; at: number }, text: string): void {
+    if (call.tool === "tabs_create_mcp") {
+      const id = /"?tab_?id"?\s*[:=#]?\s*"?(\d+)/i.exec(text)?.[1] ?? /\btab\s+(\d+)\b/i.exec(text)?.[1];
+      if (id) this.ownTabs.add(id);
+    }
     if (call.tool === "navigate") {
       const found = [...text.matchAll(URL_RE)].map((m) => m[0]);
+      const tab = (call.input as { tabId?: unknown } | null)?.tabId;
+      if (found.length > 0 && (typeof tab === "number" || typeof tab === "string") && this.ownTabs.has(String(tab))) this.opened.push(trimUrl(found[0]!));
       const target = withScheme((call.input as { url?: unknown } | null)?.url);
       if (found.length > 0) found.forEach((u) => this.add(u));
       else if (target) this.add(target);

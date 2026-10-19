@@ -110,6 +110,8 @@ export interface RunnerResultExtras {
   pageUrls?: string[];
   /** W4a handoff: each successful navigate (URL, time), for the scan checker's pause and page limits. */
   pageVisits?: { url: string; at: string }[];
+  /** Skill self-repair (QA M-b): pages confirmed opened by navigate in tabs the bot created (PageUrlCollector.opened). */
+  openedUrls?: string[];
 }
 
 export type RunnerResult = RunnerResultCore & RunnerResultExtras;

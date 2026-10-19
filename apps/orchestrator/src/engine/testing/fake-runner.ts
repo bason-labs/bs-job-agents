@@ -259,7 +259,7 @@ function baseFakeResult(task: RunnerTask): RunnerResult {
     case "research.scan": {
       // The browser opened each job page it returns (the runner reports the URLs Chrome showed).
       const jobs = researchScanFixture.jobs.filter((j) => j.source === input.source);
-      return { ...fake.ok({ ...researchScanFixture, jobs }), pageUrls: jobs.map((j) => j.url!).filter(Boolean) };
+      return { ...fake.ok({ ...researchScanFixture, jobs }), pageUrls: jobs.map((j) => j.url!).filter(Boolean), openedUrls: jobs.map((j) => j.url!).filter(Boolean) };
     }
     case "research.single":
       return fake.ok({ ...researchScanFixture, jobs: [candidate(novapay, { source: "link", url: String(input.url ?? novapay.url) })] });

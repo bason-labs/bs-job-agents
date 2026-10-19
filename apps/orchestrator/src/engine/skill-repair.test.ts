@@ -44,7 +44,7 @@ const topcvJob = researchScanFixture.jobs.find((j) => j.source === "topcv")!;
 /** A validation output with these jobs; the browser opened `opened` (default: every job's page). */
 const scanWith =
   (jobs: { url: string | null }[], opened: string[] = jobs.map((j) => j.url!).filter(Boolean)) =>
-  (task: RunnerTask) => ({ ...fake.ok({ ...researchScanFixture, jobs, selfCheck: resolveSelfCheckItems(task.bot, "scan").map(pass) }), pageUrls: opened });
+  (task: RunnerTask) => ({ ...fake.ok({ ...researchScanFixture, jobs, selfCheck: resolveSelfCheckItems(task.bot, "scan").map(pass) }), openedUrls: opened });
 const pass = (item: string) => ({ item, passed: true, note: null });
 
 async function engine(opts: { skills?: SkillFiles; sources?: ("topcv" | "itviec")[]; broken?: string[]; config?: object } = {}) {
@@ -213,6 +213,16 @@ describe("QA H1: a validation job counts only when the browser opened its page",
     expect((validation.output as { pageViews: number }).pageViews).toBe(1);
   });
 
+  it("QA M-b: a job seen only in Ba's own tabs (pageUrls), never opened by the bot, does not count", async () => {
+    const { t, skills } = await engine();
+    const listed = { ...topcvJob, url: "https://www.topcv.vn/viec-lam/listed/2222222.html" };
+    t.runner.script({ bot: "research", kind: "scan", when: (task) => isValidation(task.input), result: (task) => ({ ...scanWith([listed], [])(task), pageUrls: [listed.url] }) });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(skills.read("topcv")).toBe(TOPCV);
+    expect(repairs(t)[0]!.reason).toMatch(/no job whose page the browser opened/);
+  });
+
   it("QA M1: a checker that throws fails the validation instead of passing it", async () => {
     const throwing: ScanOutputChecker = {
       check: (i) => {
@@ -250,7 +260,7 @@ describe("screen (SEC-9)", () => {
     t.engine.startWorkflow(START, { trigger: "chat" });
     await t.idle();
     expect(validationCalls(t)).toHaveLength(0);
-    expect(repairs(t)[0]!.reason).toMatch(/safety screen: it uses "send", an action or rule word/);
+    expect(repairs(t)[0]!.reason).toMatch(/safety screen: it (?:uses "send"|tells the bot to open every link)/);
   });
 
   it("a repair task that met an injection, a block, or returned the same skill ends the attempt", async () => {

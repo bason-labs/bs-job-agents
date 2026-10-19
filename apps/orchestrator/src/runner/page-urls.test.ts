@@ -74,3 +74,39 @@ describe("PageUrlCollector (PM2 S10)", () => {
     ]);
   });
 });
+
+describe("PageUrlCollector opened pages (skill self-repair, QA M-b)", () => {
+  function run(lines: string[]): PageUrlCollector {
+    const c = new PageUrlCollector();
+    for (const l of lines) c.push(l);
+    return c;
+  }
+
+  it("counts a navigate in a tab the bot created, at the URL the reply confirms", () => {
+    const c = run([
+      use("c1", `${CHROME}tabs_create_mcp`, {}),
+      result("c1", 'Created new tab. {"tabId": 7, "url": "chrome://newtab/"}'),
+      use("n1", `${CHROME}navigate`, { url: "https://www.topcv.vn/viec-lam/x/1.html", tabId: 7 }),
+      result("n1", "Navigated to https://www.topcv.vn/viec-lam/x/1.html?ta_source=y"),
+    ]);
+    expect(c.opened).toEqual(["https://www.topcv.vn/viec-lam/x/1.html?ta_source=y"]);
+  });
+
+  it("never counts Ba's own tabs from a tab listing, a navigate in a tab the bot did not create, or a target the reply did not confirm", () => {
+    const tabs = JSON.stringify({ availableTabs: [{ tabId: 1, title: "Job", url: "https://www.topcv.vn/viec-lam/x/2.html" }] });
+    const c = run([
+      use("t1", `${CHROME}tabs_context_mcp`, {}),
+      result("t1", tabs),
+      use("n1", `${CHROME}navigate`, { url: "https://www.topcv.vn/viec-lam/x/3.html", tabId: 1 }),
+      result("n1", "Navigated to https://www.topcv.vn/viec-lam/x/3.html"),
+      use("c1", `${CHROME}tabs_create_mcp`, {}),
+      result("c1", "Created tab 9"),
+      use("n2", `${CHROME}navigate`, { url: "https://www.topcv.vn/viec-lam/x/4.html", tabId: 9 }),
+      result("n2", "Navigation complete"),
+      use("n3", `${CHROME}navigate`, { url: "https://www.topcv.vn/viec-lam/x/5.html", tabId: 9 }),
+      result("n3", "Blocked by the site guard: https://www.topcv.vn/viec-lam/x/5.html", true),
+    ]);
+    expect(c.opened).toEqual([]);
+    expect(c.urls).toContain("https://www.topcv.vn/viec-lam/x/2.html");
+  });
+});
