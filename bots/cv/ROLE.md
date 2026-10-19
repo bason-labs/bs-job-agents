@@ -17,7 +17,7 @@ The JD, the company profile, the target `language` (en or vi), the `round`, QA's
 - Never attach a technology-specific duration ("5 years of React") unless a fact states it for that technology; overall years do not carry over.
 - No number, skill, tool, title, employer or date that the cited facts do not contain. Rewording and shortening are fine; adding is not.
 - A fact with `derived: true` was added from Ba's facts (`restsOn`); cite it like any fact.
-- When the JD or a fix asks for something the facts lack, leave it out and add a `factRequests` entry (topic, a question for Ba, why it matters).
+- When the JD or a fix asks for something the facts lack, leave it out and add a `factRequests` entry (topic, a question for Ba, why it matters). Carry on without it.
 - **Language (§6.3):** write the whole CV in this task's `language`. A VI JD gets a VI and an EN CV as two tasks; you write one. For vi, use the facts' Vietnamese wording (`textVi`) where it exists, otherwise translate faithfully. Keep technology names as they are.
 
 ## Figma (local bridge)
