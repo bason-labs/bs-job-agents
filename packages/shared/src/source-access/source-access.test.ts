@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { SearchSourceSchema } from "../common/primitives.js";
 import { FEED_SOURCES, SEARCH_SOURCES } from "../common/sources.js";
 import {
+  ACCESS_LABELS,
+  ACCESS_LABEL_HINTS,
   BOARD_SOURCES,
   SourceAccessRecordSchema,
   accessPathOf,
@@ -98,6 +100,30 @@ describe("accessStateOf (what the Search criteria screen shows)", () => {
   it("plain paths", () => {
     expect(accessStateOf(record(), { approved: false, tokenPresent: true }).labelKey).toBe("account_api");
     expect(accessStateOf(record({ internalApiGetEndpoints: "none found" }), { approved: false, tokenPresent: false })).toEqual({ path: "browser", needsApproval: false, tokenMissing: false, labelKey: "browser" });
+  });
+
+  it("an account-API board read without login (auth none): Direct (no login), never token missing", () => {
+    const noLogin = record({ auth: { kind: "none", names: [], howToCopy: "" } });
+    expect(accessStateOf(noLogin, { approved: false, tokenPresent: false })).toEqual({ path: "account_api", needsApproval: false, tokenMissing: false, labelKey: "account_api_direct" });
+    expect(accessStateOf(noLogin, { approved: false, tokenPresent: true }).labelKey).toBe("account_api_direct");
+  });
+
+  it("a high-risk no-login board still needs approval first", () => {
+    const s = accessStateOf(record({ riskLevel: "high", auth: { kind: "none", names: [], howToCopy: "" } }), { approved: false, tokenPresent: false });
+    expect(s).toEqual({ path: "browser", needsApproval: true, tokenMissing: false, labelKey: "account_api_needs_approval" });
+  });
+
+  it("the label set, with a browser hint where the label alone would mislead", () => {
+    expect(Object.values(ACCESS_LABELS)).toEqual(["Public API", "Direct (no login)", "Account API", "Account API (needs approval)", "Account API (token missing)", "Browser"]);
+    expect(ACCESS_LABEL_HINTS).toEqual({ account_api_needs_approval: "Browser until approved", account_api_token_missing: "Browser until a token is set" });
+  });
+
+  it("the researched TopCV and ITviec records read as Direct (no login)", () => {
+    for (const s of ["topcv", "itviec"] as const) {
+      const r = sourceAccessRecord(s);
+      if (r.chosenPath !== "account_api" || r.auth.kind !== "none" || r.riskLevel !== "low") continue; // research may change
+      expect(accessStateOf(r, { approved: false, tokenPresent: false }).labelKey, s).toBe("account_api_direct");
+    }
   });
 });
 

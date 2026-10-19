@@ -7,7 +7,7 @@ import { AccessLabelKeySchema, AccessPathSchema, RiskLevelSchema } from "../sour
 export const SourceAccessViewSchema = z.object({
   source: SearchSourceSchema,
   path: AccessPathSchema,
-  /** "Public API" | "Account API" | "Account API (needs approval)" | "Account API (token missing)" | "Browser" (ACCESS_LABELS). */
+  /** "Public API" | "Direct (no login)" | "Account API" | "Account API (needs approval)" | "Account API (token missing)" | "Browser" (ACCESS_LABELS, ACCESS_LABEL_HINTS). */
   labelKey: AccessLabelKeySchema,
   needsApproval: z.boolean(),
   tokenMissing: z.boolean(),

@@ -102,16 +102,29 @@ export function accessPathOf(record: SourceAccessRecord, opts: { approved: boole
   return "browser";
 }
 
-/** The label on the Search criteria toggle (design §5.6). */
-export const AccessLabelKeySchema = z.enum(["public_api", "account_api", "account_api_needs_approval", "account_api_token_missing", "browser"]);
+/**
+ * The label on the Search criteria toggle (design §5.6). `account_api_direct`: the board's own API
+ * read without logging in (record auth.kind "none", e.g. TopCV, ITviec), so no token is involved.
+ */
+export const AccessLabelKeySchema = z.enum(["public_api", "account_api_direct", "account_api", "account_api_needs_approval", "account_api_token_missing", "browser"]);
 export type AccessLabelKey = z.infer<typeof AccessLabelKeySchema>;
 
 export const ACCESS_LABELS: Record<AccessLabelKey, string> = {
   public_api: "Public API",
+  account_api_direct: "Direct (no login)",
   account_api: "Account API",
   account_api_needs_approval: "Account API (needs approval)",
   account_api_token_missing: "Account API (token missing)",
   browser: "Browser",
+};
+
+/**
+ * A second line under the label where the label alone would mislead: these boards are read in the
+ * browser for now (not approved yet, or no token: the scan falls back to the browser, §5.4).
+ */
+export const ACCESS_LABEL_HINTS: Partial<Record<AccessLabelKey, string>> = {
+  account_api_needs_approval: "Browser until approved",
+  account_api_token_missing: "Browser until a token is set",
 };
 
 export interface AccessState {
@@ -131,6 +144,12 @@ export function accessStateOf(record: SourceAccessRecord, opts: { approved: bool
   const path = accessPathOf(record, { approved: opts.approved });
   const needsApproval = path === "browser" && !opts.approved && accessPathOf(record, { approved: true }) === "account_api";
   const tokenMissing = path === "account_api" && record.auth.kind !== "none" && !opts.tokenPresent;
-  const labelKey: AccessLabelKey = needsApproval ? "account_api_needs_approval" : tokenMissing ? "account_api_token_missing" : path;
+  const labelKey: AccessLabelKey = needsApproval
+    ? "account_api_needs_approval"
+    : tokenMissing
+      ? "account_api_token_missing"
+      : path === "account_api" && record.auth.kind === "none"
+        ? "account_api_direct"
+        : path;
   return { path, needsApproval, tokenMissing, labelKey };
 }
