@@ -163,6 +163,17 @@ describe("TopCV mapper", () => {
     expect(h.calls).toHaveLength(1);
   });
 
+  it("a removed job whose page redirects to an unlisted path is skipped (the hop is never sent); the other jobs are kept", async () => {
+    const h = harness("topcv", (url) => (url.pathname.includes("2325079") ? { status: 302, location: "https://www.topcv.vn/viec-lam" } : answer(url)));
+    const result = await topcvMapper.scan(h.client, input("topcv", { candidateLimit: 3 }));
+    expect(result.jobs.map((j) => j.url)).toEqual([
+      "https://www.topcv.vn/viec-lam/senior-php-developer-fullstack-reactjs-laravel/2330324.html",
+      "https://www.topcv.vn/viec-lam/nhan-vien-reactjs-front-end-developer-middle/2320500.html",
+    ]);
+    expect(h.calls.some((u) => u === "https://www.topcv.vn/viec-lam")).toBe(false);
+    expect(result.note).toContain("1 job page without a complete posting");
+  });
+
   it("a job page without a company, a location or a full JD is left out, not filled in; a 404 job page is skipped", async () => {
     const h = harness("topcv", (url) => {
       if (url.pathname.includes("2330324")) return { status: 404 };

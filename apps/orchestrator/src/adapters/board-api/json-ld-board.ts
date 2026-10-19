@@ -164,7 +164,9 @@ export async function scanJsonLdBoard(board: JsonLdBoard, client: BoardApiClient
     } catch (err) {
       // A posting taken down since the search (404) is skipped; a transient error or a refused
       // token stops the scan as usual.
-      if (err instanceof BoardApiError && err.kind === "failed") {
+      // A removed TopCV job redirects to its /viec-lam listing (not in the record): the hop was
+      // refused and never sent; skip that posting like a 404.
+      if ((err instanceof BoardApiError && err.kind === "failed") || err instanceof RedirectRefused) {
         unreadable++;
         budget--;
         continue;
