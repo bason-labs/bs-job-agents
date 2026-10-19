@@ -85,6 +85,8 @@ export interface DeriveScreenContext {
 }
 
 const fold = (s: string): string => lower(s).replace(/\s+/g, " ").trim();
+/** Letters that are neither Latin (English, Vietnamese) nor shared punctuation, digits and marks. */
+const FOREIGN_SCRIPT = /[^\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]/u;
 const plural = (ids: readonly string[]) => `${ids.join(", ")} ${ids.length === 1 ? "does" : "do"}`;
 
 /** What a draft adds, as canonical skill names (a skill: its text; an experience line: its requirement). */
@@ -112,6 +114,8 @@ export function screenDerivedFacts(drafts: readonly DeriveCandidate[], ctx: Deri
       if (!reasons.includes(r)) reasons.push(r);
     };
     const ids = [...new Set(d.restsOn.map((r) => r.factId))];
+    // Look-alike letters from other scripts ("Lеad" with a Cyrillic е) would slip past every word check.
+    if ([d.text, d.textVi ?? "", ...d.tags, ...d.fromTerms].some((t) => FOREIGN_SCRIPT.test(t))) note("uses letters from another script");
     // SEC-16: only Ba's own facts, present in the current master CV.
     if (ids.length === 0) note("cites no fact");
     const cited: Fact[] = [];

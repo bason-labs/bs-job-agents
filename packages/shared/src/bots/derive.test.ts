@@ -144,6 +144,17 @@ describe("screenDerivedFacts: invented details (SEC-15, REQ-27, REQ-28)", () => 
     expect(screen([draft({ type: "experience", text: "Redux state in a React and JavaScript portal", textVi: null })]).accepted).toHaveLength(1);
   });
 
+  it("adversarial forms: fullwidth digits, look-alike letters, a title in the tags, a number in the Vietnamese text", () => {
+    expect(reasons(ci("CI/CD with GitHub Actions for １０ services"), ctx)).toEqual(["says 10, which f-12 does not say"]);
+    expect(reasons(draft({ type: "experience", text: "Tech Lеad for the React portal", textVi: null }))).toContain("uses letters from another script");
+    expect(reasons(draft({ tags: ["redux", "senior"] }))).toEqual(["names the title senior, which f-3 does not say"]);
+    expect(reasons(draft({ textVi: "Redux cho 5 dịch vụ" }))).toEqual(["says 5, which f-3 does not say"]);
+    expect(reasons(draft({ type: "experience", text: "Redux on the React portal in May 2023", textVi: null }))).toEqual(["says 05/2023, which f-3 does not say"]);
+    // The requirement's own numbers never become allowed ("3+ years of Redux" → only "Redux" passes).
+    expect(reasons(draft({ requirement: "3+ years of Redux", text: "3 years of Redux", textVi: null }))).toEqual(["says 3 years, which f-3 does not say"]);
+    expect(screen([draft({ requirement: "3+ years of Redux" })]).accepted).toHaveLength(1);
+  });
+
   it("SEC-15.AC-3: nothing beyond the cited facts passes", () => {
     expect(screen([draft({ requirement: "Kubernetes", text: "Kubernetes", textVi: "Kubernetes", tags: ["kubernetes"], restsOn: [{ factId: "f-7", relation: "implied_from" }], fromTerms: ["EKS"] })]).accepted).toHaveLength(1);
   });

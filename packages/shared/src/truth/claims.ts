@@ -156,8 +156,9 @@ function monthTokens(s: string): string[] {
 
 /** Everything `text` claims (numbers, months, durations, titles, present), normalised. */
 export function claimsIn(text: string): Claims {
-  const orig = text.normalize("NFC");
-  const s = lower(orig);
+  // NFKC: fullwidth digits ("１０") and other compatibility forms read as the plain ones.
+  const orig = text.normalize("NFKC");
+  const s = orig.toLowerCase();
   const taken: Span[] = [];
   const out: Claims = { numbers: [], months: [], durations: [], titles: titlesIn(text), present: false };
   const located: { at: number; kind: keyof Omit<Claims, "titles" | "present">; value: string }[] = [];
@@ -287,7 +288,7 @@ const TITLES: { re: RegExp; title: string }[] = [
 ];
 
 export function titlesIn(text: string): string[] {
-  const s = lower(text);
+  const s = text.normalize("NFKC").toLowerCase();
   const found: { at: number; title: string }[] = [];
   for (const { re, title } of TITLES) for (const m of s.matchAll(re)) found.push({ at: m.index, title });
   found.sort((a, b) => a.at - b.at);
