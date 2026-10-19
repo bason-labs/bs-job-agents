@@ -163,6 +163,18 @@ export interface FeedScanPort {
   scan(source: FeedSource, input: ResearchScanInput, signal?: AbortSignal): Promise<ResearchScanOutput>;
 }
 
+/**
+ * API research (AD-4, design §5.3): a board's account credentials (several named values, e.g.
+ * LinkedIn's li_at cookie and its CSRF header), from a local file outside the repository.
+ * Production: src/adapters/secrets FileSecretStore. Only the board-API path and the wiring read
+ * values; everyone else may ask `has` (the Search criteria screen's "token missing").
+ */
+export interface SecretStore {
+  /** The board's named values, or null when none is configured. */
+  credentials(source: string): Record<string, string> | null;
+  has(source: string): boolean;
+}
+
 export interface Logger {
   info(message: string, ...args: unknown[]): void;
   warn(message: string, ...args: unknown[]): void;
