@@ -1,6 +1,7 @@
 // The DOM surface the source parsers use (W4a). Structural, so the orchestrator needs no DOM library
 // at runtime: tests pass a jsdom document, and the same selectors are the "observed 2026-10" hints
 // in bots/research/skills/source-*/SKILL.md.
+import { parseSalary } from "../salary.js";
 import { cleanText } from "../text.js";
 
 export interface DomNode {
@@ -146,6 +147,14 @@ export function ldJsonBlocks(html: string): unknown[] {
   return out;
 }
 
+/**
+ * A salary text worth keeping: an amount, or "negotiable" ("Thoả thuận"). A placeholder without
+ * either (ITviec's hidden salary for a guest: "You'll love it") is no salary.
+ */
+function salaryShown(text: string | null): string | null {
+  return text !== null && parseSalary(text) !== null ? text : null;
+}
+
 /** The fields of a schema.org JobPosting object. */
 export function jobPostingFields(posting: Record<string, unknown>): JobPostingLd {
   const str = (v: unknown): string | null => (typeof v === "string" && cleanText(v) ? cleanText(v) : typeof v === "number" ? String(v) : null);
@@ -162,7 +171,7 @@ export function jobPostingFields(posting: Record<string, unknown>): JobPostingLd
     region: regions[0] ?? null,
     regions,
     remote: locationType.some((t) => typeof t === "string" && t.toUpperCase() === "TELECOMMUTE"),
-    salaryText: str(salary?.value?.value),
+    salaryText: salaryShown(str(salary?.value?.value)),
   };
 }
 

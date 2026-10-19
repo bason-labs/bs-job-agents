@@ -2,13 +2,13 @@
 // The pages here are rebuilt from the researcher's scrubbed captures (fixtures/<source>/*.json, the
 // JSON-LD as the board served it on 2026-10-19), wrapped in a minimal HTML page.
 import { readFileSync } from "node:fs";
-import { SEARCH_PROFILE_DEFAULTS, sourceAccessRecord, type ResearchScanInput, type SearchProfileFieldsBase } from "@bs-job-agents/shared";
+import { SEARCH_PROFILE_DEFAULTS, sourceAccessRecord, type JobCandidate, type ResearchScanInput, type SearchProfileFieldsBase } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
 import { settleScanOutput } from "../../engine/scan-settle.js";
 import { HostGate, MIN_HOST_GAP_MS, type HttpFetch } from "../http/index.js";
 import { BoardApiClient, BoardApiError } from "./client.js";
 import { itviecMapper } from "./itviec.js";
-import { listedJobs } from "./json-ld-board.js";
+import { jobFromPage, listedJobs } from "./json-ld-board.js";
 import { BOARD_MAPPERS } from "./mappers.js";
 import { topcvMapper } from "./topcv.js";
 import type { BoardMapper } from "./types.js";
@@ -185,6 +185,16 @@ describe("TopCV mapper", () => {
     const result = await topcvMapper.scan(h.client, input("topcv", { candidateLimit: 10, maxPageViews: 3 }));
     expect(h.calls).toHaveLength(3);
     expect(result.jobs).toHaveLength(2);
+  });
+});
+
+describe("salary text from the JobPosting", () => {
+  it("keeps an amount or 'negotiable'; ITviec's guest placeholder \"You'll love it\" is no salary", () => {
+    const salaryOf = (value: unknown) => (jobFromPage("itviec", itviecDetail._capture.url, page({ ...itviecDetail.data, baseSalary: { "@type": "MonetaryAmount", currency: "USD", value: { "@type": "QuantitativeValue", value } } }), null) as JobCandidate).salaryText;
+    expect(salaryOf("You'll love it")).toBeNull();
+    expect(salaryOf("1,500 - 3,000 USD")).toBe("1,500 - 3,000 USD");
+    expect(salaryOf("Thoả thuận")).toBe("Thoả thuận");
+    expect(salaryOf(undefined)).toBeNull();
   });
 });
 
