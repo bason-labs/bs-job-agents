@@ -34,10 +34,10 @@ export const DERIVE_MAX_GAPS = 20;
 
 /** CV's self-check for cv.derive (bots/cv/bot.json selfCheckByKind.derive). */
 export const DERIVE_SELF_CHECK = [
-  "Every draft cites only Ba's own facts from the input",
-  "fromTerms are copied word for word from the cited facts",
-  "No number, date, duration, title or employer the cited facts do not contain",
-  "No draft for a requirement the facts do not support or imply",
+  "Cites only Ba's facts from the input",
+  "fromTerms are copied from the cited facts",
+  "No number, date, duration, title or employer the cited facts lack",
+  "Nothing drafted for an unsupported gap",
 ] as const;
 
 export const DerivedDraftSchema = z.strictObject({
