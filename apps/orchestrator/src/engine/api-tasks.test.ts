@@ -259,6 +259,35 @@ describe("API scans (no bot, no Chrome)", () => {
     expect(runnerSources(t)).toEqual(["linkedin"]);
   });
 
+  it("two API tasks running at once against one host share the process's 1500 ms gate (NFR-1)", async () => {
+    const at: { url: string; t: number }[] = [];
+    let now = 0;
+    const gate = new HostGate({ now: () => now, sleep: async (ms) => void (now += Math.max(0, ms)) });
+    const fetch: HttpFetch = async (url) => {
+      at.push({ url, t: now });
+      return { ok: true, status: 200, text: async () => JSON.stringify({ jobs: [] }) };
+    };
+    const shared = (source: BoardSource) =>
+      record(source, { auth: { kind: "none", names: [], howToCopy: "" }, internalApiGetEndpoints: [{ method: "GET", host: "jobs.shared.example", pathPattern: "/api/jobs", query: ["page"], purpose: "search", requiresAuth: false }] });
+    const twice = (source: BoardSource): BoardMapper => ({
+      source,
+      async scan(client, _input, signal) {
+        await client.get({ host: "jobs.shared.example", path: "/api/jobs", query: { page: 1 } }, signal);
+        await client.get({ host: "jobs.shared.example", path: "/api/jobs", query: { page: 2 } }, signal);
+        return { jobs: [] };
+      },
+    });
+    const records = { itviec: shared("itviec"), topcv: shared("topcv") } as Partial<Record<BoardSource, SourceAccessRecord>>;
+    const port = new BoardApiScanner({ fetch, gate, secrets: null, mappers: { itviec: twice("itviec"), topcv: twice("topcv") }, records: (s) => records[s] ?? record(s) });
+    const t = await createTestEngine({ sources: ["itviec", "topcv"], boards: port });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(at).toHaveLength(4);
+    expect(scanOf(t, "itviec").status).toBe("done");
+    expect(scanOf(t, "topcv").status).toBe("done");
+    for (let i = 1; i < at.length; i++) expect(at[i]!.t - at[i - 1]!.t).toBeGreaterThanOrEqual(1_500);
+  });
+
   it("a board whose public API is usable is read through it and its token is never read (REQ-21.AC-1)", async () => {
     const publicApi = { usable: true, needsDeveloperKey: false, endpoints: [{ method: "GET" as const, host: "itviec.com", pathPattern: "/api/jobs", query: ["keywords"], purpose: "search" as const, requiresAuth: false }] };
     const http = fakeFetch(() => ({ status: 200, body: twoJobs("itviec") }));
