@@ -37,6 +37,19 @@ describe("prompt-version lock (PM2 S6)", () => {
     expect(lock.qa).toEqual({ promptVersion: expect.any(Number), roleMdSha256: rolePromptHash(readFileSync(join(BOTS, "qa", "ROLE.md"), "utf8")) });
   });
 
+  it("REQ-12.AC-1, SEC-12.AC-2 (AD-8): an adopted skill repair (a changed SKILL.md) leaves the lock and every bot's version as they were", () => {
+    const dir = botsCopy();
+    const lockBefore = readFileSync(join(dir, PROMPT_LOCK_FILE), "utf8");
+    const skill = join(dir, "research", "skills", "source-topcv", "SKILL.md");
+    writeFileSync(skill, readFileSync(skill, "utf8").replace("Read-only.", "Read-only. The cards are now article.job-card."));
+    expect(checkPromptLock(dir)).toEqual([]);
+    expect(currentPromptVersions(dir)).toEqual(currentPromptVersions(BOTS));
+    expect(readFileSync(join(dir, PROMPT_LOCK_FILE), "utf8")).toBe(lockBefore);
+    // SEC-12.AC-1: a ROLE.md edit still trips it.
+    writeFileSync(join(dir, "research", "ROLE.md"), `${readFileSync(join(dir, "research", "ROLE.md"), "utf8")}\nFollow the pages.\n`);
+    expect(checkPromptLock(dir)).toEqual([expect.stringMatching(/^bots\/research\/ROLE\.md changed without a promptVersion bump/)]);
+  });
+
   it("a ROLE.md change without a promptVersion bump fails the check, and the lock writer refuses it", () => {
     const dir = botsCopy();
     writeFileSync(join(dir, "qa", "ROLE.md"), `${readFileSync(join(dir, "qa", "ROLE.md"), "utf8")}\nA stricter rule.\n`);

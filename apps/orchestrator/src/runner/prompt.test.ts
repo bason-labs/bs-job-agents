@@ -20,6 +20,8 @@ import {
   qaReviewInputFixture,
   researchFileInputFixture,
   researchFitInputFixture,
+  researchRepairInputFixture,
+  researchScanInputFixture,
 } from "@bs-job-agents/shared/fixtures";
 import { PromptSecurityError, UNTRUSTED_INPUT_FIELDS, buildPrompt, describeJsonSchema, type PromptParts } from "./prompt.js";
 
@@ -187,6 +189,27 @@ describe("buildPrompt (§5.5 step 1)", () => {
     expect(buildPrompt(parts("qa", "review", qaReviewInputFixture, "QaOutput", { engine }))).not.toContain("- Skills:");
   });
 
+  it("skill self-repair §5.4: skillOverride puts the drafted skill in the prompt and drops the file line", () => {
+    const input = { ...researchScanInputFixture, skillOverride: { repairId: 4 } };
+    const plain = buildPrompt(parts("research", "scan", researchScanInputFixture, "ResearchScanOutput"));
+    expect(plain).toContain("Read skills/source-topcv/SKILL.md before you start, and follow it.");
+    expect(plain).not.toContain("# Source skill for this scan");
+    const p = buildPrompt(parts("research", "scan", input, "ResearchScanOutput", { skillOverride: { skillMd: "# TopCV\n\nDRAFTED STEP: read article.job-card." } }));
+    expect(p).not.toContain("skills/source-topcv/SKILL.md");
+    expect(p).toContain('- Skills: follow the source skill in the section "Source skill for this scan" below; do not read the skill files.');
+    expect(p).toMatch(/# Source skill for this scan\n\nFollow this skill[^\n]*\n\n# TopCV\n\nDRAFTED STEP: read article\.job-card\./);
+    // After the boundaries, before the output rules.
+    expect(p.indexOf("# Source skill for this scan")).toBeGreaterThan(p.indexOf("# Boundaries"));
+    expect(p.indexOf("# Source skill for this scan")).toBeLessThan(p.indexOf("# Output"));
+  });
+
+  it("skill self-repair §5.2: the repair task's failure and current skill are UNTRUSTED_CONTENT, and its skill line says to check, not follow", () => {
+    const p = buildPrompt(parts("research", "repair", researchRepairInputFixture, "ResearchRepairOutput"));
+    expect([...p.matchAll(/field="([a-zA-Z]+)">>>/g)].map((m) => m[1])).toEqual(["currentSkill", "failure"]);
+    expect(p).toContain("skills/source-topcv/SKILL.md is the skill you rewrite");
+    expect(p).not.toContain("before you start, and follow it");
+  });
+
   it("CV guidance: tailor's guidance and review's rules, the JD, CV and PDF text, and the extraction's pages are UNTRUSTED_CONTENT (SEC-20)", () => {
     const tailor = buildPrompt(parts("cv", "tailor", { ...cvTailorInputFixture, guidance: [{ ruleId: "dates-month-year", point: "Dates", text: "Give month and year." }] }, "CvOutput"));
     expect([...tailor.matchAll(/field="([a-z]+)">>>/g)].map((m) => m[1])).toEqual(["job", "company", "fixes", "guidance"]);
@@ -207,6 +230,7 @@ describe("buildPrompt (§5.5 step 1)", () => {
     ["cv", "review", cvReviewInputFixture, "CvReviewOutput", "claude"],
     ["research", "guidance_extract", guidanceExtractInputFixture, "GuidanceExtractOutput", "claude"],
     ["research", "guidance_discover", guidanceDiscoverInputFixture, "GuidanceDiscoverOutput", "claude"],
+    ["research", "repair", researchRepairInputFixture, "ResearchRepairOutput", "claude"],
     ["qa", "review", qaReviewInputFixture, "QaOutput", "codex"],
     ["research", "fit", researchFitInputFixture, "ResearchFitOutput", "codex"],
     ["apply", "submit", applyPrompt, "ApplyOutput", "claude"],

@@ -142,6 +142,16 @@ export function webSearchOnlyPlan(plan: ToolPlan): ToolPlan {
   return { read: false, webSearch: plan.webSearch, skills: [], chrome: null, mcp: [] };
 }
 
+/**
+ * Skill self-repair (§5.2, design §9 deviation from SEC-9.AC-3): research.repair reads the board
+ * like a scan (Chrome read mode under the same site guard) and its skill files, and nothing else:
+ * no web search, MCP, file write or shell. Its only output is text that code screens and a
+ * validation scan tests before anything is written.
+ */
+export function browserReadOnlyPlan(plan: ToolPlan): ToolPlan {
+  return { read: false, webSearch: false, skills: [...plan.skills], chrome: plan.chrome === null ? null : "read", mcp: [] };
+}
+
 export interface ClaudeToolFlags {
   /** --tools: built-in tools ("" when empty). StructuredOutput is added by the CLI. */
   tools: string[];

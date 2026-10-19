@@ -5,7 +5,7 @@ import {
   GuidanceReviewResultSchema,
   LIMITS,
   guidanceRuleViews,
-  type ActivityEntry,
+  type GuidanceActivityEntry,
   type GuidanceRefreshSummary,
   type GuidanceRuleSet,
   type GuidanceSource,
@@ -39,7 +39,7 @@ export function guidanceView(db: Db): GuidanceView {
 }
 
 /** REQ-36: rule added or changed, newest first, with the sources of the snapshot it made. */
-export function activityEntries(db: Db): ActivityEntry[] {
+export function activityEntries(db: Db): GuidanceActivityEntry[] {
   const rows = listEvents(db, { types: ["guidance.rule_added", "guidance.rule_changed"] });
   const snapshots = new Map<number, GuidanceRuleSet | null>();
   const setOf = (n: number) => {
@@ -47,7 +47,7 @@ export function activityEntries(db: Db): ActivityEntry[] {
     return snapshots.get(n)!;
   };
   return rows
-    .map((row): ActivityEntry => {
+    .map((row): GuidanceActivityEntry => {
       const p = row.payload as { snapshot: number; runId: string | null; ruleId: string; point: string; previousText: string; newText: string; sourceIds: string[]; applied: boolean };
       const set = setOf(p.snapshot);
       return {

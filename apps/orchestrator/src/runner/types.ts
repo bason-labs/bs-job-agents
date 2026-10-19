@@ -62,6 +62,11 @@ export interface RunnerTask {
    * RunnerResult.screenshots. Omitted: images are only dropped from the transcript.
    */
   screenshotDir?: string;
+  /**
+   * Additive (skill self-repair §5.4): a validation scan's drafted skill, screened by the engine. The
+   * prompt carries it in place of the skill file, and the task gets no skill-file reads.
+   */
+  skillOverride?: { skillMd: string };
   timeoutMs: number;
   signal?: AbortSignal;
 }

@@ -158,6 +158,7 @@ describe("GET /guidance, Turn off / Turn on, GET /activity", () => {
     const { entries } = ActivityResponseSchema.parse((await x.get("/activity")).json());
     expect(entries).toHaveLength(12);
     expect(entries.every((e) => e.kind === "rule_added" && e.previousText === "" && e.applied)).toBe(true);
-    expect(entries.find((e) => e.ruleId === "dates-month-year")!.sources.map((s) => s.id)).toEqual(["itviec-mau-cv-an-tuong", "vnpt-2026-10"]);
+    const rule = entries.find((e) => e.kind === "rule_added" && e.ruleId === "dates-month-year");
+    expect(rule?.kind === "rule_added" ? rule.sources.map((s) => s.id) : null).toEqual(["itviec-mau-cv-an-tuong", "vnpt-2026-10"]);
   });
 });
