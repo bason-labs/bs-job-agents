@@ -156,6 +156,21 @@ describe("tab attribution is tolerant of the reply format (QA M-b follow-up)", (
     expect(c.opened).toEqual([JOB]);
   });
 
+  it("QA final round: a 404 or not-found page (in the navigate reply or the page's text) is not opened", () => {
+    const create = [use("c", `${CHROME}tabs_create_mcp`, {}), result("c", '{"tabId": 7}')];
+    expect(run([...create, ...nav("n", JOB, 7, `Navigated to ${JOB} — 404 Not Found`)]).opened).toEqual([]);
+    const c = run([
+      ...create,
+      ...nav("n1", JOB, 7),
+      use("g", `${CHROME}get_page_text`, { tabId: 7 }),
+      result("g", "Không tìm thấy trang. Trang bạn tìm kiếm không tồn tại."),
+      ...nav("n2", "https://www.topcv.vn/viec-lam/x/9.html", 7),
+      use("h", `${CHROME}get_page_text`, { tabId: 7 }),
+      result("h", "Frontend Engineer · NovaPay · Mô tả công việc …"),
+    ]);
+    expect(c.opened).toEqual(["https://www.topcv.vn/viec-lam/x/9.html"]);
+  });
+
   function run(lines: string[]): PageUrlCollector {
     const c = new PageUrlCollector();
     for (const l of lines) c.push(l);

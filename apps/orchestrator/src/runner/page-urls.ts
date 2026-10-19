@@ -44,6 +44,9 @@ export function tabIdsIn(text: string): string[] {
   return [...out];
 }
 
+/** A not-found page: a navigate reply or the start of the page's text says 404 or "not found" (EN, VI). */
+const NOT_FOUND = /\b404\b|\bpage not found\b|\bnot found\b|không tìm thấy trang|trang không tồn tại|trang bạn tìm kiếm không tồn tại/i;
+
 /** One page a navigate call opened, and when the bot asked for it (W4a: LinkedIn's 3–8 s pauses). */
 export interface PageVisit {
   url: string;
@@ -65,6 +68,8 @@ export class PageUrlCollector {
   /** Confirmed navigates that could not be attributed to the bot's own tab (a reply format mismatch shows here). */
   unattributed = 0;
   private readonly ownTabs = new Set<string>();
+  /** Per tab: where its last opened page sits in `opened` (a later not-found page text removes it). */
+  private readonly lastOpened = new Map<string, number>();
   /** Ba's tabs: the ids the task's first tabs_context_mcp reply listed (null until it came). */
   private baTabs: Set<string> | null = null;
   private readonly calls = new Map<string, { tool: string; input: unknown; at: number }>();
@@ -121,8 +126,12 @@ export class PageUrlCollector {
       if (found.length > 0) {
         const raw = (call.input as { tabId?: unknown } | null)?.tabId;
         const tab = typeof raw === "number" || typeof raw === "string" ? String(raw) : null;
-        if (this.ownTab(tab)) this.opened.push(trimUrl(found[0]!));
-        else this.unattributed++;
+        if (NOT_FOUND.test(text)) {
+          // A 404 page was reached, not a posting: it never counts as opened.
+        } else if (this.ownTab(tab)) {
+          this.opened.push(trimUrl(found[0]!));
+          if (tab !== null) this.lastOpened.set(tab, this.opened.length - 1);
+        } else this.unattributed++;
       }
       const target = withScheme((call.input as { url?: unknown } | null)?.url);
       if (found.length > 0) found.forEach((u) => this.add(u));
@@ -130,6 +139,16 @@ export class PageUrlCollector {
       const reached = found.length > 0 ? trimUrl(found[0]!) : target;
       if (reached) this.visits.push({ url: reached, at: new Date(call.at).toISOString() });
       return;
+    }
+    // The page text of a tab's last opened page shows a not-found page: that page is not opened.
+    if ((call.tool === "get_page_text" || call.tool === "read_page") && NOT_FOUND.test(text.slice(0, 400))) {
+      const raw = (call.input as { tabId?: unknown } | null)?.tabId;
+      const at = this.lastOpened.get(String(raw));
+      if (at !== undefined) {
+        this.opened.splice(at, 1);
+        this.lastOpened.delete(String(raw));
+        for (const [k, v] of this.lastOpened) if (v > at) this.lastOpened.set(k, v - 1);
+      }
     }
     if (TAB_TOOLS.includes(call.tool)) {
       for (const m of text.matchAll(URL_RE)) this.add(m[0]);
