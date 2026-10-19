@@ -104,8 +104,72 @@ export interface JobPostingLd {
   company: string | null;
   datePosted: string | null;
   description: string | null;
+  /** The first location's region (or locality). */
   region: string | null;
+  /** Every location's region (or locality), in order, without repeats. */
+  regions: string[];
+  /** jobLocationType TELECOMMUTE: the posting says it is remote. */
+  remote: boolean;
   salaryText: string | null;
+}
+
+/** The objects in one JSON-LD value: an array's items, or the value and its @graph. */
+function ldItems(data: unknown): Record<string, unknown>[] {
+  const items = Array.isArray(data) ? data : [data, ...(((data as { "@graph"?: unknown[] } | null)?.["@graph"] ?? []) as unknown[])];
+  return items.filter((i): i is Record<string, unknown> => typeof i === "object" && i !== null && !Array.isArray(i));
+}
+
+/** Does a JSON-LD object have this @type (a string or a list)? */
+export function hasLdType(item: Record<string, unknown>, type: string): boolean {
+  const t = item["@type"];
+  return t === type || (Array.isArray(t) && t.includes(type));
+}
+
+/** Every JSON-LD object of the given parsed script contents (unparseable scripts were skipped by the caller). */
+export function ldObjects(blocks: readonly unknown[]): Record<string, unknown>[] {
+  return blocks.flatMap(ldItems);
+}
+
+/**
+ * The parsed JSON-LD script blocks of an HTML string, without a DOM (the board-API mappers get raw
+ * HTML). A block that is not valid JSON is skipped.
+ */
+export function ldJsonBlocks(html: string): unknown[] {
+  const out: unknown[] = [];
+  for (const m of html.matchAll(/<script\b[^>]*\btype\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script\s*>/gi)) {
+    try {
+      out.push(JSON.parse(m[1]!));
+    } catch {
+      // not JSON: skipped, like jobPostingLd does
+    }
+  }
+  return out;
+}
+
+/** The fields of a schema.org JobPosting object. */
+export function jobPostingFields(posting: Record<string, unknown>): JobPostingLd {
+  const str = (v: unknown): string | null => (typeof v === "string" && cleanText(v) ? cleanText(v) : typeof v === "number" ? String(v) : null);
+  const org = posting.hiringOrganization as Record<string, unknown> | undefined;
+  const locations = (Array.isArray(posting.jobLocation) ? posting.jobLocation : posting.jobLocation ? [posting.jobLocation] : []) as ({ address?: Record<string, unknown> } | null)[];
+  const regions = [...new Set(locations.map((l) => str(l?.address?.addressRegion) ?? str(l?.address?.addressLocality)).filter((r): r is string => r !== null))];
+  const salary = posting.baseSalary as { value?: Record<string, unknown> } | undefined;
+  const locationType = Array.isArray(posting.jobLocationType) ? posting.jobLocationType : [posting.jobLocationType];
+  return {
+    title: str(posting.title),
+    company: str(org?.name),
+    datePosted: str(posting.datePosted),
+    description: typeof posting.description === "string" ? htmlToText(posting.description) || null : null,
+    region: regions[0] ?? null,
+    regions,
+    remote: locationType.some((t) => typeof t === "string" && t.toUpperCase() === "TELECOMMUTE"),
+    salaryText: str(salary?.value?.value),
+  };
+}
+
+/** The first JobPosting among parsed JSON-LD blocks, if any. */
+export function findJobPosting(blocks: readonly unknown[]): JobPostingLd | null {
+  const posting = ldObjects(blocks).find((i) => hasLdType(i, "JobPosting"));
+  return posting ? jobPostingFields(posting) : null;
 }
 
 /** The schema.org JobPosting a page embeds (TopCV, ITviec and many career sites do), if any. */
@@ -117,21 +181,8 @@ export function jobPostingLd(root: DomRoot): JobPostingLd | null {
     } catch {
       continue;
     }
-    const items = (Array.isArray(data) ? data : [data, ...((data as { "@graph"?: unknown[] })?.["@graph"] ?? [])]) as Record<string, unknown>[];
-    const posting = items.find((i) => i && (i["@type"] === "JobPosting" || (Array.isArray(i["@type"]) && i["@type"].includes("JobPosting"))));
-    if (!posting) continue;
-    const str = (v: unknown): string | null => (typeof v === "string" && cleanText(v) ? cleanText(v) : typeof v === "number" ? String(v) : null);
-    const org = posting.hiringOrganization as Record<string, unknown> | undefined;
-    const loc = (Array.isArray(posting.jobLocation) ? posting.jobLocation[0] : posting.jobLocation) as { address?: Record<string, unknown> } | undefined;
-    const salary = posting.baseSalary as { value?: Record<string, unknown> } | undefined;
-    return {
-      title: str(posting.title),
-      company: str(org?.name),
-      datePosted: str(posting.datePosted),
-      description: typeof posting.description === "string" ? htmlToText(posting.description) || null : null,
-      region: str(loc?.address?.addressRegion) ?? str(loc?.address?.addressLocality),
-      salaryText: str(salary?.value?.value),
-    };
+    const found = findJobPosting([data]);
+    if (found) return found;
   }
   return null;
 }
