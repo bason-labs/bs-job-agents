@@ -1,6 +1,6 @@
 "use client";
 
-import type { Fact, FactDraftRetailor, FactDraftView, MasterCv } from "@bs-job-agents/shared";
+import { derivedStatus, type DerivedAddView, type DerivedFactsView, type Fact, type FactDraftRetailor, type FactDraftView, type MasterCv } from "@bs-job-agents/shared";
 import { FileWarning, NotebookPen, RefreshCw } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, EmptyState, Field, Input, useToast } from "@/components/ui";
@@ -9,6 +9,7 @@ import { formatDateTime } from "@/components/schedules/datetime";
 import { ResourceGate } from "@/components/schedules/ResourceGate";
 import { useResource } from "@/lib/api/react";
 import { readMasterCvPage, useMasterCvData, type FactRequestItem, type MasterCvData, type MasterCvRead, type MasterCvVersion } from "./data";
+import { DerivedUndoBar, NotAdded } from "./DerivedFacts";
 import { FactCard } from "./FactCard";
 import { AddedBar, FactRequestCard, FreeTextFacts, RetailorBanner, type DraftNote, type RetailorResult } from "./FactDrafts";
 import { hasErrors, isMasterDirty, newFact, validateMasterCv, type MasterCvErrors } from "./logic";
@@ -29,7 +30,33 @@ export interface MasterCvScreenProps {
   initial: MasterCvRead;
   initialVersions: MasterCvVersion[];
   initialRequests: FactRequestItem[];
+  /** Facts added automatically and the latest "Not added" (CV auto-extend). */
+  initialDerived?: DerivedFactsView;
   data: MasterCvData;
+}
+
+const NO_DERIVED: DerivedFactsView = { adds: [], rejected: [] };
+
+/** At most this many undo bars; the rest are "in the history". */
+const MAX_UNDO_BARS = 3;
+/** The newest automatic addition Ba has seen on this screen (bars show the ones after it). */
+const SEEN_KEY = "bsja:cv:derived-seen";
+
+function readSeen(): number {
+  try {
+    const n = Number(window.localStorage.getItem(SEEN_KEY));
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeSeen(version: number): void {
+  try {
+    window.localStorage.setItem(SEEN_KEY, String(version));
+  } catch {
+    // A private window: the bars show again next time.
+  }
 }
 
 /** The page: the master CV, its history and CV's open fact requests, read through lib/api. */
@@ -40,7 +67,7 @@ export function MasterCvLive() {
     <ResourceGate resource={page} label="master CV">
       {(p) => (
         // A newer version read in the background (changed in another tab) starts the editor over.
-        <MasterCvScreen key={p.read.state === "ok" ? p.read.cv.version : p.read.state} initial={p.read} initialVersions={p.versions} initialRequests={p.requests} data={data} />
+        <MasterCvScreen key={p.read.state === "ok" ? p.read.cv.version : p.read.state} initial={p.read} initialVersions={p.versions} initialRequests={p.requests} initialDerived={p.derived} data={data} />
       )}
     </ResourceGate>
   );
@@ -68,10 +95,10 @@ const BLANK_CV: MasterCv = {
  * UC-20: Ba's master data. Handles the API's read states: no master CV yet (404 → create one),
  * an unreadable data/master-cv.yaml (409 master_cv_invalid → fix the file, reload), or the CV.
  */
-export function MasterCvScreen({ initial, initialVersions, initialRequests, data }: MasterCvScreenProps) {
+export function MasterCvScreen({ initial, initialVersions, initialRequests, initialDerived = NO_DERIVED, data }: MasterCvScreenProps) {
   const [read, setRead] = useState(initial);
   const [creating, setCreating] = useState(false);
-  const [lists, setLists] = useState({ versions: initialVersions, requests: initialRequests });
+  const [lists, setLists] = useState({ versions: initialVersions, requests: initialRequests, derived: initialDerived });
   const [editorKey, setEditorKey] = useState(0);
   const [reloading, setReloading] = useState(false);
   const { toast } = useToast();
@@ -79,9 +106,9 @@ export function MasterCvScreen({ initial, initialVersions, initialRequests, data
   const reload = async () => {
     setReloading(true);
     try {
-      const [r, versions, requests] = await Promise.all([data.get(), data.versions(), data.factRequests()]);
+      const [r, versions, requests, derived] = await Promise.all([data.get(), data.versions(), data.factRequests(), data.derived().catch(() => NO_DERIVED)]);
       setRead(r);
-      setLists({ versions, requests });
+      setLists({ versions, requests, derived });
       setEditorKey((k) => k + 1);
     } catch (e) {
       toast({ title: `Couldn't reload the master CV: ${errorText(e)}`, tone: "err" });
@@ -134,6 +161,7 @@ export function MasterCvScreen({ initial, initialVersions, initialRequests, data
       isNew={read.state === "missing"}
       initialVersions={lists.versions}
       initialRequests={lists.requests}
+      initialDerived={lists.derived}
       data={data}
       onReload={reload}
       reloading={reloading}
@@ -147,12 +175,13 @@ interface MasterCvEditorProps {
   isNew: boolean;
   initialVersions: MasterCvVersion[];
   initialRequests: FactRequestItem[];
+  initialDerived: DerivedFactsView;
   data: MasterCvData;
   onReload: () => Promise<void>;
   reloading: boolean;
 }
 
-function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, data, onReload, reloading }: MasterCvEditorProps) {
+function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, initialDerived, data, onReload, reloading }: MasterCvEditorProps) {
   const [firstItems] = useState<Item[]>(() => (isNew ? toItems([newFact([])]) : toItems(initial.facts)));
   const [saved, setSaved] = useState(initial);
   const [exists, setExists] = useState(!isNew);
@@ -175,6 +204,16 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, data
   const [undoing, setUndoing] = useState<string | null>(null);
   /** Jobs whose questions Ba answered with facts: "Re-tailor CVs for: …". */
   const [retailor, setRetailor] = useState<FactDraftRetailor[]>([]);
+  // CV auto-extend: additions not undone since Ba last opened the screen, newest first.
+  const [seenAtOpen] = useState(readSeen);
+  const [derivedAdds, setDerivedAdds] = useState<DerivedAddView[]>(() => initialDerived.adds.filter((a) => a.version > seenAtOpen));
+  const [undoingDerived, setUndoingDerived] = useState<number | null>(null);
+  const [undoErrors, setUndoErrors] = useState<Record<number, string>>({});
+  const [keeping, setKeeping] = useState<string | null>(null);
+  useEffect(() => {
+    const newest = Math.max(0, ...initialDerived.adds.map((a) => a.version));
+    if (newest > seenAtOpen) writeSeen(newest);
+  }, [initialDerived, seenAtOpen]);
   /** Aborted when the page goes: polling stops. */
   const alive = useRef(new AbortController());
   useEffect(() => {
@@ -329,6 +368,55 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, data
     }
   };
 
+  // ---------------------------------------------------------------- facts added automatically
+
+  /** Scroll to and focus a cited fact (the provenance links). */
+  const focusFact = (id: string) => {
+    const el = document.querySelector<HTMLElement>(`[data-testid="fact"][data-fact-id="${CSS.escape(id)}"]`);
+    el?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    el?.focus();
+  };
+
+  const undoDerivedAdd = async (add: DerivedAddView) => {
+    setUndoingDerived(add.version);
+    setUndoErrors((e) => ({ ...e, [add.version]: "" }));
+    try {
+      const result = await data.undoDerived(add.version);
+      const ids = new Set(result.removed.map((f) => f.id));
+      setItems((xs) => xs.filter((i) => !ids.has(i.fact.id)));
+      if (editing !== null && items.some((i) => i.key === editing && ids.has(i.fact.id))) setEditing(null);
+      setSaved(result.cv);
+      setDerivedAdds((as) => as.filter((a) => a.version !== add.version));
+      setVersions(await data.versions());
+      toast({
+        title: result.restoredTo !== null ? `Undone: back to change ${result.restoredTo}.` : `Removed ${result.removed.map((f) => f.text).join(", ")} (change ${result.cv.version}).`,
+      });
+    } catch {
+      setUndoErrors((e) => ({ ...e, [add.version]: `Could not undo. The master CV has changed since change ${add.version}, so nothing was undone. Reload the screen to see its current content.` }));
+    } finally {
+      setUndoingDerived(null);
+    }
+  };
+
+  const keepDerivedFact = async (fact: Fact) => {
+    setKeeping(fact.id);
+    try {
+      const cv = await data.keepDerived(fact.id, saved.version);
+      const kept = cv.facts.find((f) => f.id === fact.id);
+      setSaved(cv);
+      if (kept) setItems((xs) => xs.map((i) => (i.fact.id === fact.id ? { ...i, fact: kept } : i)));
+      setVersions(await data.versions());
+      toast({ title: kept?.derived ? `Kept ${fact.id}: it rests on its facts as they are now (change ${cv.version}).` : `Kept ${fact.id} as your own fact (change ${cv.version}).` });
+    } catch (e) {
+      if (errorReason(e) === "master_cv_changed") {
+        const current = errorDetails(e)?.currentVersion;
+        setConflict(typeof current === "number" ? current : saved.version + 1);
+      } else toast({ title: `Could not save this change: ${errorText(e)}`, tone: "err" });
+    } finally {
+      setKeeping(null);
+    }
+  };
+
   const retailorNow = async (): Promise<RetailorResult[]> => {
     const out: RetailorResult[] = [];
     for (const job of retailor) {
@@ -415,6 +503,16 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, data
         />
       ))}
 
+      {derivedAdds.slice(0, MAX_UNDO_BARS).map((add) => (
+        <DerivedUndoBar key={add.version} add={add} undoing={undoingDerived === add.version} error={undoErrors[add.version] || null} onUndo={() => void undoDerivedAdd(add)} />
+      ))}
+      {derivedAdds.length > MAX_UNDO_BARS ? (
+        <p data-testid="derived-more" className="px-1 text-xs text-muted">
+          and {derivedAdds.length - MAX_UNDO_BARS} more in the history
+        </p>
+      ) : null}
+      <NotAdded items={initialDerived.rejected} />
+
       <section aria-label="Contact" className="space-y-2 rounded-2xl border border-border bg-surface/60 p-4">
         <p className="text-xs font-medium">Contact</p>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -446,6 +544,16 @@ function MasterCvEditor({ initial, isNew, initialVersions, initialRequests, data
               onEdit={() => setEditing(item.key)}
               onDone={() => setEditing(null)}
               onDelete={() => removeFact(item)}
+              derived={
+                item.fact.derived
+                  ? {
+                      stale: derivedStatus(draft, item.fact) === "source_changed",
+                      onSourceClick: focusFact,
+                      onKeep: () => void keepDerivedFact(item.fact),
+                      keeping: keeping === item.fact.id,
+                    }
+                  : undefined
+              }
             />
           );
           if (!group) return card;

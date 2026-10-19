@@ -6,6 +6,7 @@ import { useId } from "react";
 import { Button, Field, IconButton, Input, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { ChipInput } from "@/components/criteria/ChipInput";
+import { Provenance, ProvenanceReadOnly, type ProvenanceProps } from "./DerivedFacts";
 import { FACT_TYPE_OPTIONS, factMeta } from "./logic";
 
 export interface FactCardProps {
@@ -16,16 +17,29 @@ export interface FactCardProps {
   onEdit: () => void;
   onDone: () => void;
   onDelete: () => void;
+  /** A derived fact (CV auto-extend): its provenance and the flagged state's actions. */
+  derived?: Omit<ProvenanceProps, "fact" | "onDelete">;
 }
 
 /** One master fact: read view (prototype) or the structured editor (UC-20: EN/VI text, tags, org, dates). */
-export function FactCard({ fact, editing, error, onChange, onEdit, onDone, onDelete }: FactCardProps) {
+export function FactCard({ fact, editing, error, onChange, onEdit, onDone, onDelete, derived }: FactCardProps) {
   const ids = { id: useId(), type: useId(), org: useId(), dates: useId(), en: useId(), vi: useId() };
   const set = (patch: Partial<Fact>) => onChange({ ...fact, ...patch });
 
   if (!editing) {
     return (
-      <div data-testid="fact" data-fact-id={fact.id} className={cn("flex items-start gap-3 rounded-2xl border bg-surface/60 p-3", error ? "border-danger/60" : "border-border")}>
+      <div
+        data-testid="fact"
+        data-fact-id={fact.id}
+        data-derived={fact.derived ? (derived?.stale ? "stale" : "active") : undefined}
+        // The provenance links of a derived fact move focus here.
+        tabIndex={-1}
+        className={cn(
+          "flex items-start gap-3 rounded-2xl border bg-surface/60 p-3 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none",
+          error ? "border-danger/60" : "border-border",
+          fact.derived && derived?.stale ? "border-l-2 border-l-warn" : "",
+        )}
+      >
         <span className="shrink-0 rounded-full border border-border bg-surface-2 px-2 py-0.5 font-mono text-[10px]">{fact.id}</span>
         <div className="min-w-0 flex-1 space-y-1">
           <p className="text-[10px] tracking-wider text-muted uppercase">{factMeta(fact)}</p>
@@ -45,6 +59,7 @@ export function FactCard({ fact, editing, error, onChange, onEdit, onDone, onDel
               ))}
             </div>
           ) : null}
+          {fact.derived && derived ? <Provenance fact={fact} {...derived} onDelete={onDelete} /> : null}
           {error ? (
             <p role="alert" className="text-xs text-danger">
               {error}
@@ -61,6 +76,7 @@ export function FactCard({ fact, editing, error, onChange, onEdit, onDone, onDel
 
   return (
     <div data-testid="fact-editor" data-fact-id={fact.id} className="space-y-3 rounded-2xl border border-accent/60 bg-surface/80 p-4">
+      {fact.derived ? <ProvenanceReadOnly fact={fact} /> : null}
       <div className="grid gap-3 sm:grid-cols-4">
         <Field label="Fact id" htmlFor={ids.id}>
           <Input id={ids.id} value={fact.id} onChange={(e) => set({ id: e.target.value })} className="font-mono" spellCheck={false} invalid={!!error && /id/.test(error)} />

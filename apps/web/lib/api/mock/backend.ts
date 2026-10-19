@@ -54,6 +54,7 @@ import { ApiRequestError } from "../errors";
 import { toBotSummary, toRoomSummary, toShellData } from "../map";
 import type { BotSummary, RoomSummary, ShellData } from "../types";
 import { toSavedLines } from "../transcript";
+import { mockDeriveFacts } from "./derived-facts";
 import { chooseProposal } from "./lead-proposals";
 import { handleMockRequest } from "./routes";
 import { LEAD_ROOM_ID, createSeedState } from "./seed";
@@ -636,6 +637,11 @@ export class MockBackend implements WebApi, EventFeed {
     if (!card.job.injectionFlagged) throw fail(409, "conflict", "This job is not flagged");
     card.job.injectionClearedAt = this.nowIso();
     card.flags.injectionFlagged = false;
+  }
+
+  /** CV auto-extend: a scan's derive step adds these drafts (screened) as one version; e2e drives it through withMock. */
+  deriveFacts(drafts: Parameters<typeof mockDeriveFacts>[1], opts: Parameters<typeof mockDeriveFacts>[2] = {}): ReturnType<typeof mockDeriveFacts> {
+    return mockDeriveFacts(this, drafts, opts);
   }
 
   fileUrl(id: string): string {
