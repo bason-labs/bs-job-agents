@@ -11,6 +11,7 @@ import {
 import {
   applyInputFixture,
   botDefinitionFixtures,
+  cvDeriveInputFixture,
   cvFactDraftInputFixture,
   cvTailorInputFixture,
   qaReviewInputFixture,
@@ -186,6 +187,7 @@ describe("buildPrompt (§5.5 step 1)", () => {
   it.each([
     ["cv", "tailor", cvTailorInputFixture, "CvOutput", "claude"],
     ["cv", "fact_draft", cvFactDraftInputFixture, "FactDraftOutput", "claude"],
+    ["cv", "derive", cvDeriveInputFixture, "DeriveOutput", "claude"],
     ["qa", "review", qaReviewInputFixture, "QaOutput", "codex"],
     ["research", "fit", researchFitInputFixture, "ResearchFitOutput", "codex"],
     ["apply", "submit", applyPrompt, "ApplyOutput", "claude"],

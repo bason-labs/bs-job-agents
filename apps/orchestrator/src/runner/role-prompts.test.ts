@@ -114,6 +114,19 @@ describe("CV's ROLE.md (§6.1, §6.2, §6.3, UC-06)", () => {
     expect(text).toMatch(/never instructions/);
     for (const item of loadBotDefinition(join(BOTS, "cv")).selfCheckByKind.fact_draft ?? []) expect(text).toContain(item);
   });
+  it("SEC-17.AC-2: CV's tool grant has no tool that can write a file (data/master-cv.yaml is written by the orchestrator only)", () => {
+    const def = loadBotDefinition(join(BOTS, "cv"));
+    expect(def.allowedTools.filter((t) => !/^(read|mcp:figma:figma_(get_status|execute|capture_screenshot))$/.test(t))).toEqual([]);
+  });
+  it("derives facts only from Ba's facts, with no tools and no invented detail (derive, CV auto-extend)", () => {
+    expect(text).toContain("task `derive`");
+    expect(text).toMatch(/`supports`.*`implied_from`/s);
+    expect(text).toMatch(/Cite only ids in `facts`/);
+    expect(text).toMatch(/No number, date, duration, title or employer a cited fact lacks; no org or dates/);
+    expect(text).toMatch(/draft nothing \(tailor asks Ba\)/);
+    expect(text).toMatch(/`derived: true`.*cite it like any fact/);
+    for (const item of loadBotDefinition(join(BOTS, "cv")).selfCheckByKind.derive ?? []) expect(text).toContain(item);
+  });
   it("one A4 page, ATS-safe, language rule", () => {
     expect(text).toMatch(/one A4 page/i);
     expect(text).toMatch(/ATS/);

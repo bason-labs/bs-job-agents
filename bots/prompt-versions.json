@@ -4,8 +4,8 @@
     "roleMdSha256": "082cdeb41bf68730049c36c36a4ee92225f7e8654eaaee3870db1e164d20ef35"
   },
   "cv": {
-    "promptVersion": 5,
-    "roleMdSha256": "f2aa9e8fc6d00e2f3a5d65dd25db476099c6922383f8c77fd91959c57849ecbc"
+    "promptVersion": 6,
+    "roleMdSha256": "535ea3ce37133b8a64740e73e32c5f04b315713fbedb9be56281bf7945a505a8"
   },
   "lead": {
     "promptVersion": 5,

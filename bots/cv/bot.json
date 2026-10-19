@@ -18,7 +18,8 @@
   "timeoutSec": 600,
   "outputSchema": {
     "tailor": "CvOutput",
-    "fact_draft": "FactDraftOutput"
+    "fact_draft": "FactDraftOutput",
+    "derive": "DeriveOutput"
   },
   "selfCheck": [
     "One A4 page",
@@ -35,7 +36,13 @@
       "No number, tool, employer, title or date Ba did not give",
       "Each fact has English text and a faithful Vietnamese translation",
       "Fact ids are new lowercase slugs that no existing fact uses"
+    ],
+    "derive": [
+      "Cites only Ba's facts from the input",
+      "fromTerms are copied from the cited facts",
+      "No number, date, duration, title or employer the cited facts lack",
+      "Nothing drafted for an unsupported gap"
     ]
   },
-  "promptVersion": 5
+  "promptVersion": 6
 }
