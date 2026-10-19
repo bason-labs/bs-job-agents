@@ -42,9 +42,9 @@ test("edits lists, toggles and sliders, then saves a new version (UC-21b)", asyn
 
 test("W5: sources in three groups, new ones off; a remote board shows the time-zone overlap field", async ({ page }) => {
   const sources = page.getByTestId("criteria-sources");
-  await expect(page.getByTestId("criteria-sources-vietnam").getByRole("button")).toHaveText(["TopCV", "ITviec", "VietnamWorks"]);
-  await expect(page.getByTestId("criteria-sources-remote").getByRole("button")).toHaveText(["Remote OK", "We Work Remotely", "Remotive", "Jobspresso"]);
-  await expect(page.getByTestId("criteria-sources-global").getByRole("button")).toHaveText(["LinkedIn", "Wellfound", "Upwork"]);
+  await expect(page.getByTestId("criteria-sources-vietnam").locator("button[aria-pressed]")).toHaveText(["TopCV", "ITviec", "VietnamWorks"]);
+  await expect(page.getByTestId("criteria-sources-remote").locator("button[aria-pressed]")).toHaveText(["Remote OK", "We Work Remotely", "Remotive", "Jobspresso"]);
+  await expect(page.getByTestId("criteria-sources-global").locator("button[aria-pressed]")).toHaveText(["LinkedIn", "Wellfound", "Upwork"]);
   for (const name of ["VietnamWorks", "Remote OK", "We Work Remotely", "Remotive", "Jobspresso", "Wellfound", "Upwork"]) {
     await expect(sources.getByRole("button", { name, exact: true })).toHaveAttribute("aria-pressed", "false");
   }
@@ -169,4 +169,31 @@ test("a criteria save in chat ('Save to my criteria') shows here as the next ver
   await page.getByTestId("sidebar").getByRole("link", { name: "Search criteria" }).click();
   await expect(page.getByTestId("criteria-header")).toContainText("Active profile v4");
   await expect(page.getByTestId("criteria-locations")).toContainText("Đà Nẵng");
+});
+
+test("API research §5.6: each toggle shows how the board is read; LinkedIn's account API is approved, then revoked", async ({ page }) => {
+  const linkedin = page.getByTestId("source-linkedin");
+  await expect(page.getByTestId("source-remotive").getByTestId("source-access-label")).toHaveText("Public API");
+  await expect(page.getByTestId("source-upwork").getByTestId("source-access-label")).toHaveText("Browser");
+  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Account API (needs approval) · Browser until approved");
+
+  const approve = linkedin.getByRole("button", { name: "Approve the account API for LinkedIn" });
+  await approve.focus();
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Approve the account API for LinkedIn?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Terms of use", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Account risk", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(approve).toBeFocused();
+
+  await approve.click();
+  await dialog.getByRole("button", { name: "Approve", exact: true }).click();
+  await expect(page.getByTestId("toast").filter({ hasText: "Approved the account API for LinkedIn" })).toBeVisible();
+  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Account API (token missing) · Browser until a token is set");
+  await expect(linkedin.getByTestId("source-token-hint")).toContainText("Board tokens");
+
+  await linkedin.getByRole("button", { name: "Revoke the account API for LinkedIn" }).click();
+  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Account API (needs approval) · Browser until approved");
 });

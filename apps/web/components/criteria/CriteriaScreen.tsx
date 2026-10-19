@@ -9,6 +9,7 @@ import { formatDateTime } from "@/components/schedules/datetime";
 import { Button, Field, Input, NumberInput, Select, Slider, useToast } from "@/components/ui";
 import { ChipInput, ToggleChips } from "./ChipInput";
 import { SavedAnswers } from "./SavedAnswers";
+import { SourceToggles } from "./SourceToggles";
 import { ResourceGate } from "@/components/schedules/ResourceGate";
 import { useResource } from "@/lib/api/react";
 import { readCriteria, useCriteriaData, type CriteriaData, type CriteriaVersions } from "./data";
@@ -17,7 +18,6 @@ import {
   CURRENCY_OPTIONS,
   SALARY_POLICY_OPTIONS,
   SENIORITY_OPTIONS,
-  SOURCE_GROUP_OPTIONS,
   SOURCE_OPTIONS,
   WORK_MODE_OPTIONS,
   formToRequest,
@@ -170,22 +170,17 @@ export function CriteriaScreen({ initial, initialVersions, initialAnswers = [], 
         <div>
           <CardLabel id={ids.sources}>Sources</CardLabel>
           <p className="mt-0.5 text-[11px] text-muted">
-            Remote OK, We Work Remotely, Remotive and Jobspresso are read from their public feeds, without a bot. Upwork is find only: you apply there yourself.
+            Each board is read through the first path available: a public API, then the board&apos;s own web API, then the browser. Remote OK, We Work
+            Remotely, Remotive and Jobspresso are read from their public feeds, without a bot. Upwork is find only: you apply there yourself.
           </p>
         </div>
         <div role="group" aria-labelledby={ids.sources} data-testid="criteria-sources" className="space-y-2.5">
-          {SOURCE_GROUP_OPTIONS.map((g) => (
-            <div key={g.group} className="space-y-1.5" data-testid={`criteria-sources-${g.group}`}>
-              <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{g.label}</p>
-              <ToggleChips
-                label={g.label}
-                options={g.options}
-                values={form.sources}
-                onToggle={(v) => update({ sources: toggleValue(form.sources, v, SOURCE_OPTIONS.map((o) => o.value)) })}
-                invalid={!!errors.sources}
-              />
-            </div>
-          ))}
+          <SourceToggles
+            data={data}
+            values={form.sources}
+            onToggle={(v) => update({ sources: toggleValue(form.sources, v, SOURCE_OPTIONS.map((o) => o.value)) })}
+            invalid={!!errors.sources}
+          />
         </div>
         <FieldError>{errors.sources}</FieldError>
         {showsTimezoneOverlap(form) ? (
