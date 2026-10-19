@@ -59,6 +59,8 @@ export const StoredDerivedAddSchema = z.object({
   taskId: z.number().int().positive().nullable(),
   facts: z.array(z.object({ id: z.string(), text: z.string() })),
   undoneAt: z.string().nullable(),
+  /** SHA-256 of data/master-cv.yaml as this addition wrote it: a later hand edit without a version bump shows. */
+  fileSha256: z.string().nullable().default(null),
 });
 export type StoredDerivedAdd = z.infer<typeof StoredDerivedAddSchema>;
 
@@ -76,6 +78,8 @@ const StateSchema = z.object({
   factDrafts: z.record(StoredFactDraftSchema).default({}),
   /** CV auto-extend: automatic additions of derived facts, by the master version they made (the newest kept). */
   derivedAdds: z.record(StoredDerivedAddSchema).default({}),
+  /** Master versions made by an automatic addition, its Undo or a Keep: review cards ignore them (the newest kept). */
+  derivedRevisions: z.array(z.number().int().positive()).default([]),
 });
 export type ApiState = z.infer<typeof StateSchema>;
 

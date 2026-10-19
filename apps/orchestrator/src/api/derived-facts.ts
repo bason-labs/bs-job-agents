@@ -7,6 +7,7 @@
 // data/skill-implications.json. Undo, Keep and the deny list on delete are here too; the routes
 // are in routes/master-cv.ts. Only this file, master-cv.ts, fact-drafts.ts and routes/master-cv.ts
 // write the master CV (AD-1).
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -29,7 +30,13 @@ import {
 import { appendAppEvent, getJob, getCompany, listEvents, type Db } from "../db/index.js";
 import { DERIVE_REJECTED_EVENT, type DeriveAddOptions, type DeriveSource, type DerivedAddResult, type DerivedFactSink, type DerivedFactSinkContext } from "../engine/index.js";
 import { zodMessage } from "./errors.js";
-import { keepMasterCvVersionSync, readMasterCv, readMasterCvHistory, writeMasterCvSync } from "./master-cv.js";
+import { keepMasterCvVersionSync, masterCvPath, readMasterCv, readMasterCvHistory, writeMasterCvSync } from "./master-cv.js";
+
+/** SHA-256 of data/master-cv.yaml as it is on disk, or null when it is missing. */
+export function masterFileSha256(dataDir: string): string | null {
+  const path = masterCvPath(dataDir);
+  return existsSync(path) ? createHash("sha256").update(readFileSync(path)).digest("hex") : null;
+}
 import { readApiState, updateApiState, type ApiState, type StoredDerivedAdd } from "./state.js";
 
 /** data/skill-implications.json: learned allow and deny entries (Ba's runtime data, gitignored with data/). */
@@ -55,6 +62,15 @@ export function updateLearned(dataDir: string, change: (l: LearnedImplications) 
   writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
   renameSync(tmp, path);
   return next;
+}
+
+/** A master version made by an automatic addition, its Undo or a Keep (review cards ignore it). */
+export function withDerivedRevision(s: ApiState, version: number): ApiState {
+  return { ...s, derivedRevisions: [...s.derivedRevisions.filter((v) => v !== version), version].slice(-500) };
+}
+
+export function recordDerivedRevision(dataDir: string, version: number): void {
+  updateApiState(dataDir, (s) => withDerivedRevision(s, version));
 }
 
 /** Deny the skills of derived facts Ba undid or deleted (§5.3): they are never derived again. */
@@ -120,7 +136,7 @@ export class DerivedFactStore implements DerivedFactSink {
       { now: ctx.now },
     );
     updateApiState(dataDir, (s) =>
-      saveAdd(s, {
+      saveAdd(withDerivedRevision(s, next.version), {
         version: next.version,
         previousVersion: current.version,
         at: ctx.now.toISOString(),
@@ -130,6 +146,7 @@ export class DerivedFactStore implements DerivedFactSink {
         taskId: ctx.task ? ctx.task.id : null,
         facts: facts.map((f) => ({ id: f.id, text: f.text })),
         undoneAt: null,
+        fileSha256: null,
       }),
     );
     const learned = learnedAllowFrom(accepted, table, ctx.now);
@@ -138,6 +155,11 @@ export class DerivedFactStore implements DerivedFactSink {
     if (!readMasterCvHistory(dataDir, current.version)) keepMasterCvVersionSync(dataDir, current);
     writeMasterCvSync(dataDir, next);
     keepMasterCvVersionSync(dataDir, next);
+    const sha = masterFileSha256(dataDir);
+    updateApiState(dataDir, (s) => {
+      const add = s.derivedAdds[String(next.version)];
+      return add ? { ...s, derivedAdds: { ...s.derivedAdds, [String(next.version)]: { ...add, fileSha256: sha } } } : s;
+    });
     return { added: facts, dropped: rejected, version: next.version };
   }
 }
@@ -182,15 +204,17 @@ export type UndoOutcome =
   | { kind: "ok"; cv: MasterCv; restoredTo: number | null; removed: { id: string; text: string }[]; add: StoredDerivedAdd };
 
 /**
- * POST /master-cv/derived/undo (§5.8): the addition that made `version`. Still the latest revision:
- * the content of the revision before, exactly (REQ-18.AC-2). Otherwise: a new revision without
- * exactly the facts it added (Ba's and other branches' later changes stay). Versions only go up.
+ * POST /master-cv/derived/undo (§5.8): the addition that made `version`. Still the latest revision,
+ * and the file is byte for byte what it wrote: the content of the revision before, exactly
+ * (REQ-18.AC-2). Otherwise (another save, or a hand edit of the YAML that kept the version): a new
+ * revision without exactly the facts it added, so no later change is lost. Versions only go up.
  */
 export function undoDerivedAdd(dataDir: string, current: MasterCv, version: number): UndoOutcome {
   const add = readApiState(dataDir).derivedAdds[String(version)];
   if (!add || add.undoneAt !== null) return { kind: "not_undoable" };
   const ids = new Set(add.facts.map((f) => f.id));
-  if (current.version === add.version) {
+  const untouched = add.fileSha256 === null || add.fileSha256 === masterFileSha256(dataDir);
+  if (current.version === add.version && untouched) {
     const before = readMasterCvHistory(dataDir, add.previousVersion);
     const content = before ?? { ...current, facts: current.facts.filter((f) => !ids.has(f.id)) };
     return { kind: "ok", cv: { ...content, version: current.version + 1 }, restoredTo: add.previousVersion, removed: add.facts, add };

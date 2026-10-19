@@ -23,7 +23,7 @@ import type { FastifyInstance } from "fastify";
 import { deleteSavedAnswer, listSavedAnswers, mappers } from "../../db/index.js";
 import { emitEvent, requireDb, requireEngine, type ApiContext } from "../context.js";
 import { conflict, notFound } from "../errors.js";
-import { denyDerived, derivedFactsRemoved, derivedFactsView, keepDerivedFact, markUndone, undoDerivedAdd } from "../derived-facts.js";
+import { recordDerivedRevision, denyDerived, derivedFactsRemoved, derivedFactsView, keepDerivedFact, markUndone, undoDerivedAdd } from "../derived-facts.js";
 import { factDraftView, masterBefore, pendingFactDraft, readFactDraft, reopen, saveFactDraft, undoableDraft } from "../fact-drafts.js";
 import { keepValid, parseWith, respond } from "../http.js";
 import { keepMasterCvVersion, listMasterCvVersions, readMasterCv, readMasterCvVersion, writeMasterCv } from "../master-cv.js";
@@ -155,6 +155,7 @@ export function masterCvRoutes(app: FastifyInstance, ctx: ApiContext): void {
     await keepMasterCvVersion(dataDir, outcome.cv);
     denyDerived(dataDir, removed, now);
     markUndone(dataDir, body.version, now);
+    recordDerivedRevision(dataDir, outcome.cv.version);
     if (ctx.db) emitEvent(ctx, { type: "master_cv.updated", version: outcome.cv.version, change: "derived_undo", factIds: outcome.removed.map((f) => f.id), taskId: outcome.add.taskId === null ? null : String(outcome.add.taskId) });
     return respond(DerivedUndoResultSchema, { cv: outcome.cv, restoredTo: outcome.restoredTo, removed: outcome.removed });
   });
@@ -173,6 +174,7 @@ export function masterCvRoutes(app: FastifyInstance, ctx: ApiContext): void {
     if (outcome.kind === "not_derived") throw conflict(`${req.params.factId} is your own fact, not one added automatically`, { reason: "not_derived" });
     await writeMasterCv(dataDir, outcome.cv);
     await keepMasterCvVersion(dataDir, outcome.cv);
+    recordDerivedRevision(dataDir, outcome.cv.version);
     if (ctx.db) emitEvent(ctx, { type: "master_cv.updated", version: outcome.cv.version, change: "derived_keep", factIds: [outcome.fact.id], taskId: null });
     return respond(MasterCvSchema, outcome.cv);
   });

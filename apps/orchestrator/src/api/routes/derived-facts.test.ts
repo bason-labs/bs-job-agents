@@ -2,7 +2,7 @@
 // as new versions (history kept), records the addition and learns implications; Undo restores the
 // version before (or removes exactly the added facts when other changes came after), Keep
 // re-anchors a flagged fact or makes it Ba's own, and Undo or Delete deny the skill for good.
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CSRF_HEADER,
@@ -16,7 +16,7 @@ import {
   type MasterCv,
 } from "@bs-job-agents/shared";
 import { masterCvFixture, researchFitFixture, researchScanFixture } from "@bs-job-agents/shared/fixtures";
-import { parse } from "yaml";
+import { parse, stringify } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
 import { listEvents } from "../../db/index.js";
 import { fake } from "../../engine/testing/fake-runner.js";
@@ -102,6 +102,19 @@ describe("DerivedFactStore through a job-scan (REQ-14, REQ-15, REQ-18)", () => {
     const undo = DerivedUndoResultSchema.parse((await h.post("/master-cv/derived/undo", { version: 2 })).json());
     expect(undo).toMatchObject({ restoredTo: null, removed: [{ id: "f-d1", text: "Redux" }] });
     expect(onDisk(h)).toMatchObject({ version: 4, facts: [f12, { ...f3, textVi: "Xây dựng cổng khách hàng" }] });
+  });
+
+  it("QA 7: Undo after a hand edit of the YAML that kept the version removes only the added facts; his edit stays", async () => {
+    h = await setup();
+    await scanWith(h, ["Redux"]);
+    const v2 = onDisk(h);
+    const edited = { ...v2, headlineOptions: [{ en: "Edited by hand", vi: null }] };
+    writeFileSync(join(h.dataDir, "master-cv.yaml"), stringify(edited));
+    const undo = DerivedUndoResultSchema.parse((await h.post("/master-cv/derived/undo", { version: 2 })).json());
+    expect(undo).toMatchObject({ restoredTo: null, removed: [{ id: "f-d1", text: "Redux" }] });
+    expect(onDisk(h)).toMatchObject({ version: 3, headlineOptions: [{ en: "Edited by hand", vi: null }], facts: [f12, f3] });
+    // QA 6: the addition and its Undo are recorded as automatic versions (review cards ignore them).
+    expect(readApiState(h.dataDir).derivedRevisions).toEqual([2, 3]);
   });
 
   it("deleting a derived fact on the screen (a save without it) denies its skill", async () => {
