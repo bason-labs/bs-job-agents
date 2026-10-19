@@ -13,6 +13,7 @@ import {
   taskKey,
   type BotTaskKey,
   type CompanyProfile,
+  type CvDeriveInput,
   type CvDraft,
   type CvLanguage,
   type JobCandidate,
@@ -49,6 +50,8 @@ export interface InputRequest {
   gate?: GateInputs;
   /** qa.review in a gate. */
   checker?: { cvVersionId: number; pdfText: string; pdf?: VerifiedPdfFacts };
+  /** cv.derive: built by the derive step from the job's gaps and the master CV (derive.ts). */
+  derive?: CvDeriveInput;
 }
 
 export interface BuiltInput {
@@ -213,6 +216,10 @@ export function buildTaskInput(req: InputRequest): BuiltInput {
         }),
         jobId: job.id,
       };
+    }
+    case "cv.derive": {
+      if (!req.derive) throw invalidInput("cv.derive runs in the derive step, which builds its input");
+      return { input: validate(key, req.derive), jobId: Number(req.derive.jobId) };
     }
     default:
       // Bots added later: the resolved template input as is, validated when a schema exists.

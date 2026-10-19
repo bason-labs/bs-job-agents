@@ -1,10 +1,10 @@
 # job-scan (spec §7.2): scheduled or from chat.
 # Scan the sources, dedupe, score fit, keep the top jobs, then one pipeline per job:
-# company → CV ⇄ QA gate → Ba's review → Apply (needs the review's approval token) → record.
+# company → derive master facts → CV ⇄ QA gate → Ba's review → Apply (needs the review's approval token) → record.
 # Values starting with $ are templates the engine resolves ($params, $profile, $item, $steps.<key>.output).
 # Bump `version` with every change: runs keep the version they started with (§7, rule 3).
 name: job-scan
-version: 1
+version: 2
 description: Scan sources, score fit, then tailor, QA, review and apply per job.
 triggers: [chat, schedule]
 steps:
@@ -61,6 +61,17 @@ steps:
         name: $item.company
         website: $item.companyWebsite
     cacheDays: 30
+  # 6b derive (CV auto-extend): the job's gaps that Ba's facts support or imply become derived master
+  #    facts before tailoring: the implication table first (no LLM), then at most one tool-less
+  #    cv.derive task for what is left; none when the job has no gaps. Never fails the branch.
+  - key: derive
+    type: task
+    branch: top
+    task:
+      bot: cv
+      kind: derive
+      input:
+        job: $item
   # 7  gate cv.tailor ⇄ qa.review until total ≥ 80 and no hard fails, at most 3 rounds (VI JD: VI and EN)
   - key: tailor
     type: gate

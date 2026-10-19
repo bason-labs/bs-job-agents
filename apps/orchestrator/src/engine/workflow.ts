@@ -39,6 +39,7 @@ import {
 } from "../db/index.js";
 import { writeRecordStep } from "./apply.js";
 import { COMPANY_FAILED_PREVIEW, COMPANY_TASK_KEY, companyFailedOutput, isRerunMarked } from "./company.js";
+import { DERIVE_TASK_KEY, advanceDeriveStep, derivedInRun, derivedSummaryLine } from "./derive.js";
 import { RUN_SCOPE, loadRunCtx, templateScope, type RunCtx, type Scope } from "./context.js";
 import type { EngineCore } from "./core.js";
 import { EngineError, errorMessage } from "./errors.js";
@@ -100,6 +101,8 @@ function taskPreview(output: unknown): string | null {
 }
 
 function advanceTaskStep(core: EngineCore, ctx: RunCtx, step: TaskStep, scope: Scope): StepState {
+  // CV auto-extend: derive facts from Ba's own facts (table first, then at most one tool-less task).
+  if (taskKey(step.task.bot, step.task.kind) === DERIVE_TASK_KEY && scope.item) return advanceDeriveStep(core, ctx, step, scope);
   const row = getStepByKey(core.db, ctx.run.id, step.key, scope.branchKey);
   if (!row || row.status === "pending") {
     return guarded(core, ctx, step.key, scope, (tx) => {
@@ -505,7 +508,8 @@ function finishRun(core: EngineCore, ctx: RunCtx, status: "done" | "failed", sum
     if (status === "failed") {
       postNotice(core, tx, { text: `The ${what} failed: ${error ?? summary ?? "see the run"}.`, runId: ctx.run.id, once: "run-end" });
     } else if (!cardsNoticePosted(tx, ctx.run.id)) {
-      postNotice(core, tx, { text: `${what === "scan" ? "Scan" : "Run"} finished: ${endSummaryText(core, ctx, summary)}.`, runId: ctx.run.id, once: "run-end" });
+      const derived = derivedSummaryLine(derivedInRun(tx, ctx));
+      postNotice(core, tx, { text: `${what === "scan" ? "Scan" : "Run"} finished: ${endSummaryText(core, ctx, summary)}.${derived ? `\n${derived}` : ""}`, runId: ctx.run.id, once: "run-end" });
     }
   });
 }
@@ -543,9 +547,11 @@ function noticeCardsReady(core: EngineCore, ctx: RunCtx, passKey: string, branch
   });
   const n = cards.length;
   const more = passKey === "" ? "" : " more";
+  // CV auto-extend §5.10: one line per run about facts added automatically (the main pass's summary).
+  const derived = passKey === "" ? derivedSummaryLine(derivedInRun(core.db, ctx)) : null;
   core.db.transaction((tx) =>
     postNotice(core, tx, {
-      text: `🎯 ${n}${more} job${n === 1 ? "" : "s"} ready for review: ${parts.join(" · ")}.`,
+      text: `🎯 ${n}${more} job${n === 1 ? "" : "s"} ready for review: ${parts.join(" · ")}.${derived ? `\n${derived}` : ""}`,
       runId: ctx.run.id,
       cards: [{ type: "review_link", count: n }],
       once: key,

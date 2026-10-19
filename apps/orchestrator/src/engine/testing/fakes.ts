@@ -77,6 +77,10 @@ export class MemoryFileStore implements FileStore {
     return this.read(path) ?? null;
   }
 
+  async writeText(path: string, text: string): Promise<void> {
+    this.write(path, text);
+  }
+
   async readHead(path: string, bytes: number, _within?: string): Promise<Buffer | null> {
     const content = this.files.get(path);
     return content ? Buffer.from(content.subarray(0, bytes)) : null;

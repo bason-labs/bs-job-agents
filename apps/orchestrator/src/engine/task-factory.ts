@@ -14,7 +14,7 @@ export function ensureStepRow(conn: Conn, ctx: RunCtx, key: string, scope: Scope
   return getStepByKey(conn, ctx.run.id, key, scope.branchKey) ?? createStep(conn, { runId: ctx.run.id, stepKey: key, branchKey: scope.branchKey, status: "pending" });
 }
 
-export type TaskExtras = Pick<InputRequest, "item" | "gate" | "checker">;
+export type TaskExtras = Pick<InputRequest, "item" | "gate" | "checker" | "derive">;
 
 export function createWorkflowTask(
   core: EngineCore,

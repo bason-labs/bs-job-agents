@@ -48,6 +48,15 @@ export { approvalStatus, isDryRunSettled, type ApproveInput, type ApproveResult 
 export type { ConversationKind, ConversationRequest, ConversationResult, ConversationSink, ConversationSinkContext } from "./conversations.js";
 export type { AnswerInput } from "./apply.js";
 export { isFactDraftTask, screenFactDraft, type FactDraftResult, type FactDraftSink, type FactDraftSinkContext } from "./fact-drafts.js";
+export {
+  DERIVE_REJECTED_EVENT,
+  isDeriveTask,
+  type DeriveSource,
+  type DeriveStepOutput,
+  type DerivedAddResult,
+  type DerivedFactSink,
+  type DerivedFactSinkContext,
+} from "./derive.js";
 export { LEAD_TASK_KEYS, type LeadCaller, type LeadTools } from "./lead-tools.js";
 export { computeNextRunAt, type SchedulerTick } from "./scheduler.js";
 export { resolvePendingQuestion, validateBaAnswer, type QuestionContext, type QuestionResolution } from "./questions.js";

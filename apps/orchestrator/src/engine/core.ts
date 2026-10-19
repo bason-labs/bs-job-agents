@@ -5,6 +5,7 @@ import type { Conn, Db, Task } from "../db/index.js";
 import type { Runner } from "../runner/types.js";
 import type { EngineConfig, EnginePaths } from "./config.js";
 import type { ConversationSink } from "./conversations.js";
+import type { DerivedFactSink } from "./derive.js";
 import type { FactDraftSink } from "./fact-drafts.js";
 import type { EventBus } from "./events.js";
 import type { ScanOutputChecker } from "./scan-check.js";
@@ -52,6 +53,8 @@ export interface EngineDeps {
   conversations?: ConversationSink;
   /** Owner request 2026-10-11: the API adds cv.fact_draft results to the master CV, in the settle transaction. Optional. */
   factDrafts?: FactDraftSink;
+  /** CV auto-extend: the API appends derived facts to the master CV, in the engine's transaction. Optional (the derive step then does nothing). */
+  derivedFacts?: DerivedFactSink;
   /** PM3 S8: checks each research.scan output where it settles (W4a: src/adapters/**). Default: accept. */
   scanChecker?: ScanOutputChecker;
   /** W5: feed sources in a job scan, fetched by the orchestrator (no bot). Default: such a source fails, saying it is not wired. */

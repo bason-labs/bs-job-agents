@@ -1,7 +1,7 @@
 // Production implementations of the simplest ports: the system clock and a node:fs FileStore
 // built on W2c's PDF file tools (streamed SHA-256, verified copy).
 import { constants } from "node:fs";
-import { access, copyFile, mkdir, open, readFile, realpath } from "node:fs/promises";
+import { access, copyFile, mkdir, open, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, sep } from "node:path";
 import { copyFileVerified } from "../bridges/pdf/files.js";
 import { sha256File } from "../bridges/pdf/hash.js";
@@ -48,6 +48,10 @@ export const nodeFileStore: FileStore = {
       () => true,
       () => false,
     );
+  },
+  async writeText(path, text) {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, text, { mode: 0o600 });
   },
   async readText(path) {
     try {
