@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { ActivityResponseSchema } from "@bs-job-agents/shared";
 import { afterEach, describe, expect, it } from "vitest";
 import { defaultBotsDir } from "../../runner/config.js";
+import { setSkillRepairSource } from "../../db/index.js";
 import { MemorySkillFiles } from "../../engine/testing/index.js";
 import type { ScanOutputChecker } from "../../engine/scan-check.js";
 import { createApiHarness, type ApiHarness } from "../testing.js";
@@ -51,10 +52,21 @@ describe("skill repairs on the Activity screen (REQ-11)", () => {
     expect((await h.post("/skill-repairs/abc/restore")).statusCode).toBe(400);
   });
 
-  it("POST /skill-repairs/sources/:source/retry starts a repair from the last failure; an unknown source is 404, a bad key 400", async () => {
+  it("QA L1: a restore whose file write fails is 409, not 500", async () => {
+    const { h, skills } = await adopted();
+    const entry = ActivityResponseSchema.parse((await h.get("/activity")).json()).entries.find((e) => e.kind === "skill_adopted");
+    skills.failNextWrite = "disk full";
+    const res = await h.post(`/skill-repairs/${entry!.kind === "skill_adopted" ? entry!.repairId : ""}/restore`);
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ error: { code: "conflict", message: expect.stringMatching(/disk full/) } });
+  });
+
+  it("POST /skill-repairs/sources/:source/retry starts a repair from the last failure of a paused source; not paused 409, unknown 404, bad key 400", async () => {
     const { h } = await adopted();
     expect((await h.post("/skill-repairs/sources/itviec/retry")).statusCode).toBe(404);
     expect((await h.post("/skill-repairs/sources/..%2Fbot/retry")).statusCode).toBe(400);
+    expect((await h.post("/skill-repairs/sources/topcv/retry")).statusCode).toBe(409);
+    setSkillRepairSource(h.t.db, { source: "topcv", failures: 3, pausedAt: h.t.clock.now().toISOString() });
     const res = await h.post("/skill-repairs/sources/topcv/retry");
     expect(res.statusCode).toBe(200);
     expect(ActivityResponseSchema.parse(res.json()).entries.some((e) => e.kind === "skill_repairing" && e.source === "topcv")).toBe(true);

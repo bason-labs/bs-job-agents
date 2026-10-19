@@ -54,7 +54,7 @@ describe("the activity log (REQ-36)", () => {
   it("the mock backend serves the seed's rules as added entries, after the illustrative skill repairs", async () => {
     const entries = await createGuidanceData(testMock()).activity();
     expect(entries.filter((e) => e.kind === "rule_added")).toHaveLength(12);
-    expect(entries.slice(0, 2).map((e) => e.kind)).toEqual(["skill_adopted", "skill_not_adopted"]);
+    expect(entries.slice(0, 3).map((e) => e.kind)).toEqual(["skill_adopted", "skill_repair_paused", "skill_not_adopted"]);
   });
 });
 
@@ -157,5 +157,8 @@ describe("skill repairs in the activity log (REQ-11, sub-project 4 §7)", () => 
     await expect(data.restoreSkill("3")).rejects.toThrow(/latest adopted repair/);
     const retried = await data.retrySkillRepair("itviec");
     expect(retried[0]).toMatchObject({ kind: "skill_repairing", source: "itviec", status: "drafting" });
+    // QA L2: only a paused source, once.
+    await expect(data.retrySkillRepair("itviec")).rejects.toThrow(/not paused/);
+    await expect(data.retrySkillRepair("topcv")).rejects.toThrow(/not paused/);
   });
 });

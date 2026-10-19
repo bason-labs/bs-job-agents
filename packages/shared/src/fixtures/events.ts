@@ -107,6 +107,7 @@ export const sampleEvents: AppEvent[] = [
   { id: id(), at, type: "skill_repair.adopted", repairId: "1", source: "topcv", trigger: "adapter broken: no job cards on the results page", path: "bots/research/skills/source-topcv/SKILL.md", previousText: "old", newText: "new", notApplied: [{ file: "bots/research/bot.json", change: "new allowed site topcv.com.vn" }] },
   { id: id(), at, type: "skill_repair.not_adopted", repairId: "2", source: "topcv", trigger: "adapter broken: no job cards", reason: "the validation scan returned 0 jobs", draft: "new", notApplied: [] },
   { id: id(), at, type: "skill_repair.restored", repairId: "1", source: "topcv", trigger: "adapter broken: no job cards", path: "bots/research/skills/source-topcv/SKILL.md", previousText: "new", newText: "old" },
+  { id: id(), at, type: "skill_repair.restore_failed", repairId: "1", source: "topcv", trigger: "adapter broken: no job cards", reason: "disk full" },
   { id: id(), at, type: "skill_repair.paused", source: "topcv", failures: 3 },
   { id: id(), at, type: "source_api.changed", source: "itviec", method: "GET", host: "itviec.com", path: "/it-jobs/react-developer", reason: "itviec.com/it-jobs/react-developer answered HTTP 404" },
   { id: id(), at, type: "source_api.recovered", source: "itviec" },

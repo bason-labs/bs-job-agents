@@ -47,6 +47,17 @@ export function seedSkillActivity(): ActivityEntry[] {
     },
     {
       ...skillBase(),
+      id: "949",
+      at: "2026-10-19T08:31:00.000Z",
+      kind: "skill_repair_paused",
+      repairId: null,
+      source: "itviec",
+      sourceLabel: "ITviec",
+      reason: "3 attempts in a row were not adopted",
+      canRetry: true,
+    },
+    {
+      ...skillBase(),
       id: "950",
       at: "2026-10-19T08:30:00.000Z",
       kind: "skill_not_adopted",
@@ -126,11 +137,14 @@ export function restoreSkill(core: MockBackend, repairId: string): { entries: Ac
   return { entries: g.activity };
 }
 
-/** Mirrors POST /skill-repairs/sources/:source/retry: a new repair starts drafting. */
+/** Mirrors POST /skill-repairs/sources/:source/retry: only a paused source; a new repair starts drafting. */
 export function retrySkillRepair(core: MockBackend, source: string): { entries: ActivityEntry[] } {
   const g = stateOf(core);
   const last = g.activity.find((e): e is SkillRepairActivityEntry => e.kind.startsWith("skill") && "source" in e && e.source === source);
   if (!last) throw new ApiRequestError({ status: 404, code: "not_found", message: `there is no skill repair for ${source} to try again` });
+  if (!g.activity.some((e) => e.kind === "skill_repair_paused" && e.source === source && e.canRetry)) {
+    throw new ApiRequestError({ status: 409, code: "conflict", message: `automatic repair for ${last.sourceLabel} is not paused` });
+  }
   for (const e of g.activity) if (e.kind === "skill_repair_paused" && e.source === source) e.canRetry = false;
   g.activity = [{ ...skillBase(), id: `repair-${g.activity.length}`, at: core.nowIso(), kind: "skill_repairing", repairId: null, source, sourceLabel: last.sourceLabel, trigger: last.trigger, status: "drafting" }, ...g.activity];
   return { entries: g.activity };

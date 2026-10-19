@@ -64,6 +64,8 @@ export const REPAIR_BOT = "research";
 export const REPAIR_KIND = "repair";
 /** Automatic attempts per source in 24 hours (Ba's "Try repair again" does not count). */
 export const SKILL_REPAIR_DAILY_CAP = 2;
+/** Ba's "Try repair again" per source in 24 hours: its own cap, apart from the automatic one (QA L2). */
+export const SKILL_REPAIR_RETRY_DAILY_CAP = 1;
 /** Consecutive attempts not adopted before automatic repair of a source pauses (SEC-13). */
 export const SKILL_REPAIR_PAUSE_AFTER = 3;
 const DAY_MS = 24 * 3600_000;
@@ -426,11 +428,20 @@ export function reconcileSkillRepairs(core: EngineCore): void {
 
 // ---------------------------------------------------------------- Ba's actions
 
-/** Ba's "Try repair again" on a paused source: lift the pause and start a repair from its last failure. */
+/**
+ * Ba's "Try repair again" on a paused source (QA L2): only while it is paused, at most
+ * SKILL_REPAIR_RETRY_DAILY_CAP per source in 24 hours (its own cap; automatic attempts keep theirs).
+ * It lifts the pause and starts a repair from the source's last failure.
+ */
 export function retrySkillRepair(core: EngineCore, source: string): StartResult {
   const result = core.db.transaction((tx) => {
     const last = listSkillRepairs(tx, { source }).at(-1);
     if (!last) throw new SkillRepairActionError("not_found", `there is no skill repair for ${source} to try again`);
+    if (getSkillRepairSource(tx, source).pausedAt === null) throw new SkillRepairActionError("conflict", `automatic repair for ${sourceLabel(source)} is not paused`);
+    const since = new Date(core.now().getTime() - DAY_MS).toISOString();
+    if (countSkillRepairsSince(tx, source, since, { manual: true }) >= SKILL_REPAIR_RETRY_DAILY_CAP) {
+      throw new SkillRepairActionError("conflict", `"Try repair again" was used for ${sourceLabel(source)} in the last 24 hours; try tomorrow`);
+    }
     setSkillRepairSource(tx, { source, failures: 0, pausedAt: null });
     return startRepair(core, tx, { source, trigger: last.trigger, taskId: last.taskId, runId: null, manual: true });
   });
@@ -470,12 +481,22 @@ export function restoreSkill(core: EngineCore, repairId: number): void {
   if (!restorable(core.db, skills, r)) {
     throw new SkillRepairActionError("conflict", "only the latest adopted repair can be restored, while the skill file still holds its text");
   }
-  skills.write(r.source, r.previousMd!);
+  // SEC-14 (QA L1): the entry first, then the file; a failed write is logged and the file is unchanged.
   core.db.transaction((tx) => {
     updateSkillRepair(tx, r.id, { restoredAt: core.now().toISOString() });
     core.bus.emit(tx, { type: "skill_repair.restored", repairId: String(r.id), source: r.source, trigger: r.trigger, path: skills.pathOf(r.source), previousText: r.draftMd!, newText: r.previousMd! });
   });
   core.bus.flush();
+  try {
+    skills.write(r.source, r.previousMd!);
+  } catch (err) {
+    core.db.transaction((tx) => {
+      updateSkillRepair(tx, r.id, { restoredAt: null });
+      core.bus.emit(tx, { type: "skill_repair.restore_failed", repairId: String(r.id), source: r.source, trigger: r.trigger, reason: errorMessage(err) });
+    });
+    core.bus.flush();
+    throw new SkillRepairActionError("conflict", `the previous skill could not be written back: ${errorMessage(err)}`);
+  }
 }
 
 // ---------------------------------------------------------------- the Activity screen
@@ -487,7 +508,15 @@ export function skillRepairActivity(db: Db, skills: SkillFiles | null): (SkillRe
   const out: (SkillRepairActivityEntry | SourceApiActivityEntry)[] = [];
   const rows = new Map(listSkillRepairs(db).map((r) => [r.id, r]));
   const events = listEvents(db, {
-    types: ["skill_repair.adopted", "skill_repair.not_adopted", "skill_repair.restored", "skill_repair.paused", "source_api.changed", "source_api.recovered"],
+    types: ["skill_repair.adopted", "skill_repair.not_adopted", "skill_repair.restored", "skill_repair.restore_failed", "skill_repair.paused", "source_api.changed", "source_api.recovered"],
+  });
+  // A restore whose write failed (the next restore event of its repair is restore_failed) is not shown as restored.
+  const failedRestore = new Set<number>();
+  events.forEach((e, i) => {
+    if (e.type !== "skill_repair.restored") return;
+    const id = (e.payload as { repairId?: unknown }).repairId;
+    const next = events.slice(i + 1).find((x) => (x.type === "skill_repair.restored" || x.type === "skill_repair.restore_failed") && (x.payload as { repairId?: unknown }).repairId === id);
+    if (next?.type === "skill_repair.restore_failed") failedRestore.add(i);
   });
   // One entry per attempt: its last outcome (an "adopted" entry followed by "not adopted" when the write failed).
   const lastOutcome = new Map<string, number>();
@@ -526,6 +555,7 @@ export function skillRepairActivity(db: Db, skills: SkillFiles | null): (SkillRe
         return;
       }
       case "skill_repair.restored":
+        if (failedRestore.has(i)) return;
         out.push({ ...base, ...common, kind: "skill_restored", repairId: String(p.repairId), trigger: String(p.trigger ?? ""), path: String(p.path ?? ""), previousText: String(p.previousText ?? ""), newText: String(p.newText ?? "") });
         return;
       case "skill_repair.paused": {

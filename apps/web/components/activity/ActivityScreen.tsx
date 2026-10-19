@@ -17,7 +17,7 @@ import { cn } from "@/lib/cn";
 import { useGuidanceData, type GuidanceData } from "@/components/guidance/data";
 import { safeHref, sourceName, timeLabel } from "@/components/guidance/model";
 
-const REFRESH_TYPES = new Set(["guidance.rule_added", "guidance.rule_changed", "skill_repair.progress", "skill_repair.adopted", "skill_repair.not_adopted", "skill_repair.restored", "skill_repair.paused", "source_api.changed", "source_api.recovered"]);
+const REFRESH_TYPES = new Set(["guidance.rule_added", "guidance.rule_changed", "skill_repair.progress", "skill_repair.adopted", "skill_repair.not_adopted", "skill_repair.restored", "skill_repair.restore_failed", "skill_repair.paused", "source_api.changed", "source_api.recovered"]);
 
 export function ActivityLive() {
   const data = useGuidanceData();

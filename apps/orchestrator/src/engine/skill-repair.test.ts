@@ -9,7 +9,7 @@ import { resolveSelfCheckItems, type SkillRepairActivityEntry } from "@bs-job-ag
 import { researchScanFixture } from "@bs-job-agents/shared/fixtures";
 import { afterEach, describe, expect, it } from "vitest";
 import { SkillStore } from "../adapters/skill-store/index.js";
-import { createTask, failTask, getSkillRepairSource, insertSkillRepair, listJobs, listSkillRepairs, updateSkillRepair } from "../db/index.js";
+import { createTask, failTask, getSkillRepairSource, setSkillRepairSource, insertSkillRepair, listJobs, listSkillRepairs, updateSkillRepair } from "../db/index.js";
 import { defaultBotsDir } from "../runner/config.js";
 import type { RunnerTask } from "../runner/types.js";
 import type { ScanOutputChecker } from "./scan-check.js";
@@ -433,6 +433,24 @@ describe("Ba's actions (§5.6, §5.7)", () => {
     expect(() => restoreSkill(t.engine, r!.id)).toThrow(SkillRepairActionError);
   });
 
+  it("QA L1 (SEC-14): restore logs first; a failed write is logged, refused as a conflict, and leaves the file and the Restore button as they were", async () => {
+    const { t, skills } = await engine();
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    const adopted = skills.read("topcv");
+    (skills as MemorySkillFiles).failNextWrite = "disk full";
+    expect(() => restoreSkill(t.engine, repairs(t)[0]!.id)).toThrow(expect.objectContaining({ code: "conflict", message: expect.stringMatching(/disk full/) }));
+    expect(skills.read("topcv")).toBe(adopted);
+    expect(t.allEvents().filter((e) => e.type.startsWith("skill_repair.restore")).map((e) => e.type)).toEqual(["skill_repair.restored", "skill_repair.restore_failed"]);
+    const entries = activity(t.db, skills);
+    expect(entries.some((e) => e.kind === "skill_restored")).toBe(false);
+    expect(entries.find((e) => e.kind === "skill_adopted")!.canRestore).toBe(true);
+    // A second try that works is shown.
+    restoreSkill(t.engine, repairs(t)[0]!.id);
+    expect(skills.read("topcv")).toBe(TOPCV);
+    expect(activity(t.db, skills).filter((e) => e.kind === "skill_restored")).toHaveLength(1);
+  });
+
   it("no restore after a developer edited the file", async () => {
     const { t, skills } = await engine();
     t.engine.startWorkflow(START, { trigger: "chat" });
@@ -457,6 +475,22 @@ describe("Ba's actions (§5.6, §5.7)", () => {
     expect(repairs(t).at(-1)).toMatchObject({ status: "adopted", manual: true });
     expect(skills.read("topcv")).not.toBe(TOPCV);
     expect(() => retrySkillRepair(t.engine, "itviec")).toThrow(SkillRepairActionError);
+  });
+
+  it("QA L2: 'Try repair again' needs a paused source and has its own cap of 1 per source in 24 hours", async () => {
+    const { t } = await engine();
+    t.runner.script({ bot: "research", kind: "scan", when: (task) => isValidation(task.input), result: scanWith([]) });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(() => retrySkillRepair(t.engine, "topcv")).toThrow(expect.objectContaining({ code: "conflict", message: expect.stringMatching(/not paused/) }));
+    setSkillRepairSource(t.db, { source: "topcv", failures: 3, pausedAt: t.clock.now().toISOString() });
+    expect(retrySkillRepair(t.engine, "topcv")).toBe("started");
+    await t.idle();
+    setSkillRepairSource(t.db, { source: "topcv", failures: 3, pausedAt: t.clock.now().toISOString() });
+    expect(() => retrySkillRepair(t.engine, "topcv")).toThrow(expect.objectContaining({ code: "conflict", message: expect.stringMatching(/last 24 hours/) }));
+    t.clock.advance(24 * 3600_000 + 1);
+    expect(retrySkillRepair(t.engine, "topcv")).toBe("started");
+    await t.idle();
   });
 });
 

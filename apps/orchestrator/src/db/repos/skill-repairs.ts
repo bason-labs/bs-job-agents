@@ -63,12 +63,12 @@ export function latestSkillRepair(db: Conn, source: string): SkillRepair | undef
   return db.select().from(skillRepairs).where(eq(skillRepairs.source, source)).orderBy(desc(skillRepairs.id)).limit(1).get();
 }
 
-/** Automatic attempts (not Ba's retries) for a source created at or after `sinceIso`. */
-export function countSkillRepairsSince(db: Conn, source: string, sinceIso: string): number {
+/** Attempts for a source created at or after `sinceIso`: automatic ones, or Ba's retries (`manual`). */
+export function countSkillRepairsSince(db: Conn, source: string, sinceIso: string, opts: { manual?: boolean } = {}): number {
   return db
     .select({ id: skillRepairs.id })
     .from(skillRepairs)
-    .where(and(eq(skillRepairs.source, source), gte(skillRepairs.createdAt, sinceIso), eq(skillRepairs.manual, false)))
+    .where(and(eq(skillRepairs.source, source), gte(skillRepairs.createdAt, sinceIso), eq(skillRepairs.manual, opts.manual ?? false)))
     .all().length;
 }
 

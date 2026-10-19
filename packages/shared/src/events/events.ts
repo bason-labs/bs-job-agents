@@ -251,6 +251,8 @@ export const AppEventSchema = z.discriminatedUnion("type", [
   ev("skill_repair.adopted", { ...skillRepairRef, path: z.string(), previousText: z.string(), newText: z.string(), notApplied: z.array(NotAppliedSchema) }),
   ev("skill_repair.not_adopted", { ...skillRepairRef, reason: z.string(), draft: z.string().nullable(), notApplied: z.array(NotAppliedSchema) }),
   ev("skill_repair.restored", { ...skillRepairRef, path: z.string(), previousText: z.string(), newText: z.string() }),
+  /** SEC-14 (QA L1): a restore logged first whose file write then failed; the skill is unchanged. */
+  ev("skill_repair.restore_failed", { ...skillRepairRef, reason: z.string() }),
   ev("skill_repair.paused", { source: z.string().min(1), failures: z.number().int().positive() }),
   /**
    * Skill self-repair §5.8 (additive): a board's API path broke (404/410 on a listed endpoint, a
