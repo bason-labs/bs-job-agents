@@ -24,7 +24,9 @@ import {
   DEFAULT_TIMEZONE,
   type CompanyProfile,
   type CvLanguage,
-  type FactRequest,
+  type CvFactRequest,
+  type GuidanceReviewResult,
+  type GuidanceRuleSet,
   type QaFix,
   type QaHardFail,
   type QaScores,
@@ -354,7 +356,7 @@ export const cvVersions = sqliteTable(
     pdfSha256: text("pdf_sha256"),
     // Extras (not in §9): CvDraft.changeNotes and factRequests (§5.2 CV, §6.1).
     changeNotes: text("change_notes_json", { mode: "json" }).$type<string[]>().notNull().default([]),
-    factRequests: text("fact_requests_json", { mode: "json" }).$type<FactRequest[]>().notNull().default([]),
+    factRequests: text("fact_requests_json", { mode: "json" }).$type<CvFactRequest[]>().notNull().default([]),
     masterVersion: integer("master_version"),
     promptVersion: integer("prompt_version"),
     createdAt: createdAt(),
@@ -666,4 +668,45 @@ export const events = sqliteTable(
     index("events_run_idx").on(t.runId, t.id),
     index("events_type_idx").on(t.type),
   ],
+);
+
+// ---------------------------------------------------------------------------
+// CV guidance (sub-project 3; AD-10, AD-13). Extras (not in §9).
+
+/**
+ * Append-only rule-set snapshots (AD-10): the current set is the highest snapshot. Only
+ * db/repos/guidance.ts reads or writes this table; rows are never updated or deleted.
+ */
+export const guidanceRuleSets = sqliteTable("guidance_rule_sets", {
+  snapshot: integer("snapshot").primaryKey(),
+  runId: integer("run_id"),
+  ruleSet: text("rule_set_json", { mode: "json" }).$type<GuidanceRuleSet>().notNull(),
+  createdAt: createdAt(),
+});
+
+/**
+ * Ba's guidance settings and the refresh bookkeeping (one row, id 1): the rules he turned off
+ * (§5.9), when discovery last ran, and the refresh lock (one refresh at a time across runs).
+ */
+export const guidanceSettings = sqliteTable("guidance_settings", {
+  id: integer("id").primaryKey(),
+  turnedOff: text("turned_off_json", { mode: "json" }).$type<string[]>().notNull().default([]),
+  lastDiscoveryAt: text("last_discovery_at"),
+  lockRunId: integer("lock_run_id"),
+  lockAt: text("lock_at"),
+});
+
+/** One guidance review per stored CV round (AD-13): the snapshot it used and the result. */
+export const guidanceReviews = sqliteTable(
+  "guidance_reviews",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    cvVersionId: integer("cv_version_id")
+      .notNull()
+      .references(() => cvVersions.id),
+    snapshot: integer("snapshot"),
+    result: text("result_json", { mode: "json" }).$type<GuidanceReviewResult>().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("guidance_reviews_cv_idx").on(t.cvVersionId)],
 );

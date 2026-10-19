@@ -2,9 +2,12 @@
 // Figma fake builds real ProtectedPagesFingerprint objects with W2c's pure buildFingerprint, so
 // the engine's diff runs W2c's real diffFingerprints.
 import { createHash } from "node:crypto";
+import { parse as parseYaml } from "yaml";
 import {
   BotDefinitionSchema,
+  MasterCvSchema,
   WorkflowDefinitionSchema,
+  type MasterCv,
   type BotDefinition,
   type BotDefinitionInput,
   type Engine,
@@ -250,13 +253,25 @@ export class FakeMasterCv implements MasterCvSource {
 
   constructor(
     readonly path: string,
-    files?: MemoryFileStore,
+    private readonly files?: MemoryFileStore,
   ) {
     files?.write(path, "version: 3\nfacts:\n  - id: grad-1\n    type: experience\n    text: Owned a React/Node.js app\n");
   }
 
   version(): number | null {
     return this.current;
+  }
+
+  /** CV guidance: the master CV as the file holds it (null when it does not parse). */
+  read(): MasterCv | null {
+    const text = this.files?.read(this.path);
+    if (!text) return null;
+    try {
+      const parsed = MasterCvSchema.safeParse(parseYaml(text));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
   }
 }
 

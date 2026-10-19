@@ -135,3 +135,7 @@ export function latestQaReview(db: Conn, cvVersionId: number): QaReview | undefi
     .limit(1)
     .get();
 }
+
+export function getQaReview(db: Conn, id: number): QaReview | undefined {
+  return db.select().from(qaReviews).where(eq(qaReviews.id, id)).get();
+}

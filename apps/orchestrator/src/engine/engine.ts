@@ -51,6 +51,7 @@ import { noticeNeedsCheck, noticeTaskFailed } from "./notices.js";
 import { emitSafetyDenied, failTaskNow, postLeadMessage } from "./task-events.js";
 import { UsageWatcher } from "./usage.js";
 import { advanceRun } from "./workflow.js";
+import { ensureGuidanceSeed, guidancePending } from "./guidance-refresh.js";
 
 export interface StartWorkflowOptions {
   trigger: RunTrigger;
@@ -162,6 +163,7 @@ export class Engine implements EngineCore {
     // Recovery marks every running task interrupted: never while this engine runs tasks itself.
     if (this.running) throw new EngineError("conflict", "the engine is already started");
     this.syncBots();
+    this.seedGuidance();
     await this.seedMemory();
     // UC-18 and S1: recovery and Lead's reports of it in one transaction.
     const r = this.db.transaction((tx) => {
@@ -233,6 +235,15 @@ export class Engine implements EngineCore {
     });
   }
 
+  /** CV guidance (AD-10): the seed rules the store lacks, committed through the screen and commit path. */
+  private seedGuidance(): void {
+    try {
+      this.db.transaction((tx) => ensureGuidanceSeed(this, tx));
+    } catch (err) {
+      this.log.warn(`could not commit the CV guidance seed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   /** PM2 S5: memory.md is gitignored; create each bot's missing file. Best effort: notes are appended later anyway. */
   private async seedMemory(): Promise<void> {
     const memory = this.deps.memory;
@@ -257,6 +268,11 @@ export class Engine implements EngineCore {
   async idle(): Promise<void> {
     for (;;) {
       await this.queue.idle();
+      const guidance = guidancePending(this);
+      if (guidance.length > 0) {
+        await Promise.all(guidance);
+        continue;
+      }
       const poll = this.bridges.pending();
       if (!poll) return;
       await poll;

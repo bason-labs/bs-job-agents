@@ -11,7 +11,7 @@ import type { RunCtx } from "./context.js";
 import type { JoinStepOutput } from "./state.js";
 
 /** Task kinds whose output may report an injection attempt. */
-export const INJECTION_REPORTING_TASKS: readonly string[] = ["apply.submit", "research.scan", "research.single", "research.file"];
+export const INJECTION_REPORTING_TASKS: readonly string[] = ["apply.submit", "research.scan", "research.single", "research.file", "research.guidance_extract"];
 
 /** The bot's report, or null when it suspects nothing (or its kind cannot report). */
 export function reportedInjection(key: string, output: unknown): { note: string | null } | null {

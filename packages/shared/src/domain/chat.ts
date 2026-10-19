@@ -42,6 +42,8 @@ export type ChatMode = z.infer<typeof ChatModeSchema>;
 export const MessageCardSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("run"), runId: IdSchema }),
   z.object({ type: z.literal("review_link"), count: z.number().int().nonnegative() }),
+  /** CV guidance (additive, scan-notices.md): "Open the CV guidance" on a failed-refresh notice. */
+  z.object({ type: z.literal("guidance_link") }),
   z.object({ type: z.literal("job"), jobId: IdSchema }),
   z.object({
     type: z.literal("question"),

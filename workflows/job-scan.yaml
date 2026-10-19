@@ -1,10 +1,10 @@
 # job-scan (spec §7.2): scheduled or from chat.
 # Scan the sources, dedupe, score fit, keep the top jobs, then one pipeline per job:
-# company → derive master facts → CV ⇄ QA gate → Ba's review → Apply (needs the review's approval token) → record.
+# (once per run: refresh the CV guidance rules) → company → derive master facts → CV ⇄ QA ⇄ guidance review gate → Ba's review → Apply (needs the review's approval token) → record.
 # Values starting with $ are templates the engine resolves ($params, $profile, $item, $steps.<key>.output).
 # Bump `version` with every change: runs keep the version they started with (§7, rule 3).
 name: job-scan
-version: 2
+version: 3
 description: Scan sources, score fit, then tailor, QA, review and apply per job.
 triggers: [chat, schedule]
 steps:
@@ -48,6 +48,18 @@ steps:
     options:
       threshold: $profile.fitThreshold
       take: $profile.maxJobs
+  # 5b guidance (CV guidance, AD-12): once per run, before any branch step. Code re-fetches the known
+  #    guidance pages (no LLM when nothing changed); a tool-less research.guidance_extract task reads
+  #    only changed or new pages; a URL-only research.guidance_discover runs at most weekly. Optional:
+  #    a failed refresh keeps the previous rule set and tailoring goes on. No top job, no refresh.
+  - key: guidance
+    type: task
+    task:
+      bot: research
+      kind: guidance_extract
+      input: {}
+    optional: true
+    skipIfEmpty: top
 
   # ── per selected job (parallel branches) ──
   # 6  research.company (a profile younger than 30 days is reused)
@@ -72,7 +84,10 @@ steps:
       kind: derive
       input:
         job: $item
-  # 7  gate cv.tailor ⇄ qa.review until total ≥ 80 and no hard fails, at most 3 rounds (VI JD: VI and EN)
+  # 7  gate cv.tailor ⇄ qa.review until total ≥ 80 and no hard fails, at most 3 rounds (VI JD: VI and EN).
+  #    CV guidance: a truth check before QA fails the attempt (not a round); the guidance checkers run
+  #    every round; cv.review runs only on a QA-passed round or the round handed to Ba; a fixable
+  #    guidance miss asks for another round within the 3.
   - key: tailor
     type: gate
     branch: top
@@ -88,6 +103,10 @@ steps:
       input:
         job: $item
         draft: $producer.output
+    reviewer:
+      bot: cv
+      kind: review
+      input: {}
     maxRounds: 3
     perLanguage: true
   # 8  human review: approve | request_changes(comment) → back to 7 | skip(reason)

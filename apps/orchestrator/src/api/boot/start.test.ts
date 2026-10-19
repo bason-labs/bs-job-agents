@@ -31,9 +31,11 @@ function setup(over: Partial<OrchestratorConfig> = {}): OrchestratorConfig {
   return { ...resolveConfig({}), port: 0, dataDir: join(root, "data"), botsDir, workflowsDir: join(ROOT, "workflows"), ...over };
 }
 
-function fakes(): Pick<StartOptions, "runners" | "figma" | "browser" | "lockWaitMs" | "shutdownGraceMs" | "notify"> {
+function fakes(): Pick<StartOptions, "runners" | "figma" | "browser" | "lockWaitMs" | "shutdownGraceMs" | "notify" | "guidance"> {
   const runner = new FakeRunner();
-  return { runners: { claude: runner, codex: runner }, figma: new FakeFigmaPort(new MemoryFileStore()), browser: new FakeBrowserProbe(), lockWaitMs: 0, shutdownGraceMs: 1000, notify: null };
+  // CV guidance pages are never fetched from the network in tests.
+  const guidance = { fetch: { fetchPages: async (reqs: readonly { url: string }[]) => reqs.map((r) => ({ url: r.url, status: "not_modified" as const })) } };
+  return { runners: { claude: runner, codex: runner }, figma: new FakeFigmaPort(new MemoryFileStore()), browser: new FakeBrowserProbe(), lockWaitMs: 0, shutdownGraceMs: 1000, notify: null, guidance };
 }
 
 async function start(config: OrchestratorConfig, extra: Partial<StartOptions> = {}): Promise<Orchestrator> {
