@@ -114,7 +114,22 @@ function wordsOf(text: string): string[] {
 
 /** Tokens the claim checks own (numbers, number words, months, titles): the word check skips them. */
 const claimToken = (w: string): boolean =>
-  /^[\d.,%+x]+$/.test(w) || MONTHS.has(w) || CLAIM_WORDS.has(w) || claimsIn(w).numbers.length > 0 || claimsIn(w).months.length > 0 || titlesIn(w).length > 0;
+  /^[\d.,%+x]+$/.test(w) || titleWordsIn(w).length > 0 || MONTHS.has(w) || CLAIM_WORDS.has(w) || claimsIn(w).numbers.length > 0 || claimsIn(w).months.length > 0 || titlesIn(w).length > 0;
+/** Words that read as a job title or a seniority claim (EN and VI), compared as written in the role. */
+const TITLE_WORDS = /\b(?:leads?|leading|leaders?|led|heads?|headed|managers?|managed|managing|manages?|senior|sr|junior|jr|principal|staff|chief|directors?|directed|owners?|owning|owned|architects?|architected|cto|ceo|cio|vp|founders?|co-founder|engineers?|developers?|interns?)\b|trưởng nhóm|trưởng phòng|trưởng|quản lý|giám đốc|kiến trúc sư|cao cấp|kỹ sư|lập trình viên|thực tập sinh|sáng lập/giu;
+
+export function titleWordsIn(text: string): string[] {
+  return [...new Set([...text.normalize("NFKC").toLowerCase().matchAll(TITLE_WORDS)].map((m) => m[0]))];
+}
+
+/** A role fact's title: "Frontend Engineer" in "Frontend Engineer at Gradion" (needs the fact's org), else null. */
+export function roleTitleOf(f: Pick<Fact, "text" | "org">): string | null {
+  if (!f.org) return null;
+  const org = f.org.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = new RegExp(`^\\s*(.+?)\\s+(?:at|tại|@|[-–—,])\\s+${org}\\b`, "iu").exec(f.text.normalize("NFKC"));
+  return m ? m[1]!.trim() : null;
+}
+
 /** Words the duration and date checks read ("since 2021", "tháng 6"). */
 const CLAIM_WORDS = new Set(["since", "present", "từ", "tháng", "năm", "hiện", "tại"]);
 /** Letters that are neither Latin (English, Vietnamese) nor shared punctuation, digits and marks. */
@@ -196,13 +211,17 @@ export function screenDerivedFacts(drafts: readonly DeriveCandidate[], ctx: Deri
       }
       // Names: a tool, product or employer that is neither the requirement, in the cited facts,
       // nor a skill the table says the cited facts imply.
-      const implied = ctx.table.implications.filter((i) => i.impliedBy.some((by) => cited.some((f) => factNames(f, by, ctx.table))));
+      // A skill fact may name what the cited facts imply. A line about the work (experience,
+      // project) may name only an is_a implication of a term in the same cited fact ("CI/CD" for
+      // GitHub Actions); "used with" (Redux with React) would read as a claim of use.
+      const line = d.type !== "skill";
+      const implied = ctx.table.implications.filter((i) => (!line || i.kind === "is_a") && i.impliedBy.some((by) => cited.some((f) => factNames(f, by, ctx.table))));
       const citedText = cited.map((f) => [f.text, f.org ?? "", ...f.tags].join(" ")).join("\n");
       const named = new Set<string>();
       for (const field of [d.text, d.textVi ?? ""]) {
         for (const name of capitalisedNames(field)) {
           if (titlesIn(name).length > 0) continue;
-          const known = termIn(name, d.requirement) || termIn(name, citedText) || implied.some((i) => termIn(name, i.skill));
+          const known = (!line && termIn(name, d.requirement)) || termIn(name, citedText) || implied.some((i) => termIn(name, i.skill));
           if (!known) {
             note(`names “${name}”, which ${plural(citedIds)} not`);
             for (const w of wordsOf(name)) named.add(w);
@@ -212,10 +231,17 @@ export function screenDerivedFacts(drafts: readonly DeriveCandidate[], ctx: Deri
       // Every other word comes from the cited facts, the requirement or the skills they imply, in
       // any case ("for google", "hundreds of users", "Led a team", "Multi-year" fail).
       const allowed = new Set(
-        [...cited.flatMap((f) => [f.text, f.textVi ?? "", f.org ?? "", f.dates ?? "", ...f.tags]), d.requirement, ...implied.map((i) => i.skill)].flatMap(wordsOf).map(stem),
+        // The JD's own words only in a skill fact: in a line they would claim what Ba never wrote.
+        [...cited.flatMap((f) => [f.text, f.textVi ?? "", f.org ?? "", f.dates ?? "", ...f.tags]), ...(line ? [] : [d.requirement]), ...implied.map((i) => i.skill)].flatMap(wordsOf).map(stem),
       );
       const extra = (text: string) => wordsOf(text).filter((w) => !STOP_WORDS.has(w) && !claimToken(w) && !allowed.has(stem(w)));
       for (const w of extra(d.text)) if (!named.has(w)) note(`says “${w}”, which ${plural(citedIds)} not`);
+      // Title-like words ("Leads", "Leader", "Managed", "Staff") only from a cited role title
+      // ("Frontend Engineer at Gradion"); the same word in body text ("lead generation") does not count.
+      const titles = cited.map(roleTitleOf).filter((t): t is string => t !== null);
+      for (const field of [d.text, d.textVi ?? ""]) {
+        for (const w of titleWordsIn(field)) if (!titles.some((t) => titleWordsIn(t).includes(w))) note(`names the title “${w}”, which ${plural(citedIds)} not have as a role`);
+      }
       // Vietnamese wording with words its facts lack is dropped (the English line is kept).
       if (d.textVi && extra(d.textVi).length > 0) d = { ...d, textVi: d.type === "skill" ? d.text : null };
       const citedOrgs = new Set(cited.map((f) => f.org).filter((o): o is string => !!o).map(fold));

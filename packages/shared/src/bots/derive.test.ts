@@ -139,15 +139,15 @@ describe("screenDerivedFacts: invented details (SEC-15, REQ-27, REQ-28)", () => 
 
   it("names: no tool beyond the requirement, the cited facts and what the table says they imply", () => {
     expect(reasons(draft({ text: "Redux and Kubernetes", textVi: null }))).toEqual(["names “Kubernetes”, which f-3 does not"]);
-    // JavaScript is what the table says React implies, so it may appear beside the requirement.
-    expect(screen([draft({ type: "experience", text: "Redux in a React and JavaScript portal", textVi: null })]).accepted).toHaveLength(1);
+    // A skill fact may name what the table says its facts imply (JavaScript from React).
+    expect(screen([draft({ text: "Redux and JavaScript", textVi: null })]).accepted).toHaveLength(1);
   });
 
   it("adversarial forms: fullwidth digits, look-alike letters, a title in the tags, a number in the Vietnamese text", () => {
     expect(reasons(ci("CI/CD with GitHub Actions for １０ services"), ctx)).toEqual(["says 10, which f-12 does not say"]);
     expect(reasons(draft({ type: "experience", text: "Tech Lеad for the React portal", textVi: null }))).toContain("uses letters from another script");
     expect(reasons(draft({ textVi: "Redux cho 5 dịch vụ" }))).toEqual(["says 5, which f-3 does not say"]);
-    expect(reasons(draft({ type: "experience", text: "Redux on the React portal in May 2023", textVi: null }))).toEqual(["says 05/2023, which f-3 does not say"]);
+    expect(reasons(draft({ type: "experience", text: "The customer portal in React in May 2023", textVi: null }))).toEqual(["says 05/2023, which f-3 does not say"]);
     // The requirement's own numbers never become allowed ("3+ years of Redux" → only "Redux" passes).
     expect(reasons(draft({ requirement: "3+ years of Redux", text: "3 years of Redux", textVi: null }))).toEqual(["says 3 years, which f-3 does not say"]);
     expect(screen([draft({ requirement: "3+ years of Redux" })]).accepted).toHaveLength(1);
@@ -197,9 +197,9 @@ describe("screenDerivedFacts: invented details (SEC-15, REQ-27, REQ-28)", () => 
     ]) {
       expect(screen([line(text)]).accepted, text).toEqual([]);
     }
-    expect(screen([line("Built the customer portal in React and Next.js with Redux")]).accepted).toHaveLength(1);
+    expect(screen([line("Built the customer portal in React and Next.js")]).accepted).toHaveLength(1);
     // A Vietnamese line with words its facts lack is dropped, the English line kept.
-    const kept = screen([draft({ type: "experience", text: "Redux in the React portal", textVi: "Redux cho cổng khách hàng của google" })]).accepted;
+    const kept = screen([ci("CI/CD with GitHub Actions for 6 services", { textVi: "CI/CD cho 6 dịch vụ của google" })], ctx).accepted;
     expect(kept.map((d) => d.textVi)).toEqual([null]);
   });
 
@@ -214,6 +214,36 @@ describe("screenDerivedFacts: invented details (SEC-15, REQ-27, REQ-28)", () => 
     expect(own(fact("f-ae", "Built card tools at American Express"))).toEqual([]);
     expect(own(fact("f-sw", "Integrated SWIFT payments for the bank"))).toEqual([]);
     expect(own(fact("f-ok", "Built REST services with Express and PostgreSQL")).map((d) => d.implication.skill)).toEqual(["SQL", "Node.js"]);
+  });
+
+  it("QA A: the JD's own words are not allowed in a line about the work", () => {
+    expect(screen([draft({ requirement: "frontend architecture", type: "experience", text: "Built the customer portal in React, owning frontend architecture", textVi: null })]).accepted).toEqual([]);
+    expect(reasons(draft({ requirement: "frontend architecture", type: "experience", text: "Built the customer portal in React with frontend architecture", textVi: null }))).toContain("says “architecture”, which f-3 does not");
+  });
+
+  it("QA B: a line may name only an is_a implication of a term in the same fact; 'used with' stays a skill fact", () => {
+    expect(reasons(draft({ type: "experience", text: "Built the portal in React and Next.js with Redux", textVi: null }))).toContain("names “Redux”, which f-3 does not");
+    expect(screen([draft()]).accepted).toHaveLength(1);
+    expect(screen([ci("CI/CD with GitHub Actions for 6 services")], ctx).accepted).toHaveLength(1);
+    const eks = { requirement: "Kubernetes", type: "experience" as const, textVi: null, restsOn: [{ factId: "f-7", relation: "implied_from" as const }], fromTerms: ["EKS"] };
+    expect(screen([draft({ ...eks, text: "Deployed services on EKS (Kubernetes) with Docker" })]).accepted).toHaveLength(1);
+    expect(screen([draft({ ...eks, requirement: "container orchestration", text: "Deployed services on EKS with Docker for container orchestration" })]).accepted).toHaveLength(1);
+    // Two facts: an is_a term of one fact never licenses a claim about the other's tool.
+    expect(reasons(draft({ ...eks, restsOn: [{ factId: "f-7", relation: "implied_from" }, { factId: "f-3", relation: "implied_from" }], fromTerms: ["EKS", "React"], text: "Built the React portal with Redux on EKS" }))).toContain("names “Redux”, which f-7, f-3 do not");
+  });
+
+  it("QA C: a title word only from a cited role title, never from the same word in body text", () => {
+    const leadGen = fact("f-lg", "Built lead generation forms in React");
+    const lc = { cv: { facts: [...cv.facts, leadGen] }, table };
+    const line = (text: string) => draft({ requirement: "form building", type: "experience", text, textVi: null, restsOn: [{ factId: "f-lg", relation: "supports" }], fromTerms: ["React"] });
+    for (const text of ["Leads React forms", "Leader of React forms", "Built lead generation forms in React as Staff"]) {
+      expect(screenDerivedFacts([line(text)], lc).accepted, text).toEqual([]);
+    }
+    expect(screenDerivedFacts([line("Leads React forms")], lc).rejected[0]!.reasons).toContain("names the title “leads”, which f-lg does not have as a role");
+    // Strict: even the fact's own homonym is not a title it can lend ("lead generation").
+    expect(screenDerivedFacts([line("Built lead generation forms in React")], lc).accepted).toEqual([]);
+    expect(screenDerivedFacts([line("Built forms in React")], lc).accepted).toHaveLength(1);
+    expect(screenDerivedFacts([line("Trưởng nhóm React forms")], lc).accepted).toEqual([]);
   });
 
   it("SEC-15.AC-3: nothing beyond the cited facts passes", () => {

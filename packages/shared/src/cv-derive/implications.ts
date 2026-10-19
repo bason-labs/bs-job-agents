@@ -78,6 +78,7 @@ export const KNOWN_TERMS: readonly KnownTerm[] = [
   { name: "Docker", categories: OPS },
   { name: "Containerization", variants: ["containers", "containerisation"], categories: OPS },
   { name: "Kubernetes", variants: ["K8s"], categories: OPS },
+  { name: "Container orchestration", categories: OPS },
   { name: "EKS", variants: ["Amazon EKS", "AWS EKS"], categories: OPS },
   { name: "GKE", categories: OPS },
   { name: "AKS", categories: OPS },
@@ -155,46 +156,53 @@ export const KNOWN_TERMS: readonly KnownTerm[] = [
 export interface Implication {
   skill: string;
   impliedBy: readonly string[];
+  /**
+   * is_a: each impliedBy term is a kind of `skill` (EKS is Kubernetes, GitHub Actions is CI/CD), so a
+   * line about the fact may name it. related: commonly used with it (Redux with React): a skill
+   * fact only, never a claim of use in an experience line. Unsure → related.
+   */
+  kind: "is_a" | "related";
   /** Shown on the Master CV screen ("Why"). */
   rationale: string;
 }
 
 /** The seed (§5.3, §10): small and obvious; each one a relation a recruiter would not question. */
 export const SEED_IMPLICATIONS: readonly Implication[] = [
-  { skill: "Kubernetes", impliedBy: ["EKS", "GKE", "AKS", "OpenShift"], rationale: "EKS, GKE, AKS and OpenShift are managed Kubernetes." },
-  { skill: "Containerization", impliedBy: ["Docker", "Kubernetes", "EKS", "GKE", "AKS", "ECS", "OpenShift"], rationale: "Docker and Kubernetes services run containers." },
-  { skill: "Redux", impliedBy: ["React", "Next.js"], rationale: "Redux is the common state library for React and Next.js apps." },
-  { skill: "React", impliedBy: ["Next.js", "React Native"], rationale: "Next.js and React Native are built on React." },
-  { skill: "Vue", impliedBy: ["Nuxt"], rationale: "Nuxt is built on Vue." },
+  { skill: "Kubernetes", impliedBy: ["EKS", "GKE", "AKS", "OpenShift"], kind: "is_a", rationale: "EKS, GKE, AKS and OpenShift are managed Kubernetes." },
+  { skill: "Container orchestration", impliedBy: ["Kubernetes", "EKS", "GKE", "AKS", "OpenShift"], kind: "is_a", rationale: "Kubernetes and its managed services orchestrate containers." },
+  { skill: "Containerization", impliedBy: ["Docker", "Kubernetes", "EKS", "GKE", "AKS", "ECS", "OpenShift"], kind: "is_a", rationale: "Docker and Kubernetes services run containers." },
+  { skill: "Redux", impliedBy: ["React", "Next.js"], kind: "related", rationale: "Redux is the common state library for React and Next.js apps." },
+  { skill: "React", impliedBy: ["Next.js", "React Native"], kind: "related", rationale: "Next.js and React Native are built on React." },
+  { skill: "Vue", impliedBy: ["Nuxt"], kind: "related", rationale: "Nuxt is built on Vue." },
   {
     skill: "JavaScript",
     impliedBy: ["TypeScript", "React", "Vue", "Angular", "AngularJS", "Node.js", "Next.js", "Nuxt", "Express", "NestJS", "jQuery", "Svelte"],
-    rationale: "These are JavaScript languages, libraries or runtimes.",
+    kind: "related", rationale: "These are JavaScript languages, libraries or runtimes.",
   },
-  { skill: "HTML", impliedBy: ["React", "Vue", "Angular", "AngularJS", "Next.js", "Nuxt", "Svelte"], rationale: "Web UI frameworks render HTML." },
-  { skill: "CSS", impliedBy: ["React", "Vue", "Angular", "AngularJS", "Next.js", "Nuxt", "Svelte", "Tailwind", "Sass"], rationale: "Web UI work styles pages with CSS." },
-  { skill: "Node.js", impliedBy: ["Express", "NestJS"], rationale: "Express and NestJS are Node.js frameworks." },
-  { skill: "SQL", impliedBy: ["PostgreSQL", "MySQL", "MariaDB", "SQL Server", "Oracle Database", "SQLite"], rationale: "These are SQL databases." },
-  { skill: "NoSQL", impliedBy: ["MongoDB", "DynamoDB", "Redis", "Cassandra"], rationale: "These are NoSQL databases." },
+  { skill: "HTML", impliedBy: ["React", "Vue", "Angular", "AngularJS", "Next.js", "Nuxt", "Svelte"], kind: "related", rationale: "Web UI frameworks render HTML." },
+  { skill: "CSS", impliedBy: ["React", "Vue", "Angular", "AngularJS", "Next.js", "Nuxt", "Svelte", "Tailwind", "Sass"], kind: "related", rationale: "Web UI work styles pages with CSS." },
+  { skill: "Node.js", impliedBy: ["Express", "NestJS"], kind: "related", rationale: "Express and NestJS are Node.js frameworks." },
+  { skill: "SQL", impliedBy: ["PostgreSQL", "MySQL", "MariaDB", "SQL Server", "Oracle Database", "SQLite"], kind: "is_a", rationale: "These are SQL databases." },
+  { skill: "NoSQL", impliedBy: ["MongoDB", "DynamoDB", "Redis", "Cassandra"], kind: "is_a", rationale: "These are NoSQL databases." },
   {
     skill: "CI/CD",
     impliedBy: ["GitHub Actions", "GitLab CI", "Jenkins", "CircleCI", "Azure Pipelines", "Bitbucket Pipelines", "Travis CI"],
-    rationale: "These are CI/CD systems.",
+    kind: "is_a", rationale: "These are CI/CD systems.",
   },
-  { skill: "REST APIs", impliedBy: ["Spring Boot", "Express", "NestJS", "FastAPI", "Django REST Framework"], rationale: "These frameworks are used to build REST APIs." },
-  { skill: "Python", impliedBy: ["Django", "Flask", "FastAPI", "pytest"], rationale: "These are Python frameworks and tools." },
-  { skill: "Java", impliedBy: ["Spring Boot", "JUnit"], rationale: "Spring Boot and JUnit are Java frameworks." },
-  { skill: "Git", impliedBy: ["GitHub", "GitLab", "Bitbucket"], rationale: "GitHub, GitLab and Bitbucket host Git repositories." },
-  { skill: "AWS", impliedBy: ["EKS", "ECS", "EC2", "S3", "Lambda", "DynamoDB", "CloudFormation", "AWS CDK"], rationale: "These are AWS services." },
-  { skill: "GCP", impliedBy: ["GKE", "BigQuery", "Cloud Run"], rationale: "These are Google Cloud services." },
-  { skill: "Azure", impliedBy: ["AKS", "Azure Pipelines"], rationale: "These are Azure services." },
-  { skill: "Infrastructure as Code", impliedBy: ["Terraform", "CloudFormation", "Pulumi", "AWS CDK"], rationale: "These are infrastructure-as-code tools." },
-  { skill: "Unit testing", impliedBy: ["Jest", "Vitest", "Mocha", "JUnit", "pytest"], rationale: "These are unit-test frameworks." },
-  { skill: "E2E testing", impliedBy: ["Playwright", "Cypress", "Selenium"], rationale: "These are end-to-end test tools." },
-  { skill: "GraphQL", impliedBy: ["Apollo"], rationale: "Apollo is a GraphQL client and server." },
-  { skill: "Machine learning", impliedBy: ["TensorFlow", "PyTorch", "scikit-learn"], rationale: "These are machine-learning libraries." },
-  { skill: "LLMs", impliedBy: ["LangChain", "LlamaIndex", "OpenAI API"], rationale: "These are tools for building on large language models." },
-  { skill: "Mobile development", impliedBy: ["React Native", "Flutter", "Swift", "iOS", "Android"], rationale: "These are mobile app platforms and frameworks." },
+  { skill: "REST APIs", impliedBy: ["Spring Boot", "Express", "NestJS", "FastAPI", "Django REST Framework"], kind: "related", rationale: "These frameworks are used to build REST APIs." },
+  { skill: "Python", impliedBy: ["Django", "Flask", "FastAPI", "pytest"], kind: "related", rationale: "These are Python frameworks and tools." },
+  { skill: "Java", impliedBy: ["Spring Boot", "JUnit"], kind: "related", rationale: "Spring Boot and JUnit are Java frameworks." },
+  { skill: "Git", impliedBy: ["GitHub", "GitLab", "Bitbucket"], kind: "related", rationale: "GitHub, GitLab and Bitbucket host Git repositories." },
+  { skill: "AWS", impliedBy: ["EKS", "ECS", "EC2", "S3", "Lambda", "DynamoDB", "CloudFormation", "AWS CDK"], kind: "is_a", rationale: "These are AWS services." },
+  { skill: "GCP", impliedBy: ["GKE", "BigQuery", "Cloud Run"], kind: "is_a", rationale: "These are Google Cloud services." },
+  { skill: "Azure", impliedBy: ["AKS", "Azure Pipelines"], kind: "is_a", rationale: "These are Azure services." },
+  { skill: "Infrastructure as Code", impliedBy: ["Terraform", "CloudFormation", "Pulumi", "AWS CDK"], kind: "is_a", rationale: "These are infrastructure-as-code tools." },
+  { skill: "Unit testing", impliedBy: ["Jest", "Vitest", "Mocha", "JUnit", "pytest"], kind: "is_a", rationale: "These are unit-test frameworks." },
+  { skill: "E2E testing", impliedBy: ["Playwright", "Cypress", "Selenium"], kind: "is_a", rationale: "These are end-to-end test tools." },
+  { skill: "GraphQL", impliedBy: ["Apollo"], kind: "related", rationale: "Apollo is a GraphQL client and server." },
+  { skill: "Machine learning", impliedBy: ["TensorFlow", "PyTorch", "scikit-learn"], kind: "related", rationale: "These are machine-learning libraries." },
+  { skill: "LLMs", impliedBy: ["LangChain", "LlamaIndex", "OpenAI API"], kind: "related", rationale: "These are tools for building on large language models." },
+  { skill: "Mobile development", impliedBy: ["React Native", "Flutter", "Swift", "iOS", "Android"], kind: "is_a", rationale: "These are mobile app platforms and frameworks." },
 ];
 
 // ---------------------------------------------------------------- learned entries (data/skill-implications.json)
@@ -245,7 +253,7 @@ export function implicationTable(learned: LearnedImplications = EMPTY_LEARNED): 
       }
     }
   }
-  const learnedImplications = learned.allow.map((a) => ({ skill: canonicalName(a.skill, KNOWN_TERMS) ?? a.skill, impliedBy: [canonicalName(a.impliedBy, KNOWN_TERMS) ?? a.impliedBy], rationale: a.rationale ?? "Learned from an earlier derivation." }));
+  const learnedImplications = learned.allow.map((a) => ({ skill: canonicalName(a.skill, KNOWN_TERMS) ?? a.skill, impliedBy: [canonicalName(a.impliedBy, KNOWN_TERMS) ?? a.impliedBy], kind: "related" as const, rationale: a.rationale ?? "Learned from an earlier derivation." }));
   return {
     implications: [...SEED_IMPLICATIONS, ...learnedImplications],
     terms: [...KNOWN_TERMS, ...extra],
