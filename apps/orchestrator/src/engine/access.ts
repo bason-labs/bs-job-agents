@@ -3,7 +3,7 @@
 // sourceAccess, which applies the shared accessStateOf to the board's record, Ba's approval
 // (bound to the record's researchedAt) and whether its credentials are configured. A board whose
 // path is an API but has no mapper yet stays on the browser.
-import { accessStateOf, isBoardSource, isFeedSource, type AccessState, type SourceAccessRecord } from "@bs-job-agents/shared";
+import { accessPathOf, accessStateOf, isBoardSource, isFeedSource, type AccessState, type SourceAccessRecord } from "@bs-job-agents/shared";
 import { isSourceApproved, type Conn } from "../db/index.js";
 import type { BoardScanPort } from "./ports.js";
 
@@ -21,5 +21,7 @@ export function sourceAccess(conn: Conn, boards: BoardScanPort | undefined, sour
   const record = boards.record(source);
   if (!boards.canScan(source)) return { ...BROWSER, record };
   const approved = isSourceApproved(conn, source, record.researchedAt);
-  return { ...accessStateOf(record, { approved, tokenPresent: boards.hasCredentials(source) }), record };
+  // The secrets file is read only when a token decides something: an account-API board that sends one.
+  const needsToken = accessPathOf(record, { approved }) === "account_api" && record.auth.kind !== "none";
+  return { ...accessStateOf(record, { approved, tokenPresent: needsToken && boards.hasCredentials(source) }), record };
 }
