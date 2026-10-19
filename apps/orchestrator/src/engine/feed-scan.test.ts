@@ -1,5 +1,5 @@
 // W5: feed sources in job-scan. Remote OK, We Work Remotely, Remotive and Jobspresso are fetched
-// by the orchestrator (FeedTaskRunner + deps.feeds): their research.scan tasks never reach a runner
+// by the orchestrator (ApiTaskRunner + deps.feeds): their research.scan tasks never reach a runner
 // (no bot, no LLM, no engine session, no usage pause), and their results join the browser sources'
 // in the same scan-join → dedupe → fit (LLM) → top steps.
 import { readFileSync } from "node:fs";
@@ -7,7 +7,7 @@ import { researchScanFixture } from "@bs-job-agents/shared/fixtures";
 import type { FeedSource, ResearchScanInput, ResearchScanOutput } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
 import { FeedScanner, type FeedFetch } from "../adapters/feeds/index.js";
-import { claimNextTask, createTask, getRun, holdEngineTasks, isFeedTask, listJobs, pauseEngine } from "../db/index.js";
+import { claimNextTask, createTask, getRun, holdEngineTasks, isApiTask, listJobs, pauseEngine } from "../db/index.js";
 import type { FeedScanPort } from "./ports.js";
 import type { JoinStepOutput } from "./state.js";
 import { createTestEngine } from "./testing/harness.js";
@@ -109,15 +109,16 @@ describe("job-scan with feed sources (no bot for them)", () => {
 
   it("the db: feed tasks are claimed apart and never held by a usage pause", async () => {
     const t = await createTestEngine({ sources: ["itviec"], start: false });
-    const mk = (source: string) =>
-      createTask(t.db, { runId: null, stepId: null, botName: "research", kind: "scan", engine: "claude", input: { source }, promptVersion: 1 }, { now: t.clock.now() });
-    const bot = mk("itviec");
-    const feed = mk("weworkremotely");
-    expect(isFeedTask(feed)).toBe(true);
-    expect(isFeedTask(bot)).toBe(false);
+    // A browser scan uses the browser (task-factory decides from the source's access path).
+    const mk = (source: string, usesBrowser: boolean) =>
+      createTask(t.db, { runId: null, stepId: null, botName: "research", kind: "scan", engine: "claude", input: { source }, promptVersion: 1, usesBrowser }, { now: t.clock.now() });
+    const bot = mk("itviec", true);
+    const feed = mk("weworkremotely", false);
+    expect(isApiTask(feed)).toBe(true);
+    expect(isApiTask(bot)).toBe(false);
     expect(holdEngineTasks(t.db, "claude")).toBe(1);
-    expect(claimNextTask(t.db, { feedTasks: "exclude", now: t.clock.now() })).toBeUndefined();
-    expect(claimNextTask(t.db, { feedTasks: "only", respectEnginePause: false, now: t.clock.now() })?.id).toBe(feed.id);
+    expect(claimNextTask(t.db, { apiTasks: "exclude", now: t.clock.now() })).toBeUndefined();
+    expect(claimNextTask(t.db, { apiTasks: "only", respectEnginePause: false, now: t.clock.now() })?.id).toBe(feed.id);
   });
 
   it("end to end with the real FeedScanner on captured feeds: the same Lemon.io job on Remote OK and WWR becomes one job", async () => {

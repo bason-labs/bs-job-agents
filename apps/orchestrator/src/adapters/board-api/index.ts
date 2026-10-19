@@ -12,4 +12,5 @@ export {
   type RecordedRequest,
 } from "./client.js";
 export { BOARD_MAPPERS } from "./mappers.js";
+export { BoardApiScanner, type BoardApiScannerOptions } from "./scanner.js";
 export type { BoardMapper, BoardScanResult } from "./types.js";

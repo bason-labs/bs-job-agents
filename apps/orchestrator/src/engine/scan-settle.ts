@@ -9,11 +9,14 @@
 // The output keeps ResearchScanOutput's shape.
 import { JobCandidateSchema, ResearchScanOutputSchema, failedSelfChecks, type Engine as EngineName, type JobCandidate, type ResearchScanOutput, type SelfCheckItem } from "@bs-job-agents/shared";
 import { canonicalJobUrl } from "../adapters/index.js";
+import { completeTask, getTask, type Task } from "../db/index.js";
+import type { EngineCore } from "./core.js";
 import { MIN_JD_CHARS } from "../adapters/pages.js";
 import { cleanText } from "../adapters/text.js";
 import { errorMessage } from "./errors.js";
 import type { Logger } from "./ports.js";
 import { adapterBrokenError, scanRejectedError, type ScanOutputChecker } from "./scan-check.js";
+import { emitTaskFinished } from "./task-events.js";
 
 /** bots/research/bot.json selfCheckByKind.scan, in its order. */
 export const SCAN_SELF_CHECK_ITEMS = [
@@ -99,4 +102,13 @@ export async function settleScanOutput(input: SettleScanInput): Promise<SettleSc
   return verdict.adapterBroken
     ? { kind: "failed", error: adapterBrokenError(reason, verdict.screenshot), retryable: false, output, dropped }
     : { kind: "failed", error: scanRejectedError(reason), retryable: true, output, dropped };
+}
+
+/** A settled output completes its task (still running: a cancel in the meantime wins). */
+export function completeScanTask(core: EngineCore, task: Task, output: ResearchScanOutput): void {
+  core.db.transaction((tx) => {
+    if (getTask(tx, task.id)?.status !== "running") return;
+    const done = completeTask(tx, task.id, { output, now: core.now() });
+    emitTaskFinished(core, tx, done, "done", null);
+  });
 }
