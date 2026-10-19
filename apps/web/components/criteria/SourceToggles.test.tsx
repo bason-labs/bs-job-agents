@@ -1,5 +1,5 @@
 // API research (design 2026-10-19 §5.6): each source toggle's access label, Approve and Revoke.
-import { sourceAccessRecord } from "@bs-job-agents/shared";
+import { API_READER_BOARDS, sourceAccessRecord } from "@bs-job-agents/shared";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -12,9 +12,16 @@ import { createCriteriaData, readCriteria, type CriteriaData } from "./data";
 import { TOKEN_HINT } from "./SourceToggles";
 
 const linkedin = sourceAccessRecord("linkedin");
+/** LinkedIn has no API reader in production; these tests simulate one to show the approve flow. */
+const LINKEDIN_READER = [...API_READER_BOARDS, "linkedin" as const];
 
-async function setup(o: { state?: (s: MockState) => void; data?: (d: CriteriaData) => CriteriaData } = {}) {
-  const mock = testMock({ state: o.state });
+async function setup(o: { state?: (s: MockState) => void; data?: (d: CriteriaData) => CriteriaData; productionReaders?: boolean } = {}) {
+  const mock = testMock({
+    state: (s) => {
+      if (!o.productionReaders) s.sourceAccess = { approvals: {}, tokens: [], readers: LINKEDIN_READER };
+      o.state?.(s);
+    },
+  });
   const base = createCriteriaData(mock);
   const data = o.data ? o.data(base) : base;
   const r = await readCriteria(base);
@@ -59,6 +66,12 @@ describe("source access labels (§5.6)", () => {
     expect(within(cell("remotive")).queryByRole("button", { name: /Approve|Revoke/ })).toBeNull();
   });
 
+  it("with the production readers LinkedIn has no API reader: it shows Browser and has no Approve", async () => {
+    await setup({ productionReaders: true });
+    await waitFor(() => expect(labelOf("linkedin")).toHaveTextContent(/^Browser$/));
+    expect(within(cell("linkedin")).queryByRole("button", { name: /Approve|Revoke/ })).toBeNull();
+  });
+
   it("Approve shows the terms URL, quoted clauses and account risk; confirming approves, then Revoke undoes it", async () => {
     const { user, mock } = await setup();
     const approve = await within(cell("linkedin")).findByRole("button", { name: "Approve the account API for LinkedIn" });
@@ -87,7 +100,7 @@ describe("source access labels (§5.6)", () => {
   });
 
   it("an approved board with its token configured reads Account API", async () => {
-    await setup({ state: (s) => (s.sourceAccess = { approvals: { linkedin: { approvedAt: "2026-10-11T02:00:00.000Z", researchedAt: linkedin.researchedAt } }, tokens: ["linkedin"] }) });
+    await setup({ state: (s) => (s.sourceAccess = { approvals: { linkedin: { approvedAt: "2026-10-11T02:00:00.000Z", researchedAt: linkedin.researchedAt } }, tokens: ["linkedin"], readers: LINKEDIN_READER }) });
     await waitFor(() => expect(labelOf("linkedin")).toHaveTextContent(/^Account API$/));
     expect(within(cell("linkedin")).queryByTestId("source-token-hint")).toBeNull();
     expect(within(cell("linkedin")).getByRole("button", { name: "Revoke the account API for LinkedIn" })).toBeInTheDocument();

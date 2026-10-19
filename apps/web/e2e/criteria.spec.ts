@@ -171,10 +171,21 @@ test("a criteria save in chat ('Save to my criteria') shows here as the next ver
   await expect(page.getByTestId("criteria-locations")).toContainText("Đà Nẵng");
 });
 
-test("API research §5.6: each toggle shows how the board is read; LinkedIn's account API is approved, then revoked", async ({ page }) => {
+test("API research §5.6: each toggle shows how the board is read; with a (simulated) LinkedIn API reader, its account API is approved, then revoked", async ({ page }) => {
   const linkedin = page.getByTestId("source-linkedin");
   await expect(page.getByTestId("source-remotive").getByTestId("source-access-label")).toHaveText("Public API");
   await expect(page.getByTestId("source-upwork").getByTestId("source-access-label")).toHaveText("Browser");
+  // As in production: LinkedIn has no API reader, so it reads in the browser and has nothing to approve.
+  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Browser");
+  await expect(linkedin.getByRole("button", { name: /Approve|Revoke/ })).toHaveCount(0);
+
+  // Simulate an API reader for LinkedIn in the mock, then come back to the screen.
+  await withMock(page, (mock: MockHandle) => {
+    (mock.state as unknown as { sourceAccess?: unknown }).sourceAccess = { approvals: {}, tokens: [], readers: ["topcv", "itviec", "linkedin"] };
+  });
+  await page.getByTestId("sidebar").getByRole("link", { name: "Schedules" }).click();
+  await expect(page.getByTestId("page-title")).toHaveText("Schedules");
+  await page.getByTestId("sidebar").getByRole("link", { name: "Search criteria" }).click();
   await expect(linkedin.getByTestId("source-access-label")).toHaveText("Account API (needs approval) · Browser until approved");
 
   const approve = linkedin.getByRole("button", { name: "Approve the account API for LinkedIn" });

@@ -60,6 +60,8 @@ export function sourceRoutes(app: FastifyInstance, ctx: ApiContext): void {
     const record = boards()?.record(source) ?? sourceAccessRecord(source);
     if (researchedAt !== record.researchedAt) throw conflict(`the ${source} research changed (${record.researchedAt}); read it again before approving`);
     if (record.riskLevel !== "high" || accessPathOf(record, { approved: true }) !== "account_api") throw conflict(`${source} has no account API that needs approval`);
+    // Approving a board nothing can read through its API would change nothing: it stays in the browser.
+    if (!boards()?.canScan(source)) throw conflict(`${source} has no API reader yet, so it is read in the browser; there is nothing to approve`);
     approveSource(db, { source, researchedAt }, { now: ctx.now() });
     return respond(SourceAccessViewSchema, viewOf(db, boards(), source));
   });

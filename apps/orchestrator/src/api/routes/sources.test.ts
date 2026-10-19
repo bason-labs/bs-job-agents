@@ -81,6 +81,19 @@ describe("POST/DELETE /sources/:source/approval", () => {
     expect(SourceAccessViewSchema.parse(del.json())).toMatchObject({ path: "browser", needsApproval: true, approvedAt: null });
   });
 
+  it("a board without an API reader (LinkedIn in production) is not approvable (409) and shows Browser", async () => {
+    // The production records and mappers: LinkedIn's record says account API, but BOARD_MAPPERS has no reader for it.
+    const production = new BoardApiScanner({ fetch: async () => ({ ok: true, status: 200, text: async () => "{}" }), gate: new HostGate(), secrets: null });
+    h = await createApiHarness({ engine: { boards: production } });
+    const record = production.record("linkedin");
+    expect(record.chosenPath).toBe("account_api");
+    expect(await view("linkedin")).toMatchObject({ path: "browser", labelKey: "browser", needsApproval: false });
+    const res = await h.post("/sources/linkedin/approval", { researchedAt: record.researchedAt });
+    expect(res.statusCode).toBe(409);
+    expect(JSON.stringify(res.json())).toMatch(/no API reader/);
+    expect(await view("linkedin")).toMatchObject({ path: "browser", labelKey: "browser", approvedAt: null });
+  });
+
   it("refuses stale research (409), a board with nothing to approve (409) and an unknown or feed source (404)", async () => {
     h = await createApiHarness({ engine: { boards: boards({}) } });
     expect((await h.post("/sources/linkedin/approval", { researchedAt: "2026-01-01" })).statusCode).toBe(409);

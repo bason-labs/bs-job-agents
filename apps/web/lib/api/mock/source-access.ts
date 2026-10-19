@@ -1,7 +1,10 @@
 // How each source is read, in the mock orchestrator (design 2026-10-19 §5.1, §5.6), like the
 // orchestrator's routes/sources.ts: the shared access records and accessStateOf, Ba's approvals
-// bound to the record's researchedAt, and which boards have a token in the secrets file.
+// bound to the record's researchedAt, and which boards have a token in the secrets file. A board
+// without an API reader (API_READER_BOARDS: LinkedIn today) reads in the browser and has nothing
+// to approve, as in production; a test can add a reader to show the approve flow.
 import {
+  API_READER_BOARDS,
   SearchSourceSchema,
   accessPathOf,
   accessStateOf,
@@ -20,7 +23,11 @@ export interface MockSourceAccess {
   approvals: Partial<Record<BoardSource, { approvedAt: string; researchedAt: string }>>;
   /** Boards whose credentials are in the secrets file (only whether, never a value). */
   tokens: BoardSource[];
+  /** Boards with an API reader (default API_READER_BOARDS, the orchestrator's mappers). */
+  readers?: BoardSource[];
 }
+
+const readers = (a: MockSourceAccess): readonly BoardSource[] => a.readers ?? API_READER_BOARDS;
 
 const fail = (status: number, code: ApiRequestError["code"], message: string) => new ApiRequestError({ status, code, message, details: null });
 
@@ -36,6 +43,9 @@ export function sourceAccessView(core: MockBackend, source: SearchSource): Sourc
   }
   const record = sourceAccessRecord(source);
   const a = access(core);
+  if (!readers(a).includes(source)) {
+    return { source, path: "browser", labelKey: "browser", needsApproval: false, tokenMissing: false, approvedAt: null, researchedAt: record.researchedAt, riskLevel: record.riskLevel, termsOfUse: record.termsOfUse, accountRisk: record.accountRisk };
+  }
   const approval = a.approvals[source];
   const approved = approval !== undefined && approval.researchedAt === record.researchedAt;
   const state = accessStateOf(record, { approved, tokenPresent: a.tokens.includes(source) });
@@ -62,6 +72,7 @@ export function approveSource(core: MockBackend, raw: string, researchedAt: stri
   const record = sourceAccessRecord(source);
   if (researchedAt !== record.researchedAt) throw fail(409, "conflict", `the ${source} research changed (${record.researchedAt}); read it again before approving`);
   if (record.riskLevel !== "high" || accessPathOf(record, { approved: true }) !== "account_api") throw fail(409, "conflict", `${source} has no account API that needs approval`);
+  if (!readers(access(core)).includes(source)) throw fail(409, "conflict", `${source} has no API reader yet, so it is read in the browser; there is nothing to approve`);
   access(core).approvals[source] = { approvedAt: core.nowIso(), researchedAt };
   return sourceAccessView(core, source);
 }

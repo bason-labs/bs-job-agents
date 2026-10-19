@@ -8,6 +8,13 @@ import { NONE_FOUND, SourceAccessRecordSchema, accessPathOf, type AccessPath, ty
 export const BOARD_SOURCES = ["topcv", "itviec", "vietnamworks", "linkedin", "wellfound", "upwork"] as const satisfies readonly SearchSource[];
 export type BoardSource = (typeof BOARD_SOURCES)[number];
 
+/**
+ * The boards the orchestrator has an API reader for (apps/orchestrator board-api BOARD_MAPPERS; a
+ * test there keeps the two equal). Any other board is read in the browser whatever its record says,
+ * so it has nothing to approve. The web's mock orchestrator follows the same rule.
+ */
+export const API_READER_BOARDS = ["topcv", "itviec"] as const satisfies readonly BoardSource[];
+
 export function isBoardSource(source: unknown): source is BoardSource {
   return typeof source === "string" && (BOARD_SOURCES as readonly string[]).includes(source);
 }

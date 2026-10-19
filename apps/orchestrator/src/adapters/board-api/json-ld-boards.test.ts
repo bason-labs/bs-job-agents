@@ -2,7 +2,7 @@
 // The pages here are rebuilt from the researcher's scrubbed captures (fixtures/<source>/*.json, the
 // JSON-LD as the board served it on 2026-10-19), wrapped in a minimal HTML page.
 import { readFileSync } from "node:fs";
-import { SEARCH_PROFILE_DEFAULTS, sourceAccessRecord, type JobCandidate, type ResearchScanInput, type SearchProfileFieldsBase } from "@bs-job-agents/shared";
+import { API_READER_BOARDS, SEARCH_PROFILE_DEFAULTS, sourceAccessRecord, type JobCandidate, type ResearchScanInput, type SearchProfileFieldsBase } from "@bs-job-agents/shared";
 import { describe, expect, it } from "vitest";
 import { settleScanOutput } from "../../engine/scan-settle.js";
 import { HostGate, MIN_HOST_GAP_MS, type HttpFetch } from "../http/index.js";
@@ -73,6 +73,8 @@ const settle = (source: string, jobs: unknown[]) =>
 describe("BOARD_MAPPERS", () => {
   it("TopCV and ITviec have a mapper; LinkedIn and the boards with no GET endpoint do not (they stay on the browser)", () => {
     expect(Object.keys(BOARD_MAPPERS).sort()).toEqual(["itviec", "topcv"]);
+    // The shared list the web's mock orchestrator uses.
+    expect([...API_READER_BOARDS].sort()).toEqual(Object.keys(BOARD_MAPPERS).sort());
   });
 });
 
