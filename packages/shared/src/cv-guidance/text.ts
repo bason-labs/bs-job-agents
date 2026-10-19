@@ -106,9 +106,12 @@ const ADD_VERBS_VI = /(thêm|bổ sung|ghi|liệt kê|đưa vào|chèn|nêu|kể
 /** Taking a fact from the posting (F4): mirror, match or copy the JD's technologies or title. */
 const FROM_POSTING_EN = /\b(mirror|match(?:es|ing)?|copy|copies|copying|echo|replicate|reuse|repeat|use|take|align)\b.{0,60}\b(job description|jd|posting|job post|job ad|advert(?:isement)?|vacancy|listing|role description)\b/i;
 const FROM_POSTING_VI = /(sao chép|chép|khớp|trùng|giống|lặp lại|lấy|dùng).{0,40}(mô tả công việc|jd|tin tuyển dụng|tin đăng|yêu cầu tuyển dụng)/i;
+/** Listing what the employer asks for (QA re-check 3): the requirement, not Ba's facts, decides. */
+const EMPLOYER_ASKS_EN = /\b(list|add|include|put|name|show|mention)\b.{0,50}\b(technolog(?:y|ies)|skills?|tools?|titles?|stack)\b.{0,50}\b(employer|recruiter|company|hiring manager|job|posting|role)\s+(requires?|asks? for|wants?|needs?|lists?|demands?)\b/i;
+const EMPLOYER_ASKS_VI = /(liệt kê|ghi|đưa|thêm|nêu|kể).{0,50}(công nghệ|kỹ năng|công cụ|chức danh).{0,50}(nhà tuyển dụng|tin tuyển dụng|công ty|jd|vị trí)\s*(yêu cầu|cần|đòi hỏi|muốn)/i;
 /** …unless it says to do so only where it is true ("where it matches your experience"). */
 const WHERE_TRUE = /\b(?:where|if|when|that|which|only)\b.{0,40}\b(?:your (?:real |actual )?experience|you (?:have|did|used)|true|truthful|honest(?:ly)?|backed|apply to you)\b|(?:nếu|khi|chỉ).{0,30}(?:đúng|thật|có kinh nghiệm|đã làm)/i;
-const SELF_TITLE = /\b(describe|present|introduce|call|brand|label|position|title|sell)\s+(?:yourself|you)\s+as\b|\b(?:always|just)\s+(?:say|write|claim)\s+(?:you(?:'re| are)|i am)\b|(?:tự giới thiệu|tự nhận|xưng|gọi mình) là/i;
+const SELF_TITLE = /\b(describe|present|introduce|call|brand|label|position|title|sell|name)\s+(?:yourself|you)\s+(?:as\b|an?\b|the\b)|\b(?:always|just)\s+(?:say|write|claim)\s+(?:you(?:'re| are)|i am)\b|(?:tự giới thiệu|tự nhận|xưng|gọi mình) là/i;
 /** …a number-like object: adding one is inventing one unless the facts have it. */
 const NUMBER_OBJECT_EN = /\b((?<!phone |contact |mobile )numbers?|figures?|metrics?|percent(?:age)?s?|%|statistics?|stats|kpis?|results? figures?|amounts?)\b|%/i;
 const NUMBER_OBJECT_VI = /(con số|số liệu|phần trăm|chỉ số|%)/i;
@@ -150,6 +153,9 @@ export function screenStatement(text: string): string | null {
   }
   // F4: a specific figure ("30% growth") is a number the CV would have to state.
   if (/\d+(?:[.,]\d+)?\s*%/.test(t)) return "the statement gives a figure the CV would have to state (only Ba's facts may give one)";
+  if ((EMPLOYER_ASKS_EN.test(t) || EMPLOYER_ASKS_VI.test(t)) && !WHERE_TRUE.test(t)) {
+    return "the statement tells the CV to list what the employer asks for rather than what Ba's facts give";
+  }
   if ((FROM_POSTING_EN.test(t) || FROM_POSTING_VI.test(t)) && (FACT_OBJECT_EN.test(t) || FACT_OBJECT_VI.test(t) || /\b(stack|requirements?)\b/i.test(t)) && !WHERE_TRUE.test(t)) {
     return "the statement tells the CV to take a skill, title or requirement from the posting rather than Ba's facts";
   }

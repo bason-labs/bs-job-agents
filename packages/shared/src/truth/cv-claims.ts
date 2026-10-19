@@ -31,16 +31,21 @@ const NUMERIC = new Set<ClaimProblem["kind"]>(["number", "month", "duration", "p
 
 const corpusOf = (facts: readonly FactLike[]) => facts.flatMap((f) => [f.text, f.textVi ?? "", ...f.tags, f.org ?? ""]).join("\n");
 
-function check(text: string, ids: readonly string[], byId: ReadonlyMap<string, FactLike>, all: readonly FactLike[]): CvClaimIssue[] {
+/** Ba's own words beyond his facts that a title or name may come from: his headline options (EN and VI). */
+export interface CvClaimContext {
+  headlines?: readonly string[];
+}
+
+function check(text: string, ids: readonly string[], byId: ReadonlyMap<string, FactLike>, all: readonly FactLike[], ctx: CvClaimContext, only: "all" | "names" = "all"): CvClaimIssue[] {
   const cited = ids.map((id) => byId.get(id)).filter((f): f is FactLike => f !== undefined);
   const texts = cited.flatMap((f) => [f.text, f.textVi ?? "", ...f.tags, f.org ?? ""]);
   const dates = cited.map((f) => f.dates ?? "").filter(Boolean);
-  const out: CvClaimIssue[] = unsupportedClaims(text, { texts, dates }).filter((p) => NUMERIC.has(p.kind));
+  const out: CvClaimIssue[] = only === "all" ? unsupportedClaims(text, { texts, dates }).filter((p) => NUMERIC.has(p.kind)) : [];
   // Skills and tools: a cited fact names the term (factNames: as a tool, never as the employer).
   const terms = termsIn(text);
-  for (const term of terms) if (!cited.some((f) => factNames(f, term))) out.push({ kind: "skill", value: term });
-  // Titles: the cited facts, or any of Ba's facts, use the title word.
-  const master = corpusOf(all);
+  if (only === "all") for (const term of terms) if (!cited.some((f) => factNames(f, term))) out.push({ kind: "skill", value: term });
+  // Titles: the cited facts, any of Ba's facts, or his own headline options use the title word.
+  const master = `${corpusOf(all)}\n${(ctx.headlines ?? []).join("\n")}`;
   const allTitles = new Set([...titlesIn(texts.join("\n")), ...titlesIn(master)]);
   for (const t of titlesIn(text)) if (!allTitles.has(t)) out.push({ kind: "title", value: t });
   // Employers and other names: written in the cited facts or somewhere in Ba's facts.
@@ -52,21 +57,26 @@ function check(text: string, ids: readonly string[], byId: ReadonlyMap<string, F
   return out.filter((p, i) => out.findIndex((q) => q.kind === p.kind && q.value === p.value) === i);
 }
 
-export function checkCvClaims(cv: TailoredCv, facts: readonly FactLike[]): CvClaimProblem[] {
+export function checkCvClaims(cv: TailoredCv, facts: readonly FactLike[], ctx: CvClaimContext = {}): CvClaimProblem[] {
   const byId = new Map(facts.map((f) => [f.id, f]));
   const out: CvClaimProblem[] = [];
   if (cv.summary) {
-    const problems = check(cv.summary.text, cv.summary.factIds, byId, facts);
+    const problems = check(cv.summary.text, cv.summary.factIds, byId, facts, ctx);
     if (problems.length > 0) out.push({ where: "summary", text: cv.summary.text, factIds: cv.summary.factIds, problems });
   }
   for (const section of cv.sections) {
     for (const item of section.items) {
       const label = `${section.title}${item.heading ? ` › ${item.heading}` : ""}`;
       item.bullets.forEach((b, i) => {
-        const problems = check(b.text, b.factIds, byId, facts);
+        const problems = check(b.text, b.factIds, byId, facts, ctx);
         if (problems.length > 0) out.push({ where: `${label}, bullet ${i + 1}`, text: b.text, factIds: b.factIds, problems });
       });
       const ids = [...new Set(item.bullets.flatMap((b) => b.factIds))];
+      // The heading (role and employer): its title words and names, like a bullet's.
+      if (item.heading) {
+        const problems = check(item.heading, ids, byId, facts, ctx, "names");
+        if (problems.length > 0) out.push({ where: `${label}, heading`, text: item.heading, factIds: ids, problems });
+      }
       if (item.subheading && ids.length > 0) {
         // The dates line: what the item's facts' dates give (SEC-25.AC-1: no month added to "2023-2025").
         const dates = ids.map((id) => byId.get(id)?.dates ?? "").filter(Boolean);

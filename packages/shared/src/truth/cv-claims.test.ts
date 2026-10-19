@@ -9,7 +9,7 @@ function cv(subheading: string | null, bullet: string, factIds = ["f-12"]): Tail
     headline: "Engineer",
     contactLine: "Ba Huynh · +84 37 247 4489",
     summary: null,
-    sections: [{ kind: "experience", title: "Experience", items: [{ heading: "Engineer, Gradion", subheading, bullets: [{ text: bullet, factIds }] }] }],
+    sections: [{ kind: "experience", title: "Experience", items: [{ heading: "Gradion", subheading, bullets: [{ text: bullet, factIds }] }] }],
     layout: { template: "t", font: "Inter", accentColor: "#123456", columns: 1, sectionOrder: ["experience"] },
   };
 }
@@ -18,9 +18,9 @@ describe("checkCvClaims (SEC-25)", () => {
   it("SEC-25.AC-1: f-12 dates '2023-2025' and a revision showing '06/2023 – 08/2025' is rejected", () => {
     const problems = checkCvClaims(cv("06/2023 – 08/2025", "Built REST APIs"), [fact("f-12", "Built REST APIs", "2023-2025")]);
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toMatchObject({ where: "Experience › Engineer, Gradion, dates" });
+    expect(problems[0]).toMatchObject({ where: "Experience › Gradion, dates" });
     expect(problems[0]!.problems.map((p) => p.kind)).toEqual(["month", "month"]);
-    expect(cvClaimsError(problems)).toMatch(/^the truth check failed before QA \(SEC-25\): Experience › Engineer, Gradion, dates says 06\/2023/);
+    expect(cvClaimsError(problems)).toMatch(/^the truth check failed before QA \(SEC-25\): Experience › Gradion, dates says 06\/2023/);
   });
 
   it("SEC-25.AC-2: f-5 with no result figure and a revision adding 'cut latency by 30%' is rejected", () => {
@@ -56,5 +56,26 @@ describe("checkCvClaims (SEC-25)", () => {
     // A skill must come from a fact the bullet cites.
     expect(checkCvClaims(cv(null, "Built REST APIs in Java on Kubernetes"), facts).flatMap((p) => p.problems)).toEqual([{ kind: "skill", value: "Kubernetes" }]);
     expect(checkCvClaims(cv(null, "Built REST APIs in Java on Kubernetes", ["f-12", "s-1"]), facts)).toEqual([]);
+  });
+  it("QA re-check 1: a Vietnamese title from Ba's own headline options passes (Lập trình viên Frontend)", () => {
+    const facts = [fact("f-1", "Phát triển giao diện web bằng React và Next.js", "2022 – Present")];
+    const c = cv(null, "Phát triển giao diện web bằng React và Next.js", ["f-1"]);
+    c.summary = { text: "Lập trình viên Frontend với kinh nghiệm React và Next.js", factIds: ["f-1"] };
+    c.sections[0]!.items[0]!.heading = "Frontend Developer · Gradion";
+    expect(checkCvClaims(c, facts).flatMap((p) => p.problems)).toEqual(expect.arrayContaining([{ kind: "title", value: "developer" }]));
+    const headlines = ["Frontend Developer | React, Next.js & TypeScript", "Lập trình viên Frontend | React, Next.js & TypeScript"];
+    expect(checkCvClaims(c, facts, { headlines })).toEqual([]);
+  });
+
+  it("QA re-check 2: item headings are checked for titles and names", () => {
+    const facts = [fact("f-1", "Software Engineer: built REST APIs in Java", "2022 – Present")];
+    const c = cv(null, "Built REST APIs in Java", ["f-1"]);
+    c.sections[0]!.items[0]!.heading = "Senior Software Engineer — Google";
+    expect(checkCvClaims(c, facts).flatMap((p) => p.problems)).toEqual([
+      { kind: "title", value: "senior" },
+      { kind: "name", value: "Google" },
+    ]);
+    c.sections[0]!.items[0]!.heading = "Software Engineer — Gradion";
+    expect(checkCvClaims(c, facts)).toEqual([]);
   });
 });

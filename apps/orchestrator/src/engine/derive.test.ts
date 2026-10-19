@@ -17,7 +17,7 @@ const java = fact("f-1", "Built REST APIs in Java and Spring Boot", { org: "Acme
 // The facts the fake CV cites, so a tailored CV passes the cited-id check (SEC-18.AC-2) and the
 // truth check (SEC-25): they state what its bullets and dates lines state.
 const cvText = [cvOutputFixture.tailored.summary?.text ?? "", ...cvOutputFixture.tailored.sections.flatMap((s) => s.items.flatMap((i) => i.bullets.map((b) => b.text)))].join(" ");
-const cvFacts = citedFactIds(cvOutputFixture.tailored).map((id) => fact(id, cvText, { org: null, dates: "2022 – present" }));
+const cvFacts = citedFactIds(cvOutputFixture.tailored).map((id) => fact(id, cvText, { org: "Gradion", dates: "2022 – present" }));
 const master = (facts: Fact[], version = 14): MasterCvInput => ({ ...masterCvFixture, version, facts: [...cvFacts, ...facts] });
 const withGaps = (gaps: string[]) => fake.ok({ ...researchFitFixture, fit: { ...researchFitFixture.fit, gaps } });
 const deriveOut = (drafts: DerivedDraft[]): DeriveOutput => ({ drafts, selfCheck: DERIVE_SELF_CHECK.map((item) => ({ item, passed: true, note: null })), memoryNotes: [] });

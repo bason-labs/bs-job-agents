@@ -944,7 +944,8 @@ export class TaskQueue {
       // SEC-25 (CV guidance §5.7): no number, month, year or duration the cited facts lack. The
       // attempt fails before export and QA (retried as an attempt; no gate round is used up).
       if (prepared.masterCopy) {
-        const problems = checkCvClaims(output.tailored, prepared.masterCopy.facts);
+        const headlines = prepared.masterCopy.headlineOptions.flatMap((h) => [h.en, h.vi ?? ""]).filter(Boolean);
+        const problems = checkCvClaims(output.tailored, prepared.masterCopy.facts, { headlines });
         if (problems.length > 0) return { outcome: keep({ kind: "failed", error: cvClaimsError(problems), output, retryable: true }) };
       }
       const frame = await this.figmaCall(() => core.deps.figma.findDraftFrame(output.figmaFrameName));

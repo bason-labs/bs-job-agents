@@ -281,6 +281,19 @@ describe("the tailor gate with CV guidance (AD-13)", () => {
     expect(getGuidanceReview(t.db, gate(t, r.id).cvVersionId!)).toBeDefined();
   });
 
+  it("QA re-check 1: a title Ba wrote only in his headline options (VI too) is not an invented claim", async () => {
+    const t = await setup();
+    writeMaster(t.files, t.masterCv, truthfulMaster({ headlineOptions: [{ en: "Frontend Developer | React", vi: "Lập trình viên Frontend | React" }] }));
+    const tailored: TailoredCv = structuredClone(cvOutputFixture.tailored);
+    tailored.summary!.text = `Lập trình viên Frontend. ${tailored.summary!.text}`;
+    tailored.sections[0]!.items[0]!.heading = "Frontend Developer · Gradion";
+    t.runner.script({ bot: "cv", kind: "tailor", result: (task) => cvWith(task, tailored) });
+    const r = run(t);
+    await t.idle();
+    expect(t.tasks("cv.tailor")[0]).toMatchObject({ status: "done", attempt: 1 });
+    expect(gate(t, r.id).outcome).toBe("passed");
+  });
+
   it("a failed cv.review never fails the CV: the round completes without its judgement", async () => {
     const t = await setup();
     t.runner.script({ bot: "cv", kind: "review", result: fake.failed("model unavailable") });
