@@ -136,7 +136,8 @@ export function startRepair(core: EngineCore, conn: Conn, req: { source: string;
       text: `Automatic repair for ${sourceLabel(source)} is paused after ${SKILL_REPAIR_PAUSE_AFTER} failed attempts. Scans keep the previous skill.`,
       runId: req.runId,
       cards: [{ type: "activity_link" }],
-      once: `skill-repair-paused:${source}`,
+      // Once per pause (and per run): not on every failure while it lasts.
+      once: `skill-repair-paused:${source}:${state.pausedAt}`,
     });
     return "paused";
   }
