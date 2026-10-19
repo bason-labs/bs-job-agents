@@ -59,3 +59,20 @@ describe("saved answers (UC-12: “remember this answer”; GET/DELETE /saved-an
     expect(apiErrorInfo(await data.deleteAnswer("notice period").catch((e: unknown) => e))).toMatchObject({ status: 404, code: "not_found" });
   });
 });
+
+describe("source access adapter (GET /sources/access, POST/DELETE /sources/:source/approval)", () => {
+  it("lists all ten sources; feeds carry no record", async () => {
+    const views = await createCriteriaData(testMock()).sourceAccess();
+    expect(views).toHaveLength(10);
+    expect(views.find((v) => v.source === "remotive")).toMatchObject({ path: "public_api", labelKey: "public_api", termsOfUse: null, researchedAt: null });
+  });
+
+  it("approves for the research read (409 when stale, 404 for a feed), and revokes", async () => {
+    const data = createCriteriaData(testMock());
+    const { researchedAt } = (await data.sourceAccess()).find((v) => v.source === "linkedin")!;
+    expect(apiErrorInfo(await data.approveSource("linkedin", "older").catch((e: unknown) => e))).toMatchObject({ status: 409, code: "conflict" });
+    expect(apiErrorInfo(await data.approveSource("remotive", "x").catch((e: unknown) => e))).toMatchObject({ status: 404, code: "not_found" });
+    expect(await data.approveSource("linkedin", researchedAt!)).toMatchObject({ needsApproval: false, approvedAt: expect.any(String) });
+    expect(await data.revokeSource("linkedin")).toMatchObject({ needsApproval: true, approvedAt: null, labelKey: "account_api_needs_approval" });
+  });
+});

@@ -26,6 +26,7 @@ import type {
 import type { ProgressLine } from "../contract";
 import type { MockFactDraft } from "./fact-drafts";
 import type { MockLeadProposal } from "./lead-proposals";
+import type { MockSourceAccess } from "./source-access";
 
 /** A step row plus its last preview text (the engine only sends it in step.* events; W3a handoff). */
 export interface StepRow extends Step {
@@ -115,6 +116,8 @@ export interface MockState {
   savedWorkflows: Record<string, number>;
   /** PM3 M3 / S1: Lead's criteria and schedule proposals waiting for Ba's click, by id. */
   leadProposals?: Record<string, MockLeadProposal>;
+  /** API research §5.6: Ba's approvals and which boards have a token (created on first use). */
+  sourceAccess?: MockSourceAccess;
   /** Next id for new records. */
   seq: number;
 }

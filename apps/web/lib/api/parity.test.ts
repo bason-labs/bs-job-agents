@@ -29,10 +29,6 @@ const UNUSED: Record<string, string> = {
   "POST runs": "Ba never starts a run from the UI directly: Lead starts it (rule 1), schedules use run-now",
   "GET schedule": "the Schedules screen reads the list (GET /schedules) and edits rows from it",
   "GET exports": "the Applications screen shows the last export from GET /applications (lastExportAt)",
-  // API research: served by the orchestrator; the Search criteria labels and Approve action call them (remove once wired).
-  "GET sourceAccess": "Search criteria access labels: web side not wired yet",
-  "POST sourceApproval": "Search criteria Approve: web side not wired yet",
-  "DELETE sourceApproval": "Search criteria Revoke: web side not wired yet",
 };
 
 /** Source files (no tests, no mock) under the web app's lib/, components/ and app/. */
