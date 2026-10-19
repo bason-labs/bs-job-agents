@@ -74,6 +74,23 @@ export class BoardApiError extends Error {
   }
 }
 
+/**
+ * Skill self-repair §5.8: the board's API no longer answers the way its record and mapper expect
+ * (404 or 410 on a listed endpoint, a 2xx body the mapper cannot read, or a list whose items give no
+ * valid posting). The run falls back to the browser and later runs try the API first again. The
+ * reason names a method, host and path only, never a query or a header.
+ */
+export class ApiChanged extends BoardApiError {
+  constructor(
+    readonly host: string | null,
+    readonly path: string | null,
+    reason: string,
+  ) {
+    super("failed", reason);
+    this.name = "ApiChanged";
+  }
+}
+
 export interface RecordedRequest {
   method: "GET";
   host: string;
@@ -188,6 +205,7 @@ export class BoardApiClient {
         if (!(err instanceof HttpRequestError)) throw err;
         if (err.kind === "auth_rejected") throw new AuthRejected(this.source, err.status ?? 401);
         const where = `${url.hostname}${url.pathname}`;
+        if (err.status === 404 || err.status === 410) throw new ApiChanged(url.hostname, url.pathname, `${where} answered HTTP ${err.status}`);
         throw new BoardApiError(err.kind, this.redactor.redact(err.status === null ? `could not reach ${where} (${err.detail})` : `${where} answered ${err.detail}`));
       }
       if (answer.kind === "body") return { body: answer.body, url };

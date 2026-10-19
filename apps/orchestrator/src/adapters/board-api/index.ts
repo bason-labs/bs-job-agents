@@ -1,5 +1,6 @@
 // API research (AD-2, design §5.2): the allowlisted board-API client and the per-board mappers.
 export {
+  ApiChanged,
   AuthRejected,
   BOARD_API_USER_AGENT,
   BoardApiClient,

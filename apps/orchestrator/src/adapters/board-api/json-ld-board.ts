@@ -17,7 +17,7 @@ import { findJobPosting, hasLdType, ldJsonBlocks, ldObjects } from "../parsers/d
 import { parsePostedDate } from "../posted-date.js";
 import { scanJobLimit, searchUrls } from "../sources.js";
 import { cleanText, detectLanguage } from "../text.js";
-import { BoardApiError, RedirectRefused, type BoardApiClient } from "./client.js";
+import { ApiChanged, BoardApiError, RedirectRefused, type BoardApiClient } from "./client.js";
 import type { BoardScanResult } from "./types.js";
 
 /** Result pages read per search (the browser skills' limit). */
@@ -135,7 +135,8 @@ export async function scanJsonLdBoard(board: JsonLdBoard, client: BoardApiClient
       if (page > 1 && fetched.url.searchParams.get("page") !== String(page) && isEarlierPage(fetched.url, path, page)) break;
       const html = fetched.body;
       const listed = listedJobs(html);
-      if (listed === null) throw new BoardApiError("failed", `${board.label}: no job data on ${board.host}${path} (the page changed, or a bot check answered)`);
+      // Skill self-repair §5.8: a 2xx page the reader cannot read is a changed API.
+      if (listed === null) throw new ApiChanged(board.host, path, `${board.label}: no job data on ${board.host}${path} (the page changed, or a bot check answered)`);
       let added = 0;
       for (const item of listed) {
         const url = canonicalJobUrl(item.url);
@@ -180,6 +181,10 @@ export async function scanJsonLdBoard(board: JsonLdBoard, client: BoardApiClient
     else read.push({ ...job, regionText: "", tags: [] });
   }
 
+  // Skill self-repair §5.8: job pages answered, but none held a posting the reader could use.
+  if (jobPages > 0 && read.length === 0) {
+    throw new ApiChanged(board.host, null, `${board.label}: ${plural(jobPages, "job page")} on ${board.host} gave no complete posting`);
+  }
   const { kept, dropped } = filterPostings(read, criteria);
   const jobs = kept.slice(0, limit).map(({ regionText: _r, tags: _t, ...job }): JobCandidate => job);
   const counts = new Map<DropReason, number>();

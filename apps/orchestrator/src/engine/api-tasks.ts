@@ -11,10 +11,15 @@
 // - account API with its token missing (no request sent) or rejected (401/403, any jobs fetched so
 //   far discarded): the same task goes back to the queue as a browser scan, so this run still
 //   covers the board and the join does not count a failed source; Ba is asked to renew the token.
+// - skill self-repair §5.8, the API changed (404/410 on a listed endpoint, a body the mapper cannot
+//   read, or postings that are all invalid): the same fallback to a browser scan for this run; Ba is
+//   told once when the API turns broken and once when it works again (per-source API health). The
+//   next run tries the API first, so recovery needs nothing from Ba. Endpoints are never re-researched
+//   and access records or mappers are never changed automatically.
 // Every text built on the board-API path passes the secret store's redactor.
 import { ResearchScanInputSchema, SEARCH_SOURCES, isBoardSource, isFeedSource, type ResearchScanInput, type SelfCheckItem } from "@bs-job-agents/shared";
-import { AuthRejected, BoardApiError, MissingCredential } from "../adapters/board-api/index.js";
-import { claimNextTask, getRun, getTask, holdEngineTasks, isEnginePaused, requeueTask, routeTaskToBrowser, type Task } from "../db/index.js";
+import { ApiChanged, AuthRejected, BoardApiError, MissingCredential } from "../adapters/board-api/index.js";
+import { claimNextTask, getRun, getTask, holdEngineTasks, isEnginePaused, markSourceApiBroken, markSourceApiHealthy, requeueTask, routeTaskToBrowser, type Conn, type Task } from "../db/index.js";
 import { sourceAccess } from "./access.js";
 import type { EngineCore } from "./core.js";
 import { errorMessage } from "./errors.js";
@@ -42,6 +47,19 @@ export function tokenFallbackNotice(source: string, why: "missing" | "rejected")
   const label = sourceLabel(source);
   return `${label} token ${why} — scanned through the browser this time. Renew the ${label} token in your secrets file.`;
 }
+
+/** §5.8: Ba's notice when a board's API stops working (posted once, when it turns broken). */
+export function apiChangedNotice(source: string, reason: string): string {
+  return `${sourceLabel(source)} API changed: ${reason}. Scanned through the browser this time; scans use the browser until the API works again.`;
+}
+
+/** §5.8: once, when a broken API works again. */
+export function apiRecoveredNotice(source: string): string {
+  return `${sourceLabel(source)} API works again; scans are back on the API.`;
+}
+
+/** Method, host and path only: anything after "?" or "#" is cut (§5.8). */
+const withoutQuery = (text: string): string => text.replace(/[?#][^\s)]*/g, "");
 
 /** A board read with no token (auth "none") answered 401/403, e.g. a bot check: there is no token to renew. */
 export function directReadRefusedNotice(source: string, status: number): string {
@@ -130,11 +148,17 @@ export class ApiTaskRunner {
       log: core.log,
     });
     if (settled.dropped.length > 0) this.progress(task, `Dropped ${settled.dropped.length} invalid posting${settled.dropped.length === 1 ? "" : "s"}: ${settled.dropped.join("; ")}`);
+    const board = !isFeedSource(input.source) && isBoardSource(input.source);
+    // §5.8: the board answered postings, but not one of them is valid any more.
+    if (board && fetched.jobs.length > 0 && settled.output && settled.output.jobs.length === 0 && settled.dropped.length === fetched.jobs.length) {
+      this.apiChanged(task, new ApiChanged(null, null, `${sourceLabel(input.source)}: none of the ${fetched.jobs.length} postings the API gave is valid (${settled.dropped[0]})`));
+      return;
+    }
     if (settled.kind === "failed") {
       this.settleFailure(task, this.redact(settled.error), settled.retryable);
       return;
     }
-    completeScanTask(core, task, settled.output);
+    completeScanTask(core, task, settled.output, board ? (tx) => this.apiHealthy(tx, task) : undefined);
   }
 
   private async fetchFeed(task: Task, input: ResearchScanInput, signal: AbortSignal): Promise<Fetched | null> {
@@ -181,6 +205,8 @@ export class ApiTaskRunner {
     } catch (err) {
       if (signal.aborted) this.settleFailure(task, "cancelled", false);
       else if (err instanceof MissingCredential) this.toBrowser(task, tokenFallbackNotice(source, "missing"));
+      // §5.8: the API changed: this run reads the board in the browser; Ba hears it once.
+      else if (err instanceof ApiChanged) this.apiChanged(task, err);
       // Whatever was fetched before the 401/403 is discarded: the browser scan covers the board.
       else if (err instanceof AuthRejected) {
         this.toBrowser(task, access.record?.auth.kind === "none" ? directReadRefusedNotice(source, err.status) : tokenFallbackNotice(source, "rejected"));
@@ -192,8 +218,31 @@ export class ApiTaskRunner {
     return { jobs: result.jobs, selfCheck: [{ item: `Read ${label} through ${how} (no bot, no LLM)`, passed: true, note: this.redact(note) }] };
   }
 
+  /**
+   * §5.8: the board's API changed. Back to the queue as a browser scan (like a rejected token); the
+   * API is marked broken, and only the change from working to broken posts a notice and an
+   * Activity entry. The reason holds a method, host and path, never a query or a header.
+   */
+  private apiChanged(task: Task, err: ApiChanged): void {
+    const source = String((task.input as { source?: unknown } | null)?.source ?? "");
+    const reason = withoutQuery(this.redact(err.message));
+    this.toBrowser(task, null, (tx) => {
+      if (!markSourceApiBroken(tx, source, reason, { now: this.core.now() })) return;
+      this.core.bus.emit(tx, { type: "source_api.changed", source, method: err.host ? "GET" : null, host: err.host, path: err.path ? withoutQuery(err.path) : null, reason });
+      postNotice(this.core, tx, { text: apiChangedNotice(source, reason), runId: task.runId, cards: [{ type: "activity_link" }] });
+    });
+  }
+
+  /** §5.8: a board's API scan succeeded: a broken API is marked working again, once. */
+  private apiHealthy(tx: Conn, task: Task): void {
+    const source = String((task.input as { source?: unknown } | null)?.source ?? "");
+    if (!markSourceApiHealthy(tx, source, { now: this.core.now() })) return;
+    this.core.bus.emit(tx, { type: "source_api.recovered", source });
+    postNotice(this.core, tx, { text: apiRecoveredNotice(source), runId: task.runId });
+  }
+
   /** Design §5.4: back to the queue as a browser scan of the same source, with Ba's renew notice. */
-  private toBrowser(task: Task, notice: string | null): void {
+  private toBrowser(task: Task, notice: string | null, also?: (tx: Conn) => void): void {
     const core = this.core;
     const source = String((task.input as { source?: unknown } | null)?.source ?? "");
     try {
@@ -202,6 +251,7 @@ export class ApiTaskRunner {
         const queued = routeTaskToBrowser(tx, task.id);
         if (isEnginePaused(tx, queued.engine, { now: core.now() })) holdEngineTasks(tx, queued.engine);
         if (notice) postNotice(core, tx, { text: notice, runId: task.runId, once: `token-fallback:${source}` });
+        also?.(tx);
       });
     } catch (err) {
       core.log.error(`could not send task ${task.id} to the browser: ${errorMessage(err)}`);
