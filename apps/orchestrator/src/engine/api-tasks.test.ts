@@ -231,8 +231,22 @@ describe("API scans (no bot, no Chrome)", () => {
     expect(runnerSources(t)).toEqual(["linkedin", "linkedin"]);
   });
 
+  it("LinkedIn's real record says account API, but it has no mapper: approved and with a token, it is still read in the browser", async () => {
+    const http = fakeFetch(() => ({ status: 200, body: "{}" }));
+    // The production records and mappers (BOARD_MAPPERS has no linkedin entry).
+    const port = new BoardApiScanner({ fetch: http.fn, gate: new HostGate({ sleep: async () => undefined }), secrets: secrets({ linkedin: { li_at: LI_AT, JSESSIONID: "x", "csrf-token": "y" } }) });
+    expect(port.record("linkedin").chosenPath).toBe("account_api");
+    expect(port.canScan("linkedin")).toBe(false);
+    const t = await createTestEngine({ sources: ["linkedin"], boards: port });
+    approveSource(t.db, { source: "linkedin", researchedAt: port.record("linkedin").researchedAt }, { now: t.clock.now() });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(http.calls).toHaveLength(0);
+    expect(runnerSources(t)).toEqual(["linkedin"]);
+  });
+
   it("a board whose public API is usable is read through it and its token is never read (REQ-21.AC-1)", async () => {
-    const publicApi = { usable: true, needsDeveloperKey: false, endpoints: [{ method: "GET" as const, host: "itviec.com", pathPattern: "/api/jobs", purpose: "search" as const, requiresAuth: false }] };
+    const publicApi = { usable: true, needsDeveloperKey: false, endpoints: [{ method: "GET" as const, host: "itviec.com", pathPattern: "/api/jobs", query: ["keywords"], purpose: "search" as const, requiresAuth: false }] };
     const http = fakeFetch(() => ({ status: 200, body: twoJobs("itviec") }));
     let reads = 0;
     const store: SecretStore = { credentials: () => (reads++, { _session: TOKEN }), has: () => true };
