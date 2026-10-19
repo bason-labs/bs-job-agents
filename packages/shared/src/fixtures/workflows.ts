@@ -1,7 +1,7 @@
 // Workflow definitions matching §7.2–7.3b, as the YAML would parse. W3a owns workflows/*.yaml.
 import type { WorkflowDefinitionInput, WorkflowStepInput } from "../workflow/definition.js";
 
-/** §7.2 steps 6–10: one pipeline per selected job; job-scan derives master facts before tailoring (CV auto-extend). */
+/** §7.2 steps 6–10: one pipeline per selected job; it derives master facts before tailoring (CV auto-extend). */
 const perJob = (branch: string, opts: { derive?: boolean } = {}): WorkflowStepInput[] => [
   {
     key: "company",
@@ -68,7 +68,7 @@ export const jobScanWorkflow = {
 /** §7.3: research.scan kind single, no threshold/top-N (fit still computed and shown). */
 export const applyToLinkWorkflow = {
   name: "apply-to-link",
-  version: 1,
+  version: 2,
   description: "Apply to one pasted job link.",
   triggers: ["link", "chat"],
   steps: [
@@ -76,7 +76,7 @@ export const applyToLinkWorkflow = {
     { key: "fit", type: "map", over: "$steps.scan.output.jobs", task: { bot: "research", kind: "fit", input: { job: "$item" } } },
     { key: "fit-join", type: "join", of: "fit" },
     { key: "selected", type: "filter", fn: "dedupe", from: "fit-join", options: { applyAgain: "$params.applyAgain" } },
-    ...perJob("selected"),
+    ...perJob("selected", { derive: true }),
   ],
 } satisfies WorkflowDefinitionInput;
 

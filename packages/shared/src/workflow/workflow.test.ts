@@ -139,6 +139,10 @@ describe("WorkflowDefinitionSchema (§7.1)", () => {
   it("stepsInBranch lists the per-job pipeline (company → derive facts → CV ⇄ QA gate → review → apply → record)", () => {
     const wf = WorkflowDefinitionSchema.parse(jobScanWorkflow);
     expect(stepsInBranch(wf, "top").map((s) => s.key)).toEqual(["company", "derive", "tailor", "review", "apply", "record"]);
+    // REQ-14 covers every tailor run: a pasted link and an uploaded JD derive facts too.
+    for (const def of [applyToLinkWorkflow, applyToFileWorkflow]) {
+      expect(stepsInBranch(WorkflowDefinitionSchema.parse(def), "selected").map((s) => s.key), def.name).toEqual(["company", "derive", "tailor", "review", "apply", "record"]);
+    }
   });
 });
 

@@ -4,7 +4,7 @@
 # "no apply link found" and Approve only produces the CV PDF; nothing is submitted.
 # Bump `version` with every change: runs keep the version they started with.
 name: apply-to-file
-version: 1
+version: 2
 description: Apply to a job from an uploaded JD file.
 triggers: [chat]
 steps:
@@ -44,6 +44,15 @@ steps:
         name: $item.company
         website: $item.companyWebsite
     cacheDays: 30
+  # CV auto-extend: derive master facts from Ba's own facts for the job's gaps (as job-scan).
+  - key: derive
+    type: task
+    branch: selected
+    task:
+      bot: cv
+      kind: derive
+      input:
+        job: $item
   - key: tailor
     type: gate
     branch: selected

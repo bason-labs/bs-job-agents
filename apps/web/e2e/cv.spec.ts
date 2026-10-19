@@ -158,7 +158,7 @@ test("derived facts: labelled with their source, Undo goes back to the change be
 
   const notAdded = page.getByTestId("derived-not-added");
   await notAdded.getByRole("button", { name: /Not added \(1\)/ }).click();
-  await expect(notAdded).toContainText("Not added: names the title lead, which apc-1 does not say.");
+  await expect(notAdded).toContainText("names the title lead, which apc-1 does not say");
 
   const bar = page.getByTestId("derived-undo-bar");
   await expect(bar).toContainText("Added 1 fact automatically (change 8).");

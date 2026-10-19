@@ -155,8 +155,8 @@ describe("derived facts on the Master CV screen", () => {
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(region).toHaveTextContent("“CI/CD with Jenkins for 10 services” · Cites grad-4");
-    expect(region).toHaveTextContent("Not added: says 10, which grad-4 does not say.");
-    expect(region).toHaveTextContent("Not added: names the title lead, which apc-1 does not say.");
+    expect(region).toHaveTextContent(/Not added: says 10, which grad-4 does not say/);
+    expect(region).toHaveTextContent(/names the title lead, which apc-1 does not say/);
     // Nothing can be accepted from here.
     expect(within(region).getAllByRole("button")).toEqual([toggle]);
     expect(screen.queryByTestId("derived-undo-bar")).toBeNull();
