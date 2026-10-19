@@ -222,6 +222,22 @@ describe("QA re-check probes", () => {
   });
 });
 
+describe("QA final round: action words inside backticks", () => {
+  it.each(["`đăng nhập`", "`ứng tuyển`", "`log in`", "`save it`", "`submit`", "`[onclick=apply]`", '`[data-action="save"]`', "`a.apply-button`", "`dang-nhap`", "`Nộp hồ sơ`", "`[data-track=follow]`", "`message`"])(
+    "rejects %s",
+    (code) => {
+      expect(screen(added(`- The card holds ${code}.`))).toMatchObject({ ok: false, rule: "action" });
+    },
+  );
+
+  it.each(["`job-item`", "`title`", "`company`", "`salary`", "`a.company`", "`div.card > h3`", "`[data-job-id]`", "`.box-header-job__title`", "`/viec-lam/<slug>/<id>.html`"])(
+    "keeps the selector %s",
+    (code) => {
+      expect(screen(added(`- The card holds ${code}.`))).toEqual({ ok: true });
+    },
+  );
+});
+
 describe("character set", () => {
   const cp = (n: number) => String.fromCodePoint(n);
   it.each([

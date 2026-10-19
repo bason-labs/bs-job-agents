@@ -129,6 +129,29 @@ const PATH_DENIED = new Set(
 /** Multi-piece saved-jobs paths ("my-jobs", "việc làm đã lưu"). */
 const PATH_DENIED_PHRASES = [/\bmy[-_ ]?jobs\b/, /\bviec[-_ ]?lam[-_ ]?da[-_ ]?luu\b/, /\bda[-_ ]?luu\b/];
 
+/**
+ * Action words inside any `code` span (selectors and their attribute values included, QA final
+ * round): `[onclick=apply]`, `log in`, `đăng nhập` are instructions, not page parts. Matched on the
+ * accent-free skeleton, as whole words or (multi-word) phrases.
+ */
+const CODE_DENIED_WORDS = new Set(
+  `click clicks onclick apply applies applying applied application applications submit submits save saves saving saved follow follows following
+  message messages messaging connect bid buy purchase proposal proposals login logon logout signin signup register upload uploads send fill paste
+  write run execute ignore forget override bypass delete remove edit download javascript script bookmark bookmarks wishlist favorite favourite`
+    .split(/\s+/)
+    .filter(Boolean),
+);
+const CODE_DENIED_PHRASES = [/\blog in\b/, /\bsign (?:in|up|on)\b/, /\bmy jobs\b/, /\bdang (?:nhap|ky)\b/, /\bung tuyen\b/, /\bnop ho so\b/, /\bluu tin\b/, /\btheo doi\b/, /\bgui (?:ho so|cv|don)\b/, /\b(?:nhan|bam) (?:nut|vao)\b/, /\bluu viec\b/];
+
+/** The action word a code span holds, or null. */
+export function codeActionWord(code: string): string | null {
+  const words = pathSkeleton(code).split(/[^a-z0-9]+/).filter(Boolean);
+  const word = words.find((w) => CODE_DENIED_WORDS.has(w));
+  if (word) return word;
+  const joined = ` ${words.join(" ")} `;
+  return CODE_DENIED_PHRASES.map((re) => re.exec(joined)?.[0]).find(Boolean) ?? null;
+}
+
 /** Query keys that page through results: their value is a count, held to the source's limits. */
 const PAGING_KEYS = new Set(["page", "p", "pg", "start", "offset", "limit", "count", "size", "per_page", "pagesize", "page_size", "num"]);
 
@@ -252,6 +275,8 @@ function checkContent(text: string, line: string, ctx: AllowlistContext, words: 
   for (const m of text.matchAll(CODE)) {
     const code = m[1]!.trim();
     if (code === "") return fail("grammar", "a changed line has an empty `code` span");
+    const action = codeActionWord(code);
+    if (action) return fail("action", `\`${code.slice(0, 60)}\` holds the action word "${action}"`);
     if (looksLikeUrl(code)) {
       const r = checkUrl(code, ctx, known);
       if (!r.ok) return r;
