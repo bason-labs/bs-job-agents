@@ -12,6 +12,7 @@ import type { ConversationSink } from "./conversations.js";
 import type { FactDraftSink } from "./fact-drafts.js";
 import { Engine } from "./engine.js";
 import type {
+  BoardScanPort,
   BotRegistry,
   BrowserStatusProbe,
   FeedScanPort,
@@ -29,6 +30,9 @@ import { nodeFileStore } from "./system.js";
 import type { ScanOutputChecker } from "./scan-check.js";
 import { createScanOutputChecker } from "../adapters/index.js";
 import { FeedScanner } from "../adapters/feeds/index.js";
+import { BoardApiScanner } from "../adapters/board-api/index.js";
+import { HostGate } from "../adapters/http/index.js";
+import { FileSecretStore, Redactor } from "../adapters/secrets/index.js";
 
 /** Coordinator A: per-task Claude hook settings from W2c's builders. */
 export const bridgeGuardHooks: GuardHooks = {
@@ -134,9 +138,34 @@ export interface ProductionEngineOptions {
   feeds?: FeedScanPort;
   /** PM3 S8: default: the source adapters' checker (src/adapters, W4a). */
   scanChecker?: ScanOutputChecker;
+  /** API research: boards read through an API. Default: BoardApiScanner over `secretsFile`. */
+  boards?: BoardScanPort;
+  /** AD-4: the board credentials file (config.secretsFile) and the repo root it must be outside of. */
+  secretsFile?: string;
+  repoRoot?: string;
+}
+
+/**
+ * API research (AD-2, AD-4): one per-host gate for feeds and board APIs, the secrets file (refused
+ * inside the repository: logged, and every account-API board then falls back to the browser with a
+ * renew notice) and the board-API scanner on both.
+ */
+export function productionHttp(opts: { secretsFile?: string; repoRoot?: string; logger?: Logger }): { gate: HostGate; boards: BoardScanPort } {
+  const gate = new HostGate();
+  const redactor = new Redactor();
+  let secrets: FileSecretStore | null = null;
+  if (opts.secretsFile && opts.repoRoot) {
+    try {
+      secrets = new FileSecretStore({ path: opts.secretsFile, repoRoot: opts.repoRoot, redactor, ...(opts.logger ? { log: opts.logger } : {}) });
+    } catch (err) {
+      opts.logger?.error(`board credentials are not read: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return { gate, boards: new BoardApiScanner({ fetch: (url, init) => fetch(url, init), gate, secrets, redactor }) };
 }
 
 export function createProductionEngine(opts: ProductionEngineOptions): Engine {
+  const http = productionHttp({ ...(opts.secretsFile ? { secretsFile: opts.secretsFile } : {}), ...(opts.repoRoot ? { repoRoot: opts.repoRoot } : {}), ...(opts.logger ? { logger: opts.logger } : {}) });
   return new Engine({
     db: opts.db,
     runners: opts.runners,
@@ -155,7 +184,9 @@ export function createProductionEngine(opts: ProductionEngineOptions): Engine {
     // PM3 S8: W4a's source adapters check each research.scan output.
     scanChecker: opts.scanChecker ?? createScanOutputChecker(),
     // W5: Remote OK, We Work Remotely, Remotive and Jobspresso, fetched by the orchestrator.
-    feeds: opts.feeds ?? new FeedScanner(),
+    feeds: opts.feeds ?? new FeedScanner({ gate: http.gate }),
+    // API research: the six boards' public or account APIs, through the same per-host gate.
+    boards: opts.boards ?? http.boards,
     ...(opts.config ? { config: opts.config } : {}),
     ...(opts.logger ? { logger: opts.logger } : {}),
     ...(opts.conversations ? { conversations: opts.conversations } : {}),
