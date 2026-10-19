@@ -15,6 +15,7 @@ import { exportRoutes } from "./routes/exports.js";
 import { fileRoutes } from "./routes/files.js";
 import { healthRoutes } from "./routes/health.js";
 import { masterCvRoutes } from "./routes/master-cv.js";
+import { guidanceRoutes } from "./routes/guidance.js";
 import { reviewRoutes } from "./routes/review.js";
 import { roomRoutes } from "./routes/rooms.js";
 import { runRoutes } from "./routes/runs.js";
@@ -43,6 +44,7 @@ export function registerRoutes(app: FastifyInstance, ctx: ApiContext, opts: Rout
   engineRoutes(app, ctx);
   bridgeRoutes(app, ctx);
   masterCvRoutes(app, ctx);
+  guidanceRoutes(app, ctx);
   roomRoutes(app, ctx);
   chatRoutes(app, ctx);
   proposalRoutes(app, ctx);
