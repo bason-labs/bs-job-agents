@@ -188,6 +188,14 @@ describe("GuidanceFetcher (SEC-21)", () => {
     expect(await pending).toEqual([{ url: "https://hr.example.com/slow", status: "failed", reason: "cancelled" }]);
   });
 
+  it("AD-2: with the shared HostGate, every hop takes its turn through the gate", async () => {
+    const hosts: string[] = [];
+    const gate = { run: <T,>(host: string, send: () => Promise<T>) => (hosts.push(host), send()) };
+    const fetcher = new GuidanceFetcher({ fetch: async () => response(200, ARTICLE), resolve: async () => ["93.184.216.34"], gate });
+    await fetcher.fetchPages([{ url: "https://hr.example.com/a", etag: null, lastModified: null }, { url: "https://jobs.example.org/b", etag: null, lastModified: null }]);
+    expect(hosts.sort()).toEqual(["hr.example.com", "jobs.example.org"]);
+  });
+
   it("text helpers: a page with no article starts at its h1; titles are plain and capped", () => {
     const html = `<body><div>Menu Menu Menu</div><h1>Viết CV</h1><p>${"Liệt kê theo thứ tự thời gian, công việc gần nhất trước. ".repeat(12)}</p></body>`;
     expect(mainText(html)).toMatch(/^Viết CV\n/);

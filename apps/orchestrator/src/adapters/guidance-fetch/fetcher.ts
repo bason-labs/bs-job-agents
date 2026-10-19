@@ -44,6 +44,8 @@ export interface GuidanceFetcherOptions {
   maxRedirects?: number;
   /** Pause between two requests to the same host. */
   minGapMs?: number;
+  /** AD-2: the orchestrator's shared per-host gate (adapters/http HostGate); without it, a local gap. */
+  gate?: { run<T>(host: string, send: () => Promise<T>, signal?: AbortSignal): Promise<T> };
   /** Hosts fetched at the same time. */
   concurrency?: number;
 }
@@ -193,6 +195,7 @@ export class GuidanceFetcher implements GuidanceFetchPort {
   private readonly minGapMs: number;
   private readonly concurrency: number;
   private readonly lastRequestAt = new Map<string, number>();
+  private readonly gate: GuidanceFetcherOptions["gate"];
 
   constructor(opts: GuidanceFetcherOptions = {}) {
     this.fetchFn = opts.fetch ?? pinnedHttpsFetch;
@@ -205,6 +208,7 @@ export class GuidanceFetcher implements GuidanceFetchPort {
     this.maxRedirects = opts.maxRedirects ?? GUIDANCE_MAX_REDIRECTS;
     this.minGapMs = opts.minGapMs ?? GUIDANCE_HOST_GAP_MS;
     this.concurrency = opts.concurrency ?? 3;
+    this.gate = opts.gate;
   }
 
   /** Fetch every page; one host's pages in order with the gap, a few hosts at a time. Never throws. */
@@ -267,6 +271,8 @@ export class GuidanceFetcher implements GuidanceFetchPort {
   }
 
   private async politeWait(host: string, signal?: AbortSignal): Promise<void> {
+    // The shared gate spaces this host's requests with every other non-browser path's.
+    if (this.gate) return this.gate.run(host, async () => undefined, signal);
     const last = this.lastRequestAt.get(host);
     if (last !== undefined) await this.sleep(last + this.minGapMs - this.now(), signal);
     this.lastRequestAt.set(host, this.now());

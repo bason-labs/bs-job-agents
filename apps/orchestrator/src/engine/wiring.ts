@@ -206,7 +206,7 @@ export function createProductionEngine(opts: ProductionEngineOptions): Engine {
     // API research: the six boards' public or account APIs, through the same per-host gate.
     boards: opts.boards ?? http.boards,
     // CV guidance: guidance pages fetched by the orchestrator (SEC-21), and the seed rule set.
-    guidance: opts.guidance ?? { fetch: new GuidanceFetcher(), seed: GUIDANCE_SEED },
+    guidance: opts.guidance ?? { fetch: new GuidanceFetcher({ gate: http.gate }), seed: GUIDANCE_SEED },
     ...(opts.config ? { config: opts.config } : {}),
     ...(opts.logger ? { logger: opts.logger } : {}),
     ...(opts.conversations ? { conversations: opts.conversations } : {}),
