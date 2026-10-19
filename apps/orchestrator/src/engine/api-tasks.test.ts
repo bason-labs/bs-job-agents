@@ -176,6 +176,20 @@ describe("API scans (no bot, no Chrome)", () => {
     }
   });
 
+  it("a board read with no token (auth none) answering 403, e.g. a bot check: browser fallback, not a failed source, and no 'renew the token' notice", async () => {
+    const http = fakeFetch(() => ({ status: 403 }));
+    const direct = record("itviec", { auth: { kind: "none", names: [], howToCopy: "" } });
+    const t = await createTestEngine({ sources: ["itviec"], boards: boards({ fetch: http.fn, values: {}, records: { itviec: direct } }) });
+    const run = t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(http.calls).toHaveLength(1);
+    expect(runnerSources(t)).toEqual(["itviec"]);
+    expect(scanOf(t, "itviec")).toMatchObject({ status: "done", usesBrowser: true });
+    expect((t.step(run.id, "scan-join")!.output as JoinStepOutput).failures).toEqual([]);
+    expect(leadTexts(t)).toContain("ITviec refused the direct read (HTTP 403) — scanned through the browser this time.");
+    expect(leadTexts(t).join("\n")).not.toMatch(/token/i);
+  });
+
   it("503 on every attempt: retried, then the source fails with the notice and the others go on; no browser fallback (REQ-6.AC-1)", async () => {
     const http = fakeFetch(() => ({ status: 503 }));
     const t = await createTestEngine({ sources: ["itviec", "topcv"], boards: boards({ fetch: http.fn }) });

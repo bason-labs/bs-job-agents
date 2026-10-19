@@ -43,6 +43,11 @@ export function tokenFallbackNotice(source: string, why: "missing" | "rejected")
   return `${label} token ${why} — scanned through the browser this time. Renew the ${label} token in your secrets file.`;
 }
 
+/** A board read with no token (auth "none") answered 401/403, e.g. a bot check: there is no token to renew. */
+export function directReadRefusedNotice(source: string, status: number): string {
+  return `${sourceLabel(source)} refused the direct read (HTTP ${status}) — scanned through the browser this time.`;
+}
+
 export class ApiTaskRunner {
   private readonly inflight = new Map<number, ApiInflight>();
 
@@ -175,9 +180,11 @@ export class ApiTaskRunner {
       });
     } catch (err) {
       if (signal.aborted) this.settleFailure(task, "cancelled", false);
-      else if (err instanceof MissingCredential) this.toBrowser(task, "missing");
+      else if (err instanceof MissingCredential) this.toBrowser(task, tokenFallbackNotice(source, "missing"));
       // Whatever was fetched before the 401/403 is discarded: the browser scan covers the board.
-      else if (err instanceof AuthRejected) this.toBrowser(task, "rejected");
+      else if (err instanceof AuthRejected) {
+        this.toBrowser(task, access.record?.auth.kind === "none" ? directReadRefusedNotice(source, err.status) : tokenFallbackNotice(source, "rejected"));
+      }
       else this.settleFailure(task, this.redact(errorMessage(err)), err instanceof BoardApiError && err.kind === "transient");
       return null;
     }
@@ -186,7 +193,7 @@ export class ApiTaskRunner {
   }
 
   /** Design §5.4: back to the queue as a browser scan of the same source, with Ba's renew notice. */
-  private toBrowser(task: Task, token: "missing" | "rejected" | null): void {
+  private toBrowser(task: Task, notice: string | null): void {
     const core = this.core;
     const source = String((task.input as { source?: unknown } | null)?.source ?? "");
     try {
@@ -194,7 +201,7 @@ export class ApiTaskRunner {
         if (getTask(tx, task.id)?.status !== "running") return;
         const queued = routeTaskToBrowser(tx, task.id);
         if (isEnginePaused(tx, queued.engine, { now: core.now() })) holdEngineTasks(tx, queued.engine);
-        if (token) postNotice(core, tx, { text: tokenFallbackNotice(source, token), runId: task.runId, once: `token-fallback:${source}` });
+        if (notice) postNotice(core, tx, { text: notice, runId: task.runId, once: `token-fallback:${source}` });
       });
     } catch (err) {
       core.log.error(`could not send task ${task.id} to the browser: ${errorMessage(err)}`);
