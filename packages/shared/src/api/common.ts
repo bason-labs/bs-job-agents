@@ -106,6 +106,9 @@ export const API_ROUTES = {
   guidanceRuleOn: "/guidance/rules/:id/on",
   /** CV guidance (additive): the activity log (rule added or changed; sub-project 4 adds skill repairs). */
   activity: "/activity",
+  /** Skill self-repair (additive, §5.6, §5.7): Ba restores the skill an adopted repair replaced, or retries a paused source. */
+  skillRepairRestore: "/skill-repairs/:id/restore",
+  skillRepairRetry: "/skill-repairs/sources/:source/retry",
 } as const;
 
 /** GET /bridges (W3a, additive): whether each engine's Chrome extension answers; null = unknown (engine stopped). */

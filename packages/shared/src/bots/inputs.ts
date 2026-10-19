@@ -31,7 +31,35 @@ export const ResearchScanInputSchema = z.object({
    * the fit step keeps the best maxJobs). Optional: absent on inputs stored before it.
    */
   candidateLimit: z.number().int().positive().max(30).optional(),
+  /**
+   * Skill self-repair §5.4: a validation scan follows this repair's drafted skill (put in the prompt
+   * by the runner) instead of the skill file. Only the orchestrator sets it; absent on every other scan.
+   */
+  skillOverride: z.object({ repairId: z.number().int().positive() }).strict().optional(),
 });
+
+/**
+ * research.repair (skill self-repair §5.2): the source, its skill in force, why the scan failed, the
+ * search URLs the code builds, the notes the checker reads and the source's limits. The failure
+ * reason came from a page read (data); the skill is the text to rewrite, never instructions to Research.
+ */
+export const ResearchRepairInputSchema = z.object({
+  source: SearchSourceSchema,
+  currentSkill: z.string().min(1),
+  failure: z.object({ reason: z.string().min(1), screenshot: z.string().nullable() }).strict(),
+  searchUrls: z.array(z.string().min(1)).max(6),
+  requiredNotes: z.object({ layoutChanged: z.string().min(1), noResults: z.string().min(1) }).strict(),
+  limits: z
+    .object({
+      jobLimit: z.number().int().positive(),
+      maxPageViews: z.number().int().positive().nullable(),
+      delaySec: z.object({ min: z.number().nonnegative(), max: z.number().nonnegative() }).strict().nullable(),
+    })
+    .strict(),
+  /** The only hosts the skill may name. */
+  hosts: z.array(z.string().min(1)),
+});
+export type ResearchRepairInput = z.infer<typeof ResearchRepairInputSchema>;
 
 /** research.single: one job URL (§7.3). PM2 M2: a public site, never Ba's Mac or LAN. */
 export const ResearchSingleInputSchema = z.object({ url: PublicUrlSchema });
@@ -335,6 +363,7 @@ export const BOT_TASK_INPUT_SCHEMAS = {
   "cv.review": CvReviewInputSchema,
   "research.guidance_extract": GuidanceExtractInputSchema,
   "research.guidance_discover": GuidanceDiscoverInputSchema,
+  "research.repair": ResearchRepairInputSchema,
   "qa.review": QaReviewInputSchema,
   "apply.submit": ApplySubmitInputSchema,
 } as const;
@@ -376,6 +405,7 @@ export const BOT_TASK_PROMPT_INPUT_SCHEMAS = {
   "cv.review": CvReviewInputSchema.strict(),
   "research.guidance_extract": GuidanceExtractInputSchema.strict(),
   "research.guidance_discover": GuidanceDiscoverInputSchema.strict(),
+  "research.repair": ResearchRepairInputSchema.strict(),
   "qa.review": QaReviewInputSchema.strict(),
   "apply.submit": ApplyPromptInputSchema,
 } as const satisfies Record<BotTaskKey, z.ZodTypeAny>;

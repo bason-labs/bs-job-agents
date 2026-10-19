@@ -52,6 +52,7 @@ describe("bot output registry", () => {
         "QaOutput",
         "ResearchCompanyOutput",
         "ResearchFitOutput",
+        "ResearchRepairOutput",
         "ResearchScanOutput",
       ].sort(),
     );

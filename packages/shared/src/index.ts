@@ -48,6 +48,7 @@ export * from "./bots/fact-draft.js";
 export * from "./bots/derive.js";
 export * from "./bots/cv-review.js";
 export * from "./bots/research-guidance.js";
+export * from "./bots/research-repair.js";
 export * from "./bots/registry.js";
 export * from "./bots/definition.js";
 export * from "./bots/inputs.js";

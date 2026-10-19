@@ -156,6 +156,8 @@ export const API_CONTRACT = {
   guidanceRuleOff: { POST: ep(GuidanceViewSchema) },
   guidanceRuleOn: { POST: ep(GuidanceViewSchema) },
   activity: { GET: ep(ActivityResponseSchema) },
+  skillRepairRestore: { POST: ep(ActivityResponseSchema) },
+  skillRepairRetry: { POST: ep(ActivityResponseSchema) },
 } as const satisfies { [K in ApiRouteKey]: Partial<Record<ApiMethod, ApiEndpoint>> };
 
 /** Every (method, route) pair of the contract, e.g. `{ key: "bot", method: "PATCH", path: "/bots/:name", … }`. */

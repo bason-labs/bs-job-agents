@@ -44,6 +44,8 @@ export const MessageCardSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("review_link"), count: z.number().int().nonnegative() }),
   /** CV guidance (additive, scan-notices.md): "Open the CV guidance" on a failed-refresh notice. */
   z.object({ type: z.literal("guidance_link") }),
+  /** Skill self-repair (additive, scan-notices.md): "Open the activity log" on a repair notice. */
+  z.object({ type: z.literal("activity_link") }),
   z.object({ type: z.literal("job"), jobId: IdSchema }),
   z.object({
     type: z.literal("question"),
