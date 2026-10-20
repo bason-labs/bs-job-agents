@@ -7,7 +7,7 @@ import type { HostGate } from "./gate.js";
 /** The subset of `fetch` the orchestrator's HTTP clients use (injectable: tests pass a fake). */
 export type HttpFetch = (
   url: string,
-  init: { headers: Record<string, string>; signal: AbortSignal; redirect?: "manual" | "follow" },
+  init: { method?: "GET" | "POST"; body?: string; headers: Record<string, string>; signal: AbortSignal; redirect?: "manual" | "follow" },
 ) => Promise<HttpResponse>;
 
 export interface HttpResponse {
@@ -46,6 +46,10 @@ export interface SendRequest {
   fetch: HttpFetch;
   gate: HostGate;
   url: string;
+  /** GET unless set; a POST is only ever a board's read-only search (BoardApiClient.postSearch). */
+  method?: "GET" | "POST";
+  /** The POST body (JSON text). */
+  body?: string;
   headers: Record<string, string>;
   timeoutMs: number;
   signal?: AbortSignal;
@@ -92,7 +96,12 @@ async function send(req: SendRequest, redirect: "manual" | "follow"): Promise<Ht
       const combined = req.signal ? AbortSignal.any([req.signal, timeout]) : timeout;
       let res: HttpResponse;
       try {
-        res = await req.fetch(req.url, { headers: req.headers, signal: combined, ...(redirect === "manual" ? { redirect } : {}) });
+        res = await req.fetch(req.url, {
+          ...(req.method === "POST" ? { method: "POST" as const, body: req.body ?? "" } : {}),
+          headers: req.headers,
+          signal: combined,
+          ...(redirect === "manual" ? { redirect } : {}),
+        });
       } catch (err) {
         if (req.signal?.aborted) throw err;
         const detail = timeout.aborted ? `no answer within ${Math.round(req.timeoutMs / 1000)} s` : err instanceof Error ? err.message : String(err);
@@ -118,8 +127,9 @@ export async function sendRequest(req: SendRequest): Promise<string> {
 }
 
 /**
- * One GET through the host gate with redirects NOT followed (redirect: "manual"): the caller checks
- * each Location against its allowlist and sends the next hop itself, through the gate again.
+ * One request (GET, or the read-only search POST) through the host gate with redirects NOT followed
+ * (redirect: "manual"): the caller checks each Location against its allowlist and sends the next hop
+ * itself, through the gate again (a POST is never redirected: its caller refuses every 3xx).
  */
 export async function sendRequestNoRedirect(req: SendRequest): Promise<HttpAnswer> {
   return send(req, "manual");

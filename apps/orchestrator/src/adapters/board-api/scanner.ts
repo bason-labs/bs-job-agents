@@ -75,8 +75,8 @@ export class BoardApiScanner implements BoardScanPort {
     } catch (err) {
       // Their messages name the board, a host and a path only.
       if (err instanceof AuthRejected || err instanceof MissingCredential || err instanceof EndpointNotAllowed || err instanceof DirectReadBlocked) throw err;
-      if (err instanceof ApiChanged) throw new ApiChanged(err.host, err.path, this.redact(err.message));
-      if (err instanceof BoardApiError) throw new BoardApiError(err.kind, this.redact(err.message));
+      if (err instanceof ApiChanged) throw new ApiChanged(err.host, err.path, this.redact(err.message), err.method);
+      if (err instanceof BoardApiError) throw new BoardApiError(err.kind, this.redact(err.message), err.status);
       if (req.signal?.aborted) throw err;
       // A mapper bug or an unexpected response shape: not retried, and never with a value in it.
       throw new BoardApiError("failed", this.redact(err instanceof Error ? err.message : String(err)));

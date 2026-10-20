@@ -12,7 +12,9 @@ export {
   MissingCredential,
   RedirectRefused,
   matchesPathPattern,
+  checkSearchBody,
   type BoardApiClientOptions,
+  type BoardPostRequest,
   type BoardRequest,
   type RecordedRequest,
 } from "./client.js";

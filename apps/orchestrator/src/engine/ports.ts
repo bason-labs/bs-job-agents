@@ -182,7 +182,8 @@ export interface FeedScanPort {
 
 /** One request a board-API scan sent: method, host and path only (no query, no header). */
 export interface BoardRequestRecord {
-  method: "GET";
+  /** GET, or a board's read-only search POST. */
+  method: "GET" | "POST";
   host: string;
   path: string;
 }
