@@ -72,7 +72,7 @@ export function approveSource(core: MockBackend, raw: string, researchedAt: stri
   const source = board(raw);
   const record = sourceAccessRecord(source);
   if (researchedAt !== record.researchedAt) throw fail(409, "conflict", `the ${source} research changed (${record.researchedAt}); read it again before approving`);
-  if (record.riskLevel !== "high" || accessPathOf(record, { approved: true }) !== "account_api") throw fail(409, "conflict", `${source} has no account API that needs approval`);
+  if (record.riskLevel !== "high" || accessPathOf(record, { approved: true }) !== "account_api") throw fail(409, "conflict", `${source} has no API read that needs approval`);
   if (!readers(access(core)).includes(source)) throw fail(409, "conflict", `${source} has no API reader yet, so it is read in the browser; there is nothing to approve`);
   access(core).approvals[source] = { approvedAt: core.nowIso(), researchedAt };
   return sourceAccessView(core, source);
