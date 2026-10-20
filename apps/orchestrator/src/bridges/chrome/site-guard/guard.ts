@@ -9,7 +9,8 @@ export const CHROME_TOOL_PREFIX = "mcp__claude-in-chrome__";
 /**
  * Tools the hook must see. `navigate` and `javascript_tool` reach other sites directly;
  * `browser_batch` runs both inside one call; `shortcuts_execute` runs saved extension
- * workflows; `switch_browser`/`select_browser` move the session to another browser.
+ * workflows; `switch_browser`/`select_browser` move the session to another browser (select_browser
+ * is allowed only for the deviceId Ba chose for bots, live 2026-10-20; switch_browser never).
  * `tabs_create_mcp` is deliberately absent: it opens a blank tab, and blocking it stops the bot.
  * PM2 S7: `computer` is checked for `save_to_disk` (a screenshot written outside data/ whose path
  * the model would repeat); the runner keeps screenshots itself.
@@ -32,9 +33,11 @@ export interface SiteGuardPolicy {
   allowedSites: readonly string[];
   /** MCP tool name prefix of Claude in Chrome. */
   toolPrefix?: string;
+  /** The deviceId Ba chose for bots (Bots screen): the only browser select_browser may select. */
+  browserId?: string;
 }
 
-function evaluateTool(name: string, input: Record<string, unknown>, sites: readonly string[], inBatch: boolean): GuardDecision {
+function evaluateTool(name: string, input: Record<string, unknown>, sites: readonly string[], inBatch: boolean, browserId?: string): GuardDecision {
   switch (name) {
     case "navigate":
       return checkNavigateUrl(input.url, sites);
@@ -50,8 +53,17 @@ function evaluateTool(name: string, input: Record<string, unknown>, sites: reado
         rule: "chrome_shortcut",
         reason: "Blocked by site guard: extension shortcuts run workflows the guard cannot check. Use navigate and the page tools.",
       };
-    case "switch_browser":
     case "select_browser":
+      // The model never chooses a browser: only the one Ba chose for bots may be selected.
+      if (browserId && !inBatch && input.deviceId === browserId) return { allow: true };
+      return {
+        allow: false,
+        rule: "chrome_switch_browser",
+        reason: browserId
+          ? `Blocked by site guard: select only the browser Ba chose for bots (deviceId ${browserId}).`
+          : "Blocked by site guard: bots work only in the browser they were started with.",
+      };
+    case "switch_browser":
       return {
         allow: false,
         rule: "chrome_switch_browser",
@@ -98,5 +110,5 @@ export function evaluateChromeToolCall(call: Pick<PreToolUseCall, "toolName" | "
     if (!(err instanceof InvalidAllowlistError)) throw err;
     return { allow: false, rule: "guard_config", reason: `Blocked by site guard: the allowed-site list is invalid (${err.message}).` };
   }
-  return evaluateTool(call.toolName.slice(prefix.length), call.toolInput, sites, false);
+  return evaluateTool(call.toolName.slice(prefix.length), call.toolInput, sites, false, policy.browserId);
 }

@@ -1,5 +1,5 @@
 // Entry point: the site guard as a Claude Code PreToolUse hook.
-//   node hook.js --allow topcv.vn --allow itviec.com [--log <file.jsonl>] [--tool-prefix <p>]
+//   node hook.js --allow topcv.vn --allow itviec.com [--log <file.jsonl>] [--tool-prefix <p>] [--browser <deviceId>]
 // The allowlist may also come from BS_SITE_GUARD_ALLOW (comma-separated). Exit 0 allows the
 // tool call; exit 2 blocks it and the message on stderr goes back to the model.
 import { parseArgs } from "node:util";
@@ -19,6 +19,7 @@ async function main(): Promise<number> {
       allow: { type: "string", multiple: true },
       log: { type: "string" },
       "tool-prefix": { type: "string" },
+      browser: { type: "string" },
     },
     strict: true,
     allowPositionals: false,
@@ -27,9 +28,10 @@ async function main(): Promise<number> {
   const fromEnv = (process.env.BS_SITE_GUARD_ALLOW ?? "").split(",");
   const allowedSites = (fromArgs.length > 0 ? fromArgs : fromEnv).map((s) => s.trim()).filter((s) => s !== "");
   const toolPrefix = values["tool-prefix"];
+  const browserId = values.browser?.trim();
 
   return runPreToolUseHook(
-    (call) => evaluateChromeToolCall(call, { allowedSites, ...(toolPrefix ? { toolPrefix } : {}) }),
+    (call) => evaluateChromeToolCall(call, { allowedSites, ...(toolPrefix ? { toolPrefix } : {}), ...(browserId ? { browserId } : {}) }),
     { stdin: process.stdin, stderr: process.stderr },
     { guard: "site", ...(values.log ? { logFile: values.log } : {}) },
   );

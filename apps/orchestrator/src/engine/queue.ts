@@ -46,7 +46,9 @@ import {
   findCvVersionByPdfPath,
   getRun,
   getStep,
+  getPreferredBrowser,
   getTask,
+  recordSeenBrowsers,
   holdEngineTasks,
   latestApprovalForApplication,
   listEvents,
@@ -395,6 +397,7 @@ export class TaskQueue {
     const blocks = await this.readGuardLog(prepared);
     outcome = this.withGuardLog(outcome, blocks);
     outcome = this.checkSiteGuard(task, outcome, siteBlocksOf(blocks, result));
+    outcome = this.checkBrowserChoice(task, outcome, result);
     outcome = this.checkInjectionReport(task, outcome);
     outcome = this.checkValidationEvidence(task, outcome, result);
     outcome = this.checkBrowserReached(task, outcome);
@@ -512,8 +515,10 @@ export class TaskQueue {
     }
     // §4.4: on Claude the allowlist is enforced by the site guard hook (Apply: the token's domains;
     // a domain Ba adds mid-apply means a respawn with new settings, UC-11 e).
+    // Live 2026-10-20: the browser Ba chose for bots, the only one select_browser may name.
+    const chromeBrowserId = task.usesBrowser && bot.def.browser ? (getPreferredBrowser(core.db)?.deviceId ?? null) : null;
     if (claude && bot.def.browser && allowedSites && allowedSites.length > 0) {
-      hooks.push(core.deps.guards.siteGuard({ allowedSites, logFile: guardLog! }));
+      hooks.push(core.deps.guards.siteGuard({ allowedSites, logFile: guardLog!, browserId: chromeBrowserId }));
     }
 
     // §6.2 CV flow, all under the Figma lock: Drafts page → "before" fingerprint → the templates
@@ -584,6 +589,7 @@ export class TaskQueue {
         ...(attachments ? { attachments } : {}),
         ...(allowedSites ? { allowedSites } : {}),
         usesBrowser: task.usesBrowser,
+        ...(chromeBrowserId ? { chromeBrowserId } : {}),
         ...(screenshotDir ? { screenshotDir } : {}),
         ...(skillOverride ? { skillOverride } : {}),
         ...(hooks.length > 0 ? { hookSettings: mergeHookSettings(...hooks) } : {}),
@@ -827,6 +833,30 @@ export class TaskQueue {
     const missing = asked.filter((id) => !given.has(id));
     if (missing.length === 0) return outcome;
     return { kind: "failed", error: `invalid output: the review has no item for ${missing.join(", ")}`, output: outcome.output, retryable: true };
+  }
+
+  /**
+   * Live 2026-10-20: a Chrome tool said several browsers are connected and none is selected, and
+   * the bot opened no page: it could not act. The browsers it named are kept for Ba's choice (Bots
+   * screen); the task pauses (never fails, never needs_check: no page was opened) until Ba picks the
+   * browser bots use, or closes the other, and presses Resume. Decided in code from the replies.
+   */
+  private checkBrowserChoice(task: Task, outcome: Outcome, result: RunnerResult): Outcome {
+    const seen = result.chromeBrowsers;
+    if (!seen) return outcome;
+    try {
+      recordSeenBrowsers(this.core.db, seen.devices, { now: this.core.now(), taskId: task.id });
+    } catch (err) {
+      this.core.log.warn(`could not record the browsers task ${task.id} saw: ${errorMessage(err)}`);
+    }
+    if (!seen.several || (result.pageVisits?.length ?? 0) > 0) return outcome;
+    if (outcome.kind === "cancelled" || outcome.kind === "needs_figma" || outcome.kind === "paused") return outcome;
+    const names = seen.devices.map((d) => [d.name, d.os].filter(Boolean).join(", ") || d.deviceId);
+    const detail = `${seen.devices.length > 1 ? `${seen.devices.length} Chrome browsers are connected` : "Several Chrome browsers are connected"}${names.length > 0 ? ` (${names.join("; ")})` : ""}`;
+    const raw = "output" in outcome ? outcome.output : null;
+    // Apply's resume keeps its approval token only for a paused output (isApplyPause): mark it so.
+    const output = taskKey(task.botName, task.kind) === "apply.submit" ? { ...(typeof raw === "object" && raw !== null ? raw : {}), status: "paused" } : raw;
+    return { kind: "paused", reason: { code: "browser_choice", site: null, detail }, output, ...("safety" in outcome && outcome.safety ? { safety: outcome.safety } : {}) };
   }
 
   /** Live 2026-10-20: fit text refers to Ba by name or they/them (pronouns not recorded); else retried. */
@@ -1118,7 +1148,7 @@ export class TaskQueue {
           emitTaskPaused(core, tx, paused, outcome.reason);
           // S1: the UC-17 card (login, CAPTCHA, a domain to confirm); questions get their own cards.
           noticePause(core, tx, paused, outcome.reason);
-          if (key === "apply.submit") onApplyPaused(core, tx, paused, outcome.output as ApplyOutput);
+          if (key === "apply.submit") onApplyPaused(core, tx, paused, outcome.output as ApplyOutput, outcome.reason);
           return;
         }
         case "needs_figma":

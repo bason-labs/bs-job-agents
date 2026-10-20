@@ -76,6 +76,13 @@ function taskJobId(conn: Conn, task: Task): number | null {
 
 /** A task paused for Ba in his Chrome: the card with Done (the domain card asks with the host, S24 copy). */
 export function noticePause(core: EngineCore, conn: Conn, task: Task, reason: PauseReason): void {
+  if (reason.code === "browser_choice") {
+    // Live 2026-10-20: the bot cannot act until a browser is selected, and it may not choose one.
+    const how = /^2 Chrome browsers/.test(reason.detail ?? "") ? "Two" : "Several";
+    const text = `${how} Chrome browsers are connected. Pick the one bots should use on the Bots screen (Chrome browser for bots), or close the other, then press Resume.`;
+    postNotice(core, conn, { text, runId: task.runId, cards: [{ type: "pause", taskId: String(task.id), reason: formatPauseReason(reason) }] });
+    return;
+  }
   if (reason.code !== "needs_login" && reason.code !== "captcha" && reason.code !== "domain_confirm") return;
   const site = reason.site ?? "the site";
   let text: string;
@@ -217,11 +224,12 @@ export function noticeNeedsCheck(
  * Live 2026-10-20: an Apply a restart interrupted before it opened any page of the job site.
  * Nothing was sent, so this is no check for Ba: the application failed and Apply again is offered.
  */
-export function noticeApplyNotSubmitted(core: EngineCore, conn: Conn, applicationId: number, opts: { runId?: number | null } = {}): void {
+export function noticeApplyNotSubmitted(core: EngineCore, conn: Conn, applicationId: number, opts: { runId?: number | null; why?: string } = {}): void {
   const app = getApplication(conn, applicationId);
   if (!app) return;
   const job = jobLabel(conn, app.jobId) ?? `application ${app.id}`;
-  postNotice(core, conn, { text: `${job} was not submitted: a restart stopped Apply before it opened any page of the job site. Open Applications and use Apply again.`, runId: opts.runId ?? null });
+  const why = opts.why ?? "a restart stopped Apply before it opened any page of the job site";
+  postNotice(core, conn, { text: `${job} was not submitted: ${why}. Open Applications and use Apply again.`, runId: opts.runId ?? null });
 }
 
 // ---------------------------------------------------------------- usage limits (UC-16)

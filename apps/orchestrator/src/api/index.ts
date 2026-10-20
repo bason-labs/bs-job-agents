@@ -21,6 +21,7 @@ import { roomRoutes } from "./routes/rooms.js";
 import { runRoutes } from "./routes/runs.js";
 import { scheduleRoutes } from "./routes/schedules.js";
 import { sourceRoutes } from "./routes/sources.js";
+import { chromeBrowserRoutes } from "./routes/chrome-browser.js";
 import { uploadRoutes } from "./routes/uploads.js";
 
 export interface RouteOptions {
@@ -36,6 +37,7 @@ export function registerRoutes(app: FastifyInstance, ctx: ApiContext, opts: Rout
   reviewRoutes(app, ctx);
   criteriaRoutes(app, ctx);
   sourceRoutes(app, ctx);
+  chromeBrowserRoutes(app, ctx);
   scheduleRoutes(app, ctx);
   applicationRoutes(app, ctx);
   exportRoutes(app, ctx);

@@ -54,9 +54,13 @@ const NO_PAGE_CHROME_TOOLS = new Set(["tabs_context_mcp", "tabs_create_mcp", "ta
 /**
  * Did this Apply attempt possibly open a page of the job site? Decided from its recorded tool calls
  * (task.progress tool_use events), like skill repair attributes its tab navigations. Without a
- * record that the attempt started (task.started), nothing proves it did not: yes.
+ * record that the attempt started (task.started), or on an engine other than Claude, nothing proves
+ * it did not: yes.
  */
-function mayHaveOpenedPage(tx: Conn, task: Task): boolean {
+export function mayHaveOpenedPage(tx: Conn, task: Task): boolean {
+  // Only Claude's runner reports Claude in Chrome tool calls by name; on any other engine nothing
+  // proves no page was opened.
+  if (task.engine !== "claude") return true;
   const rows = listEvents(tx, { taskId: task.id, types: ["task.started", "task.progress"] });
   const attempt = rows.filter((r) => (r.payload as { attempt?: unknown }).attempt === task.attempt && r.type === "task.started");
   if (attempt.length === 0) return true;

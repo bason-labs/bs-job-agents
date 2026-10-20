@@ -1,6 +1,7 @@
 // In-memory state of the mock orchestrator. Records use the shared domain types; ids look like
 // the real ones (numeric strings), and step outputs mirror what the engine persists.
 import type {
+  ChromeBrowserView,
   Application,
   ApplicationDetail,
   BotView,
@@ -124,6 +125,8 @@ export interface MockState {
   leadProposals?: Record<string, MockLeadProposal>;
   /** API research §5.6: Ba's approvals and which boards have a token (created on first use). */
   sourceAccess?: MockSourceAccess;
+  /** Live 2026-10-20: the Chrome browser bots use, and the browsers the bots reported (created on first use). */
+  chromeBrowser?: ChromeBrowserView;
   /** Next id for new records. */
   seq: number;
 }

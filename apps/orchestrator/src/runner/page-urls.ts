@@ -47,6 +47,62 @@ export function tabIdsIn(text: string): string[] {
 /** A not-found page: a navigate reply or the start of the page's text says 404 or "not found" (EN, VI). */
 const NOT_FOUND = /\b404\b|\bpage not found\b|\bnot found\b|không tìm thấy trang|trang không tồn tại|trang bạn tìm kiếm không tồn tại/i;
 
+/**
+ * Live 2026-10-20: Claude in Chrome's reply when several browsers are connected and none is
+ * selected for the session (the bot cannot act until one is). Matched on any Chrome tool's reply.
+ */
+export const SEVERAL_BROWSERS = /multiple (?:chrome )?browsers are connected|several (?:chrome )?browsers are connected|more than one (?:chrome )?browser is connected|none has been selected for this session/i;
+
+/** A connected browser as a Chrome tool reported it (list_connected_browsers, the several-browsers reply). */
+export interface ReportedBrowser {
+  deviceId: string;
+  name: string | null;
+  os: string | null;
+  isLocal: boolean | null;
+}
+
+const field = (chunk: string, keys: string): string | null => {
+  const m = new RegExp(`\\b"?(?:${keys})"?\\s*[:=]\\s*"?([^",})\\n]+?)"?\\s*(?:[,})\\n]|$)`, "i").exec(chunk);
+  return m ? m[1]!.trim() || null : null;
+};
+
+/**
+ * The browsers a Chrome tool reply names, whatever its shape (the real format is not pinned down):
+ * JSON objects with a deviceId, or lines like "name (deviceId: …, os: macOS, isLocal: true)".
+ */
+export function browsersIn(text: string): ReportedBrowser[] {
+  const out = new Map<string, ReportedBrowser>();
+  const add = (b: ReportedBrowser) => {
+    if (/^[A-Za-z0-9-]{6,100}$/.test(b.deviceId) && !out.has(b.deviceId)) out.set(b.deviceId, b);
+  };
+  const walk = (v: unknown): void => {
+    if (Array.isArray(v)) v.forEach(walk);
+    else if (isObj(v)) {
+      const id = v.deviceId ?? v.device_id;
+      if (typeof id === "string") {
+        const str = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : null);
+        add({ deviceId: id, name: str(v.name ?? v.displayName ?? v.deviceName), os: str(v.os ?? v.platform), isLocal: typeof v.isLocal === "boolean" ? v.isLocal : null });
+      }
+      Object.values(v).forEach(walk);
+    }
+  };
+  for (const m of text.matchAll(/[[{][\s\S]*[\]}]/g)) {
+    try {
+      walk(JSON.parse(m[0]));
+    } catch {
+      // not JSON: the line form below
+    }
+  }
+  for (const line of text.split("\n")) {
+    const id = /device_?id"?\s*[:=]\s*"?([A-Za-z0-9-]{6,100})/i.exec(line)?.[1];
+    if (!id) continue;
+    const local = field(line, "isLocal|is_local");
+    const name = field(line, "name|displayName|deviceName") ?? (/^\s*[-*•]?\s*([^(\n]+?)\s*\(/.exec(line)?.[1]?.trim() || null);
+    add({ deviceId: id, name, os: field(line, "os|platform"), isLocal: local === null ? null : /^true$/i.test(local) });
+  }
+  return [...out.values()];
+}
+
 /** One page a navigate call opened, and when the bot asked for it (W4a: LinkedIn's 3–8 s pauses). */
 export interface PageVisit {
   url: string;
@@ -67,6 +123,10 @@ export class PageUrlCollector {
   readonly opened: string[] = [];
   /** Confirmed navigates that could not be attributed to the bot's own tab (a reply format mismatch shows here). */
   unattributed = 0;
+  /** A Chrome tool replied that several browsers are connected and none is selected (live 2026-10-20). */
+  severalBrowsers = false;
+  /** Browsers the Chrome tools named (list_connected_browsers, the several-browsers reply). */
+  readonly browsers: ReportedBrowser[] = [];
   private readonly ownTabs = new Set<string>();
   /** Per tab: where its last opened page sits in `opened` (a later not-found page text removes it). */
   private readonly lastOpened = new Map<string, number>();
@@ -91,8 +151,15 @@ export class PageUrlCollector {
         this.calls.set(c.id, { tool: c.name.slice(CHROME.length), input: c.input, at: this.now() });
       } else if (c.type === "tool_result" && typeof c.tool_use_id === "string") {
         const call = this.calls.get(c.tool_use_id);
-        if (!call || c.is_error === true) continue;
-        this.fromResult(call, textOf(c.content));
+        if (!call) continue;
+        const text = textOf(c.content);
+        // Errors included: the several-browsers reply may come back as a tool error.
+        if (SEVERAL_BROWSERS.test(text)) this.severalBrowsers = true;
+        if (SEVERAL_BROWSERS.test(text) || call.tool === "list_connected_browsers" || call.tool === "select_browser") {
+          for (const b of browsersIn(text)) if (!this.browsers.some((x) => x.deviceId === b.deviceId)) this.browsers.push(b);
+        }
+        if (c.is_error === true) continue;
+        this.fromResult(call, text);
       }
     }
   }

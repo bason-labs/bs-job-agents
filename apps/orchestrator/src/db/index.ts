@@ -33,6 +33,7 @@ export * from "./dedupe.js";
 export * from "./repos/runs.js";
 export * from "./repos/tasks.js";
 export * from "./repos/recovery.js";
+export * from "./repos/chrome-browser.js";
 export * from "./repos/engine-state.js";
 export * from "./repos/events.js";
 export * from "./repos/bots.js";

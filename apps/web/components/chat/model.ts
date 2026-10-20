@@ -207,6 +207,15 @@ export function pauseCopy(reason: string, bot: string | null): PauseCopy {
         action: null,
         note: null,
       };
+    case "browser_choice":
+      // Live 2026-10-20: bots never choose a browser; Ba picks it on the Bots screen, then resumes.
+      return {
+        title: "Several Chrome browsers are connected",
+        body: `${who} can't act until a browser is chosen, and bots never choose one. Pick the one bots should use on the Bots screen (Chrome browser for bots), or close the other, then press Resume.`,
+        host: null,
+        action: { label: "Resume", confirmDomain: null },
+        note: "Nothing was opened or sent while it waited.",
+      };
     case "usage_limit":
       return { title: "Waiting for the usage limit", body: "This task waits for the subscription's usage limit to reset, then continues by itself.", host: null, action: null, note: null };
     case "needs_answer":

@@ -7,6 +7,7 @@ import { useLiveResource } from "@/lib/api/live-resource";
 import { BotCard } from "./BotCard";
 import { useBotsData, type BotsData } from "./data";
 import { WorkflowProposals } from "./WorkflowProposals";
+import { ChromeBrowserSetting } from "./ChromeBrowserSetting";
 import { ENGINE_LABELS, TRUST_MEANINGS, qaEngineWarning, type BotScreenView } from "./logic";
 import { useBots, type BotsController } from "./useBots";
 
@@ -42,6 +43,7 @@ export function BotsLive({ only }: { only?: string }) {
           <>
             <BotsScreen initial={initial} only={only} data={data} />
             {only ? null : <WorkflowProposals data={data} />}
+            {only ? null : <ChromeBrowserSetting />}
           </>
         )
       }

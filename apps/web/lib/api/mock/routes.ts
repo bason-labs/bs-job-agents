@@ -52,6 +52,8 @@ import {
   SourceAccessResponseSchema,
   SourceAccessViewSchema,
   SourceApprovalRequestSchema,
+  ChromeBrowserUpdateSchema,
+  ChromeBrowserViewSchema,
   WorkflowProposalApproveResponseSchema,
   WorkflowProposalSchema,
   WorkflowProposalsResponseSchema,
@@ -102,6 +104,18 @@ export interface MockRoute {
 const fail = (status: number, code: ApiRequestError["code"], message: string, details: unknown = null) =>
   new ApiRequestError({ status, code, message, details });
 const notFound = (message: string) => fail(404, "not_found", message);
+
+/** As the orchestrator: the browsers the bots reported (two in the sample, none chosen yet) and the choice. */
+function chromeBrowser(core: MockBackend) {
+  core.state.chromeBrowser ??= {
+    preferred: null,
+    seen: [
+      { deviceId: "3e83d913-5f0c-4a51-9c7e-2b8d6c1a7e40", name: "Ba's MacBook Pro", os: "macOS", isLocal: true, seenAt: core.nowIso() },
+      { deviceId: "a1c2e3f4-0b1d-4e2f-8a9b-7c6d5e4f3a21", name: "Office PC", os: "Windows", isLocal: false, seenAt: core.nowIso() },
+    ],
+  };
+  return core.state.chromeBrowser;
+}
 const conflict = (message: string, details: unknown = null) => fail(409, "conflict", message, details);
 const forbidden = (message: string) => fail(403, "forbidden", message);
 
@@ -374,6 +388,21 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
     approveSource(core, req.params.source!, parse(SourceApprovalRequestSchema, req.body).researchedAt),
   ),
   route("DELETE", API_ROUTES.sourceApproval, SourceAccessViewSchema, (core, req) => revokeSource(core, req.params.source!)),
+
+  // ------------------------------------------------ the Chrome browser bots use (live 2026-10-20)
+  route("GET", API_ROUTES.chromeBrowser, ChromeBrowserViewSchema, (core) => chromeBrowser(core)),
+  route("PUT", API_ROUTES.chromeBrowser, ChromeBrowserViewSchema, (core, req) => {
+    const { deviceId } = parse(ChromeBrowserUpdateSchema, req.body);
+    const view = chromeBrowser(core);
+    if (deviceId === null) view.preferred = null;
+    else {
+      const seen = view.seen.find((b) => b.deviceId === deviceId);
+      if (!seen) throw conflict(`no connected browser ${deviceId} was reported by the bots`);
+      const { seenAt: _s, ...browser } = seen;
+      view.preferred = browser;
+    }
+    return view;
+  }),
 
   // ------------------------------------------------ schedules (UC-21)
   route("GET", API_ROUTES.schedules, SchedulesResponseSchema, (core) => {

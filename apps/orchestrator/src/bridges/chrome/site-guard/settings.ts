@@ -16,6 +16,8 @@ export interface SiteGuardSettingsOptions {
   nodePath?: string;
   /** Seconds Claude Code waits for the hook (default 15). */
   timeoutSec?: number;
+  /** The deviceId Ba chose for bots: select_browser may select it, nothing else. */
+  browserId?: string | null;
 }
 
 /** The shell command that runs the site guard hook for this allowlist. */
@@ -25,6 +27,11 @@ export function siteGuardHookCommand(opts: SiteGuardSettingsOptions): string {
   const args = sites.flatMap((s) => ["--allow", s]);
   if (opts.logFile) args.push("--log", opts.logFile);
   if (opts.toolPrefix && opts.toolPrefix !== CHROME_TOOL_PREFIX) args.push("--tool-prefix", opts.toolPrefix);
+  if (opts.browserId) {
+    // A deviceId is an opaque id; anything else never reaches the hook's command line.
+    if (!/^[A-Za-z0-9-]{1,100}$/.test(opts.browserId)) throw new InvalidAllowlistError(`invalid Chrome browser id ${JSON.stringify(opts.browserId)}`);
+    args.push("--browser", opts.browserId);
+  }
   return buildHookCommand(resolveHookEntry(import.meta.url, "hook"), args, { nodePath: opts.nodePath });
 }
 

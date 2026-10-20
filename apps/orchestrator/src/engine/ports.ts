@@ -105,7 +105,7 @@ export interface GuardBlock {
  */
 export interface GuardHooks {
   /** Claude in Chrome site guard (§4.4, §10.2 rule 7): W2c `buildSiteGuardSettings`. */
-  siteGuard(opts: { allowedSites: readonly string[]; logFile: string }): ClaudeHookSettings;
+  siteGuard(opts: { allowedSites: readonly string[]; logFile: string; browserId?: string | null }): ClaudeHookSettings;
   /** Figma Drafts-only guard (§6.2): W2c `prepareFigmaGuard(...).settings`. */
   figmaGuard(opts: { fingerprint: ProtectedPagesFingerprint; dir: string; logFile: string; draftsPageId: string | null }): Promise<ClaudeHookSettings>;
 }

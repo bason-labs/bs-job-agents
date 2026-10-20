@@ -43,7 +43,7 @@ import { SkillStore } from "../adapters/skill-store/index.js";
 
 /** Coordinator A: per-task Claude hook settings from W2c's builders. */
 export const bridgeGuardHooks: GuardHooks = {
-  siteGuard: (o) => buildSiteGuardSettings({ allowedSites: o.allowedSites, logFile: o.logFile }),
+  siteGuard: (o) => buildSiteGuardSettings({ allowedSites: o.allowedSites, logFile: o.logFile, browserId: o.browserId ?? null }),
   figmaGuard: async (o) =>
     (await prepareFigmaGuard({ fingerprint: o.fingerprint, dir: o.dir, logFile: o.logFile, draftsPageId: o.draftsPageId })).settings,
 };

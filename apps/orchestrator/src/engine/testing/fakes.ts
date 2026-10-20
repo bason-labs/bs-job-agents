@@ -218,11 +218,12 @@ export class FakeGuardHooks implements GuardHooks {
 
   constructor(private readonly files: MemoryFileStore) {}
 
-  siteGuard(opts: { allowedSites: readonly string[]; logFile: string }): ClaudeHookSettings {
+  siteGuard(opts: { allowedSites: readonly string[]; logFile: string; browserId?: string | null }): ClaudeHookSettings {
     this.siteCalls.push({ allowedSites: [...opts.allowedSites], logFile: opts.logFile });
+    const browser = opts.browserId ? ` --browser ${opts.browserId}` : "";
     return {
       hooks: {
-        PreToolUse: [{ matcher: "mcp__claude-in-chrome__navigate", hooks: [{ type: "command", command: `site-guard --allow ${opts.allowedSites.join(",")} --log ${opts.logFile}` }] }],
+        PreToolUse: [{ matcher: "mcp__claude-in-chrome__navigate", hooks: [{ type: "command", command: `site-guard --allow ${opts.allowedSites.join(",")} --log ${opts.logFile}${browser}` }] }],
       },
     };
   }

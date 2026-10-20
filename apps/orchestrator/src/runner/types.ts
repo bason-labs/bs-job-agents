@@ -67,6 +67,11 @@ export interface RunnerTask {
    * prompt carries it in place of the skill file, and the task gets no skill-file reads.
    */
   skillOverride?: { skillMd: string };
+  /**
+   * Additive (live 2026-10-20): the Chrome browser Ba chose for bots (deviceId). A Chrome task gets
+   * select_browser for it (the site guard allows that id only) and a prompt line saying so.
+   */
+  chromeBrowserId?: string | null;
   timeoutMs: number;
   signal?: AbortSignal;
 }
@@ -114,6 +119,11 @@ export interface RunnerResultExtras {
   openedUrls?: string[];
   /** Confirmed navigates that could not be attributed to the bot's own tab. */
   unattributedOpens?: number;
+  /**
+   * Live 2026-10-20: a Chrome tool said several browsers are connected and none is selected
+   * (`several`), and the browsers the tools named, for the Bots screen's choice.
+   */
+  chromeBrowsers?: { several: boolean; devices: { deviceId: string; name: string | null; os: string | null; isLocal: boolean | null }[] };
 }
 
 export type RunnerResult = RunnerResultCore & RunnerResultExtras;

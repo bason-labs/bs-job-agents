@@ -21,6 +21,7 @@ import {
   type ApplyOutput,
   type ApplyPromptInput,
   type CvLanguage,
+  type PauseReason,
   type PendingQuestion,
   type QuestionAnswer,
 } from "@bs-job-agents/shared";
@@ -42,6 +43,7 @@ import {
   listSavedAnswers,
   mappers,
   markSubmissionRefused,
+  mayHaveOpenedPage,
   recordSubmission,
   saveAnswer,
   setMessageCards,
@@ -56,7 +58,7 @@ import {
 import type { CapturedScreenshot } from "../runner/screenshots.js";
 import { formDefaultsOf, loadRunCtx, type RunCtx, type Scope } from "./context.js";
 import { demoteBot } from "./demotion.js";
-import { noticeApplyNotStarted, noticeNeedsCheck } from "./notices.js";
+import { noticeApplyNotStarted, noticeApplyNotSubmitted, noticeNeedsCheck } from "./notices.js";
 import { siteKey } from "./sites.js";
 import type { EngineCore } from "./core.js";
 import { errorMessage, invalidInput, invalidState, notFound } from "./errors.js";
@@ -358,10 +360,21 @@ export function flagApplyJob(conn: Conn, task: Task): void {
   if (app) flagJobInjection(conn, app.jobId);
 }
 
-/** After a spawn, anything but a clean result or a pause: needs_check, never retried (UC-11 c, PM FYI c). */
+/**
+ * After a spawn, anything but a clean result or a pause: needs_check, never retried (UC-11 c, PM
+ * FYI c). Live 2026-10-20: unless the attempt's recorded tool calls show it never opened a page of
+ * the job site (only Chrome's tab listing and blank-tab tools, e.g. Chrome never answered): then
+ * nothing can have been sent, so the application failed ("not sent") and Apply again is offered.
+ */
 export function onApplyFailedAfterSpawn(core: EngineCore, conn: Conn, task: Task, error: string): void {
   const row = actionRowOf(conn, task);
   const appId = Number((task.input as Partial<ApplyPromptInput> | null)?.applicationId);
+  if (Number.isInteger(appId) && !mayHaveOpenedPage(conn, task)) {
+    const note = `Not sent: Apply stopped before it opened any page of the job site (${error})`;
+    if (moveApplication(core, conn, appId, "failed", note, { runId: task.runId })) noticeApplyNotSubmitted(core, conn, appId, { runId: task.runId, why: `Apply stopped before it opened any page of the job site (${error})` });
+    if (row) updateAction(core, conn, row, { outcome: "not_started", error: note });
+    return;
+  }
   if (Number.isInteger(appId)) moveApplication(core, conn, appId, "needs_check", `Apply did not finish cleanly: ${error}`, { runId: task.runId });
   if (row) updateAction(core, conn, row, { outcome: "needs_check", error });
 }
@@ -441,10 +454,16 @@ export const MAX_AUTO_RESUMES = 3;
  *   CAPTCHA or a domain to confirm always waits for Ba (PM FYI c).
  * - A question Apply asks again although it has an answer (the form rejected it) goes to Ba.
  */
-export function onApplyPaused(core: EngineCore, conn: Conn, task: Task, output: ApplyOutput): void {
+export function onApplyPaused(core: EngineCore, conn: Conn, task: Task, output: ApplyOutput, pause?: PauseReason): void {
   const row = actionRowOf(conn, task);
   const out = (row?.output as ActionStepOutput | undefined) ?? null;
   const appId = Number((task.input as Partial<ApplyPromptInput> | null)?.applicationId);
+  if (pause?.code === "browser_choice") {
+    // Live 2026-10-20: the engine paused it (several Chrome browsers, none chosen); nothing was opened.
+    moveApplication(core, conn, appId, "paused", "waiting for Ba to choose the Chrome browser bots use");
+    if (row && out) updateAction(core, conn, row, {}, "waiting for Ba");
+    return;
+  }
   moveApplication(core, conn, appId, "paused", output.pauseReason?.detail ?? output.pauseReason?.reason ?? "pending questions");
   if (!row || !out) return;
   const reason = output.pauseReason?.reason ?? "needs_answer";
@@ -543,8 +562,10 @@ export function resumePausedTask(core: EngineCore, taskId: number, opts: { confi
     const reason = task.status === "paused" && task.pauseReason ? parsePauseReason(task.pauseReason) : null;
     if (!reason) throw invalidState(`task ${taskId} is not paused`);
     switch (reason.code) {
+      // browser_choice (live 2026-10-20): Ba chose the bots' browser, or closed the other one.
       case "needs_login":
       case "captcha":
+      case "browser_choice":
         resumeTaskNow(core, tx, task);
         return;
       case "domain_confirm": {
