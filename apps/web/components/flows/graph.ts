@@ -21,6 +21,8 @@ export interface MapCounts {
 
 export interface GateRoundView {
   language: string;
+  /** 1, then 2… for each new pass after Ba asked for changes (UC-09); rounds restart at 1. */
+  pass: number;
   round: number;
   total: number | null;
   passed: boolean | null;
@@ -65,10 +67,17 @@ export interface LaneModel {
   y: number;
 }
 
+/** The jobs the top step left out (scored under the fit threshold): shown as a note, never as lanes. */
+export interface BelowThresholdModel {
+  threshold: number | null;
+  jobs: { jobId: string; title: string; fitScore: number | null }[];
+}
+
 export interface FlowGraph {
   nodes: FlowNodeModel[];
   edges: FlowEdgeModel[];
   lanes: LaneModel[];
+  belowThreshold: BelowThresholdModel | null;
 }
 
 interface StepDef {
@@ -96,6 +105,8 @@ const RUN_LAYOUTS: Record<string, StepDef[]> = {
 };
 
 const keysOf = (def: StepDef) => def.keys ?? [def.key];
+/** The run steps whose items are the jobs that get a branch. */
+const SELECTION_STEPS = ["top", "selected"];
 
 const LANE_STEPS: StepDef[] = [
   { key: "company", kind: "task", label: "Company profile", bot: "research" },
@@ -132,9 +143,11 @@ function countsOf(rows: readonly StepView[]): MapCounts | null {
 
 function roundsOf(rows: readonly StepView[]): GateRoundView[] {
   return rows.flatMap((r) => {
-    const out = (r.output ?? {}) as { language?: string; rounds?: { total?: number | null; passed?: boolean | null }[] };
+    const out = (r.output ?? {}) as { language?: string; rounds?: { pass?: number; round?: number; total?: number | null; passed?: boolean | null }[] };
     const language = out.language ?? r.branchKey?.split(":")[1] ?? "";
-    return (out.rounds ?? []).map((x, i) => ({ language, round: i + 1, total: x.total ?? null, passed: x.passed ?? null }));
+    // Each round keeps its pass and its number within the pass (a second pass after Ba's changes
+    // restarts at round 1), never its position in the list.
+    return (out.rounds ?? []).map((x, i) => ({ language, pass: x.pass ?? 1, round: x.round ?? i + 1, total: x.total ?? null, passed: x.passed ?? null }));
   });
 }
 
@@ -211,14 +224,25 @@ export function buildFlowGraph(view: RunView): FlowGraph {
     if (!runDefs.some((d) => keysOf(d).includes(s.stepKey))) runDefs.push({ key: s.stepKey, kind: "task", label: titleCase(s.stepKey), bot: null });
   }
 
-  // Lanes: the jobs the filter step selected, then any other branch the steps have.
+  // Lanes: the jobs the filter step selected (top, or apply-to-link's selected), then any other
+  // branch the steps have. Dedupe and fit list every candidate: those are not branches (live
+  // 2026-10-20: they drew 7 phantom pending pipelines beside the one real job).
   const lanes: { jobId: string; title: string }[] = [];
+  const titleOf = (it: { jobId?: number | string; title?: string; company?: string }) =>
+    it.company && it.title ? `${it.company} — ${it.title}` : (it.title ?? `Job ${String(it.jobId ?? "")}`);
+  let belowThreshold: BelowThresholdModel | null = null;
   for (const s of runRows) {
-    const items = (s.output as { items?: { jobId?: number | string; title?: string; company?: string }[] } | null)?.items;
-    if (!Array.isArray(items) || s.stepKey === "scan" || s.stepKey === "fit") continue;
-    for (const it of items) {
+    if (!SELECTION_STEPS.includes(s.stepKey)) continue;
+    const out = (s.output ?? {}) as { items?: { jobId?: number | string; title?: string; company?: string }[]; threshold?: number; belowThreshold?: { jobId?: number | string; title?: string; company?: string; fitScore?: number }[] };
+    for (const it of Array.isArray(out.items) ? out.items : []) {
       const jobId = String(it.jobId ?? "");
-      if (jobId && !lanes.some((l) => l.jobId === jobId)) lanes.push({ jobId, title: it.company && it.title ? `${it.company} — ${it.title}` : `Job ${jobId}` });
+      if (jobId && !lanes.some((l) => l.jobId === jobId)) lanes.push({ jobId, title: titleOf(it) });
+    }
+    if (Array.isArray(out.belowThreshold) && out.belowThreshold.length > 0) {
+      belowThreshold = {
+        threshold: typeof out.threshold === "number" ? out.threshold : null,
+        jobs: out.belowThreshold.map((it) => ({ jobId: String(it.jobId ?? ""), title: titleOf(it), fitScore: typeof it.fitScore === "number" ? it.fitScore : null })),
+      };
     }
   }
   for (const s of steps) {
@@ -282,7 +306,7 @@ export function buildFlowGraph(view: RunView): FlowGraph {
     }
   }
 
-  return { nodes, edges, lanes: lanes.map((l, i) => ({ ...l, y: i * ROW })) };
+  return { nodes, edges, lanes: lanes.map((l, i) => ({ ...l, y: i * ROW })), belowThreshold };
 }
 
 /** The status word on a node (prototype). */

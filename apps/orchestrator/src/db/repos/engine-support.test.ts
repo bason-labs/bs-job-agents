@@ -11,9 +11,9 @@ import type { Run, Task } from "../types.js";
 import { getApplication, recordSubmission } from "./applications.js";
 import { createApproval, latestApprovalForApplication } from "./approvals.js";
 import { getBot, updateBot, upsertBot } from "./bots.js";
-import { listEvents } from "./events.js";
+import { appendAppEvent, listEvents } from "./events.js";
 import { dedupeCandidates, jobIdsInActiveRuns, setJobStatus, upsertJobCandidate } from "./jobs.js";
-import { DEFAULT_NON_RETRYABLE, recoverInterruptedTasks } from "./recovery.js";
+import { DEFAULT_NON_RETRYABLE, INTERRUPTED_BEFORE_PAGE_NOTE, recoverInterruptedTasks } from "./recovery.js";
 import { createRun, createStep, getRun, updateRunStatus } from "./runs.js";
 import { createSearchProfile, updateSearchProfile } from "./search-profiles.js";
 import { claimNextTask, createTask, getTask, pauseTask, updateTaskInput } from "./tasks.js";
@@ -88,6 +88,53 @@ describe("recoverInterruptedTasks marks the interrupted Apply's application need
     expect(app.statusHistory.at(-1)).toMatchObject({ status: "needs_check", note: "interrupted by restart; it may already have been submitted" });
     const updated = listEvents(db, { types: ["application.updated"] }).map(toAppEvent);
     expect(updated).toEqual([expect.objectContaining({ applicationId: String(application.id), status: "needs_check" })]);
+  });
+
+  describe("live 2026-10-20: the recorded tool calls decide whether a job-site page was opened", () => {
+    const CHROME = "mcp__claude-in-chrome__";
+    function started(t: Task, tools: string[]) {
+      const ref = { taskId: String(t.id), runId: String(t.runId), stepId: String(t.stepId), botName: "apply" };
+      appendAppEvent(db, { type: "task.started", ...ref, kind: "submit", engine: "claude", attempt: 1 }, { now: at(2) });
+      for (const tool of tools) appendAppEvent(db, { type: "task.progress", ...ref, kind: "tool_use", text: `${tool}: started`, tool }, { now: at(3) });
+    }
+    function interrupted(tools: string[]) {
+      const job = seedJob(db);
+      const cv = seedCv(db, job);
+      const { application } = seedApprovedApplication(db, job, cv);
+      const t = applyTask(application.id, job.id, cv.id);
+      claimNextTask(db, { now: at(1) });
+      started(t, tools);
+      return { t, application, r: recoverInterruptedTasks(db, { now: at(10) }) };
+    }
+
+    it("Chrome never answered (tabs_context_mcp twice, tabs_create_mcp just started): not submitted, failed, so Apply again is offered", () => {
+      const { t, application, r } = interrupted([`${CHROME}tabs_context_mcp`, "Read", `${CHROME}tabs_context_mcp`, `${CHROME}tabs_create_mcp`]);
+      expect(r.needsCheck).toEqual([]);
+      expect(r.needsCheckApplicationIds).toEqual([]);
+      expect(r.notSubmitted.map((x) => x.id)).toEqual([t.id]);
+      expect(r.notSubmittedApplicationIds).toEqual([application.id]);
+      const app = getApplication(db, application.id)!;
+      expect(app.status).toBe("failed");
+      expect(app.statusHistory.at(-1)!.note).toBe(INTERRUPTED_BEFORE_PAGE_NOTE);
+      expect(getTask(db, t.id)?.status).toBe("interrupted");
+    });
+
+    for (const tool of ["navigate", "form_input", "computer", "find", "read_page", "javascript_tool", "some_new_tool"]) {
+      it(`a ${tool} call means a page may have been touched: needs_check as before`, () => {
+        const { application, r } = interrupted([`${CHROME}tabs_context_mcp`, `${CHROME}${tool}`]);
+        expect(r.needsCheckApplicationIds).toEqual([application.id]);
+        expect(getApplication(db, application.id)!.status).toBe("needs_check");
+      });
+    }
+
+    it("no record of the attempt starting: needs_check as before (nothing proves no page was opened)", () => {
+      const job = seedJob(db);
+      const cv = seedCv(db, job);
+      const { application } = seedApprovedApplication(db, job, cv);
+      applyTask(application.id, job.id, cv.id);
+      claimNextTask(db, { now: at(1) });
+      expect(recoverInterruptedTasks(db, { now: at(10) }).needsCheckApplicationIds).toEqual([application.id]);
+    });
   });
 
   it("reconciles Apply tasks an older build left interrupted while the application stayed approved", () => {

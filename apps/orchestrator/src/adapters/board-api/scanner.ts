@@ -24,6 +24,11 @@ export interface BoardApiScannerOptions {
   timeoutMs?: number;
 }
 
+/** A rate limit: HTTP 429, or a 503 that says when to come back (Retry-After). */
+function isRateLimit(err: unknown): err is BoardApiError {
+  return err instanceof BoardApiError && !(err instanceof ApiChanged) && (err.status === 429 || (err.status === 503 && err.retryAfter !== null));
+}
+
 export class BoardApiScanner implements BoardScanPort {
   private readonly redactor: Redactor;
   private readonly mappers: Partial<Record<BoardSource, BoardMapper>>;
@@ -78,7 +83,10 @@ export class BoardApiScanner implements BoardScanPort {
       // Their messages name the board, a host and a path only.
       if (err instanceof AuthRejected || err instanceof MissingCredential || err instanceof EndpointNotAllowed || err instanceof DirectReadBlocked) throw err;
       if (err instanceof ApiChanged) throw new ApiChanged(err.host, err.path, this.redact(err.message), err.method);
-      if (err instanceof BoardApiError) throw new BoardApiError(err.kind, this.redact(err.message), err.status);
+      // Live 2026-10-20: a board read without logging in that rate-limits (429, or 503 with
+      // Retry-After) is blocked, not down: no retry (it would only ask again), the browser this run.
+      if (record.auth.kind === "none" && isRateLimit(err)) throw new DirectReadBlocked(source, err.at?.host ?? source, err.at?.path ?? "");
+      if (err instanceof BoardApiError) throw new BoardApiError(err.kind, this.redact(err.message), err.status, err.retryAfter, err.at);
       if (req.signal?.aborted) throw err;
       // A mapper bug or an unexpected response shape: not retried, and never with a value in it.
       throw new BoardApiError("failed", this.redact(err instanceof Error ? err.message : String(err)));

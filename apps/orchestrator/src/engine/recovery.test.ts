@@ -46,7 +46,8 @@ describe("crash recovery (UC-18)", () => {
     const first = await createTestEngine({ clock: new FakeClock(T0) });
     const run = first.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
     await first.idle();
-    first.runner.script({ bot: "apply", kind: "submit", delayMs: 3600_000 });
+    // It had opened the job's page (a navigate) when the restart came.
+    first.runner.script({ bot: "apply", kind: "submit", delayMs: 3600_000, events: [{ type: "tool", name: "mcp__claude-in-chrome__navigate", status: "started", summary: null }] });
     const { applicationId, taskId } = first.engine.approve(1, { cvVersionId: first.review(run.id, 1)!.cvVersions[0]!.cvVersionId, introText: null });
     await settleSomeWork();
     expect(getTask(first.db, taskId!)?.status).toBe("running");
@@ -67,6 +68,30 @@ describe("crash recovery (UC-18)", () => {
     expect(second.step(run.id, "apply", "1")).toMatchObject({ status: "done", output: expect.objectContaining({ outcome: "needs_check" }) });
     expect(second.step(run.id, "record", "1")?.status).toBe("skipped");
     expect(getRun(second.db, run.id)?.status).toBe("done");
+  });
+
+  it("live 2026-10-20: an Apply a restart stopped before it opened any job-site page is not submitted (failed, Apply again), never needs_check", async () => {
+    const first = await createTestEngine({ clock: new FakeClock(T0) });
+    const run = first.engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" });
+    await first.idle();
+    // Chrome never answered: tabs_context_mcp timed out twice, tabs_create_mcp had just started.
+    const chrome = (name: string, status: "started" | "error") => ({ type: "tool" as const, name: `mcp__claude-in-chrome__${name}`, status, summary: null });
+    first.runner.script({ bot: "apply", kind: "submit", delayMs: 3600_000, events: [chrome("tabs_context_mcp", "started"), chrome("tabs_context_mcp", "error"), chrome("tabs_context_mcp", "started"), chrome("tabs_context_mcp", "error"), chrome("tabs_create_mcp", "started")] });
+    const { applicationId, taskId } = first.engine.approve(1, { cvVersionId: first.review(run.id, 1)!.cvVersions[0]!.cvVersionId, introText: null });
+    await settleSomeWork();
+
+    const second = await createTestEngine({ db: first.db, files: first.files, clock: new FakeClock(new Date(T0.getTime() + 60_000)), start: false });
+    await second.engine.start();
+    await second.idle();
+    expect(second.runner.callsFor("apply.submit")).toEqual([]);
+    expect(getTask(second.db, taskId!)?.status).toBe("interrupted");
+    const app = getApplication(second.db, applicationId!)!;
+    expect(app.status).toBe("failed");
+    expect(app.statusHistory.map((h) => h.status)).not.toContain("needs_check");
+    expect(second.step(run.id, "apply", "1")).toMatchObject({ status: "failed", output: expect.objectContaining({ outcome: "not_started" }) });
+    const texts = second.events("message.created").map((e) => e.message.text);
+    expect(texts.some((t) => /was not submitted: a restart stopped Apply before it opened any page of the job site\. Open Applications and use Apply again\./.test(t))).toBe(true);
+    expect(texts.some((t) => /needs a check/.test(t))).toBe(false);
   });
 
   it("probe P5: a crash after a CV attempt changed a protected page is caught at start-up: safety event, Lead alert, no new attempt (PM2 S4)", async () => {

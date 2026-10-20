@@ -452,6 +452,41 @@ describe("skill self-repair §5.8: the API changed", () => {
     expect(t.events("source_api.changed")).toEqual([]);
   });
 
+  describe("live 2026-10-20: a direct (no-login) board that rate-limits is a blocked read, not a failed source", () => {
+    /** The production TopCV record and reader; every request answers `status` (with Retry-After when given). */
+    function direct(status: number, retryAfter: string | null) {
+      const calls: string[] = [];
+      const fetch: HttpFetch = async (url) => {
+        calls.push(url);
+        return { ok: false, status, text: async () => "", headers: { get: (n: string) => (n.toLowerCase() === "retry-after" ? retryAfter : null) } };
+      };
+      return { calls, port: new BoardApiScanner({ fetch, gate: new HostGate({ sleep: async () => undefined }), secrets: null }) };
+    }
+
+    for (const [status, retryAfter] of [[429, null], [429, "120"], [503, "60"]] as const) {
+      it(`HTTP ${status}${retryAfter ? " with Retry-After" : ""}: no retry, the browser this run, the 'blocked' notice`, async () => {
+        const { calls, port } = direct(status, retryAfter);
+        const t = await createTestEngine({ sources: ["topcv"], boards: port });
+        t.engine.startWorkflow(START, { trigger: "chat" });
+        await t.idle();
+        expect(calls).toHaveLength(1);
+        expect(scanOf(t, "topcv")).toMatchObject({ status: "done", usesBrowser: true });
+        expect(runnerSources(t)).toEqual(["topcv"]);
+        expect(leadTexts(t)).toContain("TopCV blocked the direct read — scanned through the browser this time.");
+        expect(t.events("source_api.changed")).toEqual([]);
+      });
+    }
+
+    it("a 503 without Retry-After stays transient: retried, then the source fails", async () => {
+      const { calls, port } = direct(503, null);
+      const t = await createTestEngine({ sources: ["topcv"], boards: port });
+      t.engine.startWorkflow(START, { trigger: "chat" });
+      await t.idle();
+      expect(calls.length).toBeGreaterThan(1);
+      expect(scanOf(t, "topcv")).toMatchObject({ status: "failed", usesBrowser: false });
+    });
+  });
+
   it("a transient error is not a changed API: retried, then the source fails (no fallback, no notice)", async () => {
     const t = await createTestEngine({ sources: ["itviec"], boards: boards({ fetch: fakeFetch(() => ({ status: 503 })).fn }) });
     t.engine.startWorkflow(START, { trigger: "chat" });

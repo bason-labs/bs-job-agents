@@ -187,7 +187,8 @@ describe("Apply needs_check (S1)", () => {
     const first = await createTestEngine({ clock: new FakeClock(T0) });
     const run = first.engine.startWorkflow(scanParams, { trigger: "chat" });
     await first.idle();
-    first.runner.script({ bot: "apply", kind: "submit", delayMs: HOUR });
+    // It had opened the job's page when the crash came (a restart before any page: not a check).
+    first.runner.script({ bot: "apply", kind: "submit", delayMs: HOUR, events: [{ type: "tool", name: "mcp__claude-in-chrome__navigate", status: "started", summary: null }] });
     first.engine.approve(1, { cvVersionId: first.review(run.id, 1)!.cvVersions[0]!.cvVersionId, introText: null });
     for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
     const second = await createTestEngine({ db: first.db, files: first.files, clock: new FakeClock(new Date(T0.getTime() + 60_000)) });

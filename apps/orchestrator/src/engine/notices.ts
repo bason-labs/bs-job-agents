@@ -124,6 +124,9 @@ const LANG = (input: unknown): string => String((input as { language?: unknown }
  * retried). Conversation tasks are W3a's (ConversationSink.failed); Apply reports through its
  * application (needs_check) or as "could not start".
  */
+/** The error of a browser scan that never reached Chrome (queue.ts checkBrowserReached). */
+export const CHROME_NOT_CONNECTED_ERROR = "chrome not connected: the scan opened no page";
+
 export function noticeTaskFailed(core: EngineCore, conn: Conn, task: Task, error: string): void {
   if ((CONVERSATION_TASK_KINDS as readonly string[]).includes(task.kind) || task.botName === "lead" || task.botName === "apply") return;
   // Skill self-repair: a repair or validation task ends its attempt ("Automatic repair failed: …").
@@ -144,6 +147,10 @@ export function noticeTaskFailed(core: EngineCore, conn: Conn, task: Task, error
       const others = task.runId !== null && listTasks(conn, { runId: task.runId }).some((t) => t.id !== task.id && t.botName === "research" && t.kind === "scan");
       // UC-03 b: a failed self-check, or PM3 S8's scan checker reporting a broken adapter.
       const broken = /^(self-check failed|adapter broken): /.test(error);
+      if (error === CHROME_NOT_CONNECTED_ERROR) {
+        text = `${label} was not scanned: Chrome isn't connected. Open Chrome with the Claude extension and scan again.${others ? " The other sources go on." : ""}`;
+        break;
+      }
       text = `${label} ${broken ? `adapter broken: ${error.replace(/^(self-check failed|adapter broken): /, "")}` : `scan failed: ${error}`}.${others ? " The other sources go on." : ""}`;
       break;
     }
@@ -204,6 +211,17 @@ export function noticeNeedsCheck(
         ? `Dry run for ${job} reported that it submitted, which a dry run must never do: it may really have been sent. Check with the employer and in Applications.`
         : `Dry run for ${job} needs a check: ${reason}. Check the form in your Chrome; nothing should have been submitted.`;
   postNotice(core, conn, { text, runId: opts.runId ?? null });
+}
+
+/**
+ * Live 2026-10-20: an Apply a restart interrupted before it opened any page of the job site.
+ * Nothing was sent, so this is no check for Ba: the application failed and Apply again is offered.
+ */
+export function noticeApplyNotSubmitted(core: EngineCore, conn: Conn, applicationId: number, opts: { runId?: number | null } = {}): void {
+  const app = getApplication(conn, applicationId);
+  if (!app) return;
+  const job = jobLabel(conn, app.jobId) ?? `application ${app.id}`;
+  postNotice(core, conn, { text: `${job} was not submitted: a restart stopped Apply before it opened any page of the job site. Open Applications and use Apply again.`, runId: opts.runId ?? null });
 }
 
 // ---------------------------------------------------------------- usage limits (UC-16)

@@ -23,7 +23,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { FlowEdge, LoopEdge, type FlowEdgeData } from "./Edges";
 import { focusBox, followView } from "./follow";
-import { buildFlowGraph, type FlowNodeData } from "./graph";
+import { buildFlowGraph, type BelowThresholdModel, type FlowNodeData } from "./graph";
 import { StepDrawer } from "./StepDrawer";
 import { StepNode } from "./StepNode";
 
@@ -212,6 +212,8 @@ export function FlowCanvas({ runId }: { runId: string }) {
         </ReactFlowProvider>
       </div>
 
+      {graph?.belowThreshold ? <BelowThresholdNote model={graph.belowThreshold} /> : null}
+
       <StepDrawer view={view} data={node} onClose={() => setSelected(null)} />
       <ConfirmDialog
         open={confirmCancel}
@@ -224,5 +226,31 @@ export function FlowCanvas({ runId }: { runId: string }) {
         onConfirm={() => void control("cancel")}
       />
     </Page>
+  );
+}
+
+/**
+ * The jobs the run scored under Ba's fit threshold: one collapsed note, never pending lanes (live
+ * 2026-10-20: drawn as lanes they read as "stuck"). Each with its title and score.
+ */
+function BelowThresholdNote({ model }: { model: BelowThresholdModel }) {
+  const n = model.jobs.length;
+  return (
+    <details
+      className="absolute bottom-14 left-3 z-10 max-w-[min(28rem,calc(100%-1.5rem))] rounded-2xl border border-border bg-surface/80 px-3 py-2 text-xs backdrop-blur-md"
+      data-testid="below-threshold"
+    >
+      <summary className="cursor-pointer text-muted">
+        {n} job{n === 1 ? "" : "s"} below your fit threshold{model.threshold !== null ? ` (${model.threshold})` : ""} — not tailored
+      </summary>
+      <ul className="mt-2 space-y-1">
+        {model.jobs.map((j) => (
+          <li key={j.jobId} className="flex justify-between gap-3">
+            <span className="truncate">{j.title}</span>
+            <span className="shrink-0 text-muted tabular">{j.fitScore ?? "—"}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }

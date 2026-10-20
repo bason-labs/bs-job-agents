@@ -27,7 +27,7 @@ export function nodeTasks(view: RunView, data: FlowNodeData): DrawerTask[] {
     const tasks = view.tasks.filter((t) => t.stepId === row.id);
     const o = (row.output ?? {}) as {
       items?: { item?: unknown; taskId?: number | string }[];
-      rounds?: { producerTaskId?: number | string; checkerTaskId?: number | string | null }[];
+      rounds?: { pass?: number; round?: number; producerTaskId?: number | string; checkerTaskId?: number | string | null }[];
       language?: string;
     };
     const lang = (o.language ?? row.branchKey?.split(":")[1] ?? "").toUpperCase();
@@ -36,7 +36,11 @@ export function nodeTasks(view: RunView, data: FlowNodeData): DrawerTask[] {
       const item = o.items?.find((i) => String(i.taskId) === task.id);
       if (item) label = itemLabel(item.item);
       const r = o.rounds?.findIndex((x) => String(x.producerTaskId) === task.id || String(x.checkerTaskId) === task.id) ?? -1;
-      if (r >= 0) label = `${lang ? `${lang} · ` : ""}Round ${r + 1} · ${task.botName === "qa" ? "QA" : "CV"}`;
+      if (r >= 0) {
+        const x = o.rounds![r]!;
+        const pass = x.pass ?? 1;
+        label = `${lang ? `${lang} · ` : ""}${pass > 1 ? `After your changes${pass > 2 ? ` (${pass - 1})` : ""} · ` : ""}Round ${x.round ?? r + 1} · ${task.botName === "qa" ? "QA" : "CV"}`;
+      }
       out.push({ label: label ?? `${BOT_NAMES[task.botName] ?? task.botName} · ${task.kind}${task.attempt > 1 ? ` (attempt ${task.attempt})` : ""}`, task });
     }
   }

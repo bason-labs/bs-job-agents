@@ -77,6 +77,10 @@ export class BoardApiError extends Error {
     message: string,
     /** The HTTP status when the board answered one (a mapper may treat 429 as a block). */
     readonly status: number | null = null,
+    /** The answer's Retry-After header, when it sent one. */
+    readonly retryAfter: string | null = null,
+    /** Where the failed request went (host and path only). */
+    readonly at: { host: string; path: string } | null = null,
   ) {
     super(message);
     this.name = "BoardApiError";
@@ -364,7 +368,7 @@ export class BoardApiClient {
     if (err.kind === "auth_rejected") return new AuthRejected(this.source, err.status ?? 401);
     const where = `${url.hostname}${url.pathname}`;
     if (err.status === 404 || err.status === 410) return new ApiChanged(url.hostname, url.pathname, `${method === "POST" ? "POST " : ""}${where} answered HTTP ${err.status}`, method);
-    return new BoardApiError(err.kind, this.redactor.redact(err.status === null ? `could not reach ${where} (${err.detail})` : `${where} answered ${err.detail}`), err.status);
+    return new BoardApiError(err.kind, this.redactor.redact(err.status === null ? `could not reach ${where} (${err.detail})` : `${where} answered ${err.detail}`), err.status, err.retryAfter, { host: url.hostname, path: url.pathname });
   }
 
   /** A GET whose body is JSON. */

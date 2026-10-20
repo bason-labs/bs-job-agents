@@ -87,10 +87,13 @@ import { onFactDraftDone } from "./fact-drafts.js";
 import { writeTaskMasterCv } from "./master-cv-copy.js";
 import { injectionDetail, reportedInjection } from "./injection.js";
 import { DEMOTING_SAFETY_REASONS, demoteBot, postProtectedChangeAlert } from "./demotion.js";
-import { noticePause, noticeTaskFailed } from "./notices.js";
+import { CHROME_NOT_CONNECTED_ERROR, noticePause, noticeTaskFailed } from "./notices.js";
 import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, stillRunning } from "./task-events.js";
 import { hostOfUrl, pauseSite, siteBlocksOf, siteKey, type SiteBlock } from "./sites.js";
 import { adapterBrokenError, scanRejectedError, type ScanCheckResult } from "./scan-check.js";
+
+/** A bot's note that Chrome or its extension could not be reached (e.g. tabs_context_mcp failed). */
+const CHROME_UNREACHABLE = /(chrome|extension|tabs_context_mcp|browser)[^.]*\b(not connected|disconnected|unreachable|unavailable|could not (?:be )?reach|couldn'?t reach|failed|not running|closed)\b|tabs_context_mcp/i;
 import { checkTaskTrust } from "./trust-guard.js";
 import { ApiTaskRunner } from "./api-tasks.js";
 import { canonicalJobUrl } from "../adapters/canonical-url.js";
@@ -393,6 +396,7 @@ export class TaskQueue {
     outcome = this.checkSiteGuard(task, outcome, siteBlocksOf(blocks, result));
     outcome = this.checkInjectionReport(task, outcome);
     outcome = this.checkValidationEvidence(task, outcome, result);
+    outcome = this.checkBrowserReached(task, outcome);
     outcome = await this.checkScanOutput(task, prepared, outcome, result);
     outcome = this.checkReviewOutput(task, outcome);
     if (prepared.apply) outcome = this.checkApplyPages(task, outcome, result);
@@ -723,6 +727,22 @@ export class TaskQueue {
    * page that tries to instruct it is not one to keep filling in. A finished Apply is recorded as
    * needs_check (writeSubmissionRecord); Research's jobs are flagged when they are stored.
    */
+  /**
+   * Live 2026-10-20: a browser research.scan that never reached Chrome is a source that was not
+   * scanned, never "0 results": no job and no page viewed, or the bot's own notes say Chrome or its
+   * extension could not be reached. Decided here from the output, not by the model; not retried
+   * (Chrome stays unreachable until Ba opens it), and Ba is told to open Chrome and scan again.
+   */
+  private checkBrowserReached(task: Task, outcome: Outcome): Outcome {
+    // A skill-repair validation scan has its own verdict on 0 jobs (SEC-11.AC-2).
+    if (outcome.kind !== "ok" || taskKey(task.botName, task.kind) !== "research.scan" || !task.usesBrowser || validationRepairId(task) !== null) return outcome;
+    const output = outcome.output as ResearchScanOutput;
+    if (output.jobs.length > 0 || output.blocked) return outcome;
+    const said = [output.injectionNote, ...output.selfCheck.flatMap((c) => [c.item, c.note])].filter((t): t is string => typeof t === "string");
+    if (output.pageViews > 0 && !said.some((t) => CHROME_UNREACHABLE.test(t))) return outcome;
+    return { kind: "failed", error: CHROME_NOT_CONNECTED_ERROR, output: outcome.output, retryable: false, ...(outcome.safety ? { safety: outcome.safety } : {}) };
+  }
+
   /**
    * PM3 S8: a research.scan output that passed its schema and self-check goes to the
    * ScanOutputChecker (W4a's adapters). A broken adapter fails the branch for good (UC-03 b); an

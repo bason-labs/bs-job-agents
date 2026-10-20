@@ -16,6 +16,35 @@ const step = (stepKey: string, branchKey: string | null, status: StepView["statu
   ...over,
 });
 
+describe("live 2026-10-20: lanes are the real branches only", () => {
+  const run = (steps: StepView[]): RunView => ({ run: { ...runFixture, workflowName: "job-scan" }, steps, tasks: [] }) as unknown as RunView;
+  const job = (jobId: number, title: string) => ({ jobId, title, company: `Co ${jobId}` });
+
+  it("dedupe and fit list every candidate, but only the jobs top selected get a lane; below-threshold jobs are a note, not pending pipelines", () => {
+    const all = [1, 2, 3, 4, 5, 6, 7, 8].map((id) => job(id, `Job ${id}`));
+    const g = buildFlowGraph(
+      run([
+        step("dedupe", null, "done", { output: { items: all, candidates: 8, duplicates: 0 } }),
+        step("fit", null, "done", { output: { items: all.map((j) => ({ ...j, fitScore: 50 })), counts: { total: 8, done: 8, running: 0, queued: 0, failed: 0 } } }),
+        step("top", null, "done", {
+          output: { items: [job(8, "FinTech Frontend Dev")], threshold: 70, take: 10, belowThreshold: [{ ...job(6, "Front-End Developer PHP"), fitScore: 66, gaps: ["PHP"] }, { ...job(3, "Java Dev"), fitScore: 40 }] },
+        }),
+        step("company", "8", "done"),
+      ]),
+    );
+    expect(g.lanes.map((l) => l.jobId)).toEqual(["8"]);
+    expect(g.nodes.filter((n) => n.data.lane !== null && n.data.lane !== "8")).toEqual([]);
+    expect(g.belowThreshold).toEqual({ threshold: 70, jobs: [{ jobId: "6", title: "Co 6 — Front-End Developer PHP", fitScore: 66 }, { jobId: "3", title: "Co 3 — Java Dev", fitScore: 40 }] });
+  });
+
+  it("a gate's rounds keep their pass: a second pass (after Ba asked for changes) is labelled, not counted as rounds 4-6", () => {
+    const rounds = [1, 2, 3, 1, 2, 3].map((round, i) => ({ pass: i < 3 ? 1 : 2, round, total: 80 + i, passed: round === 3 }));
+    const g = buildFlowGraph(run([step("top", null, "done", { output: { items: [job(8, "X")] } }), step("tailor", "8:en", "done", { round: 3, output: { language: "en", pass: 2, rounds } })]));
+    const tailor = g.nodes.find((n) => n.id === "lane:8:tailor")!.data;
+    expect(tailor.rounds.map((r) => [r.pass, r.round])).toEqual([[1, 1], [1, 2], [1, 3], [2, 1], [2, 2], [2, 3]]);
+  });
+});
+
 describe("buildFlowGraph", () => {
   it("lays out the job-scan run steps, one lane per selected job, and pending nodes for steps not started", async () => {
     const api = new MockBackend({ sleep: () => Promise.resolve() });

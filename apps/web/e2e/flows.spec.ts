@@ -36,6 +36,20 @@ test("the canvas shows each step's status, per-job lanes, QA rounds and the lock
   await expect(page.getByText("QA fail → fixes → next round").first()).toBeVisible();
 });
 
+test("live 2026-10-20: one lane per selected job; the jobs under the fit threshold are one collapsed note, not pending lanes", async ({ page }) => {
+  await open(page, "/flows/12");
+  await expect(node(page, "node-record-103")).toBeVisible();
+  await expect(page.locator('[data-testid^="node-company-"]')).toHaveCount(3);
+  const note = page.getByTestId("below-threshold");
+  await expect(note).toContainText("4 jobs below your fit threshold (60) — not tailored");
+  await expect(note.getByRole("listitem")).toHaveCount(4);
+  await expect(note.getByRole("listitem").first()).toBeHidden();
+  await note.getByText(/jobs below your fit threshold/).click();
+  await expect(note.getByRole("listitem").first()).toContainText("Frontend Developer (Vue) — BlueSea");
+  await expect(note.getByRole("listitem").first()).toContainText("58");
+  await expect(page.locator('[data-testid^="node-company-90"]')).toHaveCount(0);
+});
+
 test("UC-22: a node opens the drawer with input, output, self-check, transcript, attempts, engine and prompt version", async ({ page }) => {
   await open(page, "/flows/12");
   await openNode(page, "node-scan");

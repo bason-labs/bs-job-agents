@@ -36,6 +36,8 @@ export class HttpRequestError extends Error {
     readonly status: number | null,
     /** "fetch failed", "no answer within 20 s", or "HTTP 503". */
     readonly detail: string,
+    /** The answer's Retry-After header, when it sent one (a 429 or 503 rate limit). */
+    readonly retryAfter: string | null = null,
   ) {
     super(detail);
     this.name = "HttpRequestError";
@@ -112,7 +114,7 @@ async function send(req: SendRequest, redirect: "manual" | "follow"): Promise<Ht
         return { kind: "redirect", status: res.status, location: res.headers?.get("location") ?? null };
       }
       const kind = classifyStatus(res.status);
-      if (kind !== null) throw new HttpRequestError(kind, res.status, `HTTP ${res.status}`);
+      if (kind !== null) throw new HttpRequestError(kind, res.status, `HTTP ${res.status}`, res.headers?.get("retry-after") ?? null);
       return { kind: "body", body: await readBody(res, req.maxBodyBytes) };
     },
     req.signal,

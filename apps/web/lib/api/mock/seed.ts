@@ -563,7 +563,13 @@ export function seedRun12(jobs: Record<string, Job>, queue: ReviewCard[]): Seede
     start: seedTime(11, 31),
     end: seedTime(11, 31),
     preview: "3 jobs ≥ 60 (16 dropped, 2 already applied)",
-    output: { items: lanes.map((l) => ({ jobId: Number(l.jobId), title: l.title, company: l.company })), threshold: 60, take: 5 },
+    output: {
+      items: lanes.map((l) => ({ jobId: Number(l.jobId), title: l.title, company: l.company })),
+      threshold: 60,
+      take: 5,
+      // As the engine's top step reports them: shown on the canvas as one note, never as lanes.
+      belowThreshold: FIT_EXTRAS.slice(0, 4).map((title, i) => ({ jobId: 900 + i, title, fitScore: 58 - i * 2 })),
+    },
   });
 
   // per-job branches
