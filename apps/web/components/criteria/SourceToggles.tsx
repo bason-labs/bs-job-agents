@@ -218,7 +218,11 @@ function ApproveDialog({ open, view, busy, onCancel, onConfirm }: ApproveDialogP
           hideClose
           data-testid="source-approve-dialog"
           title={`Approve the account API for ${name}?`}
-          description={`${name} is read in the browser until you approve. Once approved, scans read its own web API with your account token.`}
+          description={
+            view.noLogin
+              ? `${name} is read in the browser until you approve. Once approved, scans read its public job pages directly, without logging in: no token or cookie is sent.`
+              : `${name} is read in the browser until you approve. Once approved, scans read its own web API with your account token.`
+          }
           footer={
             <>
               <Button pill onClick={onCancel}>

@@ -1,8 +1,8 @@
 // How each source is read, in the mock orchestrator (design 2026-10-19 §5.1, §5.6), like the
 // orchestrator's routes/sources.ts: the shared access records and accessStateOf, Ba's approvals
 // bound to the record's researchedAt, and which boards have a token in the secrets file. A board
-// without an API reader (API_READER_BOARDS: LinkedIn today) reads in the browser and has nothing
-// to approve, as in production; a test can add a reader to show the approve flow.
+// without an API reader (not in API_READER_BOARDS: Wellfound, Upwork) reads in the browser and has
+// nothing to approve, as in production; a test can add or remove a reader.
 import {
   API_READER_BOARDS,
   SearchSourceSchema,
@@ -39,12 +39,12 @@ function access(core: MockBackend): MockSourceAccess {
 export function sourceAccessView(core: MockBackend, source: SearchSource): SourceAccessView {
   if (isFeedSource(source) || !isBoardSource(source)) {
     const path = isFeedSource(source) ? "public_api" : "browser";
-    return { source, path, labelKey: path, needsApproval: false, tokenMissing: false, approvedAt: null, researchedAt: null, riskLevel: null, termsOfUse: null, accountRisk: null };
+    return { source, path, labelKey: path, needsApproval: false, tokenMissing: false, noLogin: false, approvedAt: null, researchedAt: null, riskLevel: null, termsOfUse: null, accountRisk: null };
   }
   const record = sourceAccessRecord(source);
   const a = access(core);
   if (!readers(a).includes(source)) {
-    return { source, path: "browser", labelKey: "browser", needsApproval: false, tokenMissing: false, approvedAt: null, researchedAt: record.researchedAt, riskLevel: record.riskLevel, termsOfUse: record.termsOfUse, accountRisk: record.accountRisk };
+    return { source, path: "browser", labelKey: "browser", needsApproval: false, tokenMissing: false, noLogin: record.auth.kind === "none", approvedAt: null, researchedAt: record.researchedAt, riskLevel: record.riskLevel, termsOfUse: record.termsOfUse, accountRisk: record.accountRisk };
   }
   const approval = a.approvals[source];
   const approved = approval !== undefined && approval.researchedAt === record.researchedAt;
@@ -52,6 +52,7 @@ export function sourceAccessView(core: MockBackend, source: SearchSource): Sourc
   return {
     source,
     ...state,
+    noLogin: record.auth.kind === "none",
     approvedAt: approved ? approval.approvedAt : null,
     researchedAt: record.researchedAt,
     riskLevel: record.riskLevel,
