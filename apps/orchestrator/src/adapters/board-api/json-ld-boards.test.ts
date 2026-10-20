@@ -71,8 +71,8 @@ const settle = (source: string, jobs: unknown[]) =>
   settleScanOutput({ source, taskInput: {}, jobs, selfCheck: [], taskId: 1, runId: 1, attempt: 1, engine: "claude" });
 
 describe("BOARD_MAPPERS", () => {
-  it("TopCV and ITviec have a mapper; LinkedIn and the boards with no GET endpoint do not (they stay on the browser)", () => {
-    expect(Object.keys(BOARD_MAPPERS).sort()).toEqual(["itviec", "topcv"]);
+  it("TopCV, ITviec, VietnamWorks and LinkedIn have a mapper; the boards with no usable endpoint do not (they stay on the browser)", () => {
+    expect(Object.keys(BOARD_MAPPERS).sort()).toEqual(["itviec", "linkedin", "topcv", "vietnamworks"]);
     // The shared list the web's mock orchestrator uses.
     expect([...API_READER_BOARDS].sort()).toEqual(Object.keys(BOARD_MAPPERS).sort());
   });

@@ -33,6 +33,7 @@ function viewOf(conn: Conn, boards: BoardScanPort | undefined, source: SearchSou
     labelKey: access.labelKey,
     needsApproval: access.needsApproval,
     tokenMissing: access.tokenMissing,
+    noLogin: record?.auth.kind === "none",
     approvedAt: approval && approval.researchedAt === record?.researchedAt ? approval.approvedAt : null,
     researchedAt: record?.researchedAt ?? null,
     riskLevel: record?.riskLevel ?? null,

@@ -2,7 +2,7 @@
 // and Ba's approval of a high-risk board's account API. Never a credential value.
 import { SourceAccessRecordSchema, SourceAccessResponseSchema, SourceAccessViewSchema, type BoardSource, type SourceAccessRecord } from "@bs-job-agents/shared";
 import { afterEach, describe, expect, it } from "vitest";
-import { BoardApiScanner } from "../../adapters/board-api/index.js";
+import { BOARD_MAPPERS, BoardApiScanner } from "../../adapters/board-api/index.js";
 import { HostGate } from "../../adapters/http/index.js";
 import type { SecretStore } from "../../engine/ports.js";
 import { createApiHarness, type ApiHarness } from "../testing.js";
@@ -81,12 +81,23 @@ describe("POST/DELETE /sources/:source/approval", () => {
     expect(SourceAccessViewSchema.parse(del.json())).toMatchObject({ path: "browser", needsApproval: true, approvedAt: null });
   });
 
-  it("a board without an API reader (LinkedIn in production) is not approvable (409) and shows Browser", async () => {
-    // The production records and mappers: LinkedIn's record says account API, but BOARD_MAPPERS has no reader for it.
-    const production = new BoardApiScanner({ fetch: async () => ({ ok: true, status: 200, text: async () => "{}" }), gate: new HostGate(), secrets: null });
+  it("LinkedIn in production (2026-10-20): needs approval, then reads Direct (no login); no token involved", async () => {
+    const production = new BoardApiScanner({ fetch: async () => ({ ok: true, status: 200, text: async () => "" }), gate: new HostGate(), secrets: null });
     h = await createApiHarness({ engine: { boards: production } });
     const record = production.record("linkedin");
-    expect(record.chosenPath).toBe("account_api");
+    expect(record).toMatchObject({ chosenPath: "account_api", riskLevel: "high", auth: { kind: "none" } });
+    expect(await view("linkedin")).toMatchObject({ path: "browser", labelKey: "account_api_needs_approval", needsApproval: true, tokenMissing: false });
+    expect((await h.post("/sources/linkedin/approval", { researchedAt: record.researchedAt })).statusCode).toBe(200);
+    expect(await view("linkedin")).toMatchObject({ path: "account_api", labelKey: "account_api_direct", needsApproval: false, tokenMissing: false });
+    expect(await view("vietnamworks")).toMatchObject({ path: "account_api", labelKey: "account_api_direct", needsApproval: false, approvedAt: null });
+  });
+
+  it("a board without an API reader is not approvable (409) and shows Browser", async () => {
+    // The production records, but no LinkedIn mapper.
+    const { linkedin: _li, ...others } = BOARD_MAPPERS;
+    const noReader = new BoardApiScanner({ fetch: async () => ({ ok: true, status: 200, text: async () => "{}" }), gate: new HostGate(), secrets: null, mappers: others });
+    h = await createApiHarness({ engine: { boards: noReader } });
+    const record = noReader.record("linkedin");
     expect(await view("linkedin")).toMatchObject({ path: "browser", labelKey: "browser", needsApproval: false });
     const res = await h.post("/sources/linkedin/approval", { researchedAt: record.researchedAt });
     expect(res.statusCode).toBe(409);

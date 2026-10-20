@@ -249,18 +249,62 @@ describe("API scans (no bot, no Chrome)", () => {
     expect(runnerSources(t)).toEqual(["linkedin", "linkedin"]);
   });
 
-  it("LinkedIn's real record says account API, but it has no mapper: approved and with a token, it is still read in the browser", async () => {
-    const http = fakeFetch(() => ({ status: 200, body: "{}" }));
-    // The production records and mappers (BOARD_MAPPERS has no linkedin entry).
-    const port = new BoardApiScanner({ fetch: http.fn, gate: new HostGate({ sleep: async () => undefined }), secrets: secrets({ linkedin: { li_at: LI_AT, JSESSIONID: "x", "csrf-token": "y" } }) });
-    expect(port.record("linkedin").chosenPath).toBe("account_api");
-    expect(port.canScan("linkedin")).toBe(false);
-    const t = await createTestEngine({ sources: ["linkedin"], boards: port });
-    approveSource(t.db, { source: "linkedin", researchedAt: port.record("linkedin").researchedAt }, { now: t.clock.now() });
-    t.engine.startWorkflow(START, { trigger: "chat" });
-    await t.idle();
-    expect(http.calls).toHaveLength(0);
-    expect(runnerSources(t)).toEqual(["linkedin"]);
+  describe("the production LinkedIn and VietnamWorks readers (2026-10-20 addendum, fixtures only)", () => {
+    const fixture = (path: string) => readFileSync(new URL(`../adapters/board-api/fixtures/${path}`, import.meta.url), "utf8");
+    const liPlan = (url: string) => (url.includes("/jobPosting/") ? { status: 200, body: fixture("linkedin/job-4415809801.html").replaceAll("4415809801", /jobPosting\/(\d+)/.exec(url)![1]!) } : { status: 200, body: fixture("linkedin/search.html") });
+    const production = (fetch: HttpFetch) => new BoardApiScanner({ fetch, gate: new HostGate({ sleep: async () => undefined }), secrets: secrets({ linkedin: { li_at: LI_AT, JSESSIONID: '"ajax:1"', "csrf-token": "ajax:1" } }) });
+
+    it("LinkedIn waits for Ba's approval (browser until then); approved, it reads the guest pages with no cookie and no runner", async () => {
+      const http = fakeFetch(liPlan);
+      const port = production(http.fn);
+      expect(port.canScan("linkedin")).toBe(true);
+      const t = await createTestEngine({ sources: ["linkedin"], boards: port });
+      t.engine.startWorkflow(START, { trigger: "chat" });
+      await t.idle();
+      expect(http.calls).toHaveLength(0);
+      expect(runnerSources(t)).toEqual(["linkedin"]);
+
+      approveSource(t.db, { source: "linkedin", researchedAt: port.record("linkedin").researchedAt }, { now: t.clock.now() });
+      t.engine.startWorkflow(START, { trigger: "chat" });
+      await t.idle();
+      expect(runnerSources(t)).toEqual(["linkedin"]);
+      expect(http.calls.map((c) => new URL(c.url).pathname)[0]).toBe("/jobs-guest/jobs/api/seeMoreJobPostings/search");
+      expect(http.calls.length).toBeGreaterThan(1);
+      for (const c of http.calls) {
+        expect(new URL(c.url).host).toBe("www.linkedin.com");
+        expect(c.headers.Cookie).toBeUndefined();
+        expect(JSON.stringify(c.headers)).not.toContain(LI_AT);
+      }
+      const scans = t.tasks("research.scan");
+      expect(scans.at(-1)).toMatchObject({ status: "done", usesBrowser: false });
+    });
+
+    it("an approved LinkedIn read that answers 429 stops at once (no retry) and is read in the browser with the 'blocked' notice", async () => {
+      const http = fakeFetch(() => ({ status: 429, body: "<html><script>document.cookie='x'</script></html>" }));
+      const port = production(http.fn);
+      const t = await createTestEngine({ sources: ["linkedin"], boards: port });
+      approveSource(t.db, { source: "linkedin", researchedAt: port.record("linkedin").researchedAt }, { now: t.clock.now() });
+      t.engine.startWorkflow(START, { trigger: "chat" });
+      await t.idle();
+      expect(http.calls).toHaveLength(1);
+      expect(runnerSources(t)).toEqual(["linkedin"]);
+      expect(leadTexts(t)).toContain("LinkedIn blocked the direct read — scanned through the browser this time.");
+    });
+
+    it("VietnamWorks (low risk) is read directly without any approval: the search POST, then its job pages", async () => {
+      const search = fixture("vietnamworks/search.json");
+      const detail = fixture("vietnamworks/job-2110333.html");
+      const http = fakeFetch((url) => (url.startsWith("https://ms.vietnamworks.com/") ? { status: 200, body: search } : url.includes("-2110333-jv") ? { status: 200, body: detail } : { status: 404 }));
+      const t = await createTestEngine({ sources: ["vietnamworks"], boards: production(http.fn) });
+      t.engine.startWorkflow(START, { trigger: "chat" });
+      await t.idle();
+      expect(runnerSources(t)).toEqual([]);
+      expect(http.calls[0]!.url).toBe("https://ms.vietnamworks.com/job-search/v1.0/search");
+      const scan = scanOf(t, "vietnamworks");
+      expect(scan).toMatchObject({ status: "done", usesBrowser: false });
+      expect((scan.output as { jobs: { url: string }[] }).jobs.map((j) => j.url)).toEqual([expect.stringMatching(/-2110333-jv$/)]);
+      expect(t.events("task.progress").map((e) => e.text)).toContain("POST ms.vietnamworks.com/job-search/v1.0/search");
+    });
   });
 
   it("two API tasks running at once against one host share the process's 1500 ms gate (NFR-1)", async () => {

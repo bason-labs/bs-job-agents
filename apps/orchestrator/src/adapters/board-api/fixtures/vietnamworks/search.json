@@ -1,0 +1,789 @@
+{
+  "meta": {
+    "code": 200,
+    "message": "Success",
+    "nbHits": 40,
+    "page": 0,
+    "nbPages": 2,
+    "hitsPerPage": 20,
+    "totalJobsText": "40"
+  },
+  "data": [
+    {
+      "jobId": 2116796,
+      "jobTitle": "Java Developer (>5 YOE)",
+      "jobUrl": "https://www.vietnamworks.com/java-developer-5-yoe-1791356921261108152-2116796-jv",
+      "userId": 7902048,
+      "companyLogo": "https://images.vietnamworks.com/pictureofcompany/b6/11474273.png",
+      "companyUrl": "",
+      "alias": "java-developer-5-yoe-1791356921261108152",
+      "createdOn": "2026-10-07T14:07:56+07:00",
+      "approvedOn": "2026-10-07T14:08:41+07:00",
+      "approvedOnText": "Đăng 12 ngày trước",
+      "prettyApprovedOn": "12 ngày trước",
+      "expiredOn": "2026-11-06T23:59:59+07:00",
+      "lastUpdatedOn": "",
+      "lastSyncedOn": "",
+      "companyName": "CÔNG TY CỔ PHẦN VINSMART FUTURE",
+      "companyId": 404058,
+      "companyProfile": "",
+      "companySizeId": 0,
+      "contactName": "",
+      "createdBy": 0,
+      "isOnline": null,
+      "isActive": null,
+      "isApproved": null,
+      "isUnpaidDisable": 0,
+      "isCompleted": null,
+      "isAnonymous": false,
+      "isSalaryVisible": false,
+      "isShowLogo": true,
+      "isShowLogoInSearch": false,
+      "jobDescription": "<p>Tổng quan công việc</p><p>Backend Developer (Java) chịu trách nhiệm thiết kế, phát triển và tối ưu các hệ thống Backend phục vụ nền tảng kinh doanh bất động sản, đảm bảo hiệu năng, khả năng mở rộng và tính ổn định theo kiến trúc Microservices.</p><p>Vị trí này phối hợp chặt chẽ với Product Owner,...",
+      "jobRequirement": "<p>Kinh nghiệm</p><p>•\t05 năm kinh nghiệm phát triển Backend với Java.</p><p>•\tThành thạo Java 11/17+, Spring Boot, Spring MVC, Spring Security và Spring Data JPA/Hibernate.</p><p>•\tCó kinh nghiệm thiết kế, phát triển và tối ưu RESTful APIs.</p><p>•\tCó kinh nghiệm xây dựng hệ thống theo kiến trúc Microservices, Event-driven Architecture.</p><p>•\tThành thạo làm việc với cơ sở dữ liệu...",
+      "jobLevelId": 5,
+      "languageSelectedId": 3,
+      "redirectTo": "",
+      "requiredCoverLetter": 0,
+      "salary": 0,
+      "salaryMax": 0,
+      "salaryMin": 0,
+      "typeWorkingId": 1,
+      "skills": [
+        {
+          "skillId": 1635598,
+          "skillWeight": 100,
+          "skillName": "Java 8"
+        },
+        {
+          "skillId": 917531,
+          "skillWeight": 100,
+          "skillName": "Spring Boot"
+        },
+        {
+          "skillId": 519901,
+          "skillWeight": 100,
+          "skillName": "Microservices"
+        },
+        {
+          "skillId": 1120582,
+          "skillWeight": 100,
+          "skillName": "Restful Api"
+        },
+        {
+          "skillId": 221067,
+          "skillWeight": 100,
+          "skillName": "Tiếp Thị Sản Phẩm"
+        }
+      ],
+      "benefits": [
+        {
+          "benefitId": 15,
+          "benefitIconName": "fa-check-square-o",
+          "benefitName": "Others",
+          "benefitNameVI": "Khác",
+          "benefitValue": "<p>Mức thu nhập, các gói thưởng hấp dẫn, cạnh tranh mạnh mẽ so với thị trường.</p><p></p>"
+        }
+      ],
+      "workingLocations": [
+        {
+          "workingLocationId": 241948,
+          "addressId": 148642,
+          "cityId": 29,
+          "districtId": 0,
+          "address": "Vincom Center Đồng Khởi, Lê Thánh Tôn, Phường, Bến Nghé, Quận 1, Hồ Chí Minh, Việt Nam",
+          "geoLoc": {
+            "lat": 0,
+            "lon": 0
+          },
+          "cityName": "Ho Chi Minh",
+          "cityNameVI": "Hồ Chí Minh"
+        },
+        {
+          "workingLocationId": 224706,
+          "addressId": 135598,
+          "cityId": 24,
+          "districtId": 0,
+          "address": "Tòa nhà Technopark, Vinhomes Ocean Park 1",
+          "geoLoc": {
+            "lat": 0,
+            "lon": 0
+          },
+          "cityName": "Ha Noi",
+          "cityNameVI": "Hà Nội"
+        }
+      ],
+      "address": "TechnoPark Tower, Vinhomes Ocean Park, Đa Tốn, Gia Lâm, Hanoi, Việt Nam",
+      "industries": [
+        {
+          "industryId": 0,
+          "industryName": "",
+          "industryNameVI": ""
+        }
+      ],
+      "industriesV3": [
+        {
+          "industryV3Id": 26,
+          "industryV3Name": "IT System & Devices",
+          "industryV3NameVI": "Hệ thống CNTT & Thiết bị"
+        }
+      ],
+      "jobFunctionsV3": {
+        "jobFunctionV3Id": 36,
+        "jobFunctionV3Name": "Software Developer",
+        "jobFunctionV3NameVI": "Phần Mềm Máy Tính"
+      },
+      "groupJobFunctionsV3": {
+        "groupJobFunctionV3Id": 5,
+        "groupJobFunctionV3Name": "Information Technology/Telecommunications",
+        "groupJobFunctionV3NameVI": "Công Nghệ Thông Tin/Viễn Thông"
+      },
+      "jobLevel": "Experienced (non-manager)",
+      "jobLevelVI": "Nhân viên",
+      "languageId": 0,
+      "locations": null,
+      "canonical": "",
+      "isShowContact": null,
+      "salaryRangeId": 0,
+      "requiredResume": false,
+      "companySize": "",
+      "companySizeVI": "",
+      "languageSelectedVI": "Bất kỳ",
+      "languageSelected": "Any",
+      "simpleServices": null,
+      "services": [
+        {
+          "serviceCode": "TPM",
+          "startOn": "2026-10-07T14:08:41+07:00",
+          "expiredOn": "2026-11-06T23:59:59+07:00"
+        },
+        {
+          "serviceCode": "JPM",
+          "startOn": "2026-10-07T14:08:41+07:00",
+          "expiredOn": "2026-11-06T23:59:59+07:00"
+        },
+        {
+          "serviceCode": "TH",
+          "startOn": "2026-10-07T14:08:41+07:00",
+          "expiredOn": "2026-11-06T23:59:59+07:00"
+        }
+      ],
+      "prettySalary": "Thương lượng",
+      "durationDays": 0,
+      "numOfApplications": 0,
+      "refreshInfo": [
+        {
+          "refreshOn": "2026-10-08T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-09T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-10T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-11T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-12T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-13T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-14T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-15T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-16T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-17T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-18T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-19T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-20T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-21T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-22T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-23T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-24T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-25T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-26T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-27T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-28T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-29T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-30T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-10-31T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-11-01T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-11-02T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-11-03T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-11-04T15:00:00+07:00",
+          "serviceCode": "RD"
+        },
+        {
+          "refreshOn": "2026-11-05T15:00:00+07:00",
+          "serviceCode": "RD"
+        }
+      ],
+      "emailAddress": "",
+      "isMobileHotJob": true,
+      "isMobileTopJob": true,
+      "isBoldAndRedJob": false,
+      "isUrgentJob": false,
+      "isUrgentJobM": false,
+      "onlineOn": "2026-10-19T15:00:00+07:00",
+      "onlineOnText": "Đăng 12 ngày trước",
+      "onlineOnTextColor": "#333333",
+      "onlineOnBgColor": "#F1F2F4",
+      "prettyOnlineOn": "19 giờ trước",
+      "visibilityDisplay": false,
+      "priorityOrder": "2026-10-19T15:00:00",
+      "priorityOrderText": "Đăng 12 ngày trước",
+      "nearestGeoLoc": null,
+      "profilePublishedSiteMask": 0,
+      "companyColor": "",
+      "yearsOfExperience": 0,
+      "highestDegreeId": 0,
+      "rangeAge": "Không hiển thị",
+      "isShowAge": 0,
+      "isShowNationality": 0,
+      "isShowGender": 0,
+      "isShowMaritalStatus": 0,
+      "numberOfRecruits": 5,
+      "isShowNumberOfRecruits": 0,
+      "onlineServiceCode": "RD",
+      "salaryPeriodId": 1,
+      "salaryCurrency": "USD",
+      "isAdrLiteJob": false,
+      "isTopPriority": false,
+      "isTopPriorityM": true,
+      "summary": null,
+      "applicantSignal": {
+        "value": "null",
+        "badge": "",
+        "color": ""
+      },
+      "isRefreshJob": true,
+      "isReposted": false,
+      "exposureStatus": "low_target",
+      "exposureStatusUpdatedOn": "2026-10-20T09:59:38+07:00",
+      "isTopPriorityV4": true,
+      "topPriorityType": [
+        "tp_customer_buy_top_priority_service"
+      ]
+    },
+    {
+      "jobId": 2110333,
+      "jobTitle": "(Middle, Senior) BackEnd Engineer (Java, Spring Boot) - Khối Công nghệ thông tin (2025TD923)",
+      "jobUrl": "https://www.vietnamworks.com/middle-senior-backend-engineer-java-spring-boot-khoi-cong-nghe-thong-tin-2025td923-1790072068546875013-2110333-jv",
+      "userId": 417756,
+      "companyLogo": "https://images.vietnamworks.com/pictureofcompany/e4/11445482.png",
+      "companyUrl": "",
+      "alias": "middle-senior-backend-engineer-java-spring-boot-khoi-cong-nghe-thong-tin-2025td923-1790072068546875013",
+      "createdOn": "2026-09-22T16:59:12+07:00",
+      "approvedOn": "2026-09-22T17:14:28+07:00",
+      "approvedOnText": "Đăng 27 ngày trước",
+      "prettyApprovedOn": "27 ngày trước",
+      "expiredOn": "2026-10-22T23:59:59+07:00",
+      "lastUpdatedOn": "",
+      "lastSyncedOn": "",
+      "companyName": "NGÂN HÀNG TMCP QUÂN ĐỘI – MBBANK",
+      "companyId": 2332,
+      "companyProfile": "",
+      "companySizeId": 0,
+      "contactName": "",
+      "createdBy": 0,
+      "isOnline": null,
+      "isActive": null,
+      "isApproved": null,
+      "isUnpaidDisable": 0,
+      "isCompleted": null,
+      "isAnonymous": false,
+      "isSalaryVisible": true,
+      "isShowLogo": true,
+      "isShowLogoInSearch": false,
+      "jobDescription": "<p>MB là ngân hàng sở hữu hệ sinh thái Số hàng đầu tại Việt Nam, với định hướng trở thành “Doanh nghiệp số, Tập đoàn tài chính dẫn đầu”, công nghệ tại MB hiện được thúc đẩy dựa trên 5 trụ cột: công nghệ mới, tự động hóa, dữ liệu, AI và con người....",
+      "jobRequirement": "<p>1. Tốt nghiệp Đại học các chuyên ngành: Công nghệ thông tin, Kỹ thuật phần mềm, Khoa học máy tính và liên quan</p><p>2. Có kinh nghiệm làm việc thực tế tối thiểu 1,5 năm tại các công ty hoặc dự án về lập trình Backend</p><p>3. Thành thạo ít nhất 1 trong các ngôn ngữ...",
+      "jobLevelId": 5,
+      "languageSelectedId": 3,
+      "redirectTo": "",
+      "requiredCoverLetter": 0,
+      "salary": 50000000,
+      "salaryMax": 50000000,
+      "salaryMin": 26000000,
+      "typeWorkingId": 1,
+      "skills": [
+        {
+          "skillId": 1661836,
+          "skillWeight": 100,
+          "skillName": "Java programming"
+        },
+        {
+          "skillId": 56277,
+          "skillWeight": 100,
+          "skillName": "Spring Core"
+        },
+        {
+          "skillId": 1151274,
+          "skillWeight": 100,
+          "skillName": "Spring Boots"
+        },
+        {
+          "skillId": 1112807,
+          "skillWeight": 100,
+          "skillName": "Postgresql"
+        },
+        {
+          "skillId": 2755,
+          "skillWeight": 100,
+          "skillName": "Oracle"
+        }
+      ],
+      "benefits": [
+        {
+          "benefitId": 1,
+          "benefitIconName": "fa-dollar",
+          "benefitName": "Bonus",
+          "benefitNameVI": "Thưởng",
+          "benefitValue": "MB tự hào mang đến chế độ lương thưởng cạnh tranh bậc nhất hệ thống ngân hàng TMCP, với mức thu nhập bình quân 37,4 triệu VNĐ/tháng (Nguồn: BCTN 2024)."
+        },
+        {
+          "benefitId": 2,
+          "benefitIconName": "fa-user-md",
+          "benefitName": "Healthcare Plan",
+          "benefitNameVI": "Chăm sóc sức khoẻ",
+          "benefitValue": "Đặc biệt, MBers được tham gia bảo hiểm sức khỏe MIC độc quyền dành riêng cho bản thân và người thân."
+        },
+        {
+          "benefitId": 3,
+          "benefitIconName": "fa-file-image-o",
+          "benefitName": "Paid Leave",
+          "benefitNameVI": "Nghỉ phép có lương",
+          "benefitValue": "Phúc lợi toàn diện gồm 12 ngày nghỉ phép/năm, 8 triệu VNĐ hỗ trợ du lịch cá nhân, phụ cấp thâm niên cho MBers từ 3 năm và quà tặng Tết cho gia đình.\nMBers còn nhận quà sinh nhật ý nghĩa, nghỉ nguyên lương 1 ngày và tham gia các sự kiện gắn kết nội bộ"
+        },
+        {
+          "benefitId": 4,
+          "benefitIconName": "fa-graduation-cap",
+          "benefitName": "Training",
+          "benefitNameVI": "Đào tạo",
+          "benefitValue": "MB cam kết nâng cao năng lực nhân sự với chương trình đào tạo chuẩn quốc tế. 100% nhân viên mới đều tham gia khóa đào tạo tân tuyển hiện đại, lấy học viên làm trung tâm. Các phương pháp làm việc đảm bảo sự kết hợp hài hòa giữa lý thuyết và thực hành."
+        },
+        {
+          "benefitId": 5,
+          "benefitIconName": "fa-trophy",
+          "benefitName": "Awards",
+          "benefitNameVI": "Giải thưởng",
+          "benefitValue": "MB mở ra cơ hội thăng tiến rộng lớn với đội ngũ cán bộ quản lý trẻ nhất trong hệ thống ngân hàng. Đặc biệt, 90% cán bộ quản lý được bổ nhiệm từ nguồn nội bộ, khẳng định chính sách phát triển nhân tài bền vững."
+        },
+        {
+          "benefitId": 15,
+          "benefitIconName": "fa-check-square-o",
+          "benefitName": "Others",
+          "benefitNameVI": "Khác",
+          "benefitValue": "Lộ trình thăng tiến rõ ràng.\nĐược đào tạo và huấn luyện khi làm việc.\nĐược tiếp cận với các phương pháp luận tiên tiến, hiện đại về Total reward."
+        }
+      ],
+      "workingLocations": [
+        {
+          "workingLocationId": 268126,
+          "addressId": 97607,
+          "cityId": 24,
+          "districtId": 0,
+          "address": "Hà Nội",
+          "geoLoc": {
+            "lat": 21.027764,
+            "lon": 105.83416
+          },
+          "cityName": "Ha Noi",
+          "cityNameVI": "Hà Nội"
+        }
+      ],
+      "address": "Số 18 Lê Văn Lương, Phường Yên Hòa, Thành phố Hà Nội",
+      "industries": [
+        {
+          "industryId": 0,
+          "industryName": "",
+          "industryNameVI": ""
+        }
+      ],
+      "industriesV3": [
+        {
+          "industryV3Id": 9,
+          "industryV3Name": "Banking",
+          "industryV3NameVI": "Ngân hàng"
+        }
+      ],
+      "jobFunctionsV3": {
+        "jobFunctionV3Id": 36,
+        "jobFunctionV3Name": "Software Developer",
+        "jobFunctionV3NameVI": "Phần Mềm Máy Tính"
+      },
+      "groupJobFunctionsV3": {
+        "groupJobFunctionV3Id": 5,
+        "groupJobFunctionV3Name": "Information Technology/Telecommunications",
+        "groupJobFunctionV3NameVI": "Công Nghệ Thông Tin/Viễn Thông"
+      },
+      "jobLevel": "Experienced (non-manager)",
+      "jobLevelVI": "Nhân viên",
+      "languageId": 0,
+      "locations": null,
+      "canonical": "",
+      "isShowContact": null,
+      "salaryRangeId": 0,
+      "requiredResume": false,
+      "companySize": "",
+      "companySizeVI": "",
+      "languageSelectedVI": "Bất kỳ",
+      "languageSelected": "Any",
+      "simpleServices": null,
+      "services": [
+        {
+          "serviceCode": "TPM",
+          "startOn": "2026-09-22T17:14:28+07:00",
+          "expiredOn": "2026-10-22T23:59:59+07:00"
+        },
+        {
+          "serviceCode": "JPM",
+          "startOn": "2026-09-22T17:14:28+07:00",
+          "expiredOn": "2026-10-22T23:59:59+07:00"
+        }
+      ],
+      "prettySalary": "26tr-50tr ₫/tháng",
+      "durationDays": 0,
+      "numOfApplications": 0,
+      "refreshInfo": [
+        {
+          "refreshOn": "2026-10-06T18:00:00+07:00",
+          "serviceCode": "RJ"
+        }
+      ],
+      "emailAddress": "",
+      "isMobileHotJob": true,
+      "isMobileTopJob": true,
+      "isBoldAndRedJob": false,
+      "isUrgentJob": false,
+      "isUrgentJobM": false,
+      "onlineOn": "2026-10-06T18:00:00+07:00",
+      "onlineOnText": "Đăng 27 ngày trước",
+      "onlineOnTextColor": "#333333",
+      "onlineOnBgColor": "#F1F2F4",
+      "prettyOnlineOn": "13 ngày trước",
+      "visibilityDisplay": false,
+      "priorityOrder": "2026-10-06T18:00:00",
+      "priorityOrderText": "Đăng 27 ngày trước",
+      "nearestGeoLoc": null,
+      "profilePublishedSiteMask": 3,
+      "companyColor": "",
+      "yearsOfExperience": 0,
+      "highestDegreeId": 0,
+      "rangeAge": "Không hiển thị",
+      "isShowAge": 0,
+      "isShowNationality": 0,
+      "isShowGender": 0,
+      "isShowMaritalStatus": 0,
+      "numberOfRecruits": 1,
+      "isShowNumberOfRecruits": 0,
+      "onlineServiceCode": "RJ",
+      "salaryPeriodId": 1,
+      "salaryCurrency": "VND",
+      "isAdrLiteJob": false,
+      "isTopPriority": false,
+      "isTopPriorityM": true,
+      "summary": null,
+      "applicantSignal": {
+        "value": "null",
+        "badge": "",
+        "color": ""
+      },
+      "isRefreshJob": true,
+      "isReposted": false,
+      "exposureStatus": "low_target",
+      "exposureStatusUpdatedOn": "2026-10-20T08:42:52+07:00",
+      "isTopPriorityV4": true,
+      "topPriorityType": [
+        "tp_customer_buy_top_priority_service"
+      ]
+    },
+    {
+      "jobId": 2119126,
+      "jobTitle": ".Net Core Developer",
+      "jobUrl": "https://www.vietnamworks.com/net-core-developer-1791943299017677209-2119126-jv",
+      "userId": 1023926,
+      "companyLogo": "https://images.vietnamworks.com/pictureofcompany/9f/11125546.png",
+      "companyUrl": "",
+      "alias": "net-core-developer-1791943299017677209",
+      "createdOn": "2026-10-14T09:01:10+07:00",
+      "approvedOn": "2026-10-14T09:01:39+07:00",
+      "approvedOnText": "Đăng 6 ngày trước",
+      "prettyApprovedOn": "6 ngày trước",
+      "expiredOn": "2026-11-13T23:59:59+07:00",
+      "lastUpdatedOn": "",
+      "lastSyncedOn": "",
+      "companyName": "Ngân Hàng TMCP Quốc Tế Việt Nam (VIB)",
+      "companyId": 36138,
+      "companyProfile": "",
+      "companySizeId": 0,
+      "contactName": "",
+      "createdBy": 0,
+      "isOnline": null,
+      "isActive": null,
+      "isApproved": null,
+      "isUnpaidDisable": 0,
+      "isCompleted": null,
+      "isAnonymous": false,
+      "isSalaryVisible": true,
+      "isShowLogo": true,
+      "isShowLogoInSearch": false,
+      "jobDescription": "<p>Chịu trách nhiệm (i) Phát triển, nâng cấp và tích hợp các ứng dụng công nghệ số, (ii) Vận hành, bảo trì các ứng dụng; (iii) Tìm hiểu, nghiên cứu các xu hướng, công cụ mới để đưa ra các tư vấn, giải pháp phù hợp.</p><p></p><p>1.   Phát triển, nâng cấp và tích hợp các ứng...",
+      "jobRequirement": "<ul><li>Tốt nghiệp Đại học trở lên chuyên ngành Công nghệ thông tin, Khoa học máy tính, Phát triển phần mềm hoặc các chuyên ngành liên quan và/hoặc có kinh nghiệm làm việc ở các vị trí tương đương tại các tổ chức uy tín trong và ngoài nước;</li><li>Tối thiểu 7 năm (Chuyên gia)/5 năm...",
+      "jobLevelId": 5,
+      "languageSelectedId": 3,
+      "redirectTo": "",
+      "requiredCoverLetter": 0,
+      "salary": 1500,
+      "salaryMax": 0,
+      "salaryMin": 1500,
+      "typeWorkingId": 1,
+      "skills": [
+        {
+          "skillId": 1025339,
+          "skillWeight": 100,
+          "skillName": ".NET Core"
+        },
+        {
+          "skillId": 1065662,
+          "skillWeight": 100,
+          "skillName": ".Net"
+        },
+        {
+          "skillId": 98,
+          "skillWeight": 100,
+          "skillName": "Java"
+        },
+        {
+          "skillId": 75063,
+          "skillWeight": 100,
+          "skillName": "SQL"
+        },
+        {
+          "skillId": 1476328,
+          "skillWeight": 100,
+          "skillName": "DEV"
+        }
+      ],
+      "benefits": [
+        {
+          "benefitId": 1,
+          "benefitIconName": "fa-dollar",
+          "benefitName": "Bonus",
+          "benefitNameVI": "Thưởng",
+          "benefitValue": "Chế độ đãi ngộ hấp dẫn\r\nVIB áp dụng Cơ chế tiền lương minh bạch, công bằng và tương xứng với mức độ đóng góp của từng cá nhân nên bạn hoàn toàn có quyền tự quyết định mức thu nhập của bản thân."
+        },
+        {
+          "benefitId": 5,
+          "benefitIconName": "fa-trophy",
+          "benefitName": "Awards",
+          "benefitNameVI": "Giải thưởng",
+          "benefitValue": "Môi trường chuyên nghiệp, cơ hội thăng tiến\r\nMôi trường dân chủ, đội ngũ lãnh đạo và đồng nghiệp tài năng, thân thiện giúp bạn học hỏi, phát huy năng lực, mở rộng cơ hội thăng tiến và phát triển sự nghiệp."
+        },
+        {
+          "benefitId": 7,
+          "benefitIconName": "fa-laptop",
+          "benefitName": "Laptop",
+          "benefitNameVI": "Máy tính xách tay",
+          "benefitValue": "Cơ sở vật chất hiện đại\r\nTất cả văn phòng của hội sở và chi nhánh đều được thiết kế khang trang, đầy đủ tiện nghi giúp nhân viên có điều kiện thoải mái nhất để làm việc."
+        }
+      ],
+      "workingLocations": [
+        {
+          "workingLocationId": 270866,
+          "addressId": 96410,
+          "cityId": 29,
+          "districtId": 0,
+          "address": "Ho Chi Minh",
+          "geoLoc": {
+            "lat": 10.823099,
+            "lon": 106.629664
+          },
+          "cityName": "Ho Chi Minh",
+          "cityNameVI": "Hồ Chí Minh"
+        }
+      ],
+      "address": "Tầng 1 (Tầng trệt) và Tầng 2 Tòa nhà Sailing Tower, Số 111A Pasteur, Phường Bến Nghé, Quận 1, TP Hồ Chí Minh, Việt Nam",
+      "industries": [
+        {
+          "industryId": 0,
+          "industryName": "",
+          "industryNameVI": ""
+        }
+      ],
+      "industriesV3": [
+        {
+          "industryV3Id": 9,
+          "industryV3Name": "Banking",
+          "industryV3NameVI": "Ngân hàng"
+        }
+      ],
+      "jobFunctionsV3": {
+        "jobFunctionV3Id": 30,
+        "jobFunctionV3Name": "IT Management",
+        "jobFunctionV3NameVI": "Quản Lý Công Nghệ Thông Tin"
+      },
+      "groupJobFunctionsV3": {
+        "groupJobFunctionV3Id": 5,
+        "groupJobFunctionV3Name": "Information Technology/Telecommunications",
+        "groupJobFunctionV3NameVI": "Công Nghệ Thông Tin/Viễn Thông"
+      },
+      "jobLevel": "Experienced (non-manager)",
+      "jobLevelVI": "Nhân viên",
+      "languageId": 0,
+      "locations": null,
+      "canonical": "",
+      "isShowContact": null,
+      "salaryRangeId": 0,
+      "requiredResume": false,
+      "companySize": "",
+      "companySizeVI": "",
+      "languageSelectedVI": "Bất kỳ",
+      "languageSelected": "Any",
+      "simpleServices": [
+        "isUrgentJobM"
+      ],
+      "services": [
+        {
+          "serviceCode": "TPM",
+          "startOn": "2026-10-14T09:01:39+07:00",
+          "expiredOn": "2026-11-13T23:59:59+07:00"
+        },
+        {
+          "serviceCode": "BPM",
+          "startOn": "2026-10-14T09:01:39+07:00",
+          "expiredOn": "2026-11-13T23:59:59+07:00"
+        },
+        {
+          "serviceCode": "JPM",
+          "startOn": "2026-10-14T09:01:39+07:00",
+          "expiredOn": "2026-11-13T23:59:59+07:00"
+        }
+      ],
+      "prettySalary": "Từ $ 1,500 /tháng",
+      "durationDays": 0,
+      "numOfApplications": 0,
+      "emailAddress": "",
+      "isMobileHotJob": true,
+      "isMobileTopJob": true,
+      "isBoldAndRedJob": true,
+      "isUrgentJob": false,
+      "isUrgentJobM": true,
+      "onlineOn": "2026-10-14T09:01:39+07:00",
+      "onlineOnText": "Đăng 6 ngày trước",
+      "onlineOnTextColor": "#333333",
+      "onlineOnBgColor": "#F1F2F4",
+      "prettyOnlineOn": "6 ngày trước",
+      "visibilityDisplay": true,
+      "priorityOrder": "2026-10-14T09:01:39",
+      "priorityOrderText": "Đăng 6 ngày trước",
+      "nearestGeoLoc": null,
+      "profilePublishedSiteMask": 1,
+      "companyColor": "",
+      "yearsOfExperience": 0,
+      "highestDegreeId": 0,
+      "rangeAge": "Không hiển thị",
+      "isShowAge": 0,
+      "isShowNationality": 0,
+      "isShowGender": 0,
+      "isShowMaritalStatus": 0,
+      "numberOfRecruits": 3,
+      "isShowNumberOfRecruits": 0,
+      "onlineServiceCode": "",
+      "salaryPeriodId": 1,
+      "salaryCurrency": "USD",
+      "isAdrLiteJob": false,
+      "isTopPriority": false,
+      "isTopPriorityM": true,
+      "summary": null,
+      "applicantSignal": {
+        "value": "null",
+        "badge": "",
+        "color": ""
+      },
+      "isRefreshJob": false,
+      "isReposted": false,
+      "exposureStatus": "reach_target",
+      "exposureStatusUpdatedOn": "2026-10-20T10:09:03+07:00",
+      "isTopPriorityV4": true,
+      "topPriorityType": [
+        "tp_customer_buy_top_priority_service"
+      ]
+    }
+  ],
+  "facets": {
+    "companies": {},
+    "cityIds": null
+  },
+  "_fixture": "POST https://ms.vietnamworks.com/job-search/v1.0/search, guest (no cookies), 2026-10-20, body = request.json. Trimmed from 20 hits to 3 (meta left as returned). Scrubbed: emailAddress, contactName."
+}
