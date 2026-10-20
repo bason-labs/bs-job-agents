@@ -3,7 +3,7 @@
 import { FIND_ONLY_NOTE, QA_MAX_ROUNDS, sourceLabel as searchSourceLabel, type CvVersion, type Job, type QaReviewRecord, type ReviewCard } from "@bs-job-agents/shared";
 import { errorMessage, isApiError } from "@/lib/api/errors";
 import { statusMeta } from "@/lib/status";
-import { formatDateTime } from "@/components/schedules/datetime";
+import { formatDate, formatDateTime } from "@/components/schedules/datetime";
 
 export type CvOption = ReviewCard["cvOptions"][number];
 
@@ -106,11 +106,18 @@ export function flagNotices(card: ReviewCard): FlagNotice[] {
   // PM3 S2, §10.2 rule 5: a second application to the same job (Lead or Ba asked to apply again).
   if (flags.appliedBefore) {
     const before = flags.appliedBefore;
-    out.push({
-      key: "appliedBefore",
-      tone: "warn",
-      text: `You applied to this job before (${formatDateTime(before.at)}, ${statusMeta(before.status).label}). Approving sends a second application to the same job.`,
-    });
+    // Live 2026-10-20: an earlier attempt that failed without being sent is no "second application".
+    const neverSent = before.status === "failed" && before.submittedAt === null;
+    out.push(
+      neverSent
+        ? { key: "appliedBefore", tone: "info", text: `An earlier attempt on ${formatDate(before.at)} was not sent. Approving sends this application.` }
+        : {
+            key: "appliedBefore",
+            tone: "warn",
+            // Times on the card are Vietnam time (ICT, UTC+7), like every screen (datetime.ts).
+            text: `You applied to this job before (${formatDateTime(before.at)} ICT, ${statusMeta(before.status).label}). Approving sends a second application to the same job.`,
+          },
+    );
   }
   if (flags.injectionFlagged && job.injectionClearedAt === null) {
     out.push({
@@ -173,6 +180,10 @@ const KIND: Record<string, string> = { product: "product company", outsource: "o
 export function companySummary(company: ReviewCard["company"]): string {
   const p = company?.profile;
   if (!p) return "No company profile yet.";
+  // Live 2026-10-20: a profile that found nothing (a low-confidence one reused from cache) read just
+  // "Company." Say so instead.
+  const found = p.industry || p.size || p.productOrOutsource !== "unknown" || p.culture.length || p.benefits.length || p.reviewsSummary;
+  if (!found) return `Little public information about ${company?.name || p.name || "this company"}.`;
   const kind = KIND[p.productOrOutsource]!;
   const what = !p.industry ? kind : p.productOrOutsource === "mixed" ? `${p.industry} (${kind})` : `${p.industry} ${kind}`;
   const head = [what, p.size].filter(Boolean).join(", ");

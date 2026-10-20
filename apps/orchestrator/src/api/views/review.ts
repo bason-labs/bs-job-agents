@@ -120,7 +120,7 @@ function appliedBefore(db: Db, c: Candidate, jobId: number): ReviewCard["flags"]
     .filter((a) => a.jobId === jobId && a.id !== own)
     .sort((a, b) => b.id - a.id)[0];
   if (!earlier) return null;
-  return { applicationId: String(earlier.id), at: earlier.submittedAt ?? earlier.createdAt, status: earlier.status, origin: earlier.origin };
+  return { applicationId: String(earlier.id), at: earlier.submittedAt ?? earlier.createdAt, status: earlier.status, origin: earlier.origin, submittedAt: earlier.submittedAt ?? null };
 }
 
 async function buildCard(db: Db, dataDir: string, c: Candidate, readyAt: Map<number, string>, master: MasterNow, now: Date): Promise<ReviewCard | null> {
@@ -179,6 +179,7 @@ async function buildCard(db: Db, dataDir: string, c: Candidate, readyAt: Map<num
       findOnly: findOnlySourceOf(job) !== null,
     },
     readyAt: readyAt.get(job.id) ?? now.toISOString(),
+    candidateName: master.cv?.contact.name ?? null,
   };
 }
 

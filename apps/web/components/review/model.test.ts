@@ -78,9 +78,17 @@ describe("review card model", () => {
     expect(notices[0]).toEqual({
       key: "appliedBefore",
       tone: "warn",
-      text: "You applied to this job before (2026-10-10 15:40, Submitted). Approving sends a second application to the same job.",
+      text: "You applied to this job before (2026-10-10 15:40 ICT, Submitted). Approving sends a second application to the same job.",
     });
     expect(flagNotices(card({}, { appliedBefore: null })).map((n) => n.key)).toEqual([]);
+  });
+
+  it("live 2026-10-20: the earlier application's current status; one that failed without being sent is no second application", () => {
+    const at = "2026-10-20T16:20:38.711Z";
+    const notSent = flagNotices(card({}, { appliedBefore: { applicationId: "2", at, status: "failed", origin: "app", submittedAt: null } }))[0]!;
+    expect(notSent).toEqual({ key: "appliedBefore", tone: "info", text: "An earlier attempt on 2026-10-20 was not sent. Approving sends this application." });
+    const check = flagNotices(card({}, { appliedBefore: { applicationId: "2", at, status: "needs_check", origin: "app", submittedAt: null } }))[0]!;
+    expect(check.text).toBe("You applied to this job before (2026-10-20 23:20 ICT, Needs check). Approving sends a second application to the same job.");
   });
 
   it("F3 flags: company research failed, and a settled dry run that can go live (PM2 S15/S16)", () => {
@@ -121,6 +129,13 @@ describe("review card model", () => {
       "Fintech product company, ~250 people. Culture: ownership, code review heavy. Benefits: 13th month, hybrid 3/2, MacBook, health insurance. Engineers praise ownership and code quality; some mention long release weeks.",
     );
     expect(companySummary(null)).toBe("No company profile yet.");
+  });
+
+  it("live 2026-10-20: a profile that found nothing says so, never just “Company.”", () => {
+    const empty = { ...reviewCardFixture.company!, name: "New Wealth", confidence: "low_confidence" as const, profile: { ...reviewCardFixture.company!.profile!, name: "New Wealth", industry: null, size: null, productOrOutsource: "unknown" as const, culture: [], benefits: [], reviewsSummary: null, sources: [] } };
+    expect(companySummary(empty)).toBe("Little public information about New Wealth.");
+    // One known fact is enough for the usual summary.
+    expect(companySummary({ ...empty, profile: { ...empty.profile, size: "~20 people" } })).toBe("Company, ~20 people.");
   });
 
   it("gap lines read like the prototype", () => {

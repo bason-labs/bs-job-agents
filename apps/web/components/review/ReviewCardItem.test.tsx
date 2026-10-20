@@ -50,7 +50,7 @@ describe("ReviewCardItem on the live orchestrator", () => {
 
   it("PM3 S2: an “apply again” card shows that Ba applied before, above the card's actions", () => {
     setup(card({ appliedBefore: { applicationId: "4", at: "2026-10-10T08:40:00.000Z", status: "submitted", origin: "app" } }));
-    expect(screen.getByText(/You applied to this job before \(2026-10-10 15:40, Submitted\)/)).toBeVisible();
+    expect(screen.getByText(/You applied to this job before \(2026-10-10 15:40 ICT, Submitted\)/)).toBeVisible();
   });
 
   it("W5: an Upwork card is find only: the note, “Open on Upwork”, no Approve", () => {

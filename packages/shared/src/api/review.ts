@@ -44,8 +44,11 @@ export const ReviewCardFlagsSchema = z.object({
       applicationId: IdSchema,
       /** When it was sent, or when it was approved if it never was. */
       at: IsoDateTimeSchema,
+      /** Its status now (a later settle, e.g. needs check → failed, is what Ba sees). */
       status: ApplicationStatusSchema,
       origin: ApplicationOriginSchema,
+      /** When it was really sent; null when it never was (a failed attempt sent nothing). Additive. */
+      submittedAt: IsoDateTimeSchema.nullable().optional(),
     })
     .nullable()
     .optional(),
@@ -76,6 +79,12 @@ export const ReviewCardSchema = z.object({
   factRequests: z.array(FactRequestSchema),
   flags: ReviewCardFlagsSchema,
   readyAt: IsoDateTimeSchema,
+  /**
+   * Ba's full name from the master CV (contact.name): the CV preview's title. The tailored CV has no
+   * name field (its contactLine is email, phone, links), so the preview never takes it from there.
+   * Additive (live 2026-10-20).
+   */
+  candidateName: z.string().nullable().optional(),
 });
 export type ReviewCard = z.infer<typeof ReviewCardSchema>;
 

@@ -146,7 +146,7 @@ describe("GET /review: appliedBefore (PM3 S2, §10.2 rule 5)", () => {
     const [again, ...rest] = await queue(x);
     expect(rest).toEqual([]);
     expect(again!.job.id).toBe(first!.job.id);
-    expect(again!.flags.appliedBefore).toEqual({ applicationId: String(earlier.id), at: earlier.submittedAt, status: "submitted", origin: "app" });
+    expect(again!.flags.appliedBefore).toEqual({ applicationId: String(earlier.id), at: earlier.submittedAt, status: "submitted", origin: "app", submittedAt: earlier.submittedAt });
 
     // Once Ba approves again, the card's own application is not "the earlier one".
     const second = await x.post(`/review/${again!.job.id}/approve`, { cvVersionId: again!.cvOptions[0]!.cvVersion.id, introText: null });

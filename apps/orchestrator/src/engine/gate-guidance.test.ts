@@ -158,6 +158,51 @@ describe("the tailor gate with CV guidance (AD-13)", () => {
     expect(t.review(r.id, 1)).toMatchObject({ qaPassed: true, escalated: false });
   });
 
+  describe("live 2026-10-20: after round 3 the best QA-passed round goes to Ba, not the last", () => {
+    /** QA passing with this total (the JD-match score carries the difference). */
+    const qaWith = (total: number): QaOutput => {
+      const others = qaPassFixture.scores.companyTone.score + qaPassFixture.scores.formatAts.score + qaPassFixture.scores.clarity.score;
+      return { ...qaPassFixture, total, scores: { ...qaPassFixture.scores, jdMatch: { score: total - others, justification: "JD match." } }, hardFails: [], fixes: [] };
+    };
+
+    async function threeRounds(totals: number[], reviews: CvReviewOutput["items"][]) {
+      const t = await setup();
+      let qa = 0;
+      t.runner.script({ bot: "qa", kind: "review", result: () => fake.ok(qaWith(totals[qa++]!)) });
+      let rv = 0;
+      t.runner.script({ bot: "cv", kind: "review", result: (task) => review(reviews[rv++] ?? reviews.at(-1)!)(task) });
+      const r = run(t);
+      await t.idle();
+      return { t, r, out: gate(t, r.id) };
+    }
+
+    it("the same rule unmet every round, QA 80 → 86 → 84: round 2 (86) is handed over, and says so on the step and the review", async () => {
+      const { t, r, out } = await threeRounds([80, 86, 84], [[notMetOrder]]);
+      expect(out.rounds.map((x) => [x.round, x.total, x.passed])).toEqual([[1, 80, true], [2, 86, true], [3, 84, true]]);
+      expect(out.handing).toMatchObject({ round: 2, outcome: "passed" });
+      expect(out.cvVersionId).toBe(out.rounds[1]!.cvVersionId);
+      expect(out.handNote).toBe("Round 2 shown (highest QA, 86).");
+      const stepId = String(t.step(r.id, "tailor", "1:en")!.id);
+      expect(t.events("step.finished").filter((e) => e.stepId === stepId).at(-1)!.preview).toContain("Round 2 shown (highest QA, 86)");
+      expect(getGuidanceReview(t.db, out.cvVersionId!)!.result.note).toBe("Round 2 shown (highest QA, 86).");
+      // The review card (and so Apply) gets that CV version.
+      expect(t.review(r.id, 1)!.cvVersions.map((v) => v.cvVersionId)).toEqual([out.cvVersionId]);
+    });
+
+    it("fewest unmet CV guidance rules wins over a higher QA total", async () => {
+      const second: CvReviewOutput["items"][number] = { ...notMetOrder, ruleId: "bullet-what-tech-result", fix: { instruction: "Add the result.", factIds: ["grad-1"] } };
+      const { out } = await threeRounds([88, 82, 84], [[notMetOrder, second], [notMetOrder], [notMetOrder, second]]);
+      expect(out.handing).toMatchObject({ round: 2 });
+      expect(out.handNote).toMatch(/^Round 2 shown \(fewest CV guidance rules not met: \d+\)\.$/);
+    });
+
+    it("a tie on both goes to the latest round, with no note", async () => {
+      const { out } = await threeRounds([84, 84, 84], [[notMetOrder]]);
+      expect(out.handing).toMatchObject({ round: 3 });
+      expect(out.handNote ?? null).toBeNull();
+    });
+  });
+
   it("REQ-39.AC-2: round 2 QA-passed, round 3 invented_claim: round 2's CV goes to review", async () => {
     const t = await setup();
     t.runner.script({ bot: "cv", kind: "review", result: review([notMetOrder]) });

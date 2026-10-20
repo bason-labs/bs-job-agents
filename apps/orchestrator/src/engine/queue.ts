@@ -88,6 +88,7 @@ import { writeTaskMasterCv } from "./master-cv-copy.js";
 import { injectionDetail, reportedInjection } from "./injection.js";
 import { DEMOTING_SAFETY_REASONS, demoteBot, postProtectedChangeAlert } from "./demotion.js";
 import { CHROME_NOT_CONNECTED_ERROR, noticePause, noticeTaskFailed } from "./notices.js";
+import { pronounsAboutBa } from "./fit-pronouns.js";
 import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, stillRunning } from "./task-events.js";
 import { hostOfUrl, pauseSite, siteBlocksOf, siteKey, type SiteBlock } from "./sites.js";
 import { adapterBrokenError, scanRejectedError, type ScanCheckResult } from "./scan-check.js";
@@ -399,6 +400,7 @@ export class TaskQueue {
     outcome = this.checkBrowserReached(task, outcome);
     outcome = await this.checkScanOutput(task, prepared, outcome, result);
     outcome = this.checkReviewOutput(task, outcome);
+    outcome = this.checkFitPronouns(task, outcome);
     if (prepared.apply) outcome = this.checkApplyPages(task, outcome, result);
     if (outcome.kind === "ok" && prepared.apply) {
       const appId = Number((task.input as { applicationId?: unknown } | null)?.applicationId);
@@ -825,6 +827,15 @@ export class TaskQueue {
     const missing = asked.filter((id) => !given.has(id));
     if (missing.length === 0) return outcome;
     return { kind: "failed", error: `invalid output: the review has no item for ${missing.join(", ")}`, output: outcome.output, retryable: true };
+  }
+
+  /** Live 2026-10-20: fit text refers to Ba by name or they/them (pronouns not recorded); else retried. */
+  private checkFitPronouns(task: Task, outcome: Outcome): Outcome {
+    if (outcome.kind !== "ok" || taskKey(task.botName, task.kind) !== "research.fit") return outcome;
+    const fit = (outcome.output as ResearchFitOutput).fit;
+    const found = pronounsAboutBa([...fit.reasons, ...fit.gaps]);
+    if (found.length === 0) return outcome;
+    return { kind: "failed", error: `invalid output: the fit text calls Ba he or she (use Ba or they): "${found[0]}"`, output: outcome.output, retryable: true };
   }
 
   private checkInjectionReport(task: Task, outcome: Outcome): Outcome {
