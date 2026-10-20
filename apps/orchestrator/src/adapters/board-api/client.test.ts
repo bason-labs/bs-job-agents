@@ -4,7 +4,7 @@ import { SourceAccessRecordSchema, applyEndpointsOf, sourceAccessRecords, type S
 import { describe, expect, it } from "vitest";
 import { HostGate, type HttpFetch } from "../http/index.js";
 import { Redactor } from "../secrets/index.js";
-import { ApiChanged, AuthRejected, BoardApiClient, BoardApiError, DirectReadBlocked, EndpointNotAllowed, MissingCredential, matchesPathPattern, type RecordedRequest } from "./client.js";
+import { ApiChanged, AuthRejected, BoardApiClient, BoardApiError, DirectReadBlocked, EndpointNotAllowed, MissingCredential, RedirectRefused, matchesPathPattern, type RecordedRequest } from "./client.js";
 
 const LI_AT = "AQEDAR-li-at-secret-value";
 const CSRF = "ajax:9876543210";
@@ -220,15 +220,37 @@ describe("BoardApiClient", () => {
     });
 
     it("more than three hops fail the request", async () => {
+      const D = "https://www.linkedin.com/voyager/api/jobs/jobPostings";
       const f = redirecting({
-        [`${SEARCH}?keywords=a`]: { status: 302, location: `${SEARCH}?keywords=b` },
-        [`${SEARCH}?keywords=b`]: { status: 302, location: `${SEARCH}?keywords=c` },
-        [`${SEARCH}?keywords=c`]: { status: 302, location: `${SEARCH}?keywords=d` },
-        [`${SEARCH}?keywords=d`]: { status: 302, location: `${SEARCH}?keywords=e` },
+        [`${D}/1`]: { status: 302, location: `${D}/2` },
+        [`${D}/2`]: { status: 302, location: `${D}/3` },
+        [`${D}/3`]: { status: 302, location: `${D}/4` },
+        [`${D}/4`]: { status: 302, location: `${D}/5` },
       });
       const { c } = client({ fetch: f.fn });
-      await expect(c.get({ host: "www.linkedin.com", path: "/voyager/api/voyagerJobsDashJobCards", query: { keywords: "a" } })).rejects.toMatchObject({ name: "BoardApiError", message: expect.stringMatching(/redirected more than 3 times/) });
+      await expect(c.get({ host: "www.linkedin.com", path: "/voyager/api/jobs/jobPostings/1" })).rejects.toMatchObject({ name: "BoardApiError", message: expect.stringMatching(/redirected more than 3 times/) });
       expect(f.calls).toHaveLength(4);
+    });
+
+    it("QA r1 #3: a hop that changes a query value the request set is refused unsent (?start=0 → ?start=10)", async () => {
+      const f = redirecting({ [`${SEARCH}?keywords=react&start=0`]: { status: 302, location: `${SEARCH}?keywords=react&start=10` } });
+      const { c } = client({ fetch: f.fn });
+      const err = await c.get({ host: "www.linkedin.com", path: "/voyager/api/voyagerJobsDashJobCards", query: { keywords: "react", start: 0 } }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(RedirectRefused);
+      expect(f.calls).toHaveLength(1);
+      // Same values (or a dropped one) still pass.
+      const same = redirecting({ [`${SEARCH}?keywords=react&start=0`]: { status: 302, location: `${SEARCH}?keywords=react` }, [`${SEARCH}?keywords=react`]: { status: 200, body: "ok" } });
+      expect(await client({ fetch: same.fn }).c.get({ host: "www.linkedin.com", path: "/voyager/api/voyagerJobsDashJobCards", query: { keywords: "react", start: 0 } })).toBe("ok");
+    });
+
+    it("QA r1 #3: maxRedirects 0 refuses any 3xx (RedirectRefused naming the target) and never requests its Location", async () => {
+      for (const location of [`${SEARCH}?keywords=react`, "https://www.linkedin.com/authwall?trk=x", undefined]) {
+        const f = redirecting({ [`${SEARCH}?keywords=react`]: { status: 302, ...(location ? { location } : {}) } });
+        const c = new BoardApiClient({ record: linkedin, path: "account_api", fetch: f.fn, gate: new HostGate({ sleep: async () => undefined }), credentials: { li_at: LI_AT, "csrf-token": CSRF }, maxRedirects: 0 });
+        const err = await c.get({ host: "www.linkedin.com", path: "/voyager/api/voyagerJobsDashJobCards", query: { keywords: "react" } }).catch((e: unknown) => e);
+        expect(err, String(location)).toBeInstanceOf(RedirectRefused);
+        expect(f.calls, String(location)).toHaveLength(1);
+      }
     });
   });
 

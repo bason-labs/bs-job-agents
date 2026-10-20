@@ -196,8 +196,9 @@ export class ApiTaskRunner {
       return null;
     }
     const label = sourceLabel(source);
-    const how = access.path === "public_api" ? "its public API" : "its account API";
-    this.progress(task, `Reading ${label} through ${how} (fetched by the orchestrator: no bot, no LLM)`);
+    // A board read without logging in is a direct read, never an "account API" (no account involved).
+    const how = access.path === "public_api" ? "through its public API" : access.record?.auth.kind === "none" ? "directly, without logging in" : "through its account API";
+    this.progress(task, `Reading ${label} ${how} (fetched by the orchestrator: no bot, no LLM)`);
     let result: { jobs: unknown[]; note?: string };
     try {
       result = await boards.scan(source, {
@@ -222,7 +223,7 @@ export class ApiTaskRunner {
       return null;
     }
     const note = `${result.jobs.length} posting${result.jobs.length === 1 ? "" : "s"}${result.note ? `; ${result.note}` : ""}`;
-    return { jobs: result.jobs, selfCheck: [{ item: `Read ${label} through ${how} (no bot, no LLM)`, passed: true, note: this.redact(note) }] };
+    return { jobs: result.jobs, selfCheck: [{ item: `Read ${label} ${how} (no bot, no LLM)`, passed: true, note: this.redact(note) }] };
   }
 
   /**

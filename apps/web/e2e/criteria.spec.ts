@@ -177,12 +177,12 @@ test("API research §5.6: each toggle shows how the board is read; LinkedIn's gu
   await expect(page.getByTestId("source-upwork").getByTestId("source-access-label")).toHaveText("Browser");
   await expect(page.getByTestId("source-vietnamworks").getByTestId("source-access-label")).toHaveText("Direct (no login)");
   // LinkedIn is high risk: read in the browser until Ba approves it.
-  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Account API (needs approval) · Browser until approved");
+  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Direct read (needs approval) · Browser until approved");
 
-  const approve = linkedin.getByRole("button", { name: "Approve the account API for LinkedIn" });
+  const approve = linkedin.getByRole("button", { name: "Approve direct reads for LinkedIn" });
   await approve.focus();
   await page.keyboard.press("Enter");
-  const dialog = page.getByRole("dialog", { name: "Approve the account API for LinkedIn?" });
+  const dialog = page.getByRole("dialog", { name: "Approve direct reads for LinkedIn?" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Terms of use", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Account risk", { exact: true })).toBeVisible();
@@ -192,10 +192,10 @@ test("API research §5.6: each toggle shows how the board is read; LinkedIn's gu
 
   await approve.click();
   await dialog.getByRole("button", { name: "Approve", exact: true }).click();
-  await expect(page.getByTestId("toast").filter({ hasText: "Approved the account API for LinkedIn" })).toBeVisible();
+  await expect(page.getByTestId("toast").filter({ hasText: "Approved direct reads for LinkedIn" })).toBeVisible();
   await expect(linkedin.getByTestId("source-access-label")).toHaveText("Direct (no login)");
   await expect(linkedin.getByTestId("source-token-hint")).toHaveCount(0);
 
-  await linkedin.getByRole("button", { name: "Revoke the account API for LinkedIn" }).click();
-  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Account API (needs approval) · Browser until approved");
+  await linkedin.getByRole("button", { name: "Revoke direct reads for LinkedIn" }).click();
+  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Direct read (needs approval) · Browser until approved");
 });

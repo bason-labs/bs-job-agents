@@ -42,6 +42,11 @@ describe("resolveFlight", () => {
     expect(resolveFlight("$5", rows)).toEqual({ self: "$5" });
   });
 
+  it("QA r1 #7: '$<hex>:<key>…' path refs resolve to the value inside the row; a path that leads nowhere stays", () => {
+    const rows = flightRows(`1:{"a":"$3:job:title","b":"$3:list:1","c":"$3:nope","d":"$2:x"}\n${text("2", "plain")}3:{"job":{"title":"$4"},"list":["x","y"]}\n4:"Dev"\n`);
+    expect(resolveFlight("$1", rows)).toEqual({ a: "Dev", b: "y", c: "$3:nope", d: "$2:x" });
+  });
+
   it("findFlightRef finds the page row's reference", () => {
     const rows = flightRows(`b:["$","$L27",null,{"jobDetail":"$28"}]\n28:{"jobId":1}\n`);
     expect(findFlightRef(rows, "jobDetail")).toBe("28");

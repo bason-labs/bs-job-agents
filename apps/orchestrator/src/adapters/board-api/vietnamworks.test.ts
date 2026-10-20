@@ -9,11 +9,13 @@ import { settleScanOutput } from "../../engine/scan-settle.js";
 import { HostGate, type HttpFetch } from "../http/index.js";
 import { vietnamworksSearches } from "../sources.js";
 import { ApiChanged, BoardApiClient, DirectReadBlocked } from "./client.js";
-import { VNW_HIDDEN_EMPLOYER, VNW_RETRIEVE_FIELDS, vietnamworksHits, vietnamworksJob, vietnamworksMapper, vietnamworksSearchBody } from "./vietnamworks.js";
+import { VNW_HIDDEN_EMPLOYER, VNW_RETRIEVE_FIELDS, scanVietnamworks, vietnamworksHits, vietnamworksJob, vietnamworksMapper, vietnamworksSearchBody } from "./vietnamworks.js";
 
 const read = (name: string) => readFileSync(new URL(`./fixtures/vietnamworks/${name}`, import.meta.url), "utf8");
 type Hit = Record<string, unknown> & { jobId: number; jobUrl: string };
-const SEARCH = JSON.parse(read("search.json")) as { meta: Record<string, unknown>; data: Hit[] };
+const CAPTURED = JSON.parse(read("search.json")) as { meta: Record<string, unknown>; data: Hit[] };
+/** The capture with its deadlines moved far ahead, so the tests do not expire with the real clock. */
+const SEARCH = { ...CAPTURED, data: CAPTURED.data.map((d): Hit => ({ ...d, expiredOn: "2099-12-31T23:59:59+07:00" })) };
 const DETAIL = read("job-2110333.html");
 const DETAIL_URL = SEARCH.data.find((h) => h.jobId === 2110333)!.jobUrl;
 
@@ -246,5 +248,25 @@ describe("VietnamWorks mapper", () => {
     const h = harness({ search: () => ({ status: 200, body: JSON.stringify({ meta: { code: 200, nbHits: 0, page: 0, nbPages: 0 }, data: [] }) }) });
     expect(await vietnamworksMapper.scan(h.client, input())).toMatchObject({ jobs: [] });
     expect(h.calls).toHaveLength(1);
+  });
+
+  it("QA r1 #5: one incomplete job page (a short JD) is left out, not a changed API; job pages without the job object (every one, or two) are", async () => {
+    const one = { ...SEARCH, data: [SEARCH.data[0]!] };
+    const short = harness({ search: () => ({ status: 200, body: JSON.stringify(one) }), job: () => ({ status: 200, body: jobPage({ ...SEARCH.data[0]!, jobDescription: "<p>short</p>", jobRequirement: "", benefits: [] }) }) });
+    expect(await vietnamworksMapper.scan(short.client, input())).toMatchObject({ jobs: [] });
+    const gone = harness({ search: () => ({ status: 200, body: JSON.stringify(one) }), job: () => ({ status: 200, body: "<html>new</html>" }) });
+    await expect(vietnamworksMapper.scan(gone.client, input())).rejects.toBeInstanceOf(ApiChanged);
+    const twoGone = harness({ job: (url) => (url.toString() === DETAIL_URL ? { status: 200, body: jobPage({ ...SEARCH.data[1]!, jobDescription: "<p>x</p>", jobRequirement: "", benefits: [] }) } : { status: 200, body: "<html>new</html>" }) });
+    await expect(vietnamworksMapper.scan(twoGone.client, input())).rejects.toBeInstanceOf(ApiChanged);
+  });
+
+  it("QA r1 #7: a hit whose expiredOn is past is left out before its job page is read", async () => {
+    const h = harness({ search: () => ({ status: 200, body: JSON.stringify(CAPTURED) }) });
+    // The capture's deadlines: 2116796 on 2026-11-06, 2110333 on 2026-10-22; 2119126 later still.
+    const result = await scanVietnamworks(h.client, input(), undefined, () => new Date("2026-10-25T00:00:00Z"));
+    expect(h.calls.filter((c) => c.method === "GET").map((c) => c.url)).not.toContain(DETAIL_URL);
+    expect(result.note).toMatch(/1 expired/);
+    expect(vietnamworksHits(CAPTURED, new Date("2026-10-20T00:00:00Z"))!.expired).toEqual([]);
+    expect(vietnamworksHits(CAPTURED, new Date("2030-01-01T00:00:00Z"))).toMatchObject({ hits: [], expired: CAPTURED.data.map((d) => d.jobUrl) });
   });
 });

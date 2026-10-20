@@ -58,7 +58,8 @@ export class BoardApiScanner implements BoardScanPort {
     const mapper = this.mappers[source];
     if (!mapper) throw new BoardApiError("failed", `no API reader for ${source}`);
     const record = this.records(source);
-    const credentials = req.path === "account_api" ? (this.opts.secrets?.credentials(source) ?? null) : null;
+    // The secrets file is read only for a board that sends a token (never for auth "none").
+    const credentials = req.path === "account_api" && record.auth.kind !== "none" ? (this.opts.secrets?.credentials(source) ?? null) : null;
     if (req.path === "account_api" && record.auth.kind !== "none" && credentials === null) throw new MissingCredential(source, record.auth.names);
     const client = new BoardApiClient({
       record,
@@ -69,6 +70,7 @@ export class BoardApiScanner implements BoardScanPort {
       redactor: this.redactor,
       ...(req.onRequest ? { onRequest: req.onRequest } : {}),
       ...(this.opts.timeoutMs !== undefined ? { timeoutMs: this.opts.timeoutMs } : {}),
+      ...(mapper.maxRedirects !== undefined ? { maxRedirects: mapper.maxRedirects } : {}),
     });
     try {
       return await mapper.scan(client, req.input, req.signal);

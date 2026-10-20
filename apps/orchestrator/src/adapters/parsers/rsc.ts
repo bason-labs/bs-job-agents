@@ -3,8 +3,9 @@
 // one "flight" text; joined in order, it is a list of rows:
 //   <hex id>:<one JSON value>\n            a model row (objects, lists, element tuples)
 //   <hex id>:T<hex byte length>,<text>     a text row (HTML); the length counts UTF-8 bytes, no newline
-// A string "$<hex>" in a model row points at another row (a long text or a shared list); "$$…" is
-// a literal "$…". Other "$" forms ("$L27" lazy components, "$undefined") are left as they are.
+// A string "$<hex>" in a model row points at another row (a long text or a shared list), and
+// "$<hex>:<key>:<key>…" at a value inside that row; "$$…" is a literal "$…". Other "$" forms ("$L27"
+// lazy components, "$undefined", "$D<date>") are left as they are.
 // No DOM and no eval: the scripts are found with a regex and their array parsed as JSON.
 
 export type FlightRow = { kind: "text"; text: string } | { kind: "model"; raw: string };
@@ -67,7 +68,7 @@ export function flightRows(flight: string): Map<string, FlightRow> {
   return rows;
 }
 
-const REF = /^\$([0-9a-f]+)$/;
+const REF = /^\$([0-9a-f]+)((?::[^:]+)+)?$/;
 const MAX_DEPTH = 32;
 
 /**
@@ -82,14 +83,20 @@ export function resolveFlight(value: unknown, rows: ReadonlyMap<string, FlightRo
     if (!ref || seen.has(ref[1]!)) return value;
     const row = rows.get(ref[1]!);
     if (!row) return value;
-    if (row.kind === "text") return row.text;
+    if (row.kind === "text") return ref[2] ? value : row.text;
     let parsed: unknown;
     try {
       parsed = JSON.parse(row.raw);
     } catch {
       return value;
     }
-    return resolveFlight(parsed, rows, new Set([...seen, ref[1]!]), depth + 1);
+    let target: unknown = resolveFlight(parsed, rows, new Set([...seen, ref[1]!]), depth + 1);
+    // "$3:a:b": the value at keys a, b of row 3; a path that leads nowhere stays as its string.
+    for (const key of ref[2] ? ref[2].slice(1).split(":") : []) {
+      if (typeof target !== "object" || target === null || !Object.hasOwn(target, key)) return value;
+      target = (target as Record<string, unknown>)[key];
+    }
+    return target;
   }
   if (Array.isArray(value)) return value.map((v) => resolveFlight(v, rows, seen, depth + 1));
   if (typeof value === "object" && value !== null) {

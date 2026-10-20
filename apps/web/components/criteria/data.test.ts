@@ -81,6 +81,6 @@ describe("source access adapter (GET /sources/access, POST/DELETE /sources/:sour
     expect(apiErrorInfo(await data.approveSource("linkedin", "older").catch((e: unknown) => e))).toMatchObject({ status: 409, code: "conflict" });
     expect(apiErrorInfo(await data.approveSource("remotive", "x").catch((e: unknown) => e))).toMatchObject({ status: 404, code: "not_found" });
     expect(await data.approveSource("linkedin", researchedAt!)).toMatchObject({ needsApproval: false, approvedAt: expect.any(String), labelKey: "account_api_direct", noLogin: true });
-    expect(await data.revokeSource("linkedin")).toMatchObject({ needsApproval: true, approvedAt: null, labelKey: "account_api_needs_approval" });
+    expect(await data.revokeSource("linkedin")).toMatchObject({ needsApproval: true, approvedAt: null, labelKey: "direct_needs_approval" });
   });
 });

@@ -156,8 +156,9 @@ export function accessPathOf(record: SourceAccessRecord, opts: { approved: boole
 /**
  * The label on the Search criteria toggle (design §5.6). `account_api_direct`: the board's own API
  * read without logging in (record auth.kind "none", e.g. TopCV, ITviec), so no token is involved.
+ * `direct_needs_approval`: such a no-login read of a high-risk board (LinkedIn) before Ba approves it.
  */
-export const AccessLabelKeySchema = z.enum(["public_api", "account_api_direct", "account_api", "account_api_needs_approval", "account_api_token_missing", "browser"]);
+export const AccessLabelKeySchema = z.enum(["public_api", "account_api_direct", "account_api", "account_api_needs_approval", "direct_needs_approval", "account_api_token_missing", "browser"]);
 export type AccessLabelKey = z.infer<typeof AccessLabelKeySchema>;
 
 export const ACCESS_LABELS: Record<AccessLabelKey, string> = {
@@ -165,6 +166,7 @@ export const ACCESS_LABELS: Record<AccessLabelKey, string> = {
   account_api_direct: "Direct (no login)",
   account_api: "Account API",
   account_api_needs_approval: "Account API (needs approval)",
+  direct_needs_approval: "Direct read (needs approval)",
   account_api_token_missing: "Account API (token missing)",
   browser: "Browser",
 };
@@ -175,6 +177,7 @@ export const ACCESS_LABELS: Record<AccessLabelKey, string> = {
  */
 export const ACCESS_LABEL_HINTS: Partial<Record<AccessLabelKey, string>> = {
   account_api_needs_approval: "Browser until approved",
+  direct_needs_approval: "Browser until approved",
   account_api_token_missing: "Browser until a token is set",
 };
 
@@ -196,7 +199,9 @@ export function accessStateOf(record: SourceAccessRecord, opts: { approved: bool
   const needsApproval = path === "browser" && !opts.approved && accessPathOf(record, { approved: true }) === "account_api";
   const tokenMissing = path === "account_api" && record.auth.kind !== "none" && !opts.tokenPresent;
   const labelKey: AccessLabelKey = needsApproval
-    ? "account_api_needs_approval"
+    ? record.auth.kind === "none"
+      ? "direct_needs_approval"
+      : "account_api_needs_approval"
     : tokenMissing
       ? "account_api_token_missing"
       : path === "account_api" && record.auth.kind === "none"

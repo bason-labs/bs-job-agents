@@ -2,7 +2,9 @@
 
 // API research (design 2026-10-19 §5.6): the Search criteria source toggles, each with how the
 // board is read ("Public API", "Direct (no login)", "Account API", "Account API (needs approval)",
-// "Account API (token missing)", "Browser"; shared ACCESS_LABELS). A high-risk board's account API
+// "Direct read (needs approval)", "Account API (token missing)", "Browser"; shared ACCESS_LABELS).
+// A board read without logging in (view.noLogin) is worded as "direct reads", never as an account
+// API, since no account or token is involved. A high-risk board's account API
 // waits for Ba's approval: Approve shows the record's terms quote and account risk first, and an
 // approval can be revoked. Labels and actions come from GET /sources/access, read apart from the
 // criteria so a failure there never blocks editing them.
@@ -59,7 +61,7 @@ export function SourceToggles({ data, values, onToggle, invalid }: SourceToggles
     try {
       put(await data.approveSource(view.source, view.researchedAt ?? ""));
       setDialogOpen(false);
-      toast({ title: `Approved the account API for ${nameOf(view.source)}` });
+      toast({ title: `Approved ${whatOf(view)} for ${nameOf(view.source)}` });
     } catch (e) {
       setDialogOpen(false);
       toast({ title: `Couldn't approve ${nameOf(view.source)}: ${errorText(e)}`, tone: "err" });
@@ -131,6 +133,8 @@ export function SourceToggles({ data, values, onToggle, invalid }: SourceToggles
 
 const NAMES = Object.fromEntries(SOURCE_GROUP_OPTIONS.flatMap((g) => g.options.map((o) => [o.value, o.label]))) as Record<SearchSource, string>;
 const nameOf = (s: SearchSource) => NAMES[s] ?? s;
+/** What Ba approves: "direct reads" for a no-login board, else "the account API". */
+const whatOf = (view: SourceAccessView) => (view.noLogin ? "direct reads" : "the account API");
 
 interface SourceToggleProps {
   source: SearchSource;
@@ -168,7 +172,7 @@ function SourceToggle({ source, label, on, invalid, view, busy, onToggle, onAppr
       <p id={pathId} className="min-h-4 pl-1 text-[11px] leading-4 text-muted" data-testid="source-access-label">
         {view ? (
           <>
-            <span className={cn(view.labelKey === "account_api_needs_approval" || view.labelKey === "account_api_token_missing" ? "text-warn" : undefined)}>
+            <span className={cn(view.labelKey === "account_api_needs_approval" || view.labelKey === "direct_needs_approval" || view.labelKey === "account_api_token_missing" ? "text-warn" : undefined)}>
               {ACCESS_LABELS[view.labelKey]}
             </span>
             {hint ? <span> · {hint}</span> : null}
@@ -188,7 +192,7 @@ function SourceToggle({ source, label, on, invalid, view, busy, onToggle, onAppr
           variant={action === "approve" ? "secondary" : "ghost"}
           loading={busy && action === "revoke"}
           onClick={() => (action === "approve" ? onApprove(view) : onRevoke(view))}
-          aria-label={`${action === "approve" ? "Approve" : "Revoke"} the account API for ${label}`}
+          aria-label={`${action === "approve" ? "Approve" : "Revoke"} ${whatOf(view)} for ${label}`}
           data-testid={`source-${action}`}
           className="h-7"
         >
@@ -217,7 +221,7 @@ function ApproveDialog({ open, view, busy, onCancel, onConfirm }: ApproveDialogP
           size="lg"
           hideClose
           data-testid="source-approve-dialog"
-          title={`Approve the account API for ${name}?`}
+          title={`Approve ${whatOf(view)} for ${name}?`}
           description={
             view.noLogin
               ? `${name} is read in the browser until you approve. Once approved, scans read its public job pages directly, without logging in: no token or cookie is sent.`

@@ -291,8 +291,23 @@ describe("API scans (no bot, no Chrome)", () => {
       expect(leadTexts(t)).toContain("LinkedIn blocked the direct read — scanned through the browser this time.");
     });
 
+    it("QA r1 #2/#4: an approved LinkedIn search that redirects, or answers 503, goes to the browser with the 'blocked' notice after one request (never a failed source, never retried)", async () => {
+      for (const answer of [{ status: 302 }, { status: 503 }]) {
+        const http = fakeFetch(() => answer);
+        const port = production(http.fn);
+        const t = await createTestEngine({ sources: ["linkedin"], boards: port });
+        approveSource(t.db, { source: "linkedin", researchedAt: port.record("linkedin").researchedAt }, { now: t.clock.now() });
+        t.engine.startWorkflow(START, { trigger: "chat" });
+        await t.idle();
+        expect(http.calls, String(answer.status)).toHaveLength(1);
+        expect(runnerSources(t), String(answer.status)).toEqual(["linkedin"]);
+        expect(leadTexts(t), String(answer.status)).toContain("LinkedIn blocked the direct read — scanned through the browser this time.");
+      }
+    });
+
     it("VietnamWorks (low risk) is read directly without any approval: the search POST, then its job pages", async () => {
-      const search = fixture("vietnamworks/search.json");
+      // The capture's deadlines moved ahead, so the test does not expire with the real clock.
+      const search = fixture("vietnamworks/search.json").replace(/"expiredOn": "[^"]*"/g, '"expiredOn": "2099-12-31T23:59:59+07:00"');
       const detail = fixture("vietnamworks/job-2110333.html");
       const http = fakeFetch((url) => (url.startsWith("https://ms.vietnamworks.com/") ? { status: 200, body: search } : url.includes("-2110333-jv") ? { status: 200, body: detail } : { status: 404 }));
       const t = await createTestEngine({ sources: ["vietnamworks"], boards: production(http.fn) });
@@ -304,6 +319,9 @@ describe("API scans (no bot, no Chrome)", () => {
       expect(scan).toMatchObject({ status: "done", usesBrowser: false });
       expect((scan.output as { jobs: { url: string }[] }).jobs.map((j) => j.url)).toEqual([expect.stringMatching(/-2110333-jv$/)]);
       expect(t.events("task.progress").map((e) => e.text)).toContain("POST ms.vietnamworks.com/job-search/v1.0/search");
+      // QA r1 #6: a no-login read is never worded as an account API.
+      expect(t.events("task.progress").map((e) => e.text)).toContain("Reading VietnamWorks directly, without logging in (fetched by the orchestrator: no bot, no LLM)");
+      expect((scan.output as { selfCheck: { item: string }[] }).selfCheck.map((c) => c.item)).toContain("Read VietnamWorks directly, without logging in (no bot, no LLM)");
     });
   });
 

@@ -51,7 +51,7 @@ const criteria = (over: Partial<SearchProfileFieldsBase> = {}): SearchProfileFie
 });
 const input = (over: Partial<ResearchScanInput> = {}): ResearchScanInput => ({ source: "linkedin", criteria: criteria(), maxPageViews: null, candidateLimit: 30, ...over });
 
-type Answer = { status: number; body?: string };
+type Answer = { status: number; body?: string; location?: string } | Error;
 function harness(opts: { search?: () => Answer; job?: (id: string, n: number) => Answer; credentials?: Record<string, string> | null } = {}) {
   const calls: { url: URL; headers: Record<string, string>; at: number }[] = [];
   let now = 0;
@@ -60,11 +60,13 @@ function harness(opts: { search?: () => Answer; job?: (id: string, n: number) =>
     calls.push({ url: u, headers: init.headers, at: now });
     const id = /\/jobPosting\/(\d+)$/.exec(u.pathname)?.[1];
     const a = id ? (opts.job ?? ((i) => ({ status: 200, body: detailFor(i) })))(id, calls.length) : (opts.search ?? (() => ({ status: 200, body: SEARCH })))();
-    return { ok: a.status < 300, status: a.status, text: async () => a.body ?? "", headers: { get: () => null } };
+    if (a instanceof Error) throw a;
+    return { ok: a.status < 300, status: a.status, text: async () => a.body ?? "", headers: { get: (n: string) => (n.toLowerCase() === "location" ? ("location" in a ? (a.location ?? null) : null) : null) } };
   };
   // The production gate (linkedin.com keeps 3000 ms) on a fake clock.
   const gate = new HostGate({ now: () => now, sleep: async (ms) => void (now += Math.max(0, ms)) });
-  const client = new BoardApiClient({ record: sourceAccessRecord("linkedin"), path: "account_api", fetch, gate, credentials: opts.credentials ?? null });
+  // As the scanner builds it for LinkedIn: no redirect followed.
+  const client = new BoardApiClient({ record: sourceAccessRecord("linkedin"), path: "account_api", fetch, gate, credentials: opts.credentials ?? null, maxRedirects: linkedinMapper.maxRedirects! });
   return { client, calls, fetch, gate };
 }
 
@@ -87,7 +89,7 @@ describe("LinkedIn guest pages", () => {
   it("a job page: the full JD and its criteria, from the top card; recruiter, face-pile and sign-in blocks ignored", () => {
     const [card] = linkedinCards(parseHtml(SEARCH));
     const job = linkedinJob(card!, DETAIL);
-    if (job === "incomplete") throw new Error("incomplete");
+    if (typeof job === "string") throw new Error(job);
     expect(job).toMatchObject({ source: "linkedin", url: "https://www.linkedin.com/jobs/view/4415809801/", title: "Medior Java Engineer - Personal Banking", company: "NAB Innovation Centre Vietnam", location: "Ho Chi Minh City, Vietnam", companyWebsite: null, language: "en", postedAt: "2026-09-19T17:00:00.000Z" });
     expect(job.jdText).toMatch(/^YOUR JOB RESPONSIBILITIES\n- Design, develop/);
     expect(job.jdText).toContain("- 4+ years experience as a Java designer/developer");
@@ -185,6 +187,63 @@ describe("LinkedIn mapper", () => {
     expect(h.calls.map((c) => c.url.pathname)).toContain(`/jobs-guest/jobs/api/jobPosting/${third!.jobId}`);
     expect(result.jobs).toHaveLength(1);
     expect(result.note).toMatch(/1 an excluded keyword/);
+  });
+});
+
+describe("QA round 1", () => {
+  it("#1: a job page that redirects (to /authwall, /checkpoint, /uas/login, /login or anywhere) stops the scan as a blocked read; the hop is never sent", async () => {
+    expect(linkedinMapper.maxRedirects).toBe(0);
+    for (const where of ["/authwall?trk=x", "/checkpoint/challenge", "/uas/login", "/login", "/jobs/view/1/"]) {
+      const h = harness({ job: () => ({ status: 302, location: `https://www.linkedin.com${where}` }) });
+      await expect(linkedinMapper.scan(h.client, input()), where).rejects.toBeInstanceOf(DirectReadBlocked);
+      expect(h.calls.map((c) => c.url.pathname), where).toEqual(["/jobs-guest/jobs/api/seeMoreJobPostings/search", "/jobs-guest/jobs/api/jobPosting/4415809801"]);
+    }
+  });
+
+  it("#2/#3: a search that redirects (to the authwall, or to ?start=10) is a blocked read after exactly one request", async () => {
+    for (const location of ["https://www.linkedin.com/authwall", "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=Java+Engineer&location=Vietnam&f_TPR=r604800&start=10"]) {
+      const h = harness({ search: () => ({ status: 302, location }) });
+      await expect(linkedinMapper.scan(h.client, input()), location).rejects.toBeInstanceOf(DirectReadBlocked);
+      expect(h.calls, location).toHaveLength(1);
+    }
+  });
+
+  it("#3: the scanner builds LinkedIn's client with no redirect allowed", async () => {
+    const h = harness({ search: () => ({ status: 301, location: "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=x&start=0" }) });
+    const scanner = new BoardApiScanner({ fetch: h.fetch, gate: h.gate, secrets: null });
+    await expect(scanner.scan("linkedin", { path: "account_api", input: input() })).rejects.toBeInstanceOf(DirectReadBlocked);
+    expect(h.calls).toHaveLength(1);
+  });
+
+  it("#4: a 5xx or a timeout is a blocked read too (never a retried transient error), on the search or a job page", async () => {
+    for (const fail of [{ status: 503 }, { status: 500 }, new Error("fetch failed")] as const) {
+      const s = harness({ search: () => fail });
+      await expect(linkedinMapper.scan(s.client, input())).rejects.toBeInstanceOf(DirectReadBlocked);
+      expect(s.calls).toHaveLength(1);
+      const j = harness({ job: () => fail });
+      await expect(linkedinMapper.scan(j.client, input())).rejects.toBeInstanceOf(DirectReadBlocked);
+      expect(j.calls).toHaveLength(2);
+    }
+  });
+
+  it("#5: one incomplete job page is left out, not a changed API; pages with no posting at all (every one, or two) are", async () => {
+    const short = DETAIL.replace(/<div class="show-more-less-html__markup[\s\S]*?<\/div>/, '<div class="show-more-less-html__markup"><p>Short.</p></div>');
+    const one = harness({ search: () => ({ status: 200, body: manyCards(1) }), job: () => ({ status: 200, body: short.replaceAll("4415809801", "5000000000") }) });
+    expect(await linkedinMapper.scan(one.client, input())).toMatchObject({ jobs: [] });
+    const all = harness({ job: (id) => ({ status: 200, body: id === "4415809801" ? short : detailFor(id) }) });
+    expect((await linkedinMapper.scan(all.client, input())).jobs).toHaveLength(2);
+    const twoGone = harness({ job: (id, n) => ({ status: 200, body: n === 2 ? short : "<div>redesigned</div>" }) });
+    await expect(linkedinMapper.scan(twoGone.client, input())).rejects.toBeInstanceOf(ApiChanged);
+    const oneGone = harness({ search: () => ({ status: 200, body: manyCards(1) }), job: () => ({ status: 200, body: "<div>redesigned</div>" }) });
+    await expect(linkedinMapper.scan(oneGone.client, input())).rejects.toBeInstanceOf(ApiChanged);
+  });
+
+  it("#7: the scanner never reads the secrets file for LinkedIn (auth none)", async () => {
+    const h = harness();
+    let reads = 0;
+    const secrets: SecretStore = { credentials: () => (reads++, { li_at: "x" }), has: () => true };
+    await new BoardApiScanner({ fetch: h.fetch, gate: h.gate, secrets }).scan("linkedin", { path: "account_api", input: input() });
+    expect(reads).toBe(0);
   });
 });
 

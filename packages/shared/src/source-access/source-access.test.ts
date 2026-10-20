@@ -156,14 +156,14 @@ describe("accessStateOf (what the Search criteria screen shows)", () => {
     expect(accessStateOf(noLogin, { approved: false, tokenPresent: true }).labelKey).toBe("account_api_direct");
   });
 
-  it("a high-risk no-login board still needs approval first", () => {
+  it("a high-risk no-login board still needs approval first, worded as a direct read (no account involved)", () => {
     const s = accessStateOf(record({ riskLevel: "high", auth: { kind: "none", names: [], howToCopy: "" } }), { approved: false, tokenPresent: false });
-    expect(s).toEqual({ path: "browser", needsApproval: true, tokenMissing: false, labelKey: "account_api_needs_approval" });
+    expect(s).toEqual({ path: "browser", needsApproval: true, tokenMissing: false, labelKey: "direct_needs_approval" });
   });
 
   it("the label set, with a browser hint where the label alone would mislead", () => {
-    expect(Object.values(ACCESS_LABELS)).toEqual(["Public API", "Direct (no login)", "Account API", "Account API (needs approval)", "Account API (token missing)", "Browser"]);
-    expect(ACCESS_LABEL_HINTS).toEqual({ account_api_needs_approval: "Browser until approved", account_api_token_missing: "Browser until a token is set" });
+    expect(Object.values(ACCESS_LABELS)).toEqual(["Public API", "Direct (no login)", "Account API", "Account API (needs approval)", "Direct read (needs approval)", "Account API (token missing)", "Browser"]);
+    expect(ACCESS_LABEL_HINTS).toEqual({ account_api_needs_approval: "Browser until approved", direct_needs_approval: "Browser until approved", account_api_token_missing: "Browser until a token is set" });
   });
 
   it("the researched TopCV and ITviec records read as Direct (no login)", () => {
@@ -214,7 +214,7 @@ describe("the six board records", () => {
     expect(r.termsOfUse.clauses.some((c) => /scrape/.test(c))).toBe(true);
     expect(r.accountRisk).toMatch(/robots\.txt/);
     expect(r.riskLevel).toBe("high");
-    expect(accessStateOf(r, { approved: false, tokenPresent: false })).toEqual({ path: "browser", needsApproval: true, tokenMissing: false, labelKey: "account_api_needs_approval" });
+    expect(accessStateOf(r, { approved: false, tokenPresent: false })).toEqual({ path: "browser", needsApproval: true, tokenMissing: false, labelKey: "direct_needs_approval" });
     expect(accessStateOf(r, { approved: true, tokenPresent: false })).toEqual({ path: "account_api", needsApproval: false, tokenMissing: false, labelKey: "account_api_direct" });
   });
 

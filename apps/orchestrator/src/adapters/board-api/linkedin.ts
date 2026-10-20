@@ -5,8 +5,10 @@
 //   1 search page per scan (start=0 only: the first role × location of the search profile),
 //   at most LINKEDIN_MAX_JOB_PAGES job pages (and the scan's job limit),
 //   at least 3000 ms between two requests to linkedin.com (adapters/http HOST_MIN_GAPS_MS).
-// A 429, a 999 or a challenge page stops the scan at once with DirectReadBlocked and is never
-// retried: the run reads LinkedIn in the browser this time ("LinkedIn blocked the direct read").
+// A 429, a 999, a challenge page, any redirect (the client follows none: a 302 to /authwall or to
+// another page is refused unsent) or any other transient failure (5xx, timeout) stops the scan at
+// once with DirectReadBlocked and is never retried, so no further page is requested: the run reads
+// LinkedIn in the browser this time ("LinkedIn blocked the direct read").
 // The HTML fragments are read with the small parser in parsers/html.ts; recruiter, face-pile and
 // sign-in blocks are never read (only the selectors below are).
 import type { JobCandidate, ResearchScanInput } from "@bs-job-agents/shared";
@@ -30,8 +32,6 @@ export const LINKEDIN_MAX_SEARCH_PAGES = 1;
 export const LINKEDIN_MAX_JOB_PAGES = 10;
 /** The gap the host gate keeps for linkedin.com (asserted by a test). */
 export const LINKEDIN_MIN_GAP_MS = HOST_MIN_GAPS_MS["linkedin.com"]!;
-/** HTTP answers that mean LinkedIn is limiting this IP: stop now, never retry. */
-const BLOCK_STATUSES = new Set([429, 999]);
 
 export interface LinkedinCard {
   jobId: string;
@@ -86,13 +86,18 @@ export function linkedinCards(root: DomRoot): LinkedinCard[] {
   return cards;
 }
 
-/** A guest job page as a JobCandidate (the card fills what it lacks), or "incomplete". */
-export function linkedinJob(card: LinkedinCard, html: string): JobCandidate | "incomplete" {
+/**
+ * A guest job page as a JobCandidate (the card fills what it lacks); "no_posting" when the page has
+ * neither the top card's title nor the JD block (its structure changed), "incomplete" when a posting
+ * is there but not usable (another posting's page, a short JD, no company or location).
+ */
+export function linkedinJob(card: LinkedinCard, html: string): JobCandidate | "no_posting" | "incomplete" {
   const root = parseHtml(html);
+  const markup = root.querySelector("div.show-more-less-html__markup");
+  if (!markup && !root.querySelector("h2.top-card-layout__title")) return "no_posting";
   // The page names its posting; another posting's page is not this card's.
   const pageId = /<code[^>]+id\s*=\s*["']decoratedJobPostingId["'][^>]*>\s*<!--\s*"?(\d+)"?\s*-->/.exec(html)?.[1];
   if (pageId !== undefined && pageId !== card.jobId) return "incomplete";
-  const markup = root.querySelector("div.show-more-less-html__markup");
   const description = markup ? blockText(markup) : "";
   const criteria = all(root, "ul.description__job-criteria-list li")
     .map((li) => [textOf(li, "h3.description__job-criteria-subheader"), textOf(li, "span.description__job-criteria-text")] as const)
@@ -102,7 +107,8 @@ export function linkedinJob(card: LinkedinCard, html: string): JobCandidate | "i
   const title = textOf(root, "h2.top-card-layout__title") ?? card.title;
   const company = textOf(root, "a.topcard__org-name-link") ?? card.company;
   const location = textOf(root, "span.topcard__flavor--bullet:not(.num-applicants__caption)") ?? card.location;
-  if (!description || !title || !company || !location || jdText.length < FEED_MIN_JD_CHARS) return "incomplete";
+  // The JD itself must be full; the criteria lines do not make a snippet one.
+  if (!title || !company || !location || description.length < FEED_MIN_JD_CHARS) return "incomplete";
   return {
     source: "linkedin",
     url: card.url,
@@ -118,9 +124,14 @@ export function linkedinJob(card: LinkedinCard, html: string): JobCandidate | "i
   };
 }
 
-/** A 429 or 999 from LinkedIn as the block it is (no retry); anything else unchanged. */
+/**
+ * What stops a LinkedIn read at once, as a blocked direct read (the browser this run, no retry): a
+ * refused redirect, a 429 or 999 (rate limit), and any other transient failure (5xx, timeout, no
+ * connection), which a retry would only answer with another request. Anything else unchanged.
+ */
 function asBlock(err: unknown, path: string): unknown {
-  return err instanceof BoardApiError && err.status !== null && BLOCK_STATUSES.has(err.status) ? new DirectReadBlocked("linkedin", LINKEDIN_HOST, path) : err;
+  const blocked = err instanceof RedirectRefused || (err instanceof BoardApiError && (err.kind === "transient" || err.status === 429 || err.status === 999));
+  return blocked ? new DirectReadBlocked("linkedin", LINKEDIN_HOST, path) : err;
 }
 
 export async function scanLinkedin(client: BoardApiClient, input: ResearchScanInput, signal?: AbortSignal): Promise<BoardScanResult> {
@@ -156,17 +167,20 @@ export async function scanLinkedin(client: BoardApiClient, input: ResearchScanIn
   const jobs: JobCandidate[] = [];
   let jobPages = 0;
   let unreadable = 0;
+  let noPosting = 0;
+  let detailReads = 0;
   for (const card of queue) {
-    if (budget <= 0 || jobPages + unreadable >= LINKEDIN_MAX_JOB_PAGES) break;
+    if (budget <= 0 || detailReads >= LINKEDIN_MAX_JOB_PAGES) break;
     const path = linkedinDetailPath(card.jobId);
+    detailReads++;
     let page: string;
     try {
       page = await client.get({ host: LINKEDIN_HOST, path }, signal);
     } catch (err) {
       const blocked = asBlock(err, path);
       if (blocked instanceof DirectReadBlocked) throw blocked;
-      // A posting taken down since the search: skipped.
-      if ((err instanceof BoardApiError && err.kind === "failed") || err instanceof RedirectRefused) {
+      // A posting taken down since the search (404, 410): skipped.
+      if (err instanceof BoardApiError && err.kind === "failed") {
         unreadable++;
         budget--;
         continue;
@@ -176,16 +190,21 @@ export async function scanLinkedin(client: BoardApiClient, input: ResearchScanIn
     budget--;
     jobPages++;
     const job = linkedinJob(card, page);
-    if (job !== "incomplete") jobs.push(job);
+    if (typeof job !== "string") jobs.push(job);
     else if (isLinkedinChallenge(page)) throw new DirectReadBlocked("linkedin", LINKEDIN_HOST, path);
+    else if (job === "no_posting") noPosting++;
     else unreadable++;
   }
-  // Skill self-repair §5.8: job pages answered, but none held a posting the reader could use.
-  if (jobPages > 0 && jobs.length === 0) throw new ApiChanged(LINKEDIN_HOST, null, `LinkedIn: ${plural(jobPages, "job page")} on ${LINKEDIN_HOST} gave no complete posting`);
-  return finishBoardScan(jobs, input, { excludedByTitle, unreadable, head: `1 search page, ${plural(cards.length, "job card")}, ${plural(jobPages, "job page")} read` });
+  // Skill self-repair §5.8: only a structural failure is a changed API: no job page held a posting
+  // at all (every page read, or at least two of them). An incomplete posting is just left out.
+  if (jobs.length === 0 && noPosting > 0 && (noPosting === jobPages || noPosting >= 2)) {
+    throw new ApiChanged(LINKEDIN_HOST, null, `LinkedIn: ${plural(noPosting, "job page")} on ${LINKEDIN_HOST} had no posting the reader knows`);
+  }
+  return finishBoardScan(jobs, input, { excludedByTitle, unreadable: unreadable + noPosting, head: `1 search page, ${plural(cards.length, "job card")}, ${plural(jobPages, "job page")} read` });
 }
 
 export const linkedinMapper: BoardMapper = {
   source: "linkedin",
+  maxRedirects: 0,
   scan: scanLinkedin,
 };

@@ -160,6 +160,8 @@ export interface BoardApiClientOptions {
   onRequest?: (request: RecordedRequest) => void;
   timeoutMs?: number;
   maxBodyBytes?: number;
+  /** Redirect hops one GET may follow (default MAX_REDIRECTS); 0: any 3xx is RedirectRefused, never requested. */
+  maxRedirects?: number;
   userAgent?: string;
 }
 
@@ -242,7 +244,8 @@ export class BoardApiClient {
    * One GET to a listed endpoint: the body and the URL it finally came from. Redirects are not
    * followed by fetch: each Location must be https on the same host and pass endpointFor (path and
    * query names; an apply endpoint never does), and each hop goes through the host gate and
-   * onRequest like any request. At most MAX_REDIRECTS hops; a refused hop throws EndpointNotAllowed.
+   * onRequest like any request. At most maxRedirects hops (default MAX_REDIRECTS); a hop that changes a
+   * query value the request set is refused too; a refused hop throws EndpointNotAllowed.
    */
   async getPage(req: BoardRequest, signal?: AbortSignal): Promise<{ body: string; url: URL }> {
     if (req.path.includes("?") || req.path.includes("#")) throw new EndpointNotAllowed(this.source, "GET", req.host, req.path);
@@ -254,6 +257,7 @@ export class BoardApiClient {
     let url = new URL(`https://${req.host}${req.path}`);
     for (const [k, v] of Object.entries(req.query ?? {})) url.searchParams.set(k, String(v));
     const max = this.opts.maxBodyBytes ?? 8 * 1024 * 1024;
+    const limit = this.opts.maxRedirects ?? MAX_REDIRECTS;
     for (let hop = 0; ; hop++) {
       this.opts.onRequest?.({ method: "GET", host: url.hostname, path: url.pathname });
       let answer: HttpAnswer;
@@ -263,20 +267,29 @@ export class BoardApiClient {
         throw this.classify(err, url, "GET");
       }
       if (answer.kind === "body") return { body: answer.body, url };
-      if (hop >= MAX_REDIRECTS) throw new BoardApiError("failed", `${url.hostname}${url.pathname} redirected more than ${MAX_REDIRECTS} times`);
-      if (!answer.location) throw new BoardApiError("failed", `${url.hostname}${url.pathname} answered HTTP ${answer.status} without a Location`);
-      let next: URL;
+      let next: URL | null = null;
       try {
-        next = new URL(answer.location, url);
+        next = answer.location ? new URL(answer.location, url) : null;
       } catch {
-        throw new BoardApiError("failed", `${url.hostname}${url.pathname} redirected to an invalid URL`);
+        next = null;
       }
+      // A reader that follows no redirect (LinkedIn): any 3xx is refused and its Location never requested.
+      if (limit === 0) throw new RedirectRefused(this.source, next ?? url);
+      if (hop >= limit) throw new BoardApiError("failed", `${url.hostname}${url.pathname} redirected more than ${limit} times`);
+      if (!answer.location) throw new BoardApiError("failed", `${url.hostname}${url.pathname} answered HTTP ${answer.status} without a Location`);
+      if (!next) throw new BoardApiError("failed", `${url.hostname}${url.pathname} redirected to an invalid URL`);
       // Another host, or plain http: refused (a cross-host hop would carry the board's headers).
       next.hash = "";
       if (next.protocol !== "https:" || !sameHost(next.hostname, url.hostname)) throw new RedirectRefused(this.source, next);
       try {
         this.endpointFor(next.hostname, next.pathname, [...new Set(next.searchParams.keys())]);
       } catch {
+        throw new RedirectRefused(this.source, next);
+      }
+      // A hop may not change a query value the request set (e.g. ?start=0 → ?start=10: another page
+      // the scan never asked for and never counted).
+      const from = url;
+      if ([...new Set(next.searchParams.keys())].some((k) => from.searchParams.has(k) && from.searchParams.getAll(k).join("\u0000") !== next.searchParams.getAll(k).join("\u0000"))) {
         throw new RedirectRefused(this.source, next);
       }
       url = next;

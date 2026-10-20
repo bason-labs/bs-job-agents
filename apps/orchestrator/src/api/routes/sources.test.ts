@@ -86,7 +86,7 @@ describe("POST/DELETE /sources/:source/approval", () => {
     h = await createApiHarness({ engine: { boards: production } });
     const record = production.record("linkedin");
     expect(record).toMatchObject({ chosenPath: "account_api", riskLevel: "high", auth: { kind: "none" } });
-    expect(await view("linkedin")).toMatchObject({ path: "browser", labelKey: "account_api_needs_approval", needsApproval: true, tokenMissing: false });
+    expect(await view("linkedin")).toMatchObject({ path: "browser", labelKey: "direct_needs_approval", needsApproval: true, tokenMissing: false, noLogin: true });
     expect((await h.post("/sources/linkedin/approval", { researchedAt: record.researchedAt })).statusCode).toBe(200);
     expect(await view("linkedin")).toMatchObject({ path: "account_api", labelKey: "account_api_direct", needsApproval: false, tokenMissing: false });
     expect(await view("vietnamworks")).toMatchObject({ path: "account_api", labelKey: "account_api_direct", needsApproval: false, approvedAt: null });

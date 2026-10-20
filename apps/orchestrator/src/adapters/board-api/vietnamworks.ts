@@ -63,22 +63,30 @@ export interface VnwHit {
   job: Record<string, unknown>;
 }
 
-/** A search answer's hits and page count, or null when it is not the shape the reader knows. */
-export function vietnamworksHits(answer: unknown): { hits: VnwHit[]; nbPages: number } | null {
+/**
+ * A search answer's hits and page count, or null when it is not the shape the reader knows. A hit
+ * whose expiredOn is past (or that says isExpired) is left out before its page is read.
+ */
+export function vietnamworksHits(answer: unknown, now: Date = new Date()): { hits: VnwHit[]; nbPages: number; expired: string[] } | null {
   if (typeof answer !== "object" || answer === null) return null;
   const { meta, data } = answer as { meta?: { code?: unknown; nbPages?: unknown }; data?: unknown };
   if (typeof meta !== "object" || meta === null || !Array.isArray(data) || typeof meta.nbPages !== "number") return null;
   if (meta.code !== undefined && meta.code !== 200) return null;
   const hits: VnwHit[] = [];
+  const expired: string[] = [];
   for (const item of data) {
     if (typeof item !== "object" || item === null) continue;
     const job = withoutPrivate(item as Record<string, unknown>);
-    if (job.isExpired === true) continue;
     const url = typeof job.jobUrl === "string" ? canonicalJobUrl(job.jobUrl) : null;
     if (!url) continue;
+    const until = typeof job.expiredOn === "string" ? Date.parse(job.expiredOn) : NaN;
+    if (job.isExpired === true || until < now.getTime()) {
+      expired.push(url);
+      continue;
+    }
     hits.push({ url, title: str(job.jobTitle), job });
   }
-  return { hits, nbPages: meta.nbPages };
+  return { hits, nbPages: meta.nbPages, expired };
 }
 
 const str = (v: unknown): string | null => (typeof v === "string" && cleanText(v) ? cleanText(v) : null);
@@ -143,7 +151,7 @@ export function vietnamworksJob(url: string, html: string, hit: Record<string, u
   };
 }
 
-export async function scanVietnamworks(client: BoardApiClient, input: ResearchScanInput, signal?: AbortSignal): Promise<BoardScanResult> {
+export async function scanVietnamworks(client: BoardApiClient, input: ResearchScanInput, signal?: AbortSignal, now: () => Date = () => new Date()): Promise<BoardScanResult> {
   const limit = input.candidateLimit ?? scanJobLimit(input.criteria.maxJobs);
   let budget = input.maxPageViews ?? Number.POSITIVE_INFINITY;
   const excluded = excludedTerms(input);
@@ -151,6 +159,8 @@ export async function scanVietnamworks(client: BoardApiClient, input: ResearchSc
   const seen = new Set<string>();
   let searchPages = 0;
   let excludedByTitle = 0;
+  // Expired hits (left out before their page) and expired job pages, counted once each.
+  const expiredSeen = new Set<string>();
   searches: for (const search of vietnamworksSearches(input.criteria)) {
     for (let page = 0; page < MAX_PAGES_PER_SEARCH; page++) {
       if (queue.length >= Math.min(limit, budget - 1)) break searches;
@@ -160,9 +170,10 @@ export async function scanVietnamworks(client: BoardApiClient, input: ResearchSc
       );
       budget--;
       searchPages++;
-      const read = vietnamworksHits(answer);
+      const read = vietnamworksHits(answer, now());
       // Skill self-repair §5.8: an answer the reader cannot read is a changed API.
       if (read === null) throw new ApiChanged(VNW_SEARCH_HOST, VNW_SEARCH_PATH, `VietnamWorks: the search on ${VNW_SEARCH_HOST}${VNW_SEARCH_PATH} answered a shape the reader does not know`, "POST");
+      for (const url of read.expired) expiredSeen.add(url);
       let added = 0;
       for (const hit of read.hits) {
         if (seen.has(hit.url) || !isJobPath(new URL(hit.url).pathname)) continue;
@@ -174,14 +185,14 @@ export async function scanVietnamworks(client: BoardApiClient, input: ResearchSc
         }
         if (queue.length < limit) queue.push(hit);
       }
-      if (added === 0 || page + 1 >= read.nbPages) break;
+      if ((added === 0 && read.expired.length === 0) || page + 1 >= read.nbPages) break;
     }
   }
 
   const jobs: JobCandidate[] = [];
   let jobPages = 0;
   let unreadable = 0;
-  let expired = 0;
+  let noPosting = 0;
   for (const hit of queue) {
     if (budget <= 0) break;
     const path = new URL(hit.url).pathname;
@@ -201,23 +212,25 @@ export async function scanVietnamworks(client: BoardApiClient, input: ResearchSc
     jobPages++;
     const job = vietnamworksJob(hit.url, html, hit.job);
     if (job === "no_posting" && isBotCheckPage(html)) throw new DirectReadBlocked("vietnamworks", VNW_JOB_HOST, path);
-    if (job === "expired") expired++;
+    if (job === "expired") expiredSeen.add(hit.url);
+    else if (job === "no_posting") noPosting++;
     else if (typeof job === "string") unreadable++;
     else jobs.push(job);
   }
-  // Skill self-repair §5.8: job pages answered, but none held a job the reader could use.
-  if (jobPages > 0 && jobs.length === 0 && expired < jobPages) {
-    throw new ApiChanged(VNW_JOB_HOST, null, `VietnamWorks: ${plural(jobPages, "job page")} on ${VNW_JOB_HOST} gave no complete posting`);
+  // Skill self-repair §5.8: only a structural failure is a changed API: no job page held the job
+  // object at all (every page read, or at least two of them). An incomplete posting is left out.
+  if (jobs.length === 0 && noPosting > 0 && (noPosting === jobPages || noPosting >= 2)) {
+    throw new ApiChanged(VNW_JOB_HOST, null, `VietnamWorks: ${plural(noPosting, "job page")} on ${VNW_JOB_HOST} had no job data the reader knows`);
   }
   return finishBoardScan(jobs, input, {
     excludedByTitle,
-    unreadable,
+    unreadable: unreadable + noPosting,
     head: `${plural(searchPages, "search page")}, ${plural(seen.size, "job link")}, ${plural(jobPages, "job page")} read`,
-    ...(expired > 0 ? { skipped: [`${expired} expired`] } : {}),
+    ...(expiredSeen.size > 0 ? { skipped: [`${expiredSeen.size} expired`] } : {}),
   });
 }
 
 export const vietnamworksMapper: BoardMapper = {
   source: "vietnamworks",
-  scan: scanVietnamworks,
+  scan: (client, input, signal) => scanVietnamworks(client, input, signal),
 };
