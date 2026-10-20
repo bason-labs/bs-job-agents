@@ -237,7 +237,8 @@ function BelowThresholdNote({ model }: { model: BelowThresholdModel }) {
   const n = model.jobs.length;
   return (
     <details
-      className="absolute bottom-14 left-3 z-10 max-w-[min(28rem,calc(100%-1.5rem))] rounded-2xl border border-border bg-surface/80 px-3 py-2 text-xs backdrop-blur-md"
+      // Under the run header, clear of the zoom controls (bottom left) and the minimap.
+      className="absolute top-16 left-3 z-10 max-w-[min(28rem,calc(100%-1.5rem))] rounded-2xl border border-border bg-surface/80 px-3 py-2 text-xs backdrop-blur-md"
       data-testid="below-threshold"
     >
       <summary className="cursor-pointer text-muted">

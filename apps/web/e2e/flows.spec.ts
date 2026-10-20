@@ -42,8 +42,9 @@ test("live 2026-10-20: one lane per selected job; the jobs under the fit thresho
   await expect(page.locator('[data-testid^="node-company-"]')).toHaveCount(3);
   const note = page.getByTestId("below-threshold");
   await expect(note).toContainText("4 jobs below your fit threshold (60) — not tailored");
-  await expect(note.getByRole("listitem")).toHaveCount(4);
-  await expect(note.getByRole("listitem").first()).toBeHidden();
+  // Collapsed: the list is there but hidden until Ba opens the note.
+  await expect(note.locator("li")).toHaveCount(4);
+  await expect(note.locator("li").first()).toBeHidden();
   await note.getByText(/jobs below your fit threshold/).click();
   await expect(note.getByRole("listitem").first()).toContainText("Frontend Developer (Vue) — BlueSea");
   await expect(note.getByRole("listitem").first()).toContainText("58");
