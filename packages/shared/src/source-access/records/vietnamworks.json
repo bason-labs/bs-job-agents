@@ -1,6 +1,6 @@
 {
   "source": "vietnamworks",
-  "researchedAt": "2026-10-19",
+  "researchedAt": "2026-10-20",
   "publicApi": {
     "usable": false,
     "needsDeveloperKey": true,
@@ -8,15 +8,93 @@
     "endpoints": [],
     "note": "A RapidAPI collection lists a 'VietnamWorks Job Seeker Portal' API (user management, job search, apply, matching score) that needs a consumer key requested through VietnamWorks' feedback form. Secondhand listing; no official docs found. Needs a developer key, so not usable (design 5.1)."
   },
-  "internalApiGetEndpoints": "none found",
+  "internalApiGetEndpoints": [
+    {
+      "method": "GET",
+      "host": "www.vietnamworks.com",
+      "pathPattern": "/:jobSlug-:jobId(digits)-jv",
+      "query": [],
+      "purpose": "detail",
+      "requiresAuth": false,
+      "fixture": "job-2110333.html"
+    }
+  ],
+  "internalApiPostSearchEndpoints": [
+    {
+      "method": "POST",
+      "host": "ms.vietnamworks.com",
+      "pathPattern": "/job-search/v1.0/search",
+      "purpose": "search",
+      "requiresAuth": false,
+      "readOnly": true,
+      "contentType": "application/json",
+      "headers": {
+        "X-Source": "Page-Container"
+      },
+      "bodyKeys": [
+        "userId",
+        "query",
+        "filter",
+        "ranges",
+        "order",
+        "hitsPerPage",
+        "page",
+        "retrieveFields",
+        "summaryVersion"
+      ],
+      "filterFields": [
+        "workingLocations.cityId",
+        "typeWorkingId",
+        "jobLevelId",
+        "postedWithin"
+      ],
+      "orderFields": [
+        "approvedOn",
+        "relevant",
+        "salary"
+      ],
+      "retrieveFields": [
+        "jobId",
+        "jobTitle",
+        "jobUrl",
+        "alias",
+        "companyName",
+        "isAnonymous",
+        "workingLocations",
+        "approvedOn",
+        "expiredOn",
+        "isSalaryVisible",
+        "salaryMin",
+        "salaryMax",
+        "salaryCurrency",
+        "prettySalary",
+        "jobLevel",
+        "typeWorkingId",
+        "skills"
+      ],
+      "maxPageSize": 50,
+      "fixture": "search.json"
+    }
+  ],
   "applyEndpoints": "none found",
-  "auth": { "kind": "none", "names": [], "howToCopy": "Not applicable: no usable GET endpoint. (The site's own job search call is a POST without login cookies; the logged-in api-gateway calls use an 'Authorization: Bearer' header and an 'X-App-Id' header, names only, seen in the site's JavaScript.)" },
+  "auth": {
+    "kind": "none",
+    "names": [],
+    "howToCopy": "No token needed: the job search POST and the job pages were read as a guest (no cookies, no Authorization header). The logged-in api-gateway calls (profile, save-job, hide job) are never used."
+  },
   "termsOfUse": {
     "url": "https://www.vietnamworks.com/operation-ecommerce",
-    "clauses": []
+    "clauses": [
+      "No clause on bots or automated access found (checked 2026-10-20)"
+    ]
   },
-  "accountRisk": "Not assessed in depth: no usable GET path was found, so the browser path stays. The only terms page found (vietnamworks.com/operation-ecommerce, titled 'Terms Of Use') covers an e-commerce trading floor, not the job site; no job-site clause on bots or automated access was found. robots.txt (2026-10-19) allows job pages and disallows profile, apply and /jobseekers/ajax.php paths.",
+  "accountRisk": "Low. Reads are guest requests (the site's own job search POST and its public job pages), so Ba's VietnamWorks account is not involved. The only terms page found (vietnamworks.com/operation-ecommerce) covers the e-commerce trading floor and has no clause on bots or automated access. robots.txt (2026-10-20) allows job pages and /viec-lam and disallows profile, apply, login and ajax paths; ms.vietnamworks.com has no robots.txt. Two guest searches on 2026-10-20 answered 200 with no challenge.",
   "riskLevel": "low",
-  "chosenPath": "browser",
-  "notes": "Job search is client-rendered: the page at www.vietnamworks.com/viec-lam?q=... ships no results in HTML; the site JS calls POST https://ms.vietnamworks.com/job-search/v1.0/search with a JSON body (headers Content-Type: application/json, X-Source: Page-Container; requested fields include jobId, jobTitle, alias, companyName, workingLocations, approvedOn, expiredOn, isSalaryVisible, ...). Not called (POST is off-limits). Other ms.vietnamworks.com paths seen in JS: /job-search/v1.0/count-jobs-by-job-function, /meta/v1.0/*, /api-gateway/v1.0/* (profile, save-job, job/:id/hide (POST) — never call). Job detail: https://www.vietnamworks.com/<alias>-<jobId>-jv (a short alias-<jobId>-jv redirects to the full alias with a long numeric prefix). It is a Next.js App Router page; the job object (jobId, jobTitle, jobDescription, jobRequirement, salaryMin/Max, isSalaryVisible, skills, benefits, workingLocations, ...) is embedded in the React Server Components payload (self.__next_f.push chunks), with jobDescription/jobRequirement as $-references to other chunks; no JSON-LD. A guest GET of a live job page returned this payload (64 KB). If a GET search route is found later (e.g. in Ba's Chrome network log), this board could move to account_api with that page as the detail endpoint. Third-party scrapers report search runs on Algolia; not confirmed. Chrome extension was not connected, so network requests were not observed; findings come from the site's public JavaScript and guest page GETs."
+  "chosenPath": "account_api",
+  "notes": [
+    "Verified 2026-10-20 with guest requests only (no cookies).",
+    "Search: POST https://ms.vietnamworks.com/job-search/v1.0/search, headers Content-Type: application/json and X-Source: Page-Container, the body posted bare: {userId: 0, query, filter: [{field, value}], ranges: [], order: [{field, value}], hitsPerPage (at most 50), page (0-based), retrieveFields, summaryVersion: ''}. The reader always sends userId 0 and empty ranges, orders by approvedOn desc and filters only by workingLocations.cityId (29 Ho Chi Minh, 24 Ha Noi, 17 Da Nang; comma list). It stops at page + 1 >= meta.nbPages. Answer: {meta: {code, nbHits, page, nbPages, hitsPerPage}, data: [...], facets}. jobDescription and jobRequirement in search hits are cut to about 300 characters, so every job page is read too.",
+    "Detail: guest GET https://www.vietnamworks.com/<alias>-<jobId>-jv (about 76 KB, no JSON-LD, no JSON detail endpoint). The job is in the Next.js React Server Components payload (self.__next_f.push chunks): rows '<hex>:<json>' and text rows '<hex>:T<hex byte length>,<html>'; the page row's jobDetail points ($<hex>) at the job row, whose jobDescription, jobRequirement and companyProfile are text rows and skills, benefits and workingLocations are lists. Full JD = jobDescription + jobRequirement + benefits[].benefitValue. Salary only when isSalaryVisible (prettySalary). isExpired jobs are skipped. userIp, emailAddress and contactName are never kept.",
+    "Unknown ms.vietnamworks.com paths answer 404 'no route matched'. Other ms paths seen in the site JS (/api-gateway/v1.0/* profile, save-job, job/:id/hide) are never called."
+  ]
 }

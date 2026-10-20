@@ -2,7 +2,9 @@
 // written by a person from the board's network traffic, terms and account risk. It decides how the
 // board is read (accessPathOf): public API, then the board's internal API with Ba's own token (the
 // "account API"), then the browser. Apply endpoints are data only: nothing ever builds a request
-// from them (AD-2).
+// from them (AD-2). The one non-GET read is a board's read-only POST search (2026-10-20 addendum:
+// VietnamWorks' job search is a JSON POST): the record lists every body key, filter, order and
+// field it may carry, and the client refuses anything else.
 import { z } from "zod";
 
 export const NONE_FOUND = "none found" as const;
@@ -16,7 +18,10 @@ export type RiskLevel = z.infer<typeof RiskLevelSchema>;
 
 const endpointShape = {
   host: z.string().min(1).describe("e.g. itviec.com"),
-  pathPattern: z.string().startsWith("/").describe('e.g. "/v1/jobs/:id"; ":name" matches one path segment'),
+  pathPattern: z
+    .string()
+    .startsWith("/")
+    .describe('e.g. "/v1/jobs/:id"; ":name" matches a non-empty piece of one path segment, ":name(digits)" digits only'),
   query: z.array(z.string().min(1)).optional().describe("Query parameter names the endpoint takes"),
   purpose: z.enum(["search", "detail", "other"]),
   requiresAuth: z.boolean(),
@@ -34,6 +39,39 @@ export const ApplyEndpointSchema = z.object({
   documentedOnly: z.literal(true),
 });
 export type ApplyEndpoint = z.infer<typeof ApplyEndpointSchema>;
+
+const fieldNames = z.array(z.string().min(1));
+
+/**
+ * A read-only search the board's own site sends as a JSON POST (no login). Only `purpose: "search"`,
+ * never auth: the client builds the body in code from the scan criteria (never from model output)
+ * and refuses a key, filter field, order field or retrieved field the record does not list, a page
+ * size over `maxPageSize`, a non-zero `userId`, non-empty `ranges`, any header not in `headers`,
+ * and any redirect.
+ */
+export const PostSearchEndpointSchema = z.strictObject({
+  method: z.literal("POST"),
+  host: endpointShape.host,
+  pathPattern: endpointShape.pathPattern,
+  purpose: z.literal("search"),
+  requiresAuth: z.literal(false),
+  readOnly: z.literal(true),
+  contentType: z.literal("application/json"),
+  /** The only extra headers sent, each with its one value (e.g. X-Source: Page-Container). */
+  headers: z.record(z.string().min(1), z.string()),
+  /** Top-level body keys the request may carry. */
+  bodyKeys: fieldNames.min(1),
+  /** `filter[].field` names allowed. */
+  filterFields: fieldNames,
+  /** `order[].field` names allowed. */
+  orderFields: fieldNames,
+  /** `retrieveFields[]` names allowed. */
+  retrieveFields: fieldNames,
+  /** The largest `hitsPerPage`. */
+  maxPageSize: z.number().int().positive(),
+  fixture: endpointShape.fixture,
+});
+export type PostSearchEndpoint = z.infer<typeof PostSearchEndpointSchema>;
 
 export const PublicApiSchema = z.object({
   usable: z.boolean(),
@@ -53,26 +91,38 @@ export const AuthSchema = z.object({
 });
 export type SourceAuth = z.infer<typeof AuthSchema>;
 
-export const SourceAccessRecordSchema = z.object({
-  source: z.string().min(1),
-  /** When the research was done; an approval lapses when it changes. */
-  researchedAt: z.string().min(1),
-  publicApi: z.union([NoneFound, PublicApiSchema]),
-  internalApiGetEndpoints: z.union([NoneFound, z.array(GetEndpointSchema)]),
-  applyEndpoints: z.union([NoneFound, z.array(ApplyEndpointSchema)]),
-  auth: AuthSchema,
-  termsOfUse: z.object({ url: z.string(), clauses: z.array(z.string()) }),
-  accountRisk: z.string(),
-  riskLevel: RiskLevelSchema,
-  /** Informational: must equal accessPathOf(record, { approved: true }). */
-  chosenPath: AccessPathSchema,
-  notes: z.union([z.string(), z.array(z.string())]).optional(),
-});
+export const SourceAccessRecordSchema = z
+  .object({
+    source: z.string().min(1),
+    /** When the research was done; an approval lapses when it changes. */
+    researchedAt: z.string().min(1),
+    publicApi: z.union([NoneFound, PublicApiSchema]),
+    internalApiGetEndpoints: z.union([NoneFound, z.array(GetEndpointSchema)]),
+    /** Read-only POST searches (no login); they count only beside a GET detail endpoint. */
+    internalApiPostSearchEndpoints: z.array(PostSearchEndpointSchema).optional(),
+    applyEndpoints: z.union([NoneFound, z.array(ApplyEndpointSchema)]),
+    auth: AuthSchema,
+    termsOfUse: z.object({ url: z.string(), clauses: z.array(z.string()) }),
+    accountRisk: z.string(),
+    riskLevel: RiskLevelSchema,
+    /** Informational: must equal accessPathOf(record, { approved: true }). */
+    chosenPath: AccessPathSchema,
+    notes: z.union([z.string(), z.array(z.string())]).optional(),
+  })
+  .refine((r) => (r.internalApiPostSearchEndpoints ?? []).length === 0 || (r.internalApiGetEndpoints !== NONE_FOUND && r.internalApiGetEndpoints.some((e) => e.purpose === "detail")), {
+    message: "a POST search needs a GET detail endpoint beside it",
+    path: ["internalApiPostSearchEndpoints"],
+  });
 export type SourceAccessRecord = z.infer<typeof SourceAccessRecordSchema>;
 
 /** The internal GET endpoints (none for "none found"). */
 export function internalGetEndpoints(record: SourceAccessRecord): GetEndpoint[] {
   return record.internalApiGetEndpoints === NONE_FOUND ? [] : record.internalApiGetEndpoints;
+}
+
+/** The read-only POST searches (none when the record lists none). */
+export function internalPostSearchEndpoints(record: SourceAccessRecord): PostSearchEndpoint[] {
+  return record.internalApiPostSearchEndpoints ?? [];
 }
 
 /** The public API's endpoints when it is usable without a developer key, else none. */
@@ -94,7 +144,8 @@ function riskDocumented(record: SourceAccessRecord): boolean {
 /**
  * The one place a board's path is decided (AD-3, design §5.1): a usable public API; else the account
  * API when an internal GET endpoint, the terms and the risk are recorded and the board is low risk or
- * Ba approved it; else the browser.
+ * Ba approved it; else the browser. A POST search alone never makes an internal API (the schema
+ * requires a GET detail beside it), so the GET list decides.
  */
 export function accessPathOf(record: SourceAccessRecord, opts: { approved: boolean }): AccessPath {
   if (usablePublicEndpoints(record).length > 0) return "public_api";
