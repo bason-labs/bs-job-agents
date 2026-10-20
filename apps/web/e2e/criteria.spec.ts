@@ -21,7 +21,8 @@ test("edits lists, toggles and sliders, then saves a new version (UC-21b)", asyn
   await page.getByRole("button", { name: "Remove PHP" }).click();
   await expect(page.getByTestId("criteria-excludeKeywords")).not.toContainText("PHP");
 
-  const linkedin = page.getByTestId("criteria-sources").getByRole("button", { name: "LinkedIn" });
+  // Exact: LinkedIn's cell also has "Approve direct reads for LinkedIn".
+  const linkedin = page.getByTestId("criteria-sources").getByRole("button", { name: "LinkedIn", exact: true });
   await expect(linkedin).toHaveAttribute("aria-pressed", "true");
   await linkedin.click();
   await expect(linkedin).toHaveAttribute("aria-pressed", "false");
