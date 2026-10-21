@@ -5,7 +5,20 @@
 //   browserReadyFor), FigmaPort (the FigmaBridge class), PdfTextExtractor (extractText),
 //   GuardHooks (buildSiteGuardSettings, prepareFigmaGuard): src/bridges (W2c)
 // - BotRegistry: `loadBots(botsDir)` (W2b); WorkflowSource: workflows/*.yaml (W3a)
-import type { BoardSource, BotDefinition, Engine, FeedSource, ResearchScanInput, ResearchScanOutput, SourceAccessRecord, WorkflowDefinition } from "@bs-job-agents/shared";
+import type {
+  BoardSource,
+  BotDefinition,
+  Engine,
+  FeedSource,
+  GuidanceMarket,
+  GuidanceRuleSet,
+  GuidanceSourceKind,
+  MasterCv,
+  ResearchScanInput,
+  ResearchScanOutput,
+  SourceAccessRecord,
+  WorkflowDefinition,
+} from "@bs-job-agents/shared";
 import type { ProtectedPagesFingerprint } from "../bridges/figma/fingerprint.js";
 import type { ClaudeHookSettings } from "../bridges/hooks/settings.js";
 
@@ -108,6 +121,8 @@ export interface MasterCvSource {
   readonly path: string;
   /** The current master version, or null when Ba has not created the master CV yet (UC-01 c). */
   version(): number | null;
+  /** CV guidance (additive): the parsed master CV (its contact decides has_profile_link), or null. */
+  read?(): MasterCv | null;
 }
 
 /**
@@ -203,6 +218,49 @@ export interface SecretStore {
   /** The board's named values, or null when none is configured. */
   credentials(source: string): Record<string, string> | null;
   has(source: string): boolean;
+}
+
+/** One page to (re)fetch for the CV guidance refresh (§5.4): its validators when known. */
+export interface GuidanceFetchRequest {
+  url: string;
+  etag: string | null;
+  lastModified: string | null;
+}
+
+export type GuidanceFetchResult =
+  | {
+      url: string;
+      status: "ok";
+      finalUrl: string;
+      title: string | null;
+      /** Main text, plain (no markup), capped. */
+      text: string;
+      /** sha256 of guidanceContentKey(text). */
+      contentHash: string;
+      etag: string | null;
+      lastModified: string | null;
+      /** Registrable domain, by code. */
+      host: string;
+      kind: GuidanceSourceKind;
+      market: GuidanceMarket;
+    }
+  | { url: string; status: "not_modified" }
+  | { url: string; status: "failed"; reason: string };
+
+/**
+ * CV guidance (§5.4, SEC-21): the orchestrator's own fetcher for guidance pages: https only, public
+ * addresses only (re-checked after each redirect, at most 3), no cookie, Authorization or board
+ * token, 2 MiB and 20 s per page, a per-host gap, conditional GETs. Production:
+ * src/adapters/guidance-fetch GuidanceFetcher. Never throws for one page: it reports it failed.
+ */
+export interface GuidanceFetchPort {
+  fetchPages(requests: readonly GuidanceFetchRequest[], opts?: { signal?: AbortSignal }): Promise<GuidanceFetchResult[]>;
+}
+
+/** CV guidance wiring: the fetcher and the seed committed at start when the store lacks it. */
+export interface GuidanceDeps {
+  fetch: GuidanceFetchPort;
+  seed?: GuidanceRuleSet;
 }
 
 export interface Logger {

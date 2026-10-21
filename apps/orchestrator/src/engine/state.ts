@@ -4,7 +4,10 @@
 import type {
   ApplicationStatus,
   CvLanguage,
+  CvReviewInput,
+  GuidanceItem,
   HumanDecision,
+  ResolvedGuidance,
   QuestionAnswer,
   SkipReason,
   SubmissionRefusalReason,
@@ -80,6 +83,23 @@ export interface GateRound {
   qaReviewId: number | null;
   total: number | null;
   passed: boolean | null;
+  /** CV guidance (§5.7, additive): this round's checks and review; absent when the job has no guidance. */
+  guidance?: GateRoundGuidance;
+}
+
+/** One round's guidance bookkeeping (the full result is stored in guidance_reviews). */
+export interface GateRoundGuidance {
+  /** The deterministic checkers' items (free, every round, after export). */
+  checks: GuidanceItem[];
+  /** The active facts the CV cites (cv.review's input; fixes may cite only these). */
+  facts: CvReviewInput["facts"];
+  /** cv.review for this round: only when QA passed it or it is the round handed to Ba. */
+  reviewerTaskId: number | null;
+  /** The round's review result is stored (with or without cv.review). */
+  completed: boolean;
+  /** Fixable misses the next round is asked to fix. */
+  fixes: number;
+  hasInventedClaim: boolean;
 }
 
 export interface GateStepOutput {
@@ -93,6 +113,12 @@ export interface GateStepOutput {
   outcome: "running" | "passed" | "escalated";
   /** The CV version the review card shows for this language. */
   cvVersionId: number | null;
+  /** CV guidance (§5.7, additive): the guidance resolved for this job when the pass started, or null. */
+  guidance?: ResolvedGuidance | null;
+  /** CV guidance: the pass used its rounds; the round handed to Ba waits for its cv.review. */
+  handing?: { round: number; outcome: "passed" | "escalated" } | null;
+  /** F1: why the handed round is not the last one (a later round failed). */
+  handNote?: string | null;
 }
 
 /** Ba's decision on a review card (PM brief: kept for the §5.3 promotion rule and sub-project C). */

@@ -30,6 +30,10 @@ export type {
   MemoryWriter,
   OrphanKiller,
   PdfTextExtractor,
+  GuidanceDeps,
+  GuidanceFetchPort,
+  GuidanceFetchRequest,
+  GuidanceFetchResult,
   WorkflowSource,
 } from "./ports.js";
 export { nodeFileStore, systemClock } from "./system.js";

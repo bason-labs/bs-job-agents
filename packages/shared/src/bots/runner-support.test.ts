@@ -167,7 +167,8 @@ describe("self-check items per task kind (rule 4)", () => {
   });
 
   it("selfCheckByKind defaults to {} and rejects empty lists", () => {
-    expect(BotDefinitionSchema.parse(researchBotJson).selfCheckByKind).toEqual({});
+    const { selfCheckByKind: _kinds, ...withoutKinds } = researchBotJson;
+    expect(BotDefinitionSchema.parse(withoutKinds).selfCheckByKind).toEqual({});
     expect(BotDefinitionSchema.safeParse({ ...researchBotJson, selfCheckByKind: { fit: [] } }).success).toBe(false);
   });
 });

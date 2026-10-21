@@ -8,7 +8,9 @@ import { join } from "node:path";
 import {
   EngineSchema,
   PauseReasonSchema,
+  checkCvClaims,
   citedFactIds,
+  cvClaimsError,
   failedSelfChecks,
   isRetryableTask,
   normalizeHostName,
@@ -20,7 +22,9 @@ import {
   type ResearchScanOutput,
   type ApplyPromptInput,
   type CvOutput,
+  type CvReviewOutput,
   type Engine,
+  type TaskMasterCv,
   type DeriveOutput,
   type FactDraftOutput,
   type PauseReason,
@@ -74,7 +78,7 @@ import { loadRunCtx, type RunCtx } from "./context.js";
 import { announceSettledDryRun } from "./review.js";
 import type { EngineCore } from "./core.js";
 import { errorMessage } from "./errors.js";
-import { onCheckerDone, onProducerDone, type CvExport } from "./gate.js";
+import { onCheckerDone, onProducerDone, onReviewerDone, type CvExport } from "./gate.js";
 import type { GuardBlock } from "./ports.js";
 import { isConversationTask, sinkContext, sinkFailed } from "./conversations.js";
 import { onDeriveDone } from "./derive.js";
@@ -144,6 +148,8 @@ interface Prepared {
   screenshotDir: string | null;
   /** SEC-18: the fact ids in the task's master-CV copy (what a tailored CV may cite); null when unknown. */
   masterFactIds?: ReadonlySet<string> | null;
+  /** SEC-25 and the guidance checkers: the task's master copy (facts, contact); null when unparsed. */
+  masterCopy?: TaskMasterCv | null;
 }
 
 interface Inflight {
@@ -384,6 +390,7 @@ export class TaskQueue {
     outcome = this.checkSiteGuard(task, outcome, siteBlocksOf(blocks, result));
     outcome = this.checkInjectionReport(task, outcome);
     outcome = await this.checkScanOutput(task, prepared, outcome, result);
+    outcome = this.checkReviewOutput(task, outcome);
     if (prepared.apply) outcome = this.checkApplyPages(task, outcome, result);
     if (outcome.kind === "ok" && prepared.apply) {
       const appId = Number((task.input as { applicationId?: unknown } | null)?.applicationId);
@@ -446,12 +453,13 @@ export class TaskQueue {
     let allowedSites: string[] | undefined;
     let attachments: RunnerAttachment[] | undefined;
     let masterFactIds: ReadonlySet<string> | null = null;
+    let masterCopy: TaskMasterCv | null = null;
     const taskDir = core.paths.abs(core.paths.taskDir(task.id));
     try {
       // A per-task read folder, so a bot never reads all of data/ (coordinator, W2b handoff).
       if (MASTER_CV_TASK_KEYS.includes(key)) {
         // SEC-18: a filtered projection, without derived facts whose source changed.
-        ({ factIds: masterFactIds } = await writeTaskMasterCv(core.deps.files, core.deps.masterCv.path, join(taskDir, "master-cv.yaml")));
+        ({ factIds: masterFactIds, copy: masterCopy } = await writeTaskMasterCv(core.deps.files, core.deps.masterCv.path, join(taskDir, "master-cv.yaml")));
         readDirs = [taskDir];
       }
       if (key === "research.file") {
@@ -539,6 +547,7 @@ export class TaskQueue {
       guardLogOffset,
       screenshotDir,
       masterFactIds,
+      masterCopy,
       ...(figmaBefore ? { figmaBefore } : {}),
       ...(authorize ? { authorize } : {}),
       runnerTask: {
@@ -733,6 +742,19 @@ export class TaskQueue {
       : { kind: "failed", error: scanRejectedError(reason), output: outcome.output, retryable: true, safety: outcome.safety };
   }
 
+  /**
+   * CV guidance (AD-11): cv.review must judge every rule it was given; an output that leaves one
+   * out is invalid and the attempt is retried. Items for rules it was not given are ignored later.
+   */
+  private checkReviewOutput(task: Task, outcome: Outcome): Outcome {
+    if (outcome.kind !== "ok" || taskKey(task.botName, task.kind) !== "cv.review") return outcome;
+    const asked = ((task.input as { rules?: { ruleId?: unknown }[] } | null)?.rules ?? []).map((r) => String(r.ruleId));
+    const given = new Set((outcome.output as CvReviewOutput).items.map((i) => i.ruleId));
+    const missing = asked.filter((id) => !given.has(id));
+    if (missing.length === 0) return outcome;
+    return { kind: "failed", error: `invalid output: the review has no item for ${missing.join(", ")}`, output: outcome.output, retryable: true };
+  }
+
   private checkInjectionReport(task: Task, outcome: Outcome): Outcome {
     if (outcome.kind !== "ok" && outcome.kind !== "paused") return outcome;
     const key = taskKey(task.botName, task.kind);
@@ -919,6 +941,13 @@ export class TaskQueue {
         const error = `the CV cites fact${unknown.length === 1 ? "" : "s"} ${unknown.join(", ")}, which ${unknown.length === 1 ? "is" : "are"} not in the master CV it was given (unknown, or flagged "Source fact changed")`;
         return { outcome: keep({ kind: "failed", error, output, retryable: true }) };
       }
+      // SEC-25 (CV guidance §5.7): no number, month, year or duration the cited facts lack. The
+      // attempt fails before export and QA (retried as an attempt; no gate round is used up).
+      if (prepared.masterCopy) {
+        const headlines = prepared.masterCopy.headlineOptions.flatMap((h) => [h.en, h.vi ?? ""]).filter(Boolean);
+        const problems = checkCvClaims(output.tailored, prepared.masterCopy.facts, { headlines });
+        if (problems.length > 0) return { outcome: keep({ kind: "failed", error: cvClaimsError(problems), output, retryable: true }) };
+      }
       const frame = await this.figmaCall(() => core.deps.figma.findDraftFrame(output.figmaFrameName));
       if (!frame) {
         return { outcome: keep({ kind: "failed", error: `the CV frame ${output.figmaFrameName} is not on the Drafts page`, output, retryable: true }) };
@@ -932,7 +961,7 @@ export class TaskQueue {
       }
       const pdfText = await core.deps.pdf.extractText(core.paths.abs(pdfPath)).catch(() => "");
       const pdf = { pageCount: exp.pageCount, onePageA4: exp.onePageA4, widthPt: exp.widthPt ?? null, heightPt: exp.heightPt ?? null, sha256: exp.sha256, textChars: pdfText.length };
-      return { outcome, exported: { pdfPath, sha256: exp.sha256, pdfText, pdf, figmaFrameUrl: frame.url } };
+      return { outcome, exported: { pdfPath, sha256: exp.sha256, pdfText, pdf, figmaFrameUrl: frame.url, masterCopy: prepared.masterCopy ?? null } };
     } catch (err) {
       if (err instanceof FigmaGone) {
         return { outcome: keep({ kind: "needs_figma", detail: `Figma went away after the CV task: ${err.message}`, beforeHash: before?.hash ?? null }) };
@@ -1075,6 +1104,10 @@ export class TaskQueue {
         return;
       case "qa.review":
         if (ctx) onCheckerDone(core, tx, ctx, task, output as QaOutput);
+        return;
+      case "cv.review":
+        // CV guidance (§5.7): the round's review completes; the gate decides the next round.
+        if (ctx) onReviewerDone(core, tx, ctx, task, output as CvReviewOutput);
         return;
       case "cv.fact_draft":
         // Owner request 2026-10-11: the invented-detail guard, then the API adds the facts.

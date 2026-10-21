@@ -3,6 +3,7 @@
 import {
   type BotView,
   type Company,
+  type ReviewGuidance,
   type CvLanguage,
   type CvVersion,
   type Engine,
@@ -31,6 +32,7 @@ import {
 import type { ProgressLine } from "../contract";
 import { APPLICATION_DETAILS, extraOf, sampleFileUrls } from "./seed-applications";
 import { seedBotViews } from "./seed-bots";
+import { allMetGuidance, novaPayGuidance } from "./seed-guidance";
 import { MASTER_CV } from "./seed-master-cv";
 import { seedFactRequests, seedMasterCvVersions, seedProfiles, seedProposals, seedSavedAnswers, seedSchedules } from "./seed-screens";
 import type { LaneInfo, MockState, RunState, StepRow } from "./state";
@@ -291,10 +293,11 @@ export function seedCompanies(): Record<string, Company> {
 
 export const pdfFileId = (cvVersionId: string) => `pdf-${cvVersionId}`;
 
-function option(cv: CvVersion, rounds: QaReviewRecord[]): ReviewCard["cvOptions"][number] {
+function option(cv: CvVersion, rounds: QaReviewRecord[], guidance?: ReviewGuidance): ReviewCard["cvOptions"][number] {
   return {
     cvVersion: cv,
     qaRounds: rounds,
+    ...(guidance ? { guidance } : {}),
     pdf: { id: pdfFileId(cv.id), kind: "cv_pdf", filename: `${cv.figmaFrameName}.pdf`, mime: "application/pdf" },
   };
 }
@@ -331,7 +334,7 @@ export function seedQueue(jobs: Record<string, Job>, companies: Record<string, C
       job: jobs["101"]!,
       company: companies["101"]!,
       runId: "12",
-      cvOptions: [option({ ...nova[1]!, factRequests: cvOutputFixture.factRequests }, novaQa)],
+      cvOptions: [option({ ...nova[1]!, factRequests: cvOutputFixture.factRequests }, novaQa, novaPayGuidance())],
       defaultLanguage: "en",
       introText: null,
       factRequests: cvOutputFixture.factRequests,
@@ -342,7 +345,7 @@ export function seedQueue(jobs: Record<string, Job>, companies: Record<string, C
       job: jobs["102"]!,
       company: companies["102"]!,
       runId: "12",
-      cvOptions: [option(saoVi[1]!, saoViQa), option(saoEn, saoEnQa)],
+      cvOptions: [option(saoVi[1]!, saoViQa, allMetGuidance()), option(saoEn, saoEnQa, allMetGuidance())],
       defaultLanguage: "vi",
       introText: null,
       factRequests: [],

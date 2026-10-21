@@ -18,6 +18,7 @@ import type {
   FigmaPort,
   FileStore,
   GuardHooks,
+  GuidanceDeps,
   Logger,
   MasterCvSource,
   MemoryWriter,
@@ -61,6 +62,8 @@ export interface EngineDeps {
   feeds?: FeedScanPort;
   /** API research: boards read through a public or account API. Default: every board is read in the browser. */
   boards?: BoardScanPort;
+  /** CV guidance (sub-project 3): the guidance fetcher and seed. Optional: without it there is no rule set, no refresh and no guidance review. */
+  guidance?: GuidanceDeps;
   logger?: Logger;
 }
 

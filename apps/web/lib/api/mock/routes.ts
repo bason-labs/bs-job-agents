@@ -25,7 +25,9 @@ import {
   EnginesResponseSchema,
   ExportResponseSchema,
   ExportsResponseSchema,
+  ActivityResponseSchema,
   DerivedFactsViewSchema,
+  GuidanceViewSchema,
   DerivedUndoResultSchema,
   FactDraftStartedSchema,
   FactDraftViewSchema,
@@ -75,6 +77,7 @@ import type { MockBackend } from "./backend";
 import { activeProfile, saveCriteria } from "./criteria";
 import { allSourceAccess, approveSource, revokeSource } from "./source-access";
 import { keepDerived, readDerived, undoDerived } from "./derived-facts";
+import { readActivity, readGuidance, setGuidanceRuleOff } from "./guidance";
 import { readFactDraft, startFactDraft, undoFacts } from "./fact-drafts";
 import { figmaGuardOffFor, residualRiskFor } from "./seed-bots";
 import * as sim from "./sim";
@@ -523,6 +526,12 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
     core.state.factRequests = core.state.factRequests.filter((r) => r.id !== id);
     return { ok: true };
   }),
+
+  // ------------------------------------------------ CV guidance (mock/guidance.ts mirrors the orchestrator)
+  route("GET", API_ROUTES.guidance, GuidanceViewSchema, (core) => readGuidance(core)),
+  route("POST", API_ROUTES.guidanceRuleOff, GuidanceViewSchema, (core, req) => setGuidanceRuleOff(core, req.params.id!, true)),
+  route("POST", API_ROUTES.guidanceRuleOn, GuidanceViewSchema, (core, req) => setGuidanceRuleOff(core, req.params.id!, false)),
+  route("GET", API_ROUTES.activity, ActivityResponseSchema, (core) => readActivity(core)),
 
   // ------------------------------------------------ workflow proposals (rule 3, PM S22)
   route("GET", API_ROUTES.workflowProposals, WorkflowProposalsResponseSchema, (core) => ({ proposals: [...core.state.proposals].reverse() })),

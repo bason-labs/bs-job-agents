@@ -131,6 +131,14 @@ export function Sidebar({ data, onNavigate, className }: SidebarProps) {
         >
           Master CV
         </Link>
+        <Link
+          href="/guidance"
+          onClick={onNavigate}
+          aria-current={pathname === "/guidance" ? "page" : undefined}
+          className={cn("py-1.5", rowBase, pathname === "/guidance" ? "bg-surface-2 text-fg" : "text-muted")}
+        >
+          CV guidance
+        </Link>
       </div>
 
       <div className="m-3 mt-auto space-y-1.5 rounded-2xl border border-border bg-surface-2/50 p-3">

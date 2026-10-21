@@ -2,7 +2,7 @@
 import type { WorkflowDefinitionInput, WorkflowStepInput } from "../workflow/definition.js";
 
 /** §7.2 steps 6–10: one pipeline per selected job; it derives master facts before tailoring (CV auto-extend). */
-const perJob = (branch: string, opts: { derive?: boolean } = {}): WorkflowStepInput[] => [
+const perJob = (branch: string, opts: { derive?: boolean; review?: boolean } = {}): WorkflowStepInput[] => [
   {
     key: "company",
     type: "task",
@@ -17,6 +17,8 @@ const perJob = (branch: string, opts: { derive?: boolean } = {}): WorkflowStepIn
     branch,
     producer: { bot: "cv", kind: "tailor", input: { job: "$item", company: "$steps.company.output" } },
     checker: { bot: "qa", kind: "review", input: { job: "$item", draft: "$producer.output" } },
+    // CV guidance (AD-13): cv.review on QA-passed or handed rounds only.
+    ...(opts.review ? { reviewer: { bot: "cv", kind: "review", input: {} } } : {}),
     maxRounds: 3,
     perLanguage: true,
   },
@@ -40,7 +42,7 @@ const perJob = (branch: string, opts: { derive?: boolean } = {}): WorkflowStepIn
 
 export const jobScanWorkflow = {
   name: "job-scan",
-  version: 2,
+  version: 3,
   description: "Scan sources, score fit, then tailor, QA, review and apply per job.",
   triggers: ["chat", "schedule"],
   steps: [
@@ -61,14 +63,16 @@ export const jobScanWorkflow = {
       from: "fit-join",
       options: { threshold: "$profile.fitThreshold", take: "$profile.maxJobs" },
     },
-    ...perJob("top", { derive: true }),
+    // CV guidance (AD-12): one refresh per run, after top and before every branch step.
+    { key: "guidance", type: "task", task: { bot: "research", kind: "guidance_extract", input: {} }, optional: true, skipIfEmpty: "top" },
+    ...perJob("top", { derive: true, review: true }),
   ],
 } satisfies WorkflowDefinitionInput;
 
 /** §7.3: research.scan kind single, no threshold/top-N (fit still computed and shown). */
 export const applyToLinkWorkflow = {
   name: "apply-to-link",
-  version: 2,
+  version: 3,
   description: "Apply to one pasted job link.",
   triggers: ["link", "chat"],
   steps: [
@@ -76,7 +80,7 @@ export const applyToLinkWorkflow = {
     { key: "fit", type: "map", over: "$steps.scan.output.jobs", task: { bot: "research", kind: "fit", input: { job: "$item" } } },
     { key: "fit-join", type: "join", of: "fit" },
     { key: "selected", type: "filter", fn: "dedupe", from: "fit-join", options: { applyAgain: "$params.applyAgain" } },
-    ...perJob("selected", { derive: true }),
+    ...perJob("selected", { derive: true, review: true }),
   ],
 } satisfies WorkflowDefinitionInput;
 

@@ -22,7 +22,7 @@ import type { ConversationSink } from "../conversations.js";
 import type { DerivedFactSink } from "../derive.js";
 import type { FactDraftSink } from "../fact-drafts.js";
 import type { ScanOutputChecker } from "../scan-check.js";
-import type { BoardScanPort, FeedScanPort, MemoryWriter, OrphanKiller, RolePromptSource } from "../ports.js";
+import type { BoardScanPort, FeedScanPort, GuidanceDeps, MemoryWriter, OrphanKiller, RolePromptSource } from "../ports.js";
 import type { ActionStepOutput, HumanStepOutput } from "../state.js";
 import { FakeClock } from "./fake-clock.js";
 import { MemoryDerivedFacts } from "./derived-facts.js";
@@ -70,6 +70,8 @@ export interface TestEngineOptions {
   feeds?: FeedScanPort;
   /** API research: boards read through an API (default none: every board in the browser). */
   boards?: BoardScanPort;
+  /** CV guidance: the fetcher and seed (default none: no rule set, no refresh, no guidance review). */
+  guidance?: GuidanceDeps;
 }
 
 export interface TestEngine {
@@ -178,6 +180,7 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
     ...(opts.scanChecker ? { scanChecker: opts.scanChecker } : {}),
     ...(opts.feeds ? { feeds: opts.feeds } : {}),
     ...(opts.boards ? { boards: opts.boards } : {}),
+    ...(opts.guidance ? { guidance: opts.guidance } : {}),
   });
   const delivered: AppEvent[] = [];
   engine.subscribe((event) => delivered.push(event));

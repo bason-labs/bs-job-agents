@@ -41,6 +41,9 @@ export const GUARDED_SCHEMA_OBJECTS = [
   { type: "trigger", name: "approvals_immutable", table: "approvals" },
   { type: "trigger", name: "approvals_no_delete", table: "approvals" },
   { type: "trigger", name: "approvals_domains_grow_only", table: "approvals" },
+  // AD-10: CV guidance rule-set snapshots are append-only (0013).
+  { type: "trigger", name: "guidance_rule_sets_no_update", table: "guidance_rule_sets" },
+  { type: "trigger", name: "guidance_rule_sets_no_delete", table: "guidance_rule_sets" },
   // §10.2 rule 5: one application per job unless "apply again" (0000).
   { type: "index", name: "applications_job_uq", table: "applications" },
 ] as const satisfies readonly GuardedSchemaObject[];

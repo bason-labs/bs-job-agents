@@ -44,6 +44,10 @@ export const TaskStepSchema = z
     task: TaskRefSchema,
     /** Reuse a cached result younger than this (company profile: 30 days, UC-05 a). */
     cacheDays: z.number().int().positive().optional(),
+    /** CV guidance (AD-12, additive): a failed step does not fail the run; later steps go on. */
+    optional: z.boolean().optional(),
+    /** CV guidance (AD-12, additive): skipped when this earlier step produced no items (no top job, no refresh). */
+    skipIfEmpty: StepKeySchema.optional(),
   })
   .strict();
 
@@ -78,6 +82,8 @@ export const GateStepSchema = z
     type: z.literal("gate"),
     producer: TaskRefSchema,
     checker: TaskRefSchema,
+    /** CV guidance (AD-13, additive): reviews a round after the checker (cv.review), only on QA-passed or handed rounds. */
+    reviewer: TaskRefSchema.optional(),
     maxRounds: z.number().int().positive().default(LIMITS.qaMaxRounds),
     /** Run the gate once per CV language (§6.3: VI JD → VI and EN). */
     perLanguage: z.boolean().default(false),
@@ -186,6 +192,7 @@ export const WorkflowDefinitionSchema = z
         case "gate":
           checkTask(i, "producer", step.producer, step.type);
           checkTask(i, "checker", step.checker, step.type);
+          if (step.reviewer) checkTask(i, "reviewer", step.reviewer, step.type);
           break;
         default:
           break;
@@ -196,6 +203,9 @@ export const WorkflowDefinitionSchema = z
           break;
         case "filter":
           earlier(i, "from", step.from);
+          break;
+        case "task":
+          earlier(i, "skipIfEmpty", step.skipIfEmpty);
           break;
         case "human":
           earlier(i, "onRequestChanges", step.onRequestChanges, ["gate"]);

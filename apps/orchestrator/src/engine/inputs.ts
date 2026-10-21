@@ -16,6 +16,8 @@ import {
   type CvDeriveInput,
   type CvDraft,
   type CvLanguage,
+  type CvReviewInput,
+  type GuidanceRuleInput,
   type JobCandidate,
   type QaFix,
   type VerifiedPdfFacts,
@@ -33,6 +35,16 @@ export interface GateInputs {
   fixes: QaFix[];
   comment: string | null;
   previousCvVersionId: number | null;
+  /** CV guidance (§5.7): the applied positions tailor follows, as data. */
+  guidance?: GuidanceRuleInput[];
+}
+
+/** cv.review in a gate (§5.7): what the gate knows of the round; the job and CV come from the database. */
+export interface ReviewInputs {
+  cvVersionId: number;
+  pdfText: string;
+  facts: CvReviewInput["facts"];
+  rules: GuidanceRuleInput[];
 }
 
 export interface InputRequest {
@@ -52,6 +64,10 @@ export interface InputRequest {
   checker?: { cvVersionId: number; pdfText: string; pdf?: VerifiedPdfFacts };
   /** cv.derive: built by the derive step from the job's gaps and the master CV (derive.ts). */
   derive?: CvDeriveInput;
+  /** cv.review in a gate (CV guidance §5.7). */
+  review?: ReviewInputs;
+  /** research.guidance_extract / guidance_discover: built by the guidance step (guidance-refresh.ts). */
+  prebuilt?: unknown;
 }
 
 export interface BuiltInput {
@@ -92,7 +108,8 @@ export function cvDraftOf(cv: CvVersion): CvDraft {
     figmaFrameUrl: cv.figmaFrameUrl ?? "",
     pdfPath: cv.pdfPath,
     changeNotes: cv.changeNotes,
-    factRequests: cv.factRequests,
+    // CV's own questions only, in the bot's shape (guidance requests are stored beside them, §5.8).
+    factRequests: cv.factRequests.filter((r) => r.origin !== "guidance").map(({ topic, question, reason }) => ({ topic, question, reason })),
   };
 }
 
@@ -188,6 +205,7 @@ export function buildTaskInput(req: InputRequest): BuiltInput {
           comment: gate.comment,
           previousCvVersionId: gate.previousCvVersionId === null ? null : String(gate.previousCvVersionId),
           masterCvVersion: masterVersion(ctx),
+          ...(gate.guidance && gate.guidance.length > 0 ? { guidance: gate.guidance } : {}),
         }),
         jobId: job.id,
       };
@@ -217,6 +235,30 @@ export function buildTaskInput(req: InputRequest): BuiltInput {
         jobId: job.id,
       };
     }
+    case "cv.review": {
+      const review = req.review;
+      if (!review) throw invalidInput("cv.review runs inside a QA gate, which builds its input");
+      const cv = getCvVersion(conn, review.cvVersionId);
+      if (!cv) throw invalidInput(`CV version ${review.cvVersionId} not found`);
+      const job = requireJob(conn, cv.jobId);
+      return {
+        input: validate(key, {
+          jobId: String(job.id),
+          cvVersionId: String(cv.id),
+          language: cv.language,
+          job: toJobCandidate(job, getCompany(conn, job.companyId)),
+          draft: cvDraftOf(cv),
+          pdfText: review.pdfText,
+          facts: review.facts,
+          rules: review.rules,
+        }),
+        jobId: job.id,
+      };
+    }
+    case "research.guidance_extract":
+    case "research.guidance_discover":
+      if (req.prebuilt === undefined) throw invalidInput(`${key} runs in the guidance step, which builds its input`);
+      return { input: validate(key, req.prebuilt) };
     case "cv.derive": {
       if (!req.derive) throw invalidInput("cv.derive runs in the derive step, which builds its input");
       return { input: validate(key, req.derive), jobId: Number(req.derive.jobId) };

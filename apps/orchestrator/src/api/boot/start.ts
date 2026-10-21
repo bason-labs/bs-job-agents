@@ -25,6 +25,7 @@ import {
   type Engine,
   type EngineConfig,
   type FigmaPort,
+  type GuidanceDeps,
   type Logger,
 } from "../../engine/index.js";
 import { CapabilityStore, createOrchestratorRunners, startMcpServer, type OrchestratorMcpServer } from "../../mcp/index.js";
@@ -63,6 +64,8 @@ export interface StartOptions {
   heartbeatMs?: number;
   /** Engine settings over the defaults (tests only; production uses DEFAULT_ENGINE_CONFIG, §12 gate on). */
   engineConfig?: Partial<EngineConfig>;
+  /** CV guidance: default the real guidance fetcher (SEC-21) and the seed; tests pass a fake fetcher. */
+  guidance?: GuidanceDeps;
 }
 
 export interface Orchestrator {
@@ -199,6 +202,7 @@ export async function startOrchestrator(opts: StartOptions): Promise<Orchestrato
         derivedFacts: new DerivedFactStore({ dataDir: config.dataDir }),
         ...(opts.browser ? { browser: opts.browser } : {}),
         ...(opts.engineConfig ? { config: opts.engineConfig } : {}),
+        ...(opts.guidance ? { guidance: opts.guidance } : {}),
         logger: log,
       });
       bots = engine.deps.bots;

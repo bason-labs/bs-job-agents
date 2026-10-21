@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { splitApplySubmitInput } from "@bs-job-agents/shared";
-import { applyInputFixture, cvDeriveInputFixture, cvFactDraftInputFixture, cvTailorInputFixture, researchFitInputFixture, researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
+import { applyInputFixture, cvDeriveInputFixture, cvReviewInputFixture, guidanceDiscoverInputFixture, guidanceExtractInputFixture, cvFactDraftInputFixture, cvTailorInputFixture, researchFitInputFixture, researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
 import { buildSiteGuardSettings } from "../../bridges/chrome/site-guard/settings.js";
 import { claudeLines, STDERR } from "../__fixtures__/index.js";
 import { JPEG_BYTES, PNG_BYTES, navigateLines, screenshotLines } from "../__fixtures__/screenshots.js";
@@ -81,6 +81,32 @@ describe("ClaudeRunner: a successful run", () => {
     expect(args).not.toContain("--add-dir");
     expect(JSON.parse(argValue(args, "--json-schema")!)).toMatchObject({ title: "DeriveOutput" });
     expect(argValue(args, "-p")).toContain("# Task: cv.derive");
+  });
+
+  it.each([
+    ["cv", "review", cvReviewInputFixture, "CvReviewOutput"],
+    ["research", "guidance_extract", guidanceExtractInputFixture, "GuidanceExtractOutput"],
+  ] as const)("CV guidance: %s.%s runs with no tools at all: no web, files, shell, Chrome or MCP (SEC-20.AC-1)", async (bot, kind, input, schema) => {
+    const { r, calls } = runner([play(claudeLines("structuredOk")), play(claudeLines("structuredOk"))]);
+    const { def, cwd } = kit.realBot(bot);
+    await r.run(kit.task(def, cwd, { kind, input }), () => {});
+    const args = calls[0]!.args;
+    expect(argValue(args, "--tools")).toBe("");
+    expect(args).not.toContain("--chrome");
+    expect(args).not.toContain("--mcp-config");
+    expect(args).not.toContain("--add-dir");
+    expect(JSON.parse(argValue(args, "--json-schema")!)).toMatchObject({ title: schema });
+  });
+
+  it("CV guidance: research.guidance_discover may only search the web: no Chrome, Read, skills or MCP (SEC-20)", async () => {
+    const { r, calls } = runner([play(claudeLines("structuredOk")), play(claudeLines("structuredOk"))]);
+    const { def, cwd } = kit.realBot("research");
+    await r.run(kit.task(def, cwd, { kind: "guidance_discover", input: guidanceDiscoverInputFixture, usesBrowser: false }), () => {});
+    const args = calls[0]!.args;
+    expect(argValue(args, "--tools")).toBe("WebSearch");
+    expect(args).not.toContain("--chrome");
+    expect(args).not.toContain("--add-dir");
+    expect(args).not.toContain("--mcp-config");
   });
 
   it("writes the transcript: spawn record without the prompt, raw lines, stderr, exit and result", async () => {

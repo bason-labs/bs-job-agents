@@ -4,7 +4,7 @@
 # unless Ba said "apply again" (§10.2 rule 5).
 # Bump `version` with every change: runs keep the version they started with.
 name: apply-to-link
-version: 2
+version: 3
 description: Apply to one pasted job link.
 triggers: [link, chat]
 steps:
@@ -68,6 +68,11 @@ steps:
       input:
         job: $item
         draft: $producer.output
+    # CV guidance (REQ-37): the same review as job-scan, with the rule set in force (no refresh here).
+    reviewer:
+      bot: cv
+      kind: review
+      input: {}
     maxRounds: 3
     perLanguage: true
   - key: review

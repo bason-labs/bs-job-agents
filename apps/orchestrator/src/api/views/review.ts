@@ -39,6 +39,7 @@ import { fileRef } from "../files.js";
 import { keepValid } from "../http.js";
 import { readMasterCv, readMasterCvVersion } from "../master-cv.js";
 import { readApiState } from "../state.js";
+import { reviewGuidance } from "./guidance.js";
 
 /** The master CV as the review queue compares CVs with it. */
 interface MasterNow {
@@ -143,13 +144,15 @@ async function buildCard(db: Db, dataDir: string, c: Candidate, readyAt: Map<num
     const row = getCvVersion(db, option.cvVersionId);
     if (!row) continue;
     const cvVersion = mappers.toCvVersion(row);
-    factRequests.push(...cvVersion.factRequests);
+    // CV's own questions in the bot's shape; guidance requests show in the guidance panel and on the Master CV screen.
+    factRequests.push(...cvVersion.factRequests.filter((r) => r.origin !== "guidance").map(({ topic, question, reason }) => ({ topic, question, reason })));
     const qaRounds = allVersions
       .filter((v) => v.language === option.language)
       .flatMap((v) => listQaReviews(db, v.id))
       .sort((a, b) => a.id - b.id)
       .map(mappers.toQaReview);
-    cvOptions.push({ cvVersion, qaRounds, pdf: await fileRef(db, dataDir, { type: "cv", id: row.id }) });
+    // CV guidance (REQ-40): the review result of the round shown, and how it got there.
+    cvOptions.push({ cvVersion, qaRounds, pdf: await fileRef(db, dataDir, { type: "cv", id: row.id }), guidance: reviewGuidance(db, row) });
   }
   return {
     job: mappers.toJob(job, { name: company?.name ?? "" }),

@@ -13,6 +13,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/applications", label: "Applications" },
   { href: "/criteria", label: "Search criteria" },
   { href: "/schedules", label: "Schedules" },
+  { href: "/activity", label: "Activity" },
 ];
 
 /** Lead's chat is the main chat (/chat/lead redirects there); other bots open a direct chat. */
@@ -37,6 +38,8 @@ const STATIC_TITLES: Record<string, string> = {
   "/schedules": "Schedules",
   "/bots": "Bots",
   "/cv": "Master CV",
+  "/guidance": "CV guidance",
+  "/activity": "Activity",
   "/rooms": "Rooms",
 };
 

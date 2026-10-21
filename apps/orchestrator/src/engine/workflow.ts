@@ -40,6 +40,7 @@ import {
 import { writeRecordStep } from "./apply.js";
 import { COMPANY_FAILED_PREVIEW, COMPANY_TASK_KEY, companyFailedOutput, isRerunMarked } from "./company.js";
 import { DERIVE_TASK_KEY, advanceDeriveStep, derivedInRun, derivedSummaryLine } from "./derive.js";
+import { advanceGuidanceStep, isGuidanceStep } from "./guidance-refresh.js";
 import { RUN_SCOPE, loadRunCtx, templateScope, type RunCtx, type Scope } from "./context.js";
 import type { EngineCore } from "./core.js";
 import { EngineError, errorMessage } from "./errors.js";
@@ -103,6 +104,8 @@ function taskPreview(output: unknown): string | null {
 function advanceTaskStep(core: EngineCore, ctx: RunCtx, step: TaskStep, scope: Scope): StepState {
   // CV auto-extend: derive facts from Ba's own facts (table first, then at most one tool-less task).
   if (taskKey(step.task.bot, step.task.kind) === DERIVE_TASK_KEY && scope.item) return advanceDeriveStep(core, ctx, step, scope);
+  // CV guidance (AD-12): the once-per-run refresh, run by the engine with sub-tasks.
+  if (isGuidanceStep(step)) return advanceGuidanceStep(core, ctx, step, scope);
   const row = getStepByKey(core.db, ctx.run.id, step.key, scope.branchKey);
   if (!row || row.status === "pending") {
     return guarded(core, ctx, step.key, scope, (tx) => {
@@ -300,7 +303,7 @@ function advanceGateStep(core: EngineCore, ctx: RunCtx, step: GateStep, scope: S
     });
   }
   if (isTerminalStep(row)) return terminalState(row);
-  return core.db.transaction((tx) => pollGate(core, tx, row));
+  return core.db.transaction((tx) => pollGate(core, tx, ctx, step, row));
 }
 
 /** The gate rows of one job: one per CV language (§6.3), keyed `<jobId>:<lang>`. */
@@ -412,8 +415,11 @@ function advanceRecordStep(core: EngineCore, ctx: RunCtx, step: RecordStep, scop
 
 function advanceStep(core: EngineCore, ctx: RunCtx, step: WorkflowStep, scope: Scope): StepState {
   switch (step.type) {
-    case "task":
-      return advanceTaskStep(core, ctx, step, scope);
+    case "task": {
+      const state = advanceTaskStep(core, ctx, step, scope);
+      // AD-12: an optional step that failed does not stop the run; later steps go on.
+      return state === "failed" && step.optional ? "done" : state;
+    }
     case "map":
       return advanceMapStep(core, ctx, step, scope);
     case "join":
@@ -693,6 +699,17 @@ function advancePass(core: EngineCore, ctx: RunCtx, passKey: string, fromIndex: 
     if (state === "active") return { failure: null, active: true, branches };
     const branchSteps = ctx.def.steps.filter((s) => s.branch === step.key);
     if (branchSteps.length === 0) continue;
+    // AD-12: run-level steps listed between this step and its first branch step (the CV guidance
+    // refresh) end before any branch starts, so the first tailor task follows the refreshed rules.
+    const firstBranch = ctx.def.steps.findIndex((s) => s.branch === step.key);
+    let held = false;
+    for (const gating of ctx.def.steps.slice(index + 1, firstBranch)) {
+      if (gating.branch) continue;
+      const state = advanceStep(core, ctx, gating, scope);
+      if (state === "failed") return { failure: `${gating.key}: ${getStepByKey(core.db, ctx.run.id, gating.key, passKey)?.error ?? "failed"}`, active: false, branches };
+      if (state === "active") held = true;
+    }
+    if (held) return { failure: null, active: true, branches };
     for (const item of branchItems(core.db, ctx, step.key, passKey)) branches.push({ item, state: advanceBranch(core, ctx, branchSteps, item) });
   }
   return { failure: null, active: false, branches };

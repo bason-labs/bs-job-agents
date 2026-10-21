@@ -10,7 +10,7 @@ describe("Sidebar", () => {
     render(<Sidebar data={MOCK_SHELL_DATA} />);
     const nav = screen.getByRole("navigation", { name: "Main" });
     const links = within(nav).getAllByRole("link");
-    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/chat", "/flows", "/review", "/applications", "/criteria", "/schedules"]);
+    expect(links.map((l) => l.getAttribute("href"))).toEqual(["/chat", "/flows", "/review", "/applications", "/criteria", "/schedules", "/activity"]);
     expect(within(nav).getByRole("link", { name: /Review/ })).toHaveTextContent("3");
     expect(within(nav).getByRole("link", { name: /^Chat/ })).toHaveAttribute("aria-current", "page");
   });

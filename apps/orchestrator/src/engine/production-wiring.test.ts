@@ -8,7 +8,8 @@
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getBotOutputJsonSchema } from "@bs-job-agents/shared";
+import { GUIDANCE_SEED, getBotOutputJsonSchema } from "@bs-job-agents/shared";
+import { GuidanceFetcher } from "../adapters/guidance-fetch/index.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FigmaBridge } from "../bridges/index.js";
 import { FakeFigmaApi, FakeFigmaMcp, FakeNode, FIGMA_A4, makePdf } from "../bridges/testing.js";
@@ -42,7 +43,7 @@ const CODEX = "/fake/bin/codex";
 
 /** The task the prompt describes: its `# Task: bot.kind` line and its input, untrusted blocks put back. */
 function taskFromPrompt(prompt: string): { bot: string; kind: string; input: Record<string, unknown> } {
-  const [, bot = "", kind = ""] = /^# Task: ([a-z]+)\.([a-z]+)$/m.exec(prompt) ?? [];
+  const [, bot = "", kind = ""] = /^# Task: ([a-z]+)\.([a-z_]+)$/m.exec(prompt) ?? [];
   const json = /Task input \(JSON\):\n\n```json\n([\s\S]*?)\n```/.exec(prompt)?.[1] ?? "{}";
   const input = JSON.parse(json) as Record<string, unknown>;
   for (const m of prompt.matchAll(/<<<UNTRUSTED_CONTENT id="([0-9a-f]+)" field="([A-Za-z]+)">>>\n([\s\S]*?)\n<<<END_UNTRUSTED_CONTENT id="\1">>>/g)) {
@@ -66,6 +67,7 @@ let mcp: FakeFigmaMcp;
 let calls: SpawnCall[];
 let runId: number;
 let cvPdf: Uint8Array;
+const guidanceRequests: string[] = [];
 
 beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), "bsja-prod-"));
@@ -152,6 +154,18 @@ beforeAll(async () => {
     boards: new BoardApiScanner({ fetch: () => Promise.reject(new Error("no network in this test")), gate: new HostGate({ sleep: async () => undefined }), secrets: null, mappers: {} }),
     // §12's dry-run gate is on in production (asserted below); this run approves live directly.
     config: { bridgePollMs: 60_000, schedulerPollMs: 60_000, requireDryRunFirst: false },
+    // CV guidance: the real fetcher on a fake HTTP layer (no network in tests): every page unchanged.
+    guidance: {
+      fetch: new GuidanceFetcher({
+        fetch: async (url) => {
+          guidanceRequests.push(url);
+          return { status: 304, headers: { get: () => null }, body: null };
+        },
+        resolve: async () => ["93.184.216.34"],
+        sleep: async () => undefined,
+      }),
+      seed: GUIDANCE_SEED,
+    },
   });
   await engine.start();
   runId = engine.startWorkflow({ workflow: "job-scan", params: { searchProfileId: null, overrides: null } }, { trigger: "chat" }).id;
@@ -171,12 +185,15 @@ describe("the production engine on the real adapters (createProductionEngine)", 
     expect(listTasks(db).map((t) => [`${t.botName}.${t.kind}`, t.status, t.error])).toEqual([
       ["research.scan", "done", null],
       ["research.fit", "done", null],
+      // CV guidance: the weekly URL-only discovery (due on a fresh install); unchanged pages cost no extraction.
+      ["research.guidance_discover", "done", null],
       ["research.company", "done", null],
       ["cv.tailor", "done", null],
       ["qa.review", "done", null],
       ["apply.submit", "done", null],
     ]);
     expect(getRun(db, runId)?.status).toBe("done");
+    expect(guidanceRequests.sort()).toEqual(GUIDANCE_SEED.sources.filter((x) => x.url).map((x) => x.url!).sort());
     // Only the fake CLIs ran.
     expect([...new Set(calls.map((c) => c.command))].sort()).toEqual([CLAUDE, CODEX]);
   });

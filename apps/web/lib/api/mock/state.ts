@@ -25,6 +25,7 @@ import type {
 } from "@bs-job-agents/shared";
 import type { ProgressLine } from "../contract";
 import type { MockDerivedState } from "./derived-facts";
+import type { MockGuidanceState } from "./guidance";
 import type { MockFactDraft } from "./fact-drafts";
 import type { MockLeadProposal } from "./lead-proposals";
 import type { MockSourceAccess } from "./source-access";
@@ -113,6 +114,8 @@ export interface MockState {
   factDrafts?: Record<string, MockFactDraft>;
   /** CV auto-extend: automatic additions of derived facts and the latest rejections (created on first use). */
   derived?: MockDerivedState;
+  /** CV guidance: the seed rule set, Ba's turned-off rules and the activity (created on first use). */
+  guidance?: MockGuidanceState;
   /** Lead's propose_workflow suggestions (rule 3), oldest first. */
   proposals: WorkflowProposal[];
   /** Workflows saved by approving a proposal: name → latest version. */

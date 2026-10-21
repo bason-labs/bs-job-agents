@@ -88,6 +88,7 @@
   --animate-toast-in: toastIn 500ms cubic-bezier(.2,.9,.3,1.2) forwards;
   --animate-shimmer: shimmer 1.6s linear infinite;
   --animate-blink: blink 1s steps(2) infinite;
+  --animate-fade-in: fadeIn 120ms ease-out;
 }
 
 body {
@@ -223,4 +224,10 @@ body {
 @keyframes blink {
   0%  { opacity: 1; }
   50% { opacity: 0; }
+}
+
+/* Disclosure bodies (CV guidance sources, activity entries): a short fade, none when reduced motion is asked. */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }

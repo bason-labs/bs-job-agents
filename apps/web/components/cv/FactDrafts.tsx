@@ -60,7 +60,7 @@ export interface AnswerBoxProps {
 }
 
 /** CV's question with a free-text answer: Add (⌘/Ctrl+Enter) or "No, I don't". */
-export function FactRequestCard({ request, onDecline, ...box }: AnswerBoxProps & { request: FactRequestItem; onDecline: () => void }) {
+export function FactRequestCard({ request, onDecline, onEditFact, ...box }: AnswerBoxProps & { request: FactRequestItem; onDecline: () => void; onEditFact?: () => void }) {
   const id = useId();
   const submit = () => {
     if (box.value.trim() && !box.drafting && !box.disabled) box.onSubmit();
@@ -69,10 +69,26 @@ export function FactRequestCard({ request, onDecline, ...box }: AnswerBoxProps &
     <div data-testid="fact-request" data-request-id={request.id} className="space-y-2 rounded-2xl border border-warn/40 bg-warn/5 p-3 text-xs">
       <p className="flex items-start gap-3">
         <CircleHelp aria-hidden className="mt-0.5 size-4 shrink-0 text-warn" />
-        <span id={id} className="min-w-0 flex-1">
-          <b>CV asks:</b> “{request.question}” {request.company} asks for it ({request.reason.charAt(0).toLowerCase() + request.reason.slice(1)}).
-        </span>
+        {request.origin === "guidance" ? (
+          // CV guidance (§5.8): asked once across jobs, about one fact and one field.
+          <span id={id} className="min-w-0 flex-1" data-testid="guidance-request">
+            <b>From CV guidance: {request.ruleLabel ?? request.topic}.</b> “{request.question}”
+            {request.alsoJobIds && request.alsoJobIds.length > 0 ? ` Asked once for ${request.alsoJobIds.length + 1} jobs.` : ""}
+          </span>
+        ) : (
+          <span id={id} className="min-w-0 flex-1">
+            <b>CV asks:</b> “{request.question}” {request.company} asks for it ({request.reason.charAt(0).toLowerCase() + request.reason.slice(1)}).
+          </span>
+        )}
       </p>
+      {onEditFact ? (
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-muted">Type the months in the fact itself: nothing is guessed for you.</span>
+          <Button size="sm" pill variant="secondary" onClick={onEditFact} data-testid="edit-fact">
+            Edit fact {request.factId}
+          </Button>
+        </div>
+      ) : null}
       <Textarea
         rows={2}
         aria-label={`Your answer: ${request.question}`}

@@ -3,6 +3,8 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { GUIDANCE_SEED, MasterCvSchema } from "@bs-job-agents/shared";
+import { parse as parseYaml } from "yaml";
 import { FigmaBridge, browserReadyFor, buildSiteGuardSettings, checkBrowserBridge, extractText, prepareFigmaGuard } from "../bridges/index.js";
 import { appendMemoryChange, type Db } from "../db/index.js";
 import { appendMemoryNotes, loadBots, readBotPromptFiles, seedMemoryFiles } from "../runner/index.js";
@@ -19,6 +21,7 @@ import type {
   FeedScanPort,
   FigmaPort,
   GuardHooks,
+  GuidanceDeps,
   Logger,
   MasterCvSource,
   MemoryWriter,
@@ -34,6 +37,7 @@ import { FeedScanner } from "../adapters/feeds/index.js";
 import { BoardApiScanner } from "../adapters/board-api/index.js";
 import { HostGate } from "../adapters/http/index.js";
 import { FileSecretStore, Redactor } from "../adapters/secrets/index.js";
+import { GuidanceFetcher } from "../adapters/guidance-fetch/index.js";
 
 /** Coordinator A: per-task Claude hook settings from W2c's builders. */
 export const bridgeGuardHooks: GuardHooks = {
@@ -60,6 +64,15 @@ export function fileMasterCv(path: string): MasterCvSource {
       if (!existsSync(path)) return null;
       const m = /^version:\s*(\d+)\s*$/m.exec(readFileSync(path, "utf8"));
       return m ? Number(m[1]) : 1;
+    },
+    read: () => {
+      if (!existsSync(path)) return null;
+      try {
+        const parsed = MasterCvSchema.safeParse(parseYaml(readFileSync(path, "utf8")));
+        return parsed.success ? parsed.data : null;
+      } catch {
+        return null;
+      }
     },
   };
 }
@@ -139,6 +152,8 @@ export interface ProductionEngineOptions {
   derivedFacts?: DerivedFactSink;
   /** W5: feed sources in a job scan. Default: one FeedScanner (src/adapters/feeds) per process. */
   feeds?: FeedScanPort;
+  /** CV guidance (tests pass a fake fetcher). */
+  guidance?: GuidanceDeps;
   /** PM3 S8: default: the source adapters' checker (src/adapters, W4a). */
   scanChecker?: ScanOutputChecker;
   /** API research: boards read through an API. Default: BoardApiScanner over `secretsFile`. */
@@ -190,6 +205,8 @@ export function createProductionEngine(opts: ProductionEngineOptions): Engine {
     feeds: opts.feeds ?? new FeedScanner({ gate: http.gate }),
     // API research: the six boards' public or account APIs, through the same per-host gate.
     boards: opts.boards ?? http.boards,
+    // CV guidance: guidance pages fetched by the orchestrator (SEC-21), and the seed rule set.
+    guidance: opts.guidance ?? { fetch: new GuidanceFetcher({ gate: http.gate }), seed: GUIDANCE_SEED },
     ...(opts.config ? { config: opts.config } : {}),
     ...(opts.logger ? { logger: opts.logger } : {}),
     ...(opts.conversations ? { conversations: opts.conversations } : {}),

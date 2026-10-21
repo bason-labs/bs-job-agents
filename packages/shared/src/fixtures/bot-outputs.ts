@@ -3,6 +3,8 @@
 import type { ApplyOutput } from "../bots/apply.js";
 import type { ConsultOutput } from "../bots/consult.js";
 import type { CvOutput } from "../bots/cv.js";
+import { CV_REVIEW_SELF_CHECK, type CvReviewOutput } from "../bots/cv-review.js";
+import { GUIDANCE_DISCOVER_SELF_CHECK, GUIDANCE_EXTRACT_SELF_CHECK, type GuidanceDiscoverOutput, type GuidanceExtractOutput } from "../bots/research-guidance.js";
 import { DERIVE_SELF_CHECK, type DeriveOutput } from "../bots/derive.js";
 import { FACT_DRAFT_SELF_CHECK, type FactDraftOutput } from "../bots/fact-draft.js";
 import type { LeadOutput } from "../bots/lead.js";
@@ -375,7 +377,59 @@ export const deriveOutputFixture: DeriveOutput = {
 /** cv.derive: nothing in Ba's facts supports the gaps. */
 export const deriveNoneFixture: DeriveOutput = { drafts: [], selfCheck: DERIVE_SELF_CHECK.map((item) => pass(item)), memoryNotes: [] };
 
+/** cv.review: the most-relevant-first rule is not met; the order fix uses the CV's own facts (REQ-38.AC-1). */
+export const cvReviewOutputFixture: CvReviewOutput = {
+  items: [
+    {
+      ruleId: "order-most-relevant-first",
+      status: "not_met",
+      reason: "The React role comes before the Java role the JD asks for.",
+      fixable: true,
+      fix: { instruction: "Move the Java and Spring Boot experience (f-1) above the React work (f-2).", factIds: ["f-1", "f-2"] },
+      needsFact: null,
+    },
+    {
+      ruleId: "bullet-what-tech-result",
+      status: "needs_fact",
+      reason: "The order service bullet has no result.",
+      fixable: false,
+      fix: null,
+      needsFact: { factId: "f-5", question: "What result did optimising the order service have (for example a time or error rate)?" },
+    },
+  ],
+  selfCheck: CV_REVIEW_SELF_CHECK.map((item) => pass(item)),
+  memoryNotes: [],
+};
+
+/** research.guidance_extract: one draft from a fetched page (CV guidance §5.4). */
+export const guidanceExtractOutputFixture: GuidanceExtractOutput = {
+  drafts: [
+    {
+      ruleId: null,
+      topic: "summary",
+      point: "A short summary opens the CV",
+      positionId: null,
+      text: "Open with a two-line summary of the experience most relevant to the role.",
+      sourceUrl: "https://hr.example.com/cv-guide",
+      evidence: "Open with a short summary of the experience most relevant to the role.",
+    },
+  ],
+  injectionSuspected: false,
+  injectionNote: null,
+  selfCheck: GUIDANCE_EXTRACT_SELF_CHECK.map((item) => pass(item)),
+  memoryNotes: [],
+};
+
+export const guidanceDiscoverOutputFixture: GuidanceDiscoverOutput = {
+  urls: ["https://hr.example.com/cv-guide"],
+  selfCheck: GUIDANCE_DISCOVER_SELF_CHECK.map((item) => pass(item)),
+  memoryNotes: [],
+};
+
 export const validBotOutputFixtures: Record<BotOutputSchemaName, readonly unknown[]> = {
+  CvReviewOutput: [cvReviewOutputFixture],
+  GuidanceExtractOutput: [guidanceExtractOutputFixture],
+  GuidanceDiscoverOutput: [guidanceDiscoverOutputFixture],
   DeriveOutput: [deriveOutputFixture, deriveNoneFixture],
   FactDraftOutput: [factDraftOutputFixture, factDraftNoneFixture],
   LeadOutput: [leadOutputFixture, leadClarifyFixture, leadCriteriaProposalFixture, leadScheduleProposalFixture],

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { ToastProvider } from "@/components/ui";
 import { MASTER_CV } from "@/lib/api/mock/seed-master-cv";
-import type { MockMasterCv } from "@/lib/api/mock/state";
+import type { MockMasterCv, MockState } from "@/lib/api/mock/state";
 import { gatedSleep, testMock } from "@/lib/api/mock/testing";
 import { ApiProvider } from "@/lib/api/react";
 import { createMasterCvData, readMasterCvPage, type MasterCvData } from "./data";
@@ -15,8 +15,14 @@ async function cvOf(data: MasterCvData) {
   return read.cv;
 }
 
-async function setup(opts: { file?: MockMasterCv; sleep?: (ms: number) => Promise<void> } = {}) {
-  const mock = testMock({ state: (s) => void (opts.file && (s.masterCv = opts.file)), ...(opts.sleep ? { sleep: opts.sleep } : {}) });
+async function setup(opts: { file?: MockMasterCv; sleep?: (ms: number) => Promise<void>; requests?: MockState["factRequests"] } = {}) {
+  const mock = testMock({
+    state: (s) => {
+      if (opts.file) s.masterCv = opts.file;
+      if (opts.requests) s.factRequests = opts.requests;
+    },
+    ...(opts.sleep ? { sleep: opts.sleep } : {}),
+  });
   const data = createMasterCvData(mock, { pollMs: 5 });
   const page = await readMasterCvPage(data);
   const user = userEvent.setup();
@@ -35,6 +41,31 @@ describe("MasterCvScreen (UC-20)", () => {
     const facts = screen.getAllByTestId("fact");
     expect(facts.map((f) => f.dataset.factId)).toEqual(["grad-1", "grad-2", "grad-3", "grad-4", "aeg-1", "apc-1", "skill-1"]);
     expect(facts[0]).toHaveTextContent("Gradion · experience · Sep 2025 – present");
+  });
+
+  it("CV guidance (§5.8): a months request is labelled with its rule, asked once for two jobs, and opens the fact's own editor", async () => {
+    const { user } = await setup({
+      requests: [
+        {
+          id: "g-dates-month-year-grad-2-dates",
+          jobId: "101",
+          company: "NovaPay",
+          topic: "Education and experience dates give month and year",
+          question: "What were the start and end months of grad-2?",
+          reason: "CV guidance: Education and experience dates give month and year",
+          origin: "guidance",
+          ruleId: "dates-month-year",
+          ruleLabel: "Education and experience dates give month and year",
+          factId: "grad-2",
+          field: "dates",
+          alsoJobIds: ["102"],
+        },
+      ],
+    });
+    expect(screen.getByTestId("guidance-request")).toHaveTextContent("From CV guidance: Education and experience dates give month and year. “What were the start and end months of grad-2?” Asked once for 2 jobs.");
+    await user.click(screen.getByTestId("edit-fact"));
+    expect(await screen.findByTestId("fact-editor")).toBeInTheDocument();
+    expect(within(screen.getByTestId("fact-editor")).getByLabelText("Fact id")).toHaveValue("grad-2");
   });
 
   it("edits a fact and saves a new master version", async () => {

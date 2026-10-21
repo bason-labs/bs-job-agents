@@ -17,10 +17,13 @@ export const BotOutputSchemaNameSchema = z.enum(
 /** Task kinds per Phase 1 bot (§5.2, §7.2–7.3b). */
 export const BOT_TASK_KINDS = {
   lead: ["chat"],
-  research: ["scan", "single", "file", "fit", "company"],
+  // guidance_extract / guidance_discover (CV guidance §5.4): rules from pages the orchestrator fetched (no
+  // tools) and candidate source URLs (web search only), never a page read through Chrome.
+  research: ["scan", "single", "file", "fit", "company", "guidance_extract", "guidance_discover"],
   // fact_draft (owner request 2026-10-11): Ba's own words → master facts on the Master CV screen; no tools.
   // derive (CV auto-extend): facts Ba's own facts support or imply for a job's gaps; no tools.
-  cv: ["tailor", "fact_draft", "derive"],
+  // review (CV guidance §5.7): a tailored CV against the applied judgement rules; no tools.
+  cv: ["tailor", "fact_draft", "derive", "review"],
   qa: ["review"],
   apply: ["submit"],
 } as const satisfies Record<Phase1Bot, readonly string[]>;
@@ -30,10 +33,20 @@ export const BOT_TASK_KINDS = {
  * need is in the task input. cv.fact_draft drafts master facts from Ba's own words; cv.derive drafts
  * facts his facts support or imply for a job's gaps.
  */
-export const TOOLLESS_TASK_KEYS = ["cv.fact_draft", "cv.derive"] as const;
+export const TOOLLESS_TASK_KEYS = ["cv.fact_draft", "cv.derive", "cv.review", "research.guidance_extract"] as const;
 
 export function isToollessTask(botName: string, kind: string): boolean {
   return (TOOLLESS_TASK_KEYS as readonly string[]).includes(`${botName}.${kind}`);
+}
+
+/**
+ * Task keys that may only search the web (SEC-20): no Read, skills, Chrome or MCP. research.guidance_discover
+ * returns candidate URLs, which the orchestrator fetches itself under SEC-21.
+ */
+export const WEB_SEARCH_ONLY_TASK_KEYS = ["research.guidance_discover"] as const;
+
+export function isWebSearchOnlyTask(botName: string, kind: string): boolean {
+  return (WEB_SEARCH_ONLY_TASK_KEYS as readonly string[]).includes(`${botName}.${kind}`);
 }
 
 /** Kinds any bot can run: 1:1 consult (UC-25) and room discussion (UC-15). Output = ConsultOutput. */

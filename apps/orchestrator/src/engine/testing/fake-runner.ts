@@ -287,6 +287,16 @@ function baseFakeResult(task: RunnerTask): RunnerResult {
       return fake.ok({ drafts: [], memoryNotes: [] });
     case "qa.review":
       return fake.ok(qaPassFixture);
+    case "cv.review": {
+      // A satisfied reviewer: every rule it was given is met (tests script misses).
+      const rules = Array.isArray(input.rules) ? (input.rules as { ruleId: string }[]) : [];
+      return fake.ok({ items: rules.map((r) => ({ ruleId: r.ruleId, status: "met", reason: "Met.", fixable: false, fix: null, needsFact: null })), memoryNotes: [] });
+    }
+    case "research.guidance_extract":
+      // Nothing new on the changed pages (tests script drafts).
+      return fake.ok({ drafts: [], injectionSuspected: false, injectionNote: null, memoryNotes: [] });
+    case "research.guidance_discover":
+      return fake.ok({ urls: [], memoryNotes: [] });
     case "apply.submit": {
       const pdfPath = typeof input.pdfPath === "string" ? input.pdfPath : "/data/applications/0/CV.pdf";
       const sha256 = typeof input.pdfSha256 === "string" ? input.pdfSha256 : applyOutputFixture.uploadedFile!.sha256;
