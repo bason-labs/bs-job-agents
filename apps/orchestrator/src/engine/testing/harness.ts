@@ -19,11 +19,13 @@ import { seedBots, T0 } from "../../db/test-helpers.js";
 import { EnginePaths, type EngineConfig } from "../config.js";
 import { Engine } from "../engine.js";
 import type { ConversationSink } from "../conversations.js";
+import type { DerivedFactSink } from "../derive.js";
 import type { FactDraftSink } from "../fact-drafts.js";
 import type { ScanOutputChecker } from "../scan-check.js";
 import type { BoardScanPort, FeedScanPort, MemoryWriter, OrphanKiller, RolePromptSource } from "../ports.js";
 import type { ActionStepOutput, HumanStepOutput } from "../state.js";
 import { FakeClock } from "./fake-clock.js";
+import { MemoryDerivedFacts } from "./derived-facts.js";
 import { FakeRunner } from "./fake-runner.js";
 import {
   FakeBrowserProbe,
@@ -60,6 +62,8 @@ export interface TestEngineOptions {
   conversations?: ConversationSink;
   /** Owner request 2026-10-11: the API's fact-draft port. */
   factDrafts?: FactDraftSink;
+  /** CV auto-extend: the API's derived-fact port, or "memory" for MemoryDerivedFacts (default none: the derive step does nothing). */
+  derivedFacts?: DerivedFactSink | "memory";
   /** PM3 S8: the scan-output checker (default none = accept). */
   scanChecker?: ScanOutputChecker;
   /** W5: feed sources (default none: a feed source's scan fails as not wired). */
@@ -77,6 +81,8 @@ export interface TestEngine {
   figma: FakeFigmaPort;
   guards: FakeGuardHooks;
   masterCv: FakeMasterCv;
+  /** The in-memory derived-fact sink (derivedFacts: "memory"), else null. */
+  derived: MemoryDerivedFacts | null;
   paths: EnginePaths;
   engine: Engine;
   profile: SearchProfile | null;
@@ -117,7 +123,7 @@ export const BOTS_DIR = "/bots";
  * Rows the engine writes for the audit log only; never streamed (UC-18: the spawned CLI's pid;
  * PM2 S4: a CV spawn's protected-pages hash; PM2 S1: a once-only Lead message was posted).
  */
-export const AUDIT_ONLY_EVENT_TYPES = ["runner.spawned", "figma.before", "lead.notice", "fact_draft.rejected"] as const;
+export const AUDIT_ONLY_EVENT_TYPES = ["runner.spawned", "figma.before", "lead.notice", "fact_draft.rejected", "derive.rejected"] as const;
 
 export async function createTestEngine(opts: TestEngineOptions = {}): Promise<TestEngine> {
   const fresh = opts.db === undefined;
@@ -130,6 +136,8 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
   const figma = new FakeFigmaPort(files);
   const guards = new FakeGuardHooks(files);
   const masterCv = new FakeMasterCv(`${DATA_DIR}/master-cv.yaml`, files);
+  const derived = opts.derivedFacts === "memory" ? new MemoryDerivedFacts(files, masterCv) : null;
+  const derivedFacts = opts.derivedFacts === "memory" ? derived! : opts.derivedFacts;
   const paths = new EnginePaths(DATA_DIR, BOTS_DIR);
   const profile =
     !fresh || opts.noProfile
@@ -166,6 +174,7 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
     ...(opts.memory ? { memory: opts.memory } : {}),
     ...(opts.conversations ? { conversations: opts.conversations } : {}),
     ...(opts.factDrafts ? { factDrafts: opts.factDrafts } : {}),
+    ...(derivedFacts ? { derivedFacts } : {}),
     ...(opts.scanChecker ? { scanChecker: opts.scanChecker } : {}),
     ...(opts.feeds ? { feeds: opts.feeds } : {}),
     ...(opts.boards ? { boards: opts.boards } : {}),
@@ -205,6 +214,7 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
     figma,
     guards,
     masterCv,
+    derived,
     paths,
     engine,
     profile,

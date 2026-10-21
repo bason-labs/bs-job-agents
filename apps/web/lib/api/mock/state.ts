@@ -24,6 +24,7 @@ import type {
   WorkflowProposal,
 } from "@bs-job-agents/shared";
 import type { ProgressLine } from "../contract";
+import type { MockDerivedState } from "./derived-facts";
 import type { MockFactDraft } from "./fact-drafts";
 import type { MockLeadProposal } from "./lead-proposals";
 import type { MockSourceAccess } from "./source-access";
@@ -110,6 +111,8 @@ export interface MockState {
   factRequests: FactRequestItem[];
   /** Owner request 2026-10-11: facts drafted from Ba's words, by task id (created on first use). */
   factDrafts?: Record<string, MockFactDraft>;
+  /** CV auto-extend: automatic additions of derived facts and the latest rejections (created on first use). */
+  derived?: MockDerivedState;
   /** Lead's propose_workflow suggestions (rule 3), oldest first. */
   proposals: WorkflowProposal[];
   /** Workflows saved by approving a proposal: name → latest version. */

@@ -47,6 +47,25 @@ export const StoredFactDraftSchema = z.object({
 });
 export type StoredFactDraft = z.infer<typeof StoredFactDraftSchema>;
 
+/** One automatic addition of derived facts (CV auto-extend §5.7): one master version. */
+export const StoredDerivedAddSchema = z.object({
+  version: z.number().int().positive(),
+  previousVersion: z.number().int().positive(),
+  at: z.string(),
+  runId: z.number().int().positive().nullable(),
+  jobId: z.string().nullable(),
+  company: z.string().nullable(),
+  /** The cv.derive task, or null for the table pass. */
+  taskId: z.number().int().positive().nullable(),
+  facts: z.array(z.object({ id: z.string(), text: z.string() })),
+  undoneAt: z.string().nullable(),
+  /** SHA-256 of data/master-cv.yaml as this addition wrote it: a later hand edit without a version bump shows. */
+  fileSha256: z.string().nullable().default(null),
+  /** Content hash of the master CV just before this addition: Undo restores a history copy only if it matches. */
+  beforeSha256: z.string().nullable().default(null),
+});
+export type StoredDerivedAdd = z.infer<typeof StoredDerivedAddSchema>;
+
 const StateSchema = z.object({
   /** Per bot: the streak count when Ba dismissed the suggestion, and when. */
   promotionDismissals: z.record(z.object({ count: z.number().int().nonnegative(), at: z.string() })).default({}),
@@ -59,6 +78,10 @@ const StateSchema = z.object({
   leadProposals: z.record(StoredProposalSchema).default({}),
   /** Owner request 2026-10-11: facts drafted from Ba's words, by cv.fact_draft task id (the newest kept). */
   factDrafts: z.record(StoredFactDraftSchema).default({}),
+  /** CV auto-extend: automatic additions of derived facts, by the master version they made (the newest kept). */
+  derivedAdds: z.record(StoredDerivedAddSchema).default({}),
+  /** Master versions made by an automatic addition, its Undo or a Keep: review cards ignore them (the newest kept). */
+  derivedRevisions: z.array(z.number().int().positive()).default([]),
 });
 export type ApiState = z.infer<typeof StateSchema>;
 

@@ -133,3 +133,50 @@ test("“No, I don't” closes CV's question without adding a fact", async ({ pa
   await expect(page.getByTestId("toast").filter({ hasText: "CV goes on without GraphQL" })).toBeVisible();
   await expect(page.getByTestId("fact")).toHaveCount(7);
 });
+
+// CV auto-extend (§7): facts derived from Ba's own facts, labelled, undoable, flagged when a source changes.
+// withMock runs its function in the page (stringified), so the drafts are written inside it. The
+// browser's mock lives in the page, so the screen is opened again by navigation, not a reload.
+async function reopenCv(page: Page) {
+  await page.getByTestId("sidebar").getByRole("link", { name: "Schedules" }).click();
+  await expect(page.getByTestId("page-title")).toHaveText("Schedules");
+  await page.getByTestId("sidebar").getByRole("link", { name: /Master CV/ }).click();
+  await expect(page.getByTestId("cv-header")).toBeVisible();
+}
+
+test("derived facts: labelled with their source, Undo goes back to the change before, 'Not added' lists refusals (CV auto-extend)", async ({ page }) => {
+  await withMock(page, (m) => {
+    const redux = { requirement: "Redux", type: "skill", text: "Redux", textVi: "Redux", tags: ["redux"], restsOn: [{ factId: "apc-1", relation: "implied_from" }], fromTerms: ["Next.js"], rationale: "Redux is the common state library for React and Next.js apps.", via: "table" };
+    m.deriveFacts([redux, { ...redux, type: "experience", text: "Tech Lead for the Next.js portal", textVi: null }], { jobId: "101", company: "NovaPay" });
+  });
+  await reopenCv(page);
+  const derived = page.locator('[data-testid="fact"][data-fact-id="apc-d1"]');
+  await expect(derived.getByTestId("fact-provenance")).toContainText("Added automatically");
+  await expect(derived.getByTestId("fact-provenance")).toContainText("Implied from apc-1");
+  await derived.getByRole("button", { name: "apc-1" }).click();
+  await expect(page.locator('[data-testid="fact"][data-fact-id="apc-1"]')).toBeFocused();
+
+  const notAdded = page.getByTestId("derived-not-added");
+  await notAdded.getByRole("button", { name: /Not added \(1\)/ }).click();
+  await expect(notAdded).toContainText("names the title lead, which apc-1 does not say");
+
+  const bar = page.getByTestId("derived-undo-bar");
+  await expect(bar).toContainText("Added 1 fact automatically (change 8).");
+  await bar.getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByTestId("toast").filter({ hasText: "Undone: back to change 7." })).toBeVisible();
+  await expect(page.getByTestId("fact")).toHaveCount(7);
+});
+
+test("a derived fact whose source changed is flagged and kept with Keep (CV auto-extend, REQ-20)", async ({ page }) => {
+  await withMock(page, (m) => {
+    m.deriveFacts([{ requirement: "Redux", type: "skill", text: "Redux", textVi: "Redux", tags: ["redux"], restsOn: [{ factId: "apc-1", relation: "implied_from" }], fromTerms: ["Next.js"], rationale: "x", via: "table" }]);
+    const cv = (m.state.masterCv as { cv: { version: number; facts: { id: string; text: string }[] } }).cv;
+    m.state.masterCv = { kind: "ok", cv: { ...cv, version: cv.version + 1, facts: cv.facts.map((f) => (f.id === "apc-1" ? { ...f, text: "Role-based education portal in Vue" } : f)) } };
+  });
+  await reopenCv(page);
+  const derived = page.locator('[data-testid="fact"][data-fact-id="apc-d1"]');
+  await expect(derived.getByTestId("fact-source-changed")).toContainText("Source fact changed");
+  await expect(derived.getByTestId("fact-source-changed")).toContainText("Not used in new tailor tasks until you keep or delete it.");
+  await derived.getByRole("button", { name: "Keep" }).click();
+  await expect(derived.getByTestId("fact-source-changed")).toBeHidden();
+});

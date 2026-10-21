@@ -18,6 +18,9 @@ export * from "./common/timezone.js";
 
 // API research: access records per board (design 2026-10-19 §5.1)
 export * from "./source-access/index.js";
+// truth: the number, date, duration and title comparison (CV auto-extend §5.2)
+export * from "./truth/claims.js";
+export * from "./cv-derive/implications.js";
 
 // strict JSON Schema (§5.5, spike S4)
 export * from "./json-schema/strict.js";
@@ -34,6 +37,7 @@ export * from "./bots/qa.js";
 export * from "./bots/apply.js";
 export * from "./bots/consult.js";
 export * from "./bots/fact-draft.js";
+export * from "./bots/derive.js";
 export * from "./bots/registry.js";
 export * from "./bots/definition.js";
 export * from "./bots/inputs.js";
@@ -75,4 +79,5 @@ export * from "./api/runs.js";
 export * from "./api/bots.js";
 export * from "./api/fact-drafts.js";
 export * from "./api/source-access.js";
+export * from "./api/derived-facts.js";
 export * from "./api/contract.js";

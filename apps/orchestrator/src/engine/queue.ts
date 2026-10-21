@@ -8,6 +8,7 @@ import { join } from "node:path";
 import {
   EngineSchema,
   PauseReasonSchema,
+  citedFactIds,
   failedSelfChecks,
   isRetryableTask,
   normalizeHostName,
@@ -20,6 +21,7 @@ import {
   type ApplyPromptInput,
   type CvOutput,
   type Engine,
+  type DeriveOutput,
   type FactDraftOutput,
   type PauseReason,
   type QaOutput,
@@ -75,7 +77,9 @@ import { errorMessage } from "./errors.js";
 import { onCheckerDone, onProducerDone, type CvExport } from "./gate.js";
 import type { GuardBlock } from "./ports.js";
 import { isConversationTask, sinkContext, sinkFailed } from "./conversations.js";
+import { onDeriveDone } from "./derive.js";
 import { onFactDraftDone } from "./fact-drafts.js";
+import { writeTaskMasterCv } from "./master-cv-copy.js";
 import { injectionDetail, reportedInjection } from "./injection.js";
 import { DEMOTING_SAFETY_REASONS, demoteBot, postProtectedChangeAlert } from "./demotion.js";
 import { noticePause, noticeTaskFailed } from "./notices.js";
@@ -138,6 +142,8 @@ interface Prepared {
   guardLogOffset: number;
   /** PM2 S7: absolute data/screenshots/<task>-<attempt>/ of a Claude browser task, else null. */
   screenshotDir: string | null;
+  /** SEC-18: the fact ids in the task's master-CV copy (what a tailored CV may cite); null when unknown. */
+  masterFactIds?: ReadonlySet<string> | null;
 }
 
 interface Inflight {
@@ -439,11 +445,13 @@ export class TaskQueue {
     let readDirs: string[] | undefined;
     let allowedSites: string[] | undefined;
     let attachments: RunnerAttachment[] | undefined;
+    let masterFactIds: ReadonlySet<string> | null = null;
     const taskDir = core.paths.abs(core.paths.taskDir(task.id));
     try {
       // A per-task read folder, so a bot never reads all of data/ (coordinator, W2b handoff).
       if (MASTER_CV_TASK_KEYS.includes(key)) {
-        await core.deps.files.copy(core.deps.masterCv.path, join(taskDir, "master-cv.yaml"));
+        // SEC-18: a filtered projection, without derived facts whose source changed.
+        ({ factIds: masterFactIds } = await writeTaskMasterCv(core.deps.files, core.deps.masterCv.path, join(taskDir, "master-cv.yaml")));
         readDirs = [taskDir];
       }
       if (key === "research.file") {
@@ -530,6 +538,7 @@ export class TaskQueue {
       guardLog,
       guardLogOffset,
       screenshotDir,
+      masterFactIds,
       ...(figmaBefore ? { figmaBefore } : {}),
       ...(authorize ? { authorize } : {}),
       runnerTask: {
@@ -904,6 +913,12 @@ export class TaskQueue {
       if (expected && output.language !== expected) {
         return { outcome: keep({ kind: "failed", error: `the CV is in ${output.language}, the task asked for ${expected}`, output, retryable: true }) };
       }
+      // SEC-18.AC-2: a CV may cite only facts in the copy it was given (never a flagged derived fact).
+      const unknown = prepared.masterFactIds ? citedFactIds(output.tailored).filter((id) => !prepared.masterFactIds!.has(id)) : [];
+      if (unknown.length > 0) {
+        const error = `the CV cites fact${unknown.length === 1 ? "" : "s"} ${unknown.join(", ")}, which ${unknown.length === 1 ? "is" : "are"} not in the master CV it was given (unknown, or flagged "Source fact changed")`;
+        return { outcome: keep({ kind: "failed", error, output, retryable: true }) };
+      }
       const frame = await this.figmaCall(() => core.deps.figma.findDraftFrame(output.figmaFrameName));
       if (!frame) {
         return { outcome: keep({ kind: "failed", error: `the CV frame ${output.figmaFrameName} is not on the Drafts page`, output, retryable: true }) };
@@ -1064,6 +1079,10 @@ export class TaskQueue {
       case "cv.fact_draft":
         // Owner request 2026-10-11: the invented-detail guard, then the API adds the facts.
         onFactDraftDone(core, tx, task, output as FactDraftOutput);
+        return;
+      case "cv.derive":
+        // CV auto-extend: the deterministic screen, then the API adds what passes (SEC-15, SEC-16).
+        onDeriveDone(core, tx, task, output as DeriveOutput);
         return;
       case "apply.submit":
         onApplyDone(core, tx, task, output as ApplyOutput, recordFiles, recordCheck ?? null);

@@ -4,6 +4,7 @@ import { toStrictJsonSchema, type JsonSchema } from "../json-schema/strict.js";
 import { ApplyOutputSchema } from "./apply.js";
 import { ConsultOutputSchema } from "./consult.js";
 import { CvOutputSchema } from "./cv.js";
+import { DeriveOutputSchema } from "./derive.js";
 import { FactDraftOutputSchema } from "./fact-draft.js";
 import { LeadOutputSchema } from "./lead.js";
 import { QaOutputSchema } from "./qa.js";
@@ -23,6 +24,7 @@ export const BOT_OUTPUT_SCHEMAS = {
   ApplyOutput: ApplyOutputSchema,
   ConsultOutput: ConsultOutputSchema,
   FactDraftOutput: FactDraftOutputSchema,
+  DeriveOutput: DeriveOutputSchema,
 } as const;
 
 export type BotOutputSchemaName = keyof typeof BOT_OUTPUT_SCHEMAS;
@@ -111,5 +113,11 @@ export const BOT_OUTPUT_RULES: Record<BotOutputSchemaName, readonly string[]> = 
     "facts say only what Ba's text says: no number, tool, employer, title or date he did not write; org and dates may come from the existing fact of the role he refers to. The orchestrator rejects a fact with a number or a capitalised name that is not in his words.",
     "each id is a new lowercase slug shaped like the existing ids (e.g. grad-5) that no existing fact uses.",
     "facts is empty when Ba's text says no or gives nothing to add, and notes then tells him why.",
+  ],
+  DeriveOutput: [
+    "restsOn cites only ids of Ba's facts in the task input, and every cited fact contains one of fromTerms word for word.",
+    "text and textVi state no number, year, month, duration, job title or employer that the cited facts do not contain; the orchestrator rejects such a draft.",
+    "A skill draft's text is the bare skill name; org and dates are not yours to give (the orchestrator copies them from the cited facts).",
+    "drafts is empty when the facts support or imply none of the gaps.",
   ],
 };

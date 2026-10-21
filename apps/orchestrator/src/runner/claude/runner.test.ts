@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { splitApplySubmitInput } from "@bs-job-agents/shared";
-import { applyInputFixture, cvFactDraftInputFixture, cvTailorInputFixture, researchFitInputFixture, researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
+import { applyInputFixture, cvDeriveInputFixture, cvFactDraftInputFixture, cvTailorInputFixture, researchFitInputFixture, researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
 import { buildSiteGuardSettings } from "../../bridges/chrome/site-guard/settings.js";
 import { claudeLines, STDERR } from "../__fixtures__/index.js";
 import { JPEG_BYTES, PNG_BYTES, navigateLines, screenshotLines } from "../__fixtures__/screenshots.js";
@@ -69,6 +69,18 @@ describe("ClaudeRunner: a successful run", () => {
     expect(argValue(args, "--settings")).toBe('{"autoMemoryEnabled":false}');
     expect(JSON.parse(argValue(args, "--json-schema")!)).toMatchObject({ title: "FactDraftOutput" });
     expect(argValue(args, "-p")).toContain("# Task: cv.fact_draft");
+  });
+
+  it("cv.derive runs with no tools at all, like fact_draft (CV auto-extend; SEC-17.AC-2: no write tool for master-cv.yaml)", async () => {
+    const { r, calls } = runner([play(claudeLines("structuredOk")), play(claudeLines("structuredOk"))]);
+    const { def, cwd } = kit.realBot("cv");
+    await r.run(kit.task(def, cwd, { kind: "derive", input: cvDeriveInputFixture }), () => {});
+    const args = calls[0]!.args;
+    expect(argValue(args, "--tools")).toBe("");
+    expect(args).not.toContain("--mcp-config");
+    expect(args).not.toContain("--add-dir");
+    expect(JSON.parse(argValue(args, "--json-schema")!)).toMatchObject({ title: "DeriveOutput" });
+    expect(argValue(args, "-p")).toContain("# Task: cv.derive");
   });
 
   it("writes the transcript: spawn record without the prompt, raw lines, stderr, exit and result", async () => {

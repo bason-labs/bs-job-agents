@@ -282,6 +282,9 @@ function baseFakeResult(task: RunnerTask): RunnerResult {
     }
     case "cv.fact_draft":
       return fake.ok(fakeFactDraft(input as unknown as CvFactDraftInput));
+    case "cv.derive":
+      // A careful CV finds nothing it can support (tests script real drafts).
+      return fake.ok({ drafts: [], memoryNotes: [] });
     case "qa.review":
       return fake.ok(qaPassFixture);
     case "apply.submit": {

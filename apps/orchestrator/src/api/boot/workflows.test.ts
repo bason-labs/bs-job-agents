@@ -44,16 +44,16 @@ describe("workflows/*.yaml (S22, spec §7.2–7.3b)", () => {
     expect(() => loadWorkflowFiles(tempDir({ "job-scan.yaml": "name: [unclosed" }))).toThrow(WorkflowLoadError);
     expect(() => loadWorkflowFiles(tempDir({ "job-scan.yaml": "name: [unclosed" }))).toThrow(/job-scan\.yaml/);
     expect(() => loadWorkflowFiles(tempDir({ "scan.yaml": repoYaml("job-scan") }))).toThrow(/scan\.yaml.*job-scan/s);
-    expect(() => loadWorkflowFiles(tempDir({ "job-scan.yaml": repoYaml("job-scan"), "job-scan.v1.yaml": repoYaml("job-scan") }))).toThrow(/job-scan v1/);
-    expect(loadWorkflowFiles(tempDir({ "job-scan.v2.yaml": repoYaml("job-scan").replace("version: 1", "version: 2") }))[0]!.def.version).toBe(2);
+    expect(() => loadWorkflowFiles(tempDir({ "job-scan.yaml": repoYaml("job-scan"), "job-scan.v2.yaml": repoYaml("job-scan") }))).toThrow(/job-scan v2/);
+    expect(loadWorkflowFiles(tempDir({ "job-scan.v3.yaml": repoYaml("job-scan").replace("version: 2", "version: 3") }))[0]!.def.version).toBe(3);
   });
 
   it("get() returns the latest version, or the exact one a run started with", () => {
-    const v2 = repoYaml("job-scan").replace("version: 1", "version: 2").replace("take: $profile.maxJobs", "take: 3");
-    const source = yamlWorkflowSource({ dir: tempDir({ "job-scan.yaml": repoYaml("job-scan"), "job-scan.v2.yaml": v2 }) });
-    expect(source.get("job-scan")?.version).toBe(2);
-    expect(source.get("job-scan", 1)?.version).toBe(1);
-    expect(source.get("job-scan", 3)).toBeUndefined();
+    const v3 = repoYaml("job-scan").replace("version: 2", "version: 3").replace("take: $profile.maxJobs", "take: 3");
+    const source = yamlWorkflowSource({ dir: tempDir({ "job-scan.yaml": repoYaml("job-scan"), "job-scan.v3.yaml": v3 }) });
+    expect(source.get("job-scan")?.version).toBe(3);
+    expect(source.get("job-scan", 2)?.version).toBe(2);
+    expect(source.get("job-scan", 4)).toBeUndefined();
     expect(source.get("nope")).toBeUndefined();
   });
 });
@@ -63,11 +63,11 @@ describe("versioned WorkflowSource over the workflows table (rule 3)", () => {
     const db = openTestDb();
     const dir = tempDir({ "job-scan.yaml": repoYaml("job-scan") });
     yamlWorkflowSource({ dir, db });
-    const stored = getWorkflow(db, "job-scan", 1);
+    const stored = getWorkflow(db, "job-scan", 2);
     expect(stored?.definitionYaml).toBe(repoYaml("job-scan"));
     writeFileSync(join(dir, "job-scan.yaml"), `# a new comment\n${repoYaml("job-scan")}`);
     expect(() => yamlWorkflowSource({ dir, db })).not.toThrow();
-    expect(getWorkflow(db, "job-scan", 1)?.definitionYaml).toBe(repoYaml("job-scan"));
+    expect(getWorkflow(db, "job-scan", 2)?.definitionYaml).toBe(repoYaml("job-scan"));
     db.$client.close();
   });
 
@@ -76,7 +76,7 @@ describe("versioned WorkflowSource over the workflows table (rule 3)", () => {
     const dir = tempDir({ "job-scan.yaml": repoYaml("job-scan") });
     yamlWorkflowSource({ dir, db });
     writeFileSync(join(dir, "job-scan.yaml"), repoYaml("job-scan").replace("maxRounds: 3", "maxRounds: 2"));
-    expect(() => yamlWorkflowSource({ dir, db })).toThrow(/job-scan\.yaml changed but its version is still 1: bump version/);
+    expect(() => yamlWorkflowSource({ dir, db })).toThrow(/job-scan\.yaml changed but its version is still 2: bump version/);
     db.$client.close();
   });
 
@@ -84,8 +84,8 @@ describe("versioned WorkflowSource over the workflows table (rule 3)", () => {
     const db = openTestDb();
     const old = WorkflowDefinitionSchema.parse({ ...jobScanWorkflow, version: 1, description: "old" });
     saveWorkflow(db, { name: "job-scan", version: 1, definitionYaml: JSON.stringify(old) });
-    const v2 = repoYaml("job-scan").replace("version: 1", "version: 2");
-    const source = yamlWorkflowSource({ dir: tempDir({ "job-scan.yaml": v2 }), db });
+    // CV auto-extend moved job-scan to version 2 (the derive step): runs started on 1 keep it.
+    const source = yamlWorkflowSource({ dir: tempDir({ "job-scan.yaml": repoYaml("job-scan") }), db });
     expect(source.get("job-scan")?.version).toBe(2);
     expect((source.get("job-scan", 1) as WorkflowDefinition).description).toBe("old");
     db.$client.close();

@@ -96,6 +96,10 @@ export const API_ROUTES = {
   masterCvFactDrafts: "/master-cv/facts/draft",
   masterCvFactDraft: "/master-cv/facts/draft/:taskId",
   masterCvFactsUndo: "/master-cv/facts/undo",
+  /** CV auto-extend (additive): facts derived from Ba's own facts; Undo, and Keep for a flagged one. */
+  masterCvDerived: "/master-cv/derived",
+  masterCvDerivedUndo: "/master-cv/derived/undo",
+  masterCvDerivedKeep: "/master-cv/derived/:factId/keep",
 } as const;
 
 /** GET /bridges (W3a, additive): whether each engine's Chrome extension answers; null = unknown (engine stopped). */

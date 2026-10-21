@@ -4,11 +4,15 @@
 // and their QA rounds, the job and its company.
 import {
   ReviewCardSchema,
+  activeFacts,
+  citedFactIds,
   findOnlySourceOf,
   isApplyBlockedByInjection,
   type FactRequest,
   type HumanStepSchema,
   type ActionStepSchema,
+  type CvVersion as CvVersionView,
+  type MasterCv,
   type ReviewCard,
 } from "@bs-job-agents/shared";
 import type { z } from "zod";
@@ -33,7 +37,29 @@ import { isDryRunSettled } from "../../engine/review.js";
 import { canApproveAgain } from "../../engine/workflow.js";
 import { fileRef } from "../files.js";
 import { keepValid } from "../http.js";
-import { readMasterCvVersion } from "../master-cv.js";
+import { readMasterCv, readMasterCvVersion } from "../master-cv.js";
+import { readApiState } from "../state.js";
+
+/** The master CV as the review queue compares CVs with it. */
+interface MasterNow {
+  version: number | null;
+  cv: MasterCv | null;
+  /** Versions made by automatic additions, their Undo or a Keep (CV auto-extend): not Ba's changes. */
+  derivedRevisions: ReadonlySet<number>;
+}
+
+/**
+ * UC-20 "master data changed": a version after the CV's was a change of Ba's (a save, his own words),
+ * or a fact the CV cites is gone or flagged. Automatic additions alone (and their Undo) do not count:
+ * they add facts other jobs' CVs never cited.
+ */
+export function masterChangedFor(cv: Pick<CvVersionView, "masterVersion" | "tailored">, master: MasterNow): boolean {
+  if (master.version === null || cv.masterVersion >= master.version) return false;
+  for (let v = cv.masterVersion + 1; v <= master.version; v++) if (!master.derivedRevisions.has(v)) return true;
+  if (!master.cv) return true;
+  const usable = new Set(activeFacts(master.cv).map((f) => f.id));
+  return citedFactIds(cv.tailored).some((id) => !usable.has(id));
+}
 
 type HumanStep = z.infer<typeof HumanStepSchema>;
 type ActionStep = z.infer<typeof ActionStepSchema>;
@@ -96,7 +122,7 @@ function appliedBefore(db: Db, c: Candidate, jobId: number): ReviewCard["flags"]
   return { applicationId: String(earlier.id), at: earlier.submittedAt ?? earlier.createdAt, status: earlier.status, origin: earlier.origin };
 }
 
-async function buildCard(db: Db, dataDir: string, c: Candidate, readyAt: Map<number, string>, masterVersion: number | null, now: Date): Promise<ReviewCard | null> {
+async function buildCard(db: Db, dataDir: string, c: Candidate, readyAt: Map<number, string>, master: MasterNow, now: Date): Promise<ReviewCard | null> {
   const out = c.human.output as HumanStepOutput | null;
   if (!out || !Array.isArray(out.cvVersions)) return null;
   const job = getJob(db, out.jobId);
@@ -139,7 +165,7 @@ async function buildCard(db: Db, dataDir: string, c: Candidate, readyAt: Map<num
       escalated: out.escalated,
       needsInput: out.needsInput,
       injectionFlagged: isApplyBlockedByInjection(job),
-      masterChanged: masterVersion !== null && cvOptions.some((o) => o.cvVersion.masterVersion < masterVersion),
+      masterChanged: cvOptions.some((o) => masterChangedFor(o.cvVersion, master)),
       noApplyLink: job.url === null,
       lowConfidenceCompany: company?.confidence === "low_confidence",
       approveAgain: c.approveAgain,
@@ -163,11 +189,16 @@ export async function reviewQueue(
     const jobId = Number((row.payload as { jobId?: unknown }).jobId);
     if (Number.isInteger(jobId)) readyAt.set(jobId, row.createdAt);
   }
-  const masterVersion = readMasterCvVersion(opts.dataDir);
+  const read = readMasterCv(opts.dataDir);
+  const master: MasterNow = {
+    version: readMasterCvVersion(opts.dataDir),
+    cv: read.kind === "ok" ? read.cv : null,
+    derivedRevisions: new Set(readApiState(opts.dataDir).derivedRevisions),
+  };
   const cards: unknown[] = [];
   const seen = new Set<string>();
   for (const c of candidates(db, opts.workflows)) {
-    const card = await buildCard(db, opts.dataDir, c, readyAt, masterVersion, opts.now);
+    const card = await buildCard(db, opts.dataDir, c, readyAt, master, opts.now);
     if (!card || seen.has(card.job.id)) continue;
     seen.add(card.job.id);
     cards.push(card);

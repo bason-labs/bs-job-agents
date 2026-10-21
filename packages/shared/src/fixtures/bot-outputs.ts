@@ -3,6 +3,7 @@
 import type { ApplyOutput } from "../bots/apply.js";
 import type { ConsultOutput } from "../bots/consult.js";
 import type { CvOutput } from "../bots/cv.js";
+import { DERIVE_SELF_CHECK, type DeriveOutput } from "../bots/derive.js";
 import { FACT_DRAFT_SELF_CHECK, type FactDraftOutput } from "../bots/fact-draft.js";
 import type { LeadOutput } from "../bots/lead.js";
 import type { QaOutput } from "../bots/qa.js";
@@ -353,7 +354,29 @@ export const factDraftNoneFixture: FactDraftOutput = {
   memoryNotes: [],
 };
 
+/** cv.derive: Redux implied from Ba's React portal (CV auto-extend). */
+export const deriveOutputFixture: DeriveOutput = {
+  drafts: [
+    {
+      requirement: "state management at scale",
+      type: "skill",
+      text: "Redux",
+      textVi: "Redux",
+      tags: ["redux"],
+      restsOn: [{ factId: "grad-3", relation: "implied_from" }],
+      fromTerms: ["React", "Next.js"],
+      rationale: "Redux is the common state library for React and Next.js apps.",
+    },
+  ],
+  selfCheck: DERIVE_SELF_CHECK.map((item) => pass(item)),
+  memoryNotes: [],
+};
+
+/** cv.derive: nothing in Ba's facts supports the gaps. */
+export const deriveNoneFixture: DeriveOutput = { drafts: [], selfCheck: DERIVE_SELF_CHECK.map((item) => pass(item)), memoryNotes: [] };
+
 export const validBotOutputFixtures: Record<BotOutputSchemaName, readonly unknown[]> = {
+  DeriveOutput: [deriveOutputFixture, deriveNoneFixture],
   FactDraftOutput: [factDraftOutputFixture, factDraftNoneFixture],
   LeadOutput: [leadOutputFixture, leadClarifyFixture, leadCriteriaProposalFixture, leadScheduleProposalFixture],
   ResearchScanOutput: [researchScanFixture, researchScanBlockedFixture],

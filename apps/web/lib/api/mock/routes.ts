@@ -25,6 +25,8 @@ import {
   EnginesResponseSchema,
   ExportResponseSchema,
   ExportsResponseSchema,
+  DerivedFactsViewSchema,
+  DerivedUndoResultSchema,
   FactDraftStartedSchema,
   FactDraftViewSchema,
   FactRequestsResponseSchema,
@@ -72,6 +74,7 @@ import type { QueryValue } from "../routes";
 import type { MockBackend } from "./backend";
 import { activeProfile, saveCriteria } from "./criteria";
 import { allSourceAccess, approveSource, revokeSource } from "./source-access";
+import { keepDerived, readDerived, undoDerived } from "./derived-facts";
 import { readFactDraft, startFactDraft, undoFacts } from "./fact-drafts";
 import { figmaGuardOffFor, residualRiskFor } from "./seed-bots";
 import * as sim from "./sim";
@@ -506,6 +509,10 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
   route("POST", API_ROUTES.masterCvFactDrafts, FactDraftStartedSchema, (core, req) => startFactDraft(core, req.body)),
   route("GET", API_ROUTES.masterCvFactDraft, FactDraftViewSchema, (core, req) => readFactDraft(core, req.params.taskId!)),
   route("POST", API_ROUTES.masterCvFactsUndo, MasterCvSchema, (core, req) => undoFacts(core, req.body)),
+  // CV auto-extend: facts derived from Ba's own facts (mock/derived-facts.ts mirrors the orchestrator).
+  route("GET", API_ROUTES.masterCvDerived, DerivedFactsViewSchema, (core) => readDerived(core)),
+  route("POST", API_ROUTES.masterCvDerivedUndo, DerivedUndoResultSchema, (core, req) => undoDerived(core, req.body)),
+  route("POST", API_ROUTES.masterCvDerivedKeep, MasterCvSchema, (core, req) => keepDerived(core, req.params.factId!, req.body)),
   route("GET", API_ROUTES.masterCvVersions, MasterCvVersionsResponseSchema, (core) => ({
     versions: [...core.state.masterCvVersions].sort((a, b) => b.version - a.version),
   })),

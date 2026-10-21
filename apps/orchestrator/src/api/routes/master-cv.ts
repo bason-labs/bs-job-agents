@@ -3,6 +3,10 @@
 // cards built on an older version show "master data changed" (the review queue compares versions).
 import {
   API_ROUTES,
+  DerivedFactsViewSchema,
+  DerivedKeepRequestSchema,
+  DerivedUndoRequestSchema,
+  DerivedUndoResultSchema,
   FactDraftRequestSchema,
   FactDraftStartedSchema,
   FactDraftViewSchema,
@@ -19,6 +23,7 @@ import type { FastifyInstance } from "fastify";
 import { deleteSavedAnswer, listSavedAnswers, mappers } from "../../db/index.js";
 import { emitEvent, requireDb, requireEngine, type ApiContext } from "../context.js";
 import { conflict, notFound } from "../errors.js";
+import { recordDerivedRevision, denyDerived, derivedFactsRemoved, derivedFactsView, keepDerivedFact, markUndone, undoDerivedAdd } from "../derived-facts.js";
 import { factDraftView, masterBefore, pendingFactDraft, readFactDraft, reopen, saveFactDraft, undoableDraft } from "../fact-drafts.js";
 import { keepValid, parseWith, respond } from "../http.js";
 import { keepMasterCvVersion, listMasterCvVersions, readMasterCv, readMasterCvVersion, writeMasterCv } from "../master-cv.js";
@@ -43,6 +48,9 @@ export function masterCvRoutes(app: FastifyInstance, ctx: ApiContext): void {
       });
     }
     const saved = { ...body, version: current === null ? 1 : current + 1 };
+    // CV auto-extend §5.8: a derived fact Ba deleted is never derived again.
+    const before = readMasterCv(ctx.config.dataDir);
+    denyDerived(ctx.config.dataDir, derivedFactsRemoved(before.kind === "ok" ? before.cv : null, saved), ctx.now());
     await writeMasterCv(ctx.config.dataDir, saved);
     await keepMasterCvVersion(ctx.config.dataDir, saved);
     if (ctx.db) emitEvent(ctx, { type: "master_cv.updated", version: saved.version, change: "saved", factIds: [], taskId: null });
@@ -124,6 +132,51 @@ export function masterCvRoutes(app: FastifyInstance, ctx: ApiContext): void {
     });
     if (ctx.db) emitEvent(ctx, { type: "master_cv.updated", version: restored.version, change: "undo", factIds: draft.facts.map((f) => f.id), taskId: String(draft.taskId) });
     return respond(MasterCvSchema, restored);
+  });
+
+  // CV auto-extend (§7): the automatic additions Ba can still undo, and the latest run's "Not added".
+  app.get(API_ROUTES.masterCvDerived, async () => {
+    const db = requireDb(ctx);
+    return respond(DerivedFactsViewSchema, derivedFactsView(db, ctx.config.dataDir, readMasterCvVersion(ctx.config.dataDir)));
+  });
+
+  // §5.8 Undo of one automatic addition: the version before when it is still the latest change,
+  // else a new version without exactly the facts it added. Its skills are denied for good.
+  app.post(API_ROUTES.masterCvDerivedUndo, async (req) => {
+    const body = parseWith(DerivedUndoRequestSchema, req.body);
+    const dataDir = ctx.config.dataDir;
+    const read = readMasterCv(dataDir);
+    if (read.kind !== "ok") throw conflict("the master CV cannot be read, so nothing can be undone", { reason: read.kind === "missing" ? "master_cv_missing" : "master_cv_invalid" });
+    const outcome = undoDerivedAdd(dataDir, read.cv, body.version);
+    if (outcome.kind === "not_undoable") throw conflict(`version ${body.version} did not add facts automatically, or it was already undone`, { reason: "not_undoable" });
+    const now = ctx.now();
+    const removed = read.cv.facts.filter((f) => outcome.removed.some((r) => r.id === f.id));
+    await writeMasterCv(dataDir, outcome.cv);
+    await keepMasterCvVersion(dataDir, outcome.cv);
+    denyDerived(dataDir, removed, now);
+    markUndone(dataDir, body.version, now);
+    recordDerivedRevision(dataDir, outcome.cv.version);
+    if (ctx.db) emitEvent(ctx, { type: "master_cv.updated", version: outcome.cv.version, change: "derived_undo", factIds: outcome.removed.map((f) => f.id), taskId: outcome.add.taskId === null ? null : String(outcome.add.taskId) });
+    return respond(DerivedUndoResultSchema, { cv: outcome.cv, restoredTo: outcome.restoredTo, removed: outcome.removed });
+  });
+
+  // §5.8 Keep a flagged fact: re-anchored to its sources, or Ba's own when a source was deleted.
+  app.post<{ Params: { factId: string } }>(API_ROUTES.masterCvDerivedKeep, async (req) => {
+    const body = parseWith(DerivedKeepRequestSchema, req.body);
+    const dataDir = ctx.config.dataDir;
+    const read = readMasterCv(dataDir);
+    if (read.kind !== "ok") throw conflict("the master CV cannot be read", { reason: read.kind === "missing" ? "master_cv_missing" : "master_cv_invalid" });
+    if (read.cv.version !== body.version) {
+      throw conflict(`the master CV changed since you opened it (now version ${read.cv.version}); reload it first`, { reason: "master_cv_changed", currentVersion: read.cv.version });
+    }
+    const outcome = keepDerivedFact(read.cv, req.params.factId);
+    if (outcome.kind === "not_found") throw notFound(`there is no fact ${req.params.factId}`);
+    if (outcome.kind === "not_derived") throw conflict(`${req.params.factId} is your own fact, not one added automatically`, { reason: "not_derived" });
+    await writeMasterCv(dataDir, outcome.cv);
+    await keepMasterCvVersion(dataDir, outcome.cv);
+    recordDerivedRevision(dataDir, outcome.cv.version);
+    if (ctx.db) emitEvent(ctx, { type: "master_cv.updated", version: outcome.cv.version, change: "derived_keep", factIds: [outcome.fact.id], taskId: null });
+    return respond(MasterCvSchema, outcome.cv);
   });
 
   // UC-20 history: every saved version, newest first (the current file included).

@@ -14,16 +14,24 @@
 //   GET  /master-cv/facts/draft/:taskId     → FactDraftViewSchema, polled until it settles (added / no_facts / failed)
 //   POST /master-cv/facts/undo              → body FactUndoRequestSchema { version }; the restored MasterCv (a new version)
 //   POST /steps/:id/rerun                   → WebApi.rerunStep: re-tailor the CVs of the jobs Ba answered for
+// CV auto-extend (facts derived from Ba's own facts):
+//   GET  /master-cv/derived                 → DerivedFactsViewSchema: additions not undone, the latest "Not added"
+//   POST /master-cv/derived/undo            → body { version }; DerivedUndoResultSchema
+//   POST /master-cv/derived/:factId/keep    → body { version }; the MasterCv (409 master_cv_changed when stale)
 "use client";
 
 import {
   API_ROUTES,
+  DerivedFactsViewSchema,
+  DerivedUndoResultSchema,
   FactDraftStartedSchema,
   FactDraftViewSchema,
   FactRequestsResponseSchema,
   MasterCvSchema,
   MasterCvVersionsResponseSchema,
   OkResponseSchema,
+  type DerivedFactsView,
+  type DerivedUndoResult,
   type FactDraftView,
   type FactRequestItem,
   type MasterCv,
@@ -33,7 +41,7 @@ import type { WebApi } from "@/lib/api/contract";
 import { isApiError } from "@/lib/api/errors";
 import { useApi } from "@/lib/api/react";
 
-export type { FactDraftView, FactRequestItem };
+export type { DerivedFactsView, DerivedUndoResult, FactDraftView, FactRequestItem };
 
 /** CV is still drafting. */
 export const isDraftPending = (v: Pick<FactDraftView, "status">): boolean => v.status === "queued" || v.status === "running";
@@ -65,6 +73,12 @@ export interface MasterCvData {
   undoFacts(version: number): Promise<MasterCv>;
   /** Re-runs CV steps (POST /steps/:id/rerun); per step, null when it started or the server's reason. */
   rerunSteps(stepIds: string[]): Promise<Record<string, string | null>>;
+  /** Facts added automatically (not undone) and the latest run's rejected drafts. */
+  derived(): Promise<DerivedFactsView>;
+  /** Undo one automatic addition (the master version it made). */
+  undoDerived(version: number): Promise<DerivedUndoResult>;
+  /** Keep a flagged derived fact; `version` is the master version on the page. */
+  keepDerived(factId: string, version: number): Promise<MasterCv>;
 }
 
 export interface MasterCvDataOptions {
@@ -111,6 +125,15 @@ export function createMasterCvData(api: Pick<WebApi, "request" | "rerunStep">, o
       }
       return out;
     },
+    derived() {
+      return api.request("GET", API_ROUTES.masterCvDerived, { schema: DerivedFactsViewSchema });
+    },
+    undoDerived(version) {
+      return api.request("POST", API_ROUTES.masterCvDerivedUndo, { body: { version }, schema: DerivedUndoResultSchema });
+    },
+    keepDerived(factId, version) {
+      return api.request("POST", API_ROUTES.masterCvDerivedKeep, { params: { factId }, body: { version }, schema: MasterCvSchema });
+    },
     async get() {
       try {
         return { state: "ok", cv: await api.request("GET", API_ROUTES.masterCv, { schema: MasterCvSchema }) };
@@ -146,9 +169,13 @@ export interface MasterCvPageRead {
   read: MasterCvRead;
   versions: MasterCvVersion[];
   requests: FactRequestItem[];
+  derived: DerivedFactsView;
 }
 
+const NO_DERIVED: DerivedFactsView = { adds: [], rejected: [] };
+
 export async function readMasterCvPage(data: MasterCvData): Promise<MasterCvPageRead> {
-  const [read, versions, requests] = await Promise.all([data.get(), data.versions(), data.factRequests()]);
-  return { read, versions, requests };
+  // The derived view is extra: an older orchestrator without it still shows the page.
+  const [read, versions, requests, derived] = await Promise.all([data.get(), data.versions(), data.factRequests(), data.derived().catch(() => NO_DERIVED)]);
+  return { read, versions, requests, derived };
 }

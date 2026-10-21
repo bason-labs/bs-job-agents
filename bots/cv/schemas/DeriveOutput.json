@@ -1,0 +1,137 @@
+{
+  "title": "DeriveOutput",
+  "type": "object",
+  "properties": {
+    "drafts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "requirement": {
+            "type": "string",
+            "description": "The gap this draft answers, copied from gaps"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "skill",
+              "experience"
+            ],
+            "description": "skill: the bare skill name; experience: one CV line built from the cited facts"
+          },
+          "text": {
+            "type": "string",
+            "description": "English: the bare skill name (e.g. Redux), or a CV line using only the cited facts' words"
+          },
+          "textVi": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Vietnamese wording (the same skill name for a skill); null if none"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Short lowercase tags, e.g. redux"
+          },
+          "restsOn": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "factId": {
+                  "type": "string",
+                  "description": "Id of one of Ba's facts in the input"
+                },
+                "relation": {
+                  "type": "string",
+                  "enum": [
+                    "supports",
+                    "implied_from"
+                  ]
+                }
+              },
+              "required": [
+                "factId",
+                "relation"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The facts it rests on: supports (the fact says it) or implied_from (well-known implication)"
+          },
+          "fromTerms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The exact words in the cited facts that carry the support, e.g. React, Next.js"
+          },
+          "rationale": {
+            "type": "string",
+            "description": "One sentence: why the facts support or imply it"
+          }
+        },
+        "required": [
+          "requirement",
+          "type",
+          "text",
+          "textVi",
+          "tags",
+          "restsOn",
+          "fromTerms",
+          "rationale"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 5,
+      "description": "0–5 drafts; none for a gap the facts do not support"
+    },
+    "selfCheck": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "The checklist item, copied from bot.json selfCheck"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it passed or failed; null when nothing to add"
+          }
+        },
+        "required": [
+          "item",
+          "passed",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "One entry per selfCheck item in bot.json. Any failed item fails the attempt."
+    },
+    "memoryNotes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 3,
+      "description": "Up to 3 short lessons for this bot's memory, e.g. 'TopCV upload limit is 5MB'. Empty if none."
+    }
+  },
+  "required": [
+    "drafts",
+    "selfCheck",
+    "memoryNotes"
+  ],
+  "additionalProperties": false
+}

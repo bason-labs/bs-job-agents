@@ -15,6 +15,7 @@ import {
 import { FactTypeSchema } from "../domain/master-cv.js";
 import { SalaryPolicySchema, SearchProfileFieldsBaseSchema } from "../domain/search-profile.js";
 import { CvDraftSchema } from "./cv.js";
+import { DERIVE_MAX_GAPS } from "./derive.js";
 import { FACT_DRAFT_TEXT_MAX } from "./fact-draft.js";
 import { CONVERSATION_TASK_KINDS } from "./definition.js";
 import { QaFixSchema } from "./qa.js";
@@ -117,6 +118,30 @@ export const CvFactDraftInputSchema = z.object({
   masterCvVersion: z.number().int().positive(),
 });
 export type CvFactDraftInput = z.infer<typeof CvFactDraftInputSchema>;
+
+/**
+ * cv.derive (CV auto-extend §5.5): the gaps the table could not resolve, the JD lines that name
+ * them, and Ba's active own facts (no contact data, no derived facts). Everything inline, no tools.
+ */
+export const CvDeriveInputSchema = z.object({
+  jobId: IdSchema,
+  gaps: z.array(z.string().min(1)).min(1).max(DERIVE_MAX_GAPS).describe("What the JD asks for that the facts do not state (from the fit step)"),
+  requirements: z.array(z.string().min(1)).max(30).describe("The JD's lines that name the gaps"),
+  facts: z.array(
+    z
+      .object({
+        id: z.string().min(1),
+        type: FactTypeSchema,
+        text: z.string().min(1),
+        tags: z.array(z.string()),
+        org: z.string().nullable(),
+        dates: z.string().nullable(),
+      })
+      .strict(),
+  ),
+  masterCvVersion: z.number().int().positive(),
+});
+export type CvDeriveInput = z.infer<typeof CvDeriveInputSchema>;
 
 /**
  * Live run 1 (F5): facts about the exported PDF that the orchestrator itself verified (its own
@@ -231,6 +256,7 @@ export const BOT_TASK_INPUT_SCHEMAS = {
   "research.company": ResearchCompanyInputSchema,
   "cv.tailor": CvTailorInputSchema,
   "cv.fact_draft": CvFactDraftInputSchema,
+  "cv.derive": CvDeriveInputSchema,
   "qa.review": QaReviewInputSchema,
   "apply.submit": ApplySubmitInputSchema,
 } as const;
@@ -268,6 +294,7 @@ export const BOT_TASK_PROMPT_INPUT_SCHEMAS = {
   "research.company": ResearchCompanyInputSchema.strict(),
   "cv.tailor": CvTailorInputSchema.strict(),
   "cv.fact_draft": CvFactDraftInputSchema.strict(),
+  "cv.derive": CvDeriveInputSchema.strict(),
   "qa.review": QaReviewInputSchema.strict(),
   "apply.submit": ApplyPromptInputSchema,
 } as const satisfies Record<BotTaskKey, z.ZodTypeAny>;
