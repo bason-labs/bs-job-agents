@@ -62,6 +62,11 @@ export interface RunnerTask {
    * RunnerResult.screenshots. Omitted: images are only dropped from the transcript.
    */
   screenshotDir?: string;
+  /**
+   * Additive (skill self-repair §5.4): a validation scan's drafted skill, screened by the engine. The
+   * prompt carries it in place of the skill file, and the task gets no skill-file reads.
+   */
+  skillOverride?: { skillMd: string };
   timeoutMs: number;
   signal?: AbortSignal;
 }
@@ -105,6 +110,10 @@ export interface RunnerResultExtras {
   pageUrls?: string[];
   /** W4a handoff: each successful navigate (URL, time), for the scan checker's pause and page limits. */
   pageVisits?: { url: string; at: string }[];
+  /** Skill self-repair (QA M-b): pages confirmed opened by navigate in tabs the bot created (PageUrlCollector.opened). */
+  openedUrls?: string[];
+  /** Confirmed navigates that could not be attributed to the bot's own tab. */
+  unattributedOpens?: number;
 }
 
 export type RunnerResult = RunnerResultCore & RunnerResultExtras;

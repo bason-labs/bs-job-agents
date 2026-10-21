@@ -6,7 +6,7 @@ import { API_READER_BOARDS, SEARCH_PROFILE_DEFAULTS, sourceAccessRecord, type Jo
 import { describe, expect, it } from "vitest";
 import { settleScanOutput } from "../../engine/scan-settle.js";
 import { HostGate, MIN_HOST_GAP_MS, type HttpFetch } from "../http/index.js";
-import { BoardApiClient, BoardApiError } from "./client.js";
+import { ApiChanged, BoardApiClient, BoardApiError, DirectReadBlocked } from "./client.js";
 import { itviecMapper } from "./itviec.js";
 import { jobFromPage, listedJobs } from "./json-ld-board.js";
 import { BOARD_MAPPERS } from "./mappers.js";
@@ -187,10 +187,23 @@ describe("TopCV mapper", () => {
     expect(result.note).toContain("4 job pages without a complete posting");
   });
 
-  it("a search page with no JSON-LD (a bot check or a new layout) fails the scan instead of reporting no jobs", async () => {
-    const h = harness("topcv", () => ({ status: 200, body: "<html><title>Just a moment...</title></html>" }));
-    await expect(topcvMapper.scan(h.client, input("topcv"))).rejects.toThrow(BoardApiError);
-    expect(h.calls).toHaveLength(1);
+  it("a search page with no JSON-LD fails the scan instead of reporting no jobs; QA L4: a bot check is a blocked direct read, not a changed API", async () => {
+    const check = harness("topcv", () => ({ status: 200, body: "<html><title>Just a moment...</title></html>" }));
+    await expect(topcvMapper.scan(check.client, input("topcv"))).rejects.toBeInstanceOf(DirectReadBlocked);
+    expect(check.calls).toHaveLength(1);
+    const layout = harness("topcv", () => ({ status: 200, body: "<html><title>Việc làm</title></html>" }));
+    await expect(topcvMapper.scan(layout.client, input("topcv"))).rejects.toThrow(BoardApiError);
+  });
+
+  it("skill self-repair §5.8: a page the reader cannot read, a 404 search page, or job pages with no usable posting are a changed API", async () => {
+    const unreadable = harness("topcv", () => ({ status: 200, body: "<html><title>new layout</title></html>" }));
+    await expect(topcvMapper.scan(unreadable.client, input("topcv"))).rejects.toMatchObject({ name: "ApiChanged", host: "www.topcv.vn" });
+    const gone = harness("topcv", () => ({ status: 404 }));
+    const err = await topcvMapper.scan(gone.client, input("topcv")).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiChanged);
+    expect((err as ApiChanged).message).toMatch(/^www\.topcv\.vn\/[^?]+ answered HTTP 404$/);
+    const empty = harness("topcv", (url) => (url.pathname.startsWith("/viec-lam/") ? { status: 200, body: page({ "@type": "Organization", name: "x" }) } : answer(url)));
+    await expect(topcvMapper.scan(empty.client, input("topcv"))).rejects.toMatchObject({ name: "ApiChanged", message: expect.stringMatching(/job pages? on www\.topcv\.vn gave no complete posting/) });
   });
 
   it("maxPageViews caps every request of the scan", async () => {

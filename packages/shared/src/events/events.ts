@@ -29,6 +29,10 @@ const guidanceRuleEvent = {
   applied: z.boolean(),
 };
 
+/** Skill self-repair (§5.5, SEC-14): a change Research proposed outside the skill, never applied. */
+const NotAppliedSchema = z.object({ file: z.string(), change: z.string() }).strict();
+const skillRepairRef = { repairId: IdSchema, source: z.string().min(1), trigger: z.string() };
+
 const stepRef = {
   runId: IdSchema,
   stepId: IdSchema,
@@ -235,6 +239,28 @@ export const AppEventSchema = z.discriminatedUnion("type", [
     reasons: z.array(z.string()),
     error: z.string().nullable(),
   }),
+  /**
+   * Skill self-repair (additive, AD-7, REQ-11, SEC-14). progress: a repair is queued, drafting or
+   * running its validation scan. adopted: written before the file is replaced, with the text in force
+   * before (previousText) and the new text; `path` is the one file that changes. not_adopted: the
+   * screen, the validation or the write failed; the skill is unchanged (draft: what was tried, or
+   * null). restored: Ba put back the text in force before an adopted repair. paused: 3 attempts in a
+   * row were not adopted. Never page text beyond the skill, never a token.
+   */
+  ev("skill_repair.progress", { ...skillRepairRef, status: z.enum(["queued", "drafting", "validating"]) }),
+  ev("skill_repair.adopted", { ...skillRepairRef, path: z.string(), previousText: z.string(), newText: z.string(), notApplied: z.array(NotAppliedSchema) }),
+  ev("skill_repair.not_adopted", { ...skillRepairRef, reason: z.string(), draft: z.string().nullable(), notApplied: z.array(NotAppliedSchema) }),
+  ev("skill_repair.restored", { ...skillRepairRef, path: z.string(), previousText: z.string(), newText: z.string() }),
+  /** SEC-14 (QA L1): a restore logged first whose file write then failed; the skill is unchanged. */
+  ev("skill_repair.restore_failed", { ...skillRepairRef, reason: z.string() }),
+  ev("skill_repair.paused", { source: z.string().min(1), failures: z.number().int().positive() }),
+  /**
+   * Skill self-repair §5.8 (additive): a board's API path broke (404/410 on a listed endpoint, a
+   * response the mapper rejects, or items with no valid posting) and the run fell back to the browser;
+   * or it works again. Method, host and path only, never a query or a header.
+   */
+  ev("source_api.changed", { source: z.string().min(1), method: z.literal("GET").nullable(), host: z.string().nullable(), path: z.string().nullable(), reason: z.string() }),
+  ev("source_api.recovered", { source: z.string().min(1) }),
   ev("master_cv.updated", {
     version: z.number().int().positive(),
     change: z.enum(["saved", "facts_added", "undo", "facts_derived", "derived_undo", "derived_keep"]),

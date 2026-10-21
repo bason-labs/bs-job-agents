@@ -15,6 +15,10 @@ export * from "./common/primitives.js";
 export * from "./common/host.js";
 export * from "./common/sources.js";
 export * from "./common/timezone.js";
+export * from "./common/text-hygiene.js";
+
+// skill self-repair (sub-project 4): the screen of a drafted source skill (SEC-9)
+export * from "./skills/screen.js";
 
 // API research: access records per board (design 2026-10-19 §5.1)
 export * from "./source-access/index.js";
@@ -44,6 +48,7 @@ export * from "./bots/fact-draft.js";
 export * from "./bots/derive.js";
 export * from "./bots/cv-review.js";
 export * from "./bots/research-guidance.js";
+export * from "./bots/research-repair.js";
 export * from "./bots/registry.js";
 export * from "./bots/definition.js";
 export * from "./bots/inputs.js";

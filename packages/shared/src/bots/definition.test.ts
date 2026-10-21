@@ -100,7 +100,7 @@ describe("BotDefinitionSchema (bot.json, §5.1)", () => {
   });
 
   it("lists task kinds per Phase 1 bot", () => {
-    expect(BOT_TASK_KINDS.research).toEqual(["scan", "single", "file", "fit", "company", "guidance_extract", "guidance_discover"]);
+    expect(BOT_TASK_KINDS.research).toEqual(["scan", "single", "file", "fit", "company", "guidance_extract", "guidance_discover", "repair"]);
     expect(BOT_TASK_KINDS.apply).toEqual(["submit"]);
   });
 });

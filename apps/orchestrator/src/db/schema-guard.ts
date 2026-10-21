@@ -46,6 +46,8 @@ export const GUARDED_SCHEMA_OBJECTS = [
   { type: "trigger", name: "guidance_rule_sets_no_delete", table: "guidance_rule_sets" },
   // §10.2 rule 5: one application per job unless "apply again" (0000).
   { type: "index", name: "applications_job_uq", table: "applications" },
+  // AD-7, REQ-8.AC-3: one active skill repair per source (0014).
+  { type: "index", name: "skill_repairs_active_source_uq", table: "skill_repairs" },
 ] as const satisfies readonly GuardedSchemaObject[];
 
 /** The guarded objects `sqlite_master` does not have (by type, name and table). */

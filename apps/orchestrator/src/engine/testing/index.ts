@@ -14,4 +14,5 @@ export {
   staticWorkflowSource,
 } from "./fakes.js";
 export { MemoryDerivedFacts } from "./derived-facts.js";
+export { MemorySkillFiles } from "./skills.js";
 export { BOTS_DIR, DATA_DIR, LONG_WAIT_CONFIG, createTestEngine, type TestEngine, type TestEngineOptions } from "./harness.js";

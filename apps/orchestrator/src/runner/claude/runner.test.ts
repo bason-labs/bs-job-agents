@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { splitApplySubmitInput } from "@bs-job-agents/shared";
-import { applyInputFixture, cvDeriveInputFixture, cvReviewInputFixture, guidanceDiscoverInputFixture, guidanceExtractInputFixture, cvFactDraftInputFixture, cvTailorInputFixture, researchFitInputFixture, researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
+import { applyInputFixture, cvDeriveInputFixture, cvReviewInputFixture, guidanceDiscoverInputFixture, guidanceExtractInputFixture, cvFactDraftInputFixture, cvTailorInputFixture, researchFitInputFixture, researchRepairInputFixture, researchScanInputFixture } from "@bs-job-agents/shared/fixtures";
 import { buildSiteGuardSettings } from "../../bridges/chrome/site-guard/settings.js";
 import { claudeLines, STDERR } from "../__fixtures__/index.js";
 import { JPEG_BYTES, PNG_BYTES, navigateLines, screenshotLines } from "../__fixtures__/screenshots.js";
@@ -107,6 +107,37 @@ describe("ClaudeRunner: a successful run", () => {
     expect(args).not.toContain("--chrome");
     expect(args).not.toContain("--add-dir");
     expect(args).not.toContain("--mcp-config");
+  });
+
+  it("skill self-repair: research.repair gets Chrome in read mode under the site guard and Read on its skills, nothing else (design §5.2; SEC-9.AC-3 deviation)", async () => {
+    const { r, calls } = runner([play(claudeLines("structuredOk")), play(claudeLines("structuredOk"))]);
+    const { def, cwd } = kit.realBot("research");
+    const hookSettings = buildSiteGuardSettings({ allowedSites: ["topcv.vn"] });
+    await r.run(kit.task(def, cwd, { kind: "repair", input: researchRepairInputFixture, usesBrowser: true, allowedSites: ["topcv.vn"], hookSettings }), () => {});
+    const args = calls[0]!.args;
+    expect(argValue(args, "--tools")).toBe("Read");
+    expect(args).toContain("--chrome");
+    expect(args).not.toContain("--add-dir");
+    expect(args).not.toContain("--mcp-config");
+    const at = args.indexOf("--allowedTools");
+    const allowed = args.slice(at + 1, args.indexOf("--disallowedTools"));
+    expect(allowed.filter((a) => !a.startsWith("Read(./skills/"))).toEqual(
+      ["navigate", "get_page_text", "read_page", "find", "tabs_context_mcp", "tabs_create_mcp", "tabs_close_mcp"].map((t) => `mcp__claude-in-chrome__${t}`),
+    );
+    for (const t of ["computer", "form_input", "file_upload", "javascript_tool"]) expect(args).toContain(`mcp__claude-in-chrome__${t}`);
+    expect(args.slice(args.indexOf("--disallowedTools"))).toContain("mcp__claude-in-chrome__computer");
+    expect(allowed.some((a) => /WebSearch|Bash|Write|Edit|WebFetch/.test(a))).toBe(false);
+  });
+
+  it("skill self-repair: a validation scan carries the drafted skill in its prompt and reads no skill file (§5.4)", async () => {
+    const { r, calls } = runner([play(claudeLines("structuredOk")), play(claudeLines("structuredOk"))]);
+    const { def, cwd } = kit.realBot("research");
+    const hookSettings = buildSiteGuardSettings({ allowedSites: ["topcv.vn"] });
+    const input = { ...researchScanInputFixture, skillOverride: { repairId: 4 } };
+    await r.run(kit.task(def, cwd, { kind: "scan", input, usesBrowser: true, allowedSites: ["topcv.vn"], hookSettings, skillOverride: { skillMd: "# DRAFTED SKILL BODY" } }), () => {});
+    const args = calls[0]!.args;
+    expect(args.join(" ")).not.toContain("Read(./skills/");
+    expect(args).toContain("--chrome");
   });
 
   it("writes the transcript: spawn record without the prompt, raw lines, stderr, exit and result", async () => {

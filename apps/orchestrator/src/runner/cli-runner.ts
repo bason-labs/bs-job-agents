@@ -10,6 +10,7 @@ import {
   DomainSchema,
   findForbiddenPromptKeys,
   getBotOutputJsonSchema,
+  isBrowserReadOnlyTask,
   isToollessTask,
   isWebSearchOnlyTask,
   promptInputSchemaFor,
@@ -26,7 +27,7 @@ import type { Invocation } from "./invocation.js";
 import { checkOutput, failedSelfCheckItems, repairPrompt, type OutputCheck } from "./output.js";
 import { killProcessGroup, nodeSpawn, runCli, type CliExit, type KillTreeFn, type SpawnFn } from "./process.js";
 import { buildPrompt, PromptSecurityError } from "./prompt.js";
-import { conversationPlan, planTools, toollessPlan, webSearchOnlyPlan, type ToolPlan } from "./tools.js";
+import { browserReadOnlyPlan, conversationPlan, planTools, toollessPlan, webSearchOnlyPlan, type ToolPlan } from "./tools.js";
 import { PageUrlCollector } from "./page-urls.js";
 import { ScreenshotCapture } from "./screenshots.js";
 import { TranscriptWriter } from "./transcript.js";
@@ -177,6 +178,8 @@ export abstract class CliRunner implements Runner {
     }
     if (pageUrls.length > 0) result = { ...result, pageUrls: [...pageUrls] };
     if (prepared.pages.visits.length > 0) result = { ...result, pageVisits: [...prepared.pages.visits] };
+    if (prepared.pages.opened.length > 0) result = { ...result, openedUrls: [...prepared.pages.opened] };
+    if (prepared.pages.unattributed > 0) result = { ...result, unattributedOpens: prepared.pages.unattributed };
     transcript.note({ type: "runner.result", status: result.status });
     await transcript.close();
     await rm(prepared.workDir, { recursive: true, force: true }).catch(() => undefined);
@@ -222,11 +225,15 @@ export abstract class CliRunner implements Runner {
       ? toollessPlan()
       : isWebSearchOnlyTask(bot.name, task.kind)
         ? webSearchOnlyPlan(fullPlan)
-        : conversation
+        : isBrowserReadOnlyTask(bot.name, task.kind)
+          ? browserReadOnlyPlan(fullPlan)
+          : conversation
           ? conversationPlan(fullPlan)
           : fullPlan;
     // §10.3: only a task that holds the browser lock may drive Ba's Chrome.
     if (task.usesBrowser === false && plan.chrome) plan = { ...plan, chrome: null };
+    // Skill self-repair §5.4: a validation scan follows the draft in its prompt and reads no skill file.
+    if (task.skillOverride) plan = { ...plan, skills: [] };
     const readDirs = checkReadDirs(task.readDirs ?? []);
     const { attachments, dir: attachmentDir } = checkAttachments(task, conversation || (bot.name === "lead" && task.kind === "chat"));
     const allowedSites = plan.chrome ? checkSites(task) : [];
@@ -244,6 +251,7 @@ export abstract class CliRunner implements Runner {
       allowedSites,
       readDirs: plan.read ? readDirs : [],
       attachments,
+      ...(task.skillOverride ? { skillOverride: task.skillOverride } : {}),
     });
     if (task.screenshotDir !== undefined && (!isAbsolute(task.screenshotDir) || /[\s,()]/.test(task.screenshotDir))) {
       throw new TaskSetupError(`screenshot dir ${task.screenshotDir} must be an absolute path without a space, a comma or a parenthesis`);

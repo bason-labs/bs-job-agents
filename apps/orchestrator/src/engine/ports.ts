@@ -263,6 +263,19 @@ export interface GuidanceDeps {
   seed?: GuidanceRuleSet;
 }
 
+/**
+ * Skill self-repair (§5.5, AD-7, SEC-10): a source's skill file, read and replaced only through this
+ * port. Production: src/adapters/skill-store SkillStore (one file per source, atomic, no links).
+ */
+export interface SkillFiles {
+  /** The file's path relative to the repository (shown on the Activity screen). */
+  pathOf(source: string): string;
+  /** The text in force; throws when the file cannot be read safely. */
+  read(source: string): string;
+  /** Replace it atomically; throws when refused or on an I/O error (the file is then unchanged). */
+  write(source: string, text: string): void;
+}
+
 export interface Logger {
   info(message: string, ...args: unknown[]): void;
   warn(message: string, ...args: unknown[]): void;

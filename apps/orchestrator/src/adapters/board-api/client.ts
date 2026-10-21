@@ -74,6 +74,44 @@ export class BoardApiError extends Error {
   }
 }
 
+/**
+ * Skill self-repair §5.8: the board's API no longer answers the way its record and mapper expect
+ * (404 or 410 on a listed endpoint, a 2xx body the mapper cannot read, or a list whose items give no
+ * valid posting). The run falls back to the browser and later runs try the API first again. The
+ * reason names a method, host and path only, never a query or a header.
+ */
+export class ApiChanged extends BoardApiError {
+  constructor(
+    readonly host: string | null,
+    readonly path: string | null,
+    reason: string,
+  ) {
+    super("failed", reason);
+    this.name = "ApiChanged";
+  }
+}
+
+/**
+ * QA L4: the board answered 200 with a bot-check page (Cloudflare "Just a moment…", a CAPTCHA) instead
+ * of its content. Not a changed API: this run reads the board in the browser and the API health is
+ * left as it is.
+ */
+export class DirectReadBlocked extends Error {
+  constructor(
+    readonly source: string,
+    readonly host: string,
+    readonly path: string,
+  ) {
+    super(`${host}${path} answered with a bot check`);
+    this.name = "DirectReadBlocked";
+  }
+}
+
+/** A 200 page that is a bot check, not the board's content. */
+export function isBotCheckPage(html: string): boolean {
+  return /just a moment|cf-chl|challenge-platform|cf-browser-verification|captcha|verify you are (?:a )?human|are you a robot|attention required|access denied|enable javascript and cookies to continue|ddos-guard|perimeterx|px-captcha/i.test(html.slice(0, 50_000));
+}
+
 export interface RecordedRequest {
   method: "GET";
   host: string;
@@ -188,6 +226,7 @@ export class BoardApiClient {
         if (!(err instanceof HttpRequestError)) throw err;
         if (err.kind === "auth_rejected") throw new AuthRejected(this.source, err.status ?? 401);
         const where = `${url.hostname}${url.pathname}`;
+        if (err.status === 404 || err.status === 410) throw new ApiChanged(url.hostname, url.pathname, `${where} answered HTTP ${err.status}`);
         throw new BoardApiError(err.kind, this.redactor.redact(err.status === null ? `could not reach ${where} (${err.detail})` : `${where} answered ${err.detail}`));
       }
       if (answer.kind === "body") return { body: answer.body, url };

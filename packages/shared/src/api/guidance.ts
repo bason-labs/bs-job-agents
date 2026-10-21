@@ -61,7 +61,8 @@ export const GuidanceViewSchema = z.object({
 });
 export type GuidanceView = z.infer<typeof GuidanceViewSchema>;
 
-export const ActivityEntrySchema = z.object({
+/** CV guidance (REQ-36): a rule the refresh added or changed. */
+export const GuidanceActivityEntrySchema = z.object({
   id: IdSchema,
   at: IsoDateTimeSchema,
   kind: z.enum(["rule_added", "rule_changed"]),
@@ -74,6 +75,53 @@ export const ActivityEntrySchema = z.object({
   applied: z.boolean(),
   runId: IdSchema.nullable(),
 });
+export type GuidanceActivityEntry = z.infer<typeof GuidanceActivityEntrySchema>;
+
+/**
+ * Skill self-repair (REQ-11, §7): one entry per attempt (repairing, adopted, not adopted), per
+ * restore and per pause. previousText / newText are the skill before and after (null while
+ * repairing; for not adopted, newText is the draft that was tried, or null when there was none).
+ */
+export const SkillRepairActivityEntrySchema = z.object({
+  id: IdSchema,
+  at: IsoDateTimeSchema,
+  kind: z.enum(["skill_repairing", "skill_adopted", "skill_not_adopted", "skill_restored", "skill_repair_paused"]),
+  repairId: IdSchema.nullable(),
+  source: z.string().min(1),
+  sourceLabel: z.string().min(1),
+  /** "adapter broken: …", the failure that started the attempt. */
+  trigger: z.string().nullable(),
+  /** Repairing only: what runs now. */
+  status: z.enum(["queued", "drafting", "validating"]).nullable(),
+  /** Not adopted: why (a screen rule, the validation result or a write error). */
+  reason: z.string().nullable(),
+  /** The one file an adopted or restored repair changed (repo-relative). */
+  path: z.string().nullable(),
+  previousText: z.string().nullable(),
+  newText: z.string().nullable(),
+  notApplied: z.array(z.object({ file: z.string(), change: z.string() })),
+  /** Only on the latest adopted entry of its source while the file still holds its text (§5.7). */
+  canRestore: z.boolean(),
+  /** Only on the paused entry of a source that is still paused. */
+  canRetry: z.boolean(),
+});
+export type SkillRepairActivityEntry = z.infer<typeof SkillRepairActivityEntrySchema>;
+
+/** Skill self-repair §5.8: a board's API changed (the run used the browser) or works again. No diff. */
+export const SourceApiActivityEntrySchema = z.object({
+  id: IdSchema,
+  at: IsoDateTimeSchema,
+  kind: z.enum(["api_changed", "api_recovered"]),
+  source: z.string().min(1),
+  sourceLabel: z.string().min(1),
+  method: z.literal("GET").nullable(),
+  host: z.string().nullable(),
+  path: z.string().nullable(),
+  reason: z.string().nullable(),
+});
+export type SourceApiActivityEntry = z.infer<typeof SourceApiActivityEntrySchema>;
+
+export const ActivityEntrySchema = z.union([GuidanceActivityEntrySchema, SkillRepairActivityEntrySchema, SourceApiActivityEntrySchema]);
 export type ActivityEntry = z.infer<typeof ActivityEntrySchema>;
 export const ActivityResponseSchema = z.object({ entries: z.array(ActivityEntrySchema) });
 export type ActivityResponse = z.infer<typeof ActivityResponseSchema>;

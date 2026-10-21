@@ -5,10 +5,14 @@
 import { SourceAccessRecordSchema, type BoardSource, type JobCandidate, type SourceAccessRecord } from "@bs-job-agents/shared";
 import { researchScanFixture } from "@bs-job-agents/shared/fixtures";
 import { describe, expect, it } from "vitest";
-import { BoardApiScanner, type BoardMapper } from "../adapters/board-api/index.js";
+import { BoardApiScanner, DirectReadBlocked, type BoardMapper } from "../adapters/board-api/index.js";
 import { HostGate, type HttpFetch } from "../adapters/http/index.js";
 import { Redactor } from "../adapters/secrets/index.js";
-import { approveSource, listJobs } from "../db/index.js";
+import { readFileSync } from "node:fs";
+import { approveSource, listJobs, listSkillRepairs } from "../db/index.js";
+import type { ScanOutputChecker } from "./scan-check.js";
+import { skillRepairActivity } from "./skill-repair.js";
+import { MemorySkillFiles } from "./testing/index.js";
 import type { SecretStore } from "./ports.js";
 import type { JoinStepOutput } from "./state.js";
 import { createTestEngine, type TestEngine } from "./testing/harness.js";
@@ -316,5 +320,104 @@ describe("API scans (no bot, no Chrome)", () => {
     await api.idle();
     expect(http.calls).toHaveLength(1);
     expect(listJobs(t.db).filter((j) => j.url === "https://itviec.com/it-jobs/frontend-engineer-1")).toHaveLength(1);
+  });
+});
+
+describe("skill self-repair §5.8: the API changed", () => {
+  /** The API answers `status` while `broken()` holds, else two jobs. */
+  function flaky(broken: () => boolean, status = 404) {
+    return fakeFetch(() => (broken() ? { status, body: "not found" } : { status: 200, body: twoJobs("itviec") }));
+  }
+  const apiEvents = (t: TestEngine) => t.allEvents().filter((e) => e.type === "source_api.changed" || e.type === "source_api.recovered");
+
+  it.each([404, 410])("HTTP %i on a listed endpoint: this run reads the board in the browser, Ba is told once, the next run tries the API first and recovers on its own", async (status) => {
+    let broken = true;
+    const http = flaky(() => broken, status);
+    const t = await createTestEngine({ sources: ["itviec"], boards: boards({ fetch: http.fn }) });
+    const run = t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(scanOf(t, "itviec")).toMatchObject({ status: "done", usesBrowser: true, attempt: 1 });
+    expect(runnerSources(t)).toEqual(["itviec"]);
+    expect((t.step(run.id, "scan-join")!.output as JoinStepOutput).failures).toEqual([]);
+    const changed = t.events("source_api.changed");
+    expect(changed).toEqual([expect.objectContaining({ source: "itviec", method: "GET", host: "itviec.com", path: "/api/jobs", reason: `itviec.com/api/jobs answered HTTP ${status}` })]);
+    // No query, no header value.
+    expect(JSON.stringify(changed)).not.toMatch(/keywords|_session|SECRET/);
+    expect(leadTexts(t).filter((x) => /API/.test(x))).toEqual([
+      `ITviec API changed: itviec.com/api/jobs answered HTTP ${status}. Scanned through the browser this time; scans use the browser until the API works again.`,
+    ]);
+
+    // Still broken: the API is tried first (one request), the browser covers the run, no second notice.
+    const again = await createTestEngine({ sources: ["itviec"], db: t.db, clock: t.clock, files: t.files, boards: boards({ fetch: http.fn }) });
+    again.engine.startWorkflow(START, { trigger: "chat" });
+    await again.idle();
+    expect(http.calls).toHaveLength(2);
+    expect(apiEvents(again).map((e) => e.type)).toEqual(["source_api.changed"]);
+    expect(leadTexts(again).filter((x) => /API changed/.test(x))).toHaveLength(1);
+
+    // Works again: read through the API, one recovery notice and Activity entry, nothing for Ba to do.
+    broken = false;
+    const back = await createTestEngine({ sources: ["itviec"], db: t.db, clock: t.clock, files: t.files, boards: boards({ fetch: http.fn }) });
+    back.engine.startWorkflow(START, { trigger: "chat" });
+    await back.idle();
+    expect(back.runner.callsFor("research.scan")).toHaveLength(0);
+    expect(apiEvents(back).map((e) => e.type)).toEqual(["source_api.changed", "source_api.recovered"]);
+    expect(leadTexts(back).filter((x) => x.startsWith("ITviec API works again"))).toEqual(["ITviec API works again; scans are back on the API."]);
+    // The Activity screen: "API changed" then "API recovered", newest first, with no diff.
+    expect(skillRepairActivity(back.db, null).map((e) => [e.kind, e.source])).toEqual([
+      ["api_recovered", "itviec"],
+      ["api_changed", "itviec"],
+    ]);
+  });
+
+  it("a list whose postings are all invalid is a changed API (browser this run), not 0 jobs", async () => {
+    const body = JSON.stringify({ jobs: [{ id: 1, title: "Frontend Engineer", url: null }, { id: 2, title: "Backend Engineer", url: null }] });
+    const t = await createTestEngine({ sources: ["itviec"], boards: boards({ fetch: fakeFetch(() => ({ status: 200, body })).fn }) });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(scanOf(t, "itviec")).toMatchObject({ status: "done", usesBrowser: true });
+    expect(t.events("source_api.changed")).toEqual([expect.objectContaining({ source: "itviec", method: null, reason: expect.stringMatching(/^ITviec: none of the 2 postings the API gave is valid/) })]);
+  });
+
+  it("QA L4: a 200 bot-check page is a blocked direct read: the browser this run, a 'blocked' notice, the API health untouched", async () => {
+    const blocking: BoardMapper = { source: "itviec", scan: async () => { throw new DirectReadBlocked("itviec", "itviec.com", "/it-jobs"); } };
+    const port = new BoardApiScanner({ fetch: fakeFetch(() => ({ status: 200 })).fn, gate: new HostGate({ sleep: async () => undefined }), secrets: secrets({ itviec: { _session: TOKEN } }), mappers: { itviec: blocking }, records: () => record("itviec") });
+    const t = await createTestEngine({ sources: ["itviec"], boards: port });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(scanOf(t, "itviec")).toMatchObject({ status: "done", usesBrowser: true });
+    expect(leadTexts(t)).toContain("ITviec blocked the direct read — scanned through the browser this time.");
+    expect(t.events("source_api.changed")).toEqual([]);
+  });
+
+  it("a transient error is not a changed API: retried, then the source fails (no fallback, no notice)", async () => {
+    const t = await createTestEngine({ sources: ["itviec"], boards: boards({ fetch: fakeFetch(() => ({ status: 503 })).fn }) });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(scanOf(t, "itviec")).toMatchObject({ status: "failed", usesBrowser: false });
+    expect(t.events("source_api.changed")).toEqual([]);
+  });
+
+  it("REQ-8 (AD-7): an API-path scan that fails as adapter broken starts no skill repair", async () => {
+    const skills = new MemorySkillFiles({ itviec: "x" });
+    const checker: ScanOutputChecker = { check: () => ({ ok: false, adapterBroken: true, reason: "no job cards", screenshot: null }) };
+    const t = await createTestEngine({ sources: ["itviec"], boards: boards({ fetch: fakeFetch(() => ({ status: 200, body: twoJobs("itviec") })).fn }), scanChecker: checker, skills });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(scanOf(t, "itviec")).toMatchObject({ status: "failed", usesBrowser: false, error: expect.stringMatching(/^adapter broken: /) });
+    expect(listSkillRepairs(t.db)).toEqual([]);
+    expect(t.runner.callsFor("research.repair")).toHaveLength(0);
+  });
+
+  it("§5.8 step 5: when the fallback browser scan finds the skill stale, the normal skill repair runs", async () => {
+    const skills = new MemorySkillFiles({ itviec: readFileSync(new URL("../../../../bots/research/skills/source-itviec/SKILL.md", import.meta.url), "utf8") });
+    const checker: ScanOutputChecker = {
+      check: (i) => (i.via === undefined && (i.input as { skillOverride?: unknown }).skillOverride === undefined ? { ok: false, adapterBroken: true, reason: "no job cards", screenshot: null } : { ok: true }),
+    };
+    const t = await createTestEngine({ sources: ["itviec"], boards: boards({ fetch: fakeFetch(() => ({ status: 404 })).fn }), scanChecker: checker, skills });
+    t.engine.startWorkflow(START, { trigger: "chat" });
+    await t.idle();
+    expect(t.events("source_api.changed")).toHaveLength(1);
+    expect(listSkillRepairs(t.db).map((r) => [r.source, r.status])).toEqual([["itviec", "adopted"]]);
   });
 });

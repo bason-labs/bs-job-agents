@@ -11,6 +11,7 @@ import type {
   ResearchCompanyInput,
   ResearchFileInput,
   ResearchFitInput,
+  ResearchRepairInput,
   ResearchScanInput,
   ResearchSingleInput,
 } from "../bots/inputs.js";
@@ -145,4 +146,15 @@ export const applyInputFixture: ApplySubmitInput = {
   answers: [],
   formDefaults: { salaryPolicy: "blank_if_optional", salaryAmount: null, currency: null },
   dryRun: false,
+};
+
+/** research.repair: TopCV's listing lost its cards (skill self-repair §5.2). */
+export const researchRepairInputFixture: ResearchRepairInput = {
+  source: "topcv",
+  currentSkill: "---\nname: source-topcv\ndescription: How Research scans TopCV.\n---\n\n# TopCV (topcv.vn)\n\nRead-only.\n\n## 1. Layout changed\n`Layout changed: <what is missing> on <page URL>`\n\n## 2. No results\n`No results: the page says 0 jobs`\n",
+  failure: { reason: "no job cards on the results page (layout changed?)", screenshot: null },
+  searchUrls: ["https://www.topcv.vn/tim-viec-lam-frontend-engineer-tai-ho-chi-minh-kl2"],
+  requiredNotes: { layoutChanged: "Layout changed: <what is missing> on <page URL>", noResults: "No results: the page says 0 jobs" },
+  limits: { jobLimit: 30, maxPageViews: null, delaySec: null },
+  hosts: ["topcv.vn"],
 };

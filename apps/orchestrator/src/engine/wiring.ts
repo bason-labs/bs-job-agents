@@ -28,6 +28,7 @@ import type {
   OrphanKiller,
   PdfTextExtractor,
   RolePromptSource,
+  SkillFiles,
   WorkflowSource,
 } from "./ports.js";
 import { nodeFileStore } from "./system.js";
@@ -38,6 +39,7 @@ import { BoardApiScanner } from "../adapters/board-api/index.js";
 import { HostGate } from "../adapters/http/index.js";
 import { FileSecretStore, Redactor } from "../adapters/secrets/index.js";
 import { GuidanceFetcher } from "../adapters/guidance-fetch/index.js";
+import { SkillStore } from "../adapters/skill-store/index.js";
 
 /** Coordinator A: per-task Claude hook settings from W2c's builders. */
 export const bridgeGuardHooks: GuardHooks = {
@@ -158,6 +160,8 @@ export interface ProductionEngineOptions {
   scanChecker?: ScanOutputChecker;
   /** API research: boards read through an API. Default: BoardApiScanner over `secretsFile`. */
   boards?: BoardScanPort;
+  /** Skill self-repair: the source skill files (tests pass a temp copy). Default: SkillStore on botsDir. */
+  skills?: SkillFiles;
   /** AD-4: the board credentials file (config.secretsFile) and the repo root it must be outside of. */
   secretsFile?: string;
   repoRoot?: string;
@@ -207,6 +211,8 @@ export function createProductionEngine(opts: ProductionEngineOptions): Engine {
     boards: opts.boards ?? http.boards,
     // CV guidance: guidance pages fetched by the orchestrator (SEC-21), and the seed rule set.
     guidance: opts.guidance ?? { fetch: new GuidanceFetcher({ gate: http.gate }), seed: GUIDANCE_SEED },
+    // Skill self-repair (AD-7): the one writer of source skill files, in the repository's bots/ folder.
+    skills: opts.skills ?? new SkillStore({ botsDir: opts.botsDir, ...(opts.repoRoot ? { repoRoot: opts.repoRoot } : {}) }),
     ...(opts.config ? { config: opts.config } : {}),
     ...(opts.logger ? { logger: opts.logger } : {}),
     ...(opts.conversations ? { conversations: opts.conversations } : {}),

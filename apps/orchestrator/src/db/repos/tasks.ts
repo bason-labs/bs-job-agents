@@ -1,5 +1,5 @@
 import { PauseReasonSchema, formatPauseReason, type PauseReason } from "@bs-job-agents/shared";
-import { and, asc, count, eq, gt, inArray, isNull, not, notExists, or, type SQL } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, isNull, not, notExists, or, sql, type SQL } from "drizzle-orm";
 import type { Conn } from "../client.js";
 import { TERMINAL_TASK_STATUSES, type Engine, type TaskStatus } from "../enums.js";
 import { InvalidTransitionError, NotFoundError } from "../errors.js";
@@ -150,7 +150,9 @@ export function claimNextTask(db: Conn, filter: ClaimFilter = {}): Task | undefi
                 ),
           ),
         )
-        .orderBy(asc(tasks.createdAt), asc(tasks.id))
+        // Skill self-repair §5.1: a browser task outside any run (a skill repair or its validation
+        // scan) waits behind every run's queued tasks, so a repair never slows a scan in progress.
+        .orderBy(sql`CASE WHEN ${tasks.runId} IS NULL AND ${tasks.usesBrowser} = 1 THEN 1 ELSE 0 END`, asc(tasks.createdAt), asc(tasks.id))
         .limit(1)
         .get();
       if (!candidate) return undefined;

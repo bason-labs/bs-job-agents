@@ -161,6 +161,18 @@ describe("adapter broken (no retry, UC-03 b)", () => {
     expect(c.check(input("itviec", empty, { taskId: 2 }))).toMatchObject({ ok: false, adapterBroken: true, reason: expect.stringMatching(/no jobs on 2 scans in a row/) });
   });
 
+  it("QA M2: a skill repair's validation scan neither adds to nor resets a source's empty-scan streak", () => {
+    const c = checker();
+    const empty = output([], { pageViews: 2 });
+    const validation = (out: ResearchScanOutput) => input("itviec", out, { input: { source: "itviec", criteria, maxPageViews: null, skillOverride: { repairId: 1 } } });
+    expect(c.check(validation(empty))).toEqual({ ok: true });
+    expect(c.check(validation(empty))).toEqual({ ok: true });
+    expect(c.check(input("itviec", empty))).toEqual({ ok: true });
+    // A validation scan with jobs in between does not reset the real scans' streak.
+    expect(c.check(validation(output([itviecJob], { pageViews: 2 })))).toEqual({ ok: true });
+    expect(c.check(input("itviec", empty, { taskId: 2 }))).toMatchObject({ ok: false, adapterBroken: true, reason: expect.stringMatching(/no jobs on 2 scans in a row/) });
+  });
+
   it("a confirmed empty search, a block, or jobs in between do not count", () => {
     const c = checker();
     const confirmed = output([], { pageViews: 1, selfCheck: [{ item: "Every job has a reachable URL", passed: true, note: "No results: the page says 0 jobs" }] });

@@ -4,6 +4,7 @@ import { DERIVE_SELF_CHECK } from "../bots/derive.js";
 import { FACT_DRAFT_SELF_CHECK } from "../bots/fact-draft.js";
 import { CV_REVIEW_SELF_CHECK } from "../bots/cv-review.js";
 import { GUIDANCE_DISCOVER_SELF_CHECK, GUIDANCE_EXTRACT_SELF_CHECK } from "../bots/research-guidance.js";
+import { RESEARCH_REPAIR_SELF_CHECK } from "../bots/research-repair.js";
 
 export const researchBotJson = {
   name: "research",
@@ -24,13 +25,14 @@ export const researchBotJson = {
     company: "ResearchCompanyOutput",
     guidance_extract: "GuidanceExtractOutput",
     guidance_discover: "GuidanceDiscoverOutput",
+    repair: "ResearchRepairOutput",
   },
   selfCheck: [
     "Every job has a reachable URL",
     "Every job has full JD text (not a snippet)",
     "No job is a duplicate of another in this output",
   ],
-  selfCheckByKind: { guidance_extract: [...GUIDANCE_EXTRACT_SELF_CHECK], guidance_discover: [...GUIDANCE_DISCOVER_SELF_CHECK] },
+  selfCheckByKind: { guidance_extract: [...GUIDANCE_EXTRACT_SELF_CHECK], guidance_discover: [...GUIDANCE_DISCOVER_SELF_CHECK], repair: [...RESEARCH_REPAIR_SELF_CHECK] },
   promptVersion: 1,
 } satisfies BotDefinitionInput;
 

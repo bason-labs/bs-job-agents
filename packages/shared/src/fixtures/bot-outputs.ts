@@ -4,6 +4,7 @@ import type { ApplyOutput } from "../bots/apply.js";
 import type { ConsultOutput } from "../bots/consult.js";
 import type { CvOutput } from "../bots/cv.js";
 import { CV_REVIEW_SELF_CHECK, type CvReviewOutput } from "../bots/cv-review.js";
+import { RESEARCH_REPAIR_SELF_CHECK, type ResearchRepairOutput } from "../bots/research-repair.js";
 import { GUIDANCE_DISCOVER_SELF_CHECK, GUIDANCE_EXTRACT_SELF_CHECK, type GuidanceDiscoverOutput, type GuidanceExtractOutput } from "../bots/research-guidance.js";
 import { DERIVE_SELF_CHECK, type DeriveOutput } from "../bots/derive.js";
 import { FACT_DRAFT_SELF_CHECK, type FactDraftOutput } from "../bots/fact-draft.js";
@@ -426,10 +427,24 @@ export const guidanceDiscoverOutputFixture: GuidanceDiscoverOutput = {
   memoryNotes: [],
 };
 
+/** research.repair: a redrafted TopCV skill and one change it cannot make itself (skill self-repair §5.2). */
+export const researchRepairOutputFixture: ResearchRepairOutput = {
+  skillMd: "---\nname: source-topcv\ndescription: How Research scans TopCV.\n---\n\n# TopCV (topcv.vn)\n\nRead-only.\n\n## 1. Layout changed\n`Layout changed: <what is missing> on <page URL>`\n\n## 2. No results\n`No results: the page says 0 jobs`\n",
+  otherChanges: [{ file: "bots/research/bot.json", change: "new allowed site topcv.com.vn" }],
+  notes: "The cards are now article.job-card; the JD sections kept their headings.",
+  pageViews: 2,
+  blocked: null,
+  injectionSuspected: false,
+  injectionNote: null,
+  selfCheck: RESEARCH_REPAIR_SELF_CHECK.map((item) => pass(item)),
+  memoryNotes: [],
+};
+
 export const validBotOutputFixtures: Record<BotOutputSchemaName, readonly unknown[]> = {
   CvReviewOutput: [cvReviewOutputFixture],
   GuidanceExtractOutput: [guidanceExtractOutputFixture],
   GuidanceDiscoverOutput: [guidanceDiscoverOutputFixture],
+  ResearchRepairOutput: [researchRepairOutputFixture],
   DeriveOutput: [deriveOutputFixture, deriveNoneFixture],
   FactDraftOutput: [factDraftOutputFixture, factDraftNoneFixture],
   LeadOutput: [leadOutputFixture, leadClarifyFixture, leadCriteriaProposalFixture, leadScheduleProposalFixture],

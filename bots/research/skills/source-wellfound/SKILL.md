@@ -22,7 +22,7 @@ Read-only, in Ba's Chrome where he is signed in to Wellfound. Never apply ("Appl
 
 ## 4. Job page (`https://wellfound.com/jobs/<id>-<slug>`)
 - Title `h1`; under it "Remote (Everywhere) • Berlin", years of experience and employment type; "Posted: 2 days ago"; "Hires remotely in …" (where applicants may live).
-- **Full JD:** `#job-description` ("About the job"). The page also embeds a schema.org JobPosting (title, company, datePosted, description).
+- **Full JD:** `#job-description` ("About the job"). The page also embeds a JSON-LD JobPosting (title, company, datePosted, description).
 
 ## 5. Remote rules (search profile)
 - Ignore the city filter. Keep a job only when its "Hires remotely in" region overlaps `criteria.timezoneOverlap` (e.g. "Asia", "UTC+7 ±3h"); "Everywhere", Vietnam or Asia always fit; skip clearly elsewhere ("United States only"). No `timezoneOverlap` → no region filter.

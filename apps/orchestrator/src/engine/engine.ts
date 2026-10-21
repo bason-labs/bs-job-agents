@@ -52,6 +52,7 @@ import { emitSafetyDenied, failTaskNow, postLeadMessage } from "./task-events.js
 import { UsageWatcher } from "./usage.js";
 import { advanceRun } from "./workflow.js";
 import { ensureGuidanceSeed, guidancePending } from "./guidance-refresh.js";
+import { reconcileSkillRepairs, restoreSkill, retrySkillRepair, skillRepairActivity, type StartResult } from "./skill-repair.js";
 
 export interface StartWorkflowOptions {
   trigger: RunTrigger;
@@ -183,6 +184,11 @@ export class Engine implements EngineCore {
     const orphanSessions = await this.removeOrphanSessions(interrupted);
     await this.checkFigmaAfterCrash([...r.requeued, ...r.exhausted]);
     this.bus.flush();
+    try {
+      reconcileSkillRepairs(this);
+    } catch (err) {
+      this.log.warn(`could not reconcile the skill repairs: ${err instanceof Error ? err.message : String(err)}`);
+    }
     this.running = true;
     this.queue.resume();
     this.usage.restore();
@@ -233,6 +239,23 @@ export class Engine implements EngineCore {
         if (!stored) recordPromptVersion(tx, { botName: def.name, version: def.promptVersion, roleMdHash: hash, roleMdText: text }, { now });
       }
     });
+  }
+
+  // ------------------------------------------------------------------ skill self-repair (§5.6, §5.7)
+
+  /** Ba's "Restore previous skill" on the latest adopted repair of a source. Throws SkillRepairActionError. */
+  restoreSkill(repairId: number): void {
+    restoreSkill(this, repairId);
+  }
+
+  /** Ba's "Try repair again" on a paused source. Throws SkillRepairActionError. */
+  retrySkillRepair(source: string): StartResult {
+    return retrySkillRepair(this, source);
+  }
+
+  /** Skill repairs and API-path changes for the Activity screen (newest first). */
+  skillRepairActivity(): ReturnType<typeof skillRepairActivity> {
+    return skillRepairActivity(this.db, this.deps.skills ?? null);
   }
 
   /** CV guidance (AD-10): the seed rules the store lacks, committed through the screen and commit path. */

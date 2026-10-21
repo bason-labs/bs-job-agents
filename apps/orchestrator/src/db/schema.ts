@@ -710,3 +710,67 @@ export const guidanceReviews = sqliteTable(
   },
   (t) => [uniqueIndex("guidance_reviews_cv_idx").on(t.cvVersionId)],
 );
+
+// ---------------------------------------------------------------------------
+// Skill self-repair (sub-project 4; AD-7). Extras (not in §9).
+
+export const SKILL_REPAIR_STATUSES = ["queued", "drafting", "validating", "adopting", "adopted", "not_adopted"] as const;
+export type SkillRepairStatus = (typeof SKILL_REPAIR_STATUSES)[number];
+/** A repair in these statuses holds its source (single-flight, REQ-8.AC-3). */
+export const ACTIVE_SKILL_REPAIR_STATUSES = ["queued", "drafting", "validating", "adopting"] as const satisfies readonly SkillRepairStatus[];
+
+/**
+ * One automatic repair attempt per row: the failed scan that started it, the drafted skill (never
+ * on disk before adoption), the repair and validation tasks, and how it ended. A unique partial
+ * index allows one active attempt per source.
+ */
+export const skillRepairs = sqliteTable(
+  "skill_repairs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    source: text("source").notNull(),
+    /** The failure that started it: "adapter broken: …". */
+    trigger: text("trigger").notNull(),
+    status: text("status", { enum: SKILL_REPAIR_STATUSES }).notNull(),
+    /** The research.scan task that failed (its input is the validation scan's). */
+    taskId: integer("task_id"),
+    repairTaskId: integer("repair_task_id"),
+    validationTaskId: integer("validation_task_id"),
+    draftMd: text("draft_md"),
+    otherChanges: text("other_changes_json", { mode: "json" }).$type<{ file: string; change: string }[]>().notNull().default([]),
+    /** The skill text in force when the draft was adopted (read from disk then). */
+    previousMd: text("previous_md"),
+    /** Why it was not adopted. */
+    reason: text("reason"),
+    /** Ba pressed "Try repair again": the 24-hour cap does not apply. */
+    manual: boolCol("manual").notNull().default(false),
+    restoredAt: text("restored_at"),
+    createdAt: createdAt(),
+    finishedAt: text("finished_at"),
+  },
+  (t) => [
+    oneOf("skill_repairs_status_check", "status", SKILL_REPAIR_STATUSES),
+    uniqueIndex("skill_repairs_active_source_uq")
+      .on(t.source)
+      .where(sql`status IN ('queued', 'drafting', 'validating', 'adopting')`),
+    index("skill_repairs_source_idx").on(t.source, t.id),
+  ],
+);
+
+/** Per source: consecutive attempts not adopted, and since when automatic repair is paused (SEC-13). */
+export const skillRepairSources = sqliteTable("skill_repair_sources", {
+  source: text("source").primaryKey(),
+  failures: integer("failures").notNull().default(0),
+  pausedAt: text("paused_at"),
+});
+
+/**
+ * Skill self-repair §5.8: per board, whether its API path is broken (since when, and why: method,
+ * host and path only, never a query or a header). A healthy board has no row or brokenSince null.
+ */
+export const sourceApiHealth = sqliteTable("source_api_health", {
+  source: text("source").primaryKey(),
+  brokenSince: text("broken_since"),
+  lastReason: text("last_reason"),
+  updatedAt: text("updated_at").notNull(),
+});

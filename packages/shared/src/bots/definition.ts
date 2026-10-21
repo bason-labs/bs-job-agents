@@ -19,7 +19,8 @@ export const BOT_TASK_KINDS = {
   lead: ["chat"],
   // guidance_extract / guidance_discover (CV guidance §5.4): rules from pages the orchestrator fetched (no
   // tools) and candidate source URLs (web search only), never a page read through Chrome.
-  research: ["scan", "single", "file", "fit", "company", "guidance_extract", "guidance_discover"],
+  // repair (skill self-repair §5.2): a new source skill drafted from the board's pages, read-only.
+  research: ["scan", "single", "file", "fit", "company", "guidance_extract", "guidance_discover", "repair"],
   // fact_draft (owner request 2026-10-11): Ba's own words → master facts on the Master CV screen; no tools.
   // derive (CV auto-extend): facts Ba's own facts support or imply for a job's gaps; no tools.
   // review (CV guidance §5.7): a tailored CV against the applied judgement rules; no tools.
@@ -47,6 +48,16 @@ export const WEB_SEARCH_ONLY_TASK_KEYS = ["research.guidance_discover"] as const
 
 export function isWebSearchOnlyTask(botName: string, kind: string): boolean {
   return (WEB_SEARCH_ONLY_TASK_KEYS as readonly string[]).includes(`${botName}.${kind}`);
+}
+
+/**
+ * Task keys that read Ba's Chrome but nothing else (skill self-repair §5.2): the scan's Chrome read
+ * tools and site guard, and Read for the bot's skill files; no web search, MCP, write or shell.
+ */
+export const BROWSER_READ_ONLY_TASK_KEYS = ["research.repair"] as const;
+
+export function isBrowserReadOnlyTask(botName: string, kind: string): boolean {
+  return (BROWSER_READ_ONLY_TASK_KEYS as readonly string[]).includes(`${botName}.${kind}`);
 }
 
 /** Kinds any bot can run: 1:1 consult (UC-25) and room discussion (UC-15). Output = ConsultOutput. */

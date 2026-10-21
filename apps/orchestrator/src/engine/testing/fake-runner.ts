@@ -256,12 +256,28 @@ function baseFakeResult(task: RunnerTask): RunnerResult {
   const input = (task.input ?? {}) as Record<string, unknown>;
   const novapay = researchScanFixture.jobs[0]!;
   switch (key) {
-    case "research.scan":
-      return fake.ok({ ...researchScanFixture, jobs: researchScanFixture.jobs.filter((j) => j.source === input.source) });
+    case "research.scan": {
+      // The browser opened each job page it returns (the runner reports the URLs Chrome showed).
+      const jobs = researchScanFixture.jobs.filter((j) => j.source === input.source);
+      return { ...fake.ok({ ...researchScanFixture, jobs }), pageUrls: jobs.map((j) => j.url!).filter(Boolean), openedUrls: jobs.map((j) => j.url!).filter(Boolean) };
+    }
     case "research.single":
       return fake.ok({ ...researchScanFixture, jobs: [candidate(novapay, { source: "link", url: String(input.url ?? novapay.url) })] });
     case "research.file":
       return fake.ok({ ...researchScanFixture, jobs: [candidate(novapay, { source: "file" })] });
+    case "research.repair":
+      // Skill self-repair: the current skill with one layout line added, as a faithful redraft would be.
+      return fake.ok({
+        skillMd: String(input.currentSkill ?? "").replace(/^(## \d+\. Listing page[^\n]*\n)/m, "$1- Cards are now `article.job-card`.\n"),
+        otherChanges: [],
+        notes: "The listing's card element changed.",
+        pageViews: 2,
+        blocked: null,
+        injectionSuspected: false,
+        injectionNote: null,
+        selfCheck: [],
+        memoryNotes: [],
+      });
     case "research.fit":
       return fake.ok(researchFitFixture);
     case "research.company": {

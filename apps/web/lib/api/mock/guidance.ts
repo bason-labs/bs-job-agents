@@ -2,7 +2,16 @@
 // views/guidance.ts: the seed rule set (the VNPT post and the three fetched recruiter pages), Ba's
 // Turn off / Turn on, one successful refresh and the seed's activity entries. The rule views are
 // built with the same shared policy (guidanceRuleViews).
-import { GUIDANCE_SEED, guidanceRuleViews, ruleText, type ActivityEntry, type GuidanceRefreshSummary, type GuidanceRuleSet, type GuidanceView } from "@bs-job-agents/shared";
+import {
+  GUIDANCE_SEED,
+  guidanceRuleViews,
+  ruleText,
+  type ActivityEntry,
+  type GuidanceRefreshSummary,
+  type GuidanceRuleSet,
+  type GuidanceView,
+  type SkillRepairActivityEntry,
+} from "@bs-job-agents/shared";
 import { ApiRequestError } from "../errors";
 import type { MockBackend } from "./backend";
 
@@ -12,6 +21,55 @@ export interface MockGuidanceState {
   lastRefresh: GuidanceRefreshSummary | null;
   lastSuccessAt: string | null;
   activity: ActivityEntry[];
+}
+
+const SKILL_OLD = "## 3. Listing page\n- Each card (`.job-item-search-result`): title link `h3.title a`.";
+const SKILL_NEW = "## 3. Listing page\n- Each card (`article.job-card`): title link `h3.job-card__title a`.";
+const skillBase = () => ({ trigger: null, status: null, reason: null, path: null, previousText: null, newText: null, notApplied: [] as { file: string; change: string }[], canRestore: false, canRetry: false });
+
+/** Skill self-repair (sub-project 4 §7): the illustrative entries of the design's success state. */
+export function seedSkillActivity(): ActivityEntry[] {
+  const entries: SkillRepairActivityEntry[] = [
+    {
+      ...skillBase(),
+      id: "951",
+      at: "2026-10-19T09:00:00.000Z",
+      kind: "skill_adopted",
+      repairId: "3",
+      source: "topcv",
+      sourceLabel: "TopCV",
+      trigger: "adapter broken: no job cards on the results page (layout changed?) (screenshot: not captured)",
+      path: "bots/research/skills/source-topcv/SKILL.md",
+      previousText: SKILL_OLD,
+      newText: SKILL_NEW,
+      notApplied: [{ file: "bots/research/bot.json", change: "new allowed site topcv.com.vn" }],
+      canRestore: true,
+    },
+    {
+      ...skillBase(),
+      id: "949",
+      at: "2026-10-19T08:31:00.000Z",
+      kind: "skill_repair_paused",
+      repairId: null,
+      source: "itviec",
+      sourceLabel: "ITviec",
+      reason: "3 attempts in a row were not adopted",
+      canRetry: true,
+    },
+    {
+      ...skillBase(),
+      id: "950",
+      at: "2026-10-19T08:30:00.000Z",
+      kind: "skill_not_adopted",
+      repairId: "2",
+      source: "itviec",
+      sourceLabel: "ITviec",
+      trigger: "adapter broken: a posting without its description block (screenshot: not captured)",
+      reason: "the validation scan returned 0 jobs",
+      newText: "## 4. Job page\n- Full JD: `section.job-details`.",
+    },
+  ];
+  return entries;
 }
 
 export function seedGuidance(now: string): MockGuidanceState {
@@ -24,7 +82,9 @@ export function seedGuidance(now: string): MockGuidanceState {
     turnedOff: [],
     lastRefresh: { at: now, runId: "13", outcome: "unchanged", pagesChecked: 3, failed: 0, rulesChanged: 0, error: null },
     lastSuccessAt: now,
-    activity: GUIDANCE_SEED.rules
+    activity: [
+      ...seedSkillActivity(),
+      ...GUIDANCE_SEED.rules
       .map((r, i) => ({
         id: String(900 + i),
         at: "2026-10-18T08:00:00.000Z",
@@ -38,6 +98,7 @@ export function seedGuidance(now: string): MockGuidanceState {
         runId: null,
       }))
       .reverse(),
+    ],
   };
 }
 
@@ -60,4 +121,31 @@ export function setGuidanceRuleOff(core: MockBackend, ruleId: string, off: boole
 
 export function readActivity(core: MockBackend): { entries: ActivityEntry[] } {
   return { entries: stateOf(core).activity };
+}
+
+/** Mirrors POST /skill-repairs/:id/restore: only the latest adopted entry that can still be restored. */
+export function restoreSkill(core: MockBackend, repairId: string): { entries: ActivityEntry[] } {
+  const g = stateOf(core);
+  const entry = g.activity.find((e): e is SkillRepairActivityEntry => e.kind === "skill_adopted" && e.repairId === repairId);
+  if (!entry) throw new ApiRequestError({ status: 404, code: "not_found", message: `there is no skill repair ${repairId}` });
+  if (!entry.canRestore) throw new ApiRequestError({ status: 409, code: "conflict", message: "only the latest adopted repair can be restored, while the skill file still holds its text" });
+  entry.canRestore = false;
+  g.activity = [
+    { ...entry, id: `r-${entry.id}`, at: core.nowIso(), kind: "skill_restored", previousText: entry.newText, newText: entry.previousText, notApplied: [], canRestore: false },
+    ...g.activity,
+  ];
+  return { entries: g.activity };
+}
+
+/** Mirrors POST /skill-repairs/sources/:source/retry: only a paused source; a new repair starts drafting. */
+export function retrySkillRepair(core: MockBackend, source: string): { entries: ActivityEntry[] } {
+  const g = stateOf(core);
+  const last = g.activity.find((e): e is SkillRepairActivityEntry => e.kind.startsWith("skill") && "source" in e && e.source === source);
+  if (!last) throw new ApiRequestError({ status: 404, code: "not_found", message: `there is no skill repair for ${source} to try again` });
+  if (!g.activity.some((e) => e.kind === "skill_repair_paused" && e.source === source && e.canRetry)) {
+    throw new ApiRequestError({ status: 409, code: "conflict", message: `automatic repair for ${last.sourceLabel} is not paused` });
+  }
+  for (const e of g.activity) if (e.kind === "skill_repair_paused" && e.source === source) e.canRetry = false;
+  g.activity = [{ ...skillBase(), id: `repair-${g.activity.length}`, at: core.nowIso(), kind: "skill_repairing", repairId: null, source, sourceLabel: last.sourceLabel, trigger: last.trigger, status: "drafting" }, ...g.activity];
+  return { entries: g.activity };
 }
