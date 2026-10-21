@@ -1,0 +1,18 @@
+version: 1
+screens:
+  - id: criteria
+    route: /criteria
+    states: [empty, loading, error, success, record-open]
+    reqs: [REQ-1, REQ-2, REQ-3, REQ-4, REQ-7, REQ-21, REQ-22, REQ-23, REQ-24]
+  - id: scan-notices
+    route: /chat/lead
+    states: [empty, loading, error, success, missing-token, token-rejected, transient-failure, adapter-broken]
+    reqs: [REQ-5, REQ-6, REQ-10, REQ-25]
+  - id: activity
+    route: /activity
+    states: [empty, loading, error, success, repairing]
+    reqs: [REQ-8, REQ-9, REQ-10, REQ-11, REQ-12, REQ-13]
+  - id: master-cv
+    route: /cv
+    states: [empty, loading, error, success, undo-offered, undone, source-changed, rejected, fact-request]
+    reqs: [REQ-14, REQ-15, REQ-17, REQ-18, REQ-19, REQ-20, REQ-26, REQ-27, REQ-28]

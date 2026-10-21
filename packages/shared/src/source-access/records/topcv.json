@@ -1,0 +1,24 @@
+{
+  "source": "topcv",
+  "researchedAt": "2026-10-19",
+  "publicApi": "none found",
+  "internalApiGetEndpoints": [
+    { "method": "GET", "host": "www.topcv.vn", "pathPattern": "/tim-viec-lam-:roleSlug", "query": ["page"], "purpose": "search", "requiresAuth": false, "fixture": "search.json" },
+    { "method": "GET", "host": "www.topcv.vn", "pathPattern": "/tim-viec-lam-:roleSlug-tai-:citySlug", "query": ["page"], "purpose": "search", "requiresAuth": false },
+    { "method": "GET", "host": "www.topcv.vn", "pathPattern": "/viec-lam/:slug/:id.html", "query": [], "purpose": "detail", "requiresAuth": false, "fixture": "detail.json" }
+  ],
+  "applyEndpoints": "none found",
+  "auth": { "kind": "none", "names": [], "howToCopy": "No token needed: search and job pages are public and were read as a guest (no cookies)." },
+  "termsOfUse": {
+    "url": "https://topcv.vn/terms-of-service",
+    "clauses": [
+      "bạn không được sao chép, sửa đổi, điều chỉnh, chuẩn bị các sản phẩm phái sinh dựa trên",
+      "TopCV có thể chấm dứt quyền sử dụng một hoặc tất cả các dịch vụ của bạn mà không cần thông báo trước",
+      "TopCV có quyền trục xuất Người Dùng và ngăn chặn quyền truy cập sau đó của họ tới trang web TopCV.vn"
+    ]
+  },
+  "accountRisk": "Low. Reads are guest page GETs, so Ba's TopCV account is not involved. The terms (dated 01/04/2025) have no clause on bots, crawlers or automated access; they forbid copying/derivative use of TopCV content and allow TopCV to end service or block access for violations. robots.txt (2026-10-19) allows job and search pages (it disallows only CV paths). Third-party scrapers report TopCV sometimes serves a Cloudflare challenge; a guest curl on 2026-10-19 was not challenged.",
+  "riskLevel": "low",
+  "chosenPath": "account_api",
+  "notes": "No JSON API: these are server-rendered HTML pages; read the JSON-LD blocks (script[type='application/ld+json']). Search page: a JSON array whose element with @type ['SearchResultsPage','CollectionPage'] has mainEntity.itemListElement[].item {name, url} (name = job title, url = canonical job URL without query). City slugs: ho-chi-minh-kl2, ha-noi-kl1, da-nang-kl8 (see bots/research/skills/source-topcv/SKILL.md); the slug 'tai-ho-chi-minh' without -kl2 returned 0 jobs. Pagination ?page=N (the site appends ?u_sr_id=<tracking>&page=0 on redirect: drop u_sr_id). Search JSON-LD has no company/salary; take them from the detail page. Detail page: JSON-LD @type JobPosting with title, description (full JD as HTML: 'Mô tả công việc', requirements, benefits), identifier {name: company name, value: company id}, datePosted, validThrough, hiringOrganization, jobLocation (PostalAddress), baseSalary (value 'Thoả thuận' = negotiable, or numbers, VND/MONTH), experienceRequirements, skills. Job id = the number before .html. Pages are large (1.3-1.6 MB each): one search page + one detail page per job. Observed with guest curl (Chrome extension was not connected), not in Ba's logged-in Chrome; no XHR JSON endpoints observed."
+}

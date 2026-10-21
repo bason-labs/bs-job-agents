@@ -1,0 +1,110 @@
+{
+  "_capture": {
+    "method": "GET",
+    "url": "https://www.topcv.vn/tim-viec-lam-react-developer",
+    "responseContentType": "text/html; charset=utf-8",
+    "extract": "script[type='application/ld+json'] whose @type includes 'SearchResultsPage'; jobs at mainEntity.itemListElement[].item {name,url}",
+    "capturedAt": "2026-10-19",
+    "auth": "none (guest request, no cookies)",
+    "note": "Trimmed to 5 items. Pagination: ?page=N. Title count is in name. Search page cards (HTML) also carry company/salary/location; JSON-LD carries only name+url."
+  },
+  "data": {
+    "@context": "https://schema.org",
+    "@type": [
+      "SearchResultsPage",
+      "CollectionPage"
+    ],
+    "name": "Tuyển dụng 8 việc làm React Developer [Update 19/10/2026]",
+    "url": "https://www.topcv.vn/tim-viec-lam-react-developer",
+    "description": "Khám phá 8 việc làm React Developer từ những Nhà tuyển dụng uy tín cùng TopCV ngay hôm nay.",
+    "inLanguage": "vi",
+    "potentialAction": {
+      "@type": "SearchAction",
+      "target": "https://www.topcv.vn/tim-viec-lam-{search_term_string}",
+      "query-input": "required name=search_term_string"
+    },
+    "mainEntity": {
+      "@type": "ItemList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "item": {
+            "@type": "WebPage",
+            "name": "Senior PHP Developer Fullstack (ReactJS, Laravel)",
+            "url": "https://www.topcv.vn/viec-lam/senior-php-developer-fullstack-reactjs-laravel/2330324.html"
+          }
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "item": {
+            "@type": "WebPage",
+            "name": "Fullstack Developer (ReactJS, NestJS, PostgreSQL)",
+            "url": "https://www.topcv.vn/viec-lam/fullstack-developer-reactjs-nestjs-postgresql/2325079.html"
+          }
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "item": {
+            "@type": "WebPage",
+            "name": "Nhân Viên ReactJS Front End Developer (Middle)",
+            "url": "https://www.topcv.vn/viec-lam/nhan-vien-reactjs-front-end-developer-middle/2320500.html"
+          }
+        },
+        {
+          "@type": "ListItem",
+          "position": 4,
+          "item": {
+            "@type": "WebPage",
+            "name": "Software Developer (C#, .Net, Reactjs)",
+            "url": "https://www.topcv.vn/viec-lam/software-developer-c-net-reactjs/2334261.html"
+          }
+        },
+        {
+          "@type": "ListItem",
+          "position": 5,
+          "item": {
+            "@type": "WebPage",
+            "name": "Trưởng Nhóm Fullstack (Python/ ReactJS)",
+            "url": "https://www.topcv.vn/viec-lam/truong-nhom-fullstack-python-reactjs/2329960.html"
+          }
+        }
+      ]
+    },
+    "isPartOf": {
+      "@type": "Website",
+      "@id": "https://www.topcv.vn#website",
+      "url": "https://www.topcv.vn",
+      "name": "TopCV",
+      "alternateName": [
+        "Top CV",
+        "TopCV Tuyển dụng",
+        "TopCV Việt Nam",
+        "TopCV Business"
+      ],
+      "potentialAction": [
+        {
+          "@type": "SearchAction",
+          "name": "Tìm việc làm",
+          "description": "Tìm việc làm nhanh 24h, việc làm mới nhất trên toàn quốc. Tiếp cận 40000+ tin tuyển dụng việc làm từ hàng nghìn doanh nghiệp uy tín tại Việt Nam.",
+          "target": {
+            "@type": "EntryPoint",
+            "urlTemplate": "https://www.topcv.vn/tim-viec-lam-{search_term_string}"
+          },
+          "query-input": "required name=search_term_string"
+        },
+        {
+          "@type": "RegisterAction",
+          "name": "Đăng ký tài khoản",
+          "description": "Đăng ký tài khoản TopCV - Cùng xây dựng một hồ sơ nổi bật và nhận được các cơ hội nghề nghiệp lý tưởng",
+          "target": {
+            "@type": "EntryPoint",
+            "urlTemplate": "https://www.topcv.vn/sign-up"
+          }
+        }
+      ]
+    }
+  }
+}

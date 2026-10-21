@@ -7,6 +7,10 @@
 //   GET    /criteria/profiles    → SearchProfilesResponseSchema (the schedule modal's options)
 //   GET    /saved-answers        → SavedAnswersResponseSchema (UC-12 "remember this answer")
 //   DELETE /saved-answers/:key   → { ok: true }; 404 when there is no such answer
+//   GET    /sources/access       → SourceAccessResponseSchema (API research §5.6: each toggle's label)
+//   POST   /sources/:source/approval → body { researchedAt }; the board's new view (409 when the
+//                                   research changed or it needs no approval)
+//   DELETE /sources/:source/approval → the board's new view (Ba revoked his approval)
 "use client";
 
 import {
@@ -16,9 +20,13 @@ import {
   OkResponseSchema,
   SavedAnswersResponseSchema,
   SearchProfilesResponseSchema,
+  SourceAccessResponseSchema,
+  SourceAccessViewSchema,
   type CriteriaUpdateRequest,
   type SavedAnswer,
   type SearchProfile,
+  type SearchSource,
+  type SourceAccessView,
 } from "@bs-job-agents/shared";
 import { useMemo } from "react";
 import type { z } from "zod";
@@ -40,6 +48,11 @@ export interface CriteriaData {
   /** Answers Ba told Apply to remember (UC-12), newest first. */
   savedAnswers(): Promise<SavedAnswer[]>;
   deleteAnswer(key: string): Promise<void>;
+  /** How each source is read (labels, approval state, the research to show before approving). */
+  sourceAccess(): Promise<SourceAccessView[]>;
+  /** Ba approves a high-risk board's account API, for the research he read. */
+  approveSource(source: SearchSource, researchedAt: string): Promise<SourceAccessView>;
+  revokeSource(source: SearchSource): Promise<SourceAccessView>;
 }
 
 export function createCriteriaData(api: Pick<WebApi, "request">): CriteriaData {
@@ -68,6 +81,15 @@ export function createCriteriaData(api: Pick<WebApi, "request">): CriteriaData {
     },
     async deleteAnswer(key) {
       await api.request("DELETE", API_ROUTES.savedAnswer, { params: { key }, schema: OkResponseSchema });
+    },
+    async sourceAccess() {
+      return (await api.request("GET", API_ROUTES.sourceAccess, { schema: SourceAccessResponseSchema })).sources;
+    },
+    approveSource(source, researchedAt) {
+      return api.request("POST", API_ROUTES.sourceApproval, { params: { source }, body: { researchedAt }, schema: SourceAccessViewSchema });
+    },
+    revokeSource(source) {
+      return api.request("DELETE", API_ROUTES.sourceApproval, { params: { source }, schema: SourceAccessViewSchema });
     },
   };
 }

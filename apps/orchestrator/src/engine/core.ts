@@ -12,6 +12,7 @@ import type {
   BotRegistry,
   BrowserStatusProbe,
   Clock,
+  BoardScanPort,
   FeedScanPort,
   FigmaPort,
   FileStore,
@@ -55,6 +56,8 @@ export interface EngineDeps {
   scanChecker?: ScanOutputChecker;
   /** W5: feed sources in a job scan, fetched by the orchestrator (no bot). Default: such a source fails, saying it is not wired. */
   feeds?: FeedScanPort;
+  /** API research: boards read through a public or account API. Default: every board is read in the browser. */
+  boards?: BoardScanPort;
   logger?: Logger;
 }
 

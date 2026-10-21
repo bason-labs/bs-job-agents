@@ -188,6 +188,9 @@ export async function startOrchestrator(opts: StartOptions): Promise<Orchestrato
         runners: custom ?? (typeof opts.runners === "function" ? opts.runners(mcpPort) : createOrchestratorRunners(mcpPort)),
         workflows,
         figma,
+        // API research (AD-4): board credentials, outside the repository.
+        secretsFile: config.secretsFile,
+        repoRoot: config.repoRoot,
         conversations: sink,
         // Owner request 2026-10-11: CV's fact drafts from Ba's words go into data/master-cv.yaml.
         factDrafts: new FactDraftStore({ dataDir: config.dataDir }),

@@ -45,6 +45,9 @@ import {
   ScheduleViewSchema,
   SchedulesResponseSchema,
   SearchProfilesResponseSchema,
+  SourceAccessResponseSchema,
+  SourceAccessViewSchema,
+  SourceApprovalRequestSchema,
   WorkflowProposalApproveResponseSchema,
   WorkflowProposalSchema,
   WorkflowProposalsResponseSchema,
@@ -68,6 +71,7 @@ import { ApiRequestError } from "../errors";
 import type { QueryValue } from "../routes";
 import type { MockBackend } from "./backend";
 import { activeProfile, saveCriteria } from "./criteria";
+import { allSourceAccess, approveSource, revokeSource } from "./source-access";
 import { readFactDraft, startFactDraft, undoFacts } from "./fact-drafts";
 import { figmaGuardOffFor, residualRiskFor } from "./seed-bots";
 import * as sim from "./sim";
@@ -357,6 +361,13 @@ export const MOCK_ROUTES: readonly MockRoute[] = [
     core.state.savedAnswers = core.state.savedAnswers.filter((a) => a.key !== key);
     return { ok: true };
   }),
+
+  // ------------------------------------------------ how each source is read (API research §5.6)
+  route("GET", API_ROUTES.sourceAccess, SourceAccessResponseSchema, (core) => allSourceAccess(core)),
+  route("POST", API_ROUTES.sourceApproval, SourceAccessViewSchema, (core, req) =>
+    approveSource(core, req.params.source!, parse(SourceApprovalRequestSchema, req.body).researchedAt),
+  ),
+  route("DELETE", API_ROUTES.sourceApproval, SourceAccessViewSchema, (core, req) => revokeSource(core, req.params.source!)),
 
   // ------------------------------------------------ schedules (UC-21)
   route("GET", API_ROUTES.schedules, SchedulesResponseSchema, (core) => {

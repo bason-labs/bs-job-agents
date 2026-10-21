@@ -2,7 +2,7 @@
 // bot, no LLM and no Claude/Codex quota, and answers in the research.scan output shape, so the
 // scan's join → dedupe → fit (LLM) → top steps treat it like any other source.
 // Polite by design: a fixed User-Agent that says what this is, one request at a time per board with
-// a pause between them, a response cache per URL (Remotive: 6 h, it asks for ≤ 4 calls a day;
+// a pause between them (the shared per-host gate, adapters/http), a response cache per URL (Remotive: 6 h, it asks for ≤ 4 calls a day;
 // others 1 h), a timeout and a size cap. A failed request fails the source; the scan goes on with
 // the others (requireAll: false on the join).
 import {
@@ -13,6 +13,7 @@ import {
   type ResearchScanInput,
   type ResearchScanOutput,
 } from "@bs-job-agents/shared";
+import { HostGate, HttpRequestError, sendRequest, type HttpFetch } from "../http/index.js";
 import { scanJobLimit } from "../sources.js";
 import { detectLanguage } from "../text.js";
 import { FEED_ADAPTERS } from "./boards.js";
@@ -20,7 +21,7 @@ import { filterPostings, type DropReason } from "./filter.js";
 import type { FeedAdapter, FeedPosting } from "./types.js";
 
 /** The subset of `fetch` the scanner uses (injectable: tests pass a fake). */
-export type FeedFetch = (url: string, init: { headers: Record<string, string>; signal: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+export type FeedFetch = HttpFetch;
 
 export interface FeedScannerOptions {
   fetch?: FeedFetch;
@@ -30,8 +31,10 @@ export interface FeedScannerOptions {
   userAgent?: string;
   /** Per request. */
   timeoutMs?: number;
-  /** Pause between two requests to the same board. */
+  /** Pause between two requests to the same host. */
   minGapMs?: number;
+  /** The process's per-host gate (shared with the board APIs); default: one built from now/sleep/minGapMs. */
+  gate?: HostGate;
   maxBodyBytes?: number;
   /** Override a board's cache lifetime (tests). */
   cacheTtlMs?: Partial<Record<FeedSource, number>>;
@@ -49,20 +52,6 @@ export class FeedError extends Error {
   }
 }
 
-const sleepFor = (ms: number, signal?: AbortSignal): Promise<void> =>
-  new Promise((resolve, reject) => {
-    if (ms <= 0) return resolve();
-    const t = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(t);
-        reject(signal.reason instanceof Error ? signal.reason : new Error("aborted"));
-      },
-      { once: true },
-    );
-  });
-
 const DROP_LABELS: Record<DropReason, string> = {
   role: "not one of the roles",
   include: "none of the must-include keywords",
@@ -77,24 +66,19 @@ const DROP_LABELS: Record<DropReason, string> = {
 export class FeedScanner {
   private readonly fetchFn: FeedFetch;
   private readonly now: () => number;
-  private readonly sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
+  private readonly gate: HostGate;
   private readonly userAgent: string;
   private readonly timeoutMs: number;
-  private readonly minGapMs: number;
   private readonly maxBodyBytes: number;
   private readonly ttl: Partial<Record<FeedSource, number>>;
   private readonly cache = new Map<string, { at: number; body: string }>();
-  /** When each board's last request was sent; requests to one board run one at a time. */
-  private readonly lastRequestAt = new Map<FeedSource, number>();
-  private readonly queues = new Map<FeedSource, Promise<unknown>>();
 
   constructor(opts: FeedScannerOptions = {}) {
     this.fetchFn = opts.fetch ?? ((url, init) => fetch(url, init));
     this.now = opts.now ?? Date.now;
-    this.sleep = opts.sleep ?? sleepFor;
+    this.gate = opts.gate ?? new HostGate({ now: this.now, ...(opts.sleep ? { sleep: opts.sleep } : {}), ...(opts.minGapMs !== undefined ? { minGapMs: opts.minGapMs } : {}) });
     this.userAgent = opts.userAgent ?? FEED_USER_AGENT;
     this.timeoutMs = opts.timeoutMs ?? 20_000;
-    this.minGapMs = opts.minGapMs ?? 1_500;
     this.maxBodyBytes = opts.maxBodyBytes ?? 8 * 1024 * 1024;
     this.ttl = opts.cacheTtlMs ?? {};
   }
@@ -140,42 +124,31 @@ export class FeedScanner {
     return ResearchScanOutputSchema.parse(output);
   }
 
-  /** A cached or fresh response body; requests to one board wait their turn and keep a gap. */
+  /** A cached or fresh response body; requests to one host wait their turn and keep a gap. */
   private async get(adapter: FeedAdapter, url: string, signal?: AbortSignal): Promise<{ body: string; fromCache: boolean }> {
     const ttl = this.ttl[adapter.source] ?? adapter.cacheTtlMs;
     const hit = this.cache.get(url);
     if (hit && this.now() - hit.at < ttl) return { body: hit.body, fromCache: true };
-    const previous = this.queues.get(adapter.source) ?? Promise.resolve();
-    const turn = previous.catch(() => undefined).then(() => this.fetchPolitely(adapter, url, signal));
-    this.queues.set(adapter.source, turn);
-    const body = await turn;
-    return { body, fromCache: false };
-  }
-
-  private async fetchPolitely(adapter: FeedAdapter, url: string, signal?: AbortSignal): Promise<string> {
     const label = SEARCH_SOURCES[adapter.source].label;
-    const last = this.lastRequestAt.get(adapter.source);
-    if (last !== undefined) await this.sleep(last + this.minGapMs - this.now(), signal);
-    signal?.throwIfAborted();
-    this.lastRequestAt.set(adapter.source, this.now());
-    const timeout = AbortSignal.timeout(this.timeoutMs);
-    const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
-    let res: Awaited<ReturnType<FeedFetch>>;
+    let body: string;
     try {
-      res = await this.fetchFn(url, { headers: { "User-Agent": this.userAgent, Accept: "application/json, application/rss+xml, application/xml;q=0.9, */*;q=0.5" }, signal: combined });
+      body = await sendRequest({
+        fetch: this.fetchFn,
+        gate: this.gate,
+        url,
+        headers: { "User-Agent": this.userAgent, Accept: "application/json, application/rss+xml, application/xml;q=0.9, */*;q=0.5" },
+        timeoutMs: this.timeoutMs,
+        ...(signal ? { signal } : {}),
+      });
     } catch (err) {
-      if (signal?.aborted) throw err;
-      const why = timeout.aborted ? `no answer within ${Math.round(this.timeoutMs / 1000)} s` : err instanceof Error ? err.message : String(err);
-      throw new FeedError(adapter.source, `${label}: could not reach ${url} (${why})`);
+      if (!(err instanceof HttpRequestError)) throw err;
+      if (err.status === null) throw new FeedError(adapter.source, `${label}: could not reach ${url} (${err.detail})`);
+      const hint = err.status === 429 ? " (rate limited: try again later)" : err.status === 403 ? " (refused)" : "";
+      throw new FeedError(adapter.source, `${label}: ${url} answered HTTP ${err.status}${hint}`);
     }
-    if (!res.ok) {
-      const hint = res.status === 429 ? " (rate limited: try again later)" : res.status === 403 ? " (refused)" : "";
-      throw new FeedError(adapter.source, `${label}: ${url} answered HTTP ${res.status}${hint}`);
-    }
-    const body = await res.text();
     if (body.length > this.maxBodyBytes) throw new FeedError(adapter.source, `${label}: the feed at ${url} is larger than ${this.maxBodyBytes} bytes`);
     this.cache.set(url, { at: this.now(), body });
-    return body;
+    return { body, fromCache: false };
   }
 }
 

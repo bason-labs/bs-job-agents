@@ -19,6 +19,7 @@ import { reviewRoutes } from "./routes/review.js";
 import { roomRoutes } from "./routes/rooms.js";
 import { runRoutes } from "./routes/runs.js";
 import { scheduleRoutes } from "./routes/schedules.js";
+import { sourceRoutes } from "./routes/sources.js";
 import { uploadRoutes } from "./routes/uploads.js";
 
 export interface RouteOptions {
@@ -33,6 +34,7 @@ export function registerRoutes(app: FastifyInstance, ctx: ApiContext, opts: Rout
   runRoutes(app, ctx);
   reviewRoutes(app, ctx);
   criteriaRoutes(app, ctx);
+  sourceRoutes(app, ctx);
   scheduleRoutes(app, ctx);
   applicationRoutes(app, ctx);
   exportRoutes(app, ctx);

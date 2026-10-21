@@ -1,0 +1,82 @@
+{
+  "source": "linkedin",
+  "researchedAt": "2026-10-20",
+  "publicApi": {
+    "usable": false,
+    "needsDeveloperKey": true,
+    "docsUrl": "https://learn.microsoft.com/en-us/linkedin/talent/job-postings/api/overview",
+    "endpoints": [],
+    "note": "LinkedIn's official Job Posting / Talent APIs are for approved ATS and Talent Solutions partners posting jobs; there is no public job search API. Needs a partner app, so not usable (design 5.1)."
+  },
+  "internalApiGetEndpoints": [
+    {
+      "method": "GET",
+      "host": "www.linkedin.com",
+      "pathPattern": "/voyager/api/voyagerJobsDashJobCards",
+      "query": [
+        "decorationId",
+        "q",
+        "query",
+        "start",
+        "count"
+      ],
+      "purpose": "search",
+      "requiresAuth": true
+    },
+    {
+      "method": "GET",
+      "host": "www.linkedin.com",
+      "pathPattern": "/voyager/api/graphql",
+      "query": [
+        "includeWebMetadata",
+        "variables",
+        "queryId"
+      ],
+      "purpose": "detail",
+      "requiresAuth": true
+    },
+    {
+      "method": "GET",
+      "host": "www.linkedin.com",
+      "pathPattern": "/jobs-guest/jobs/api/seeMoreJobPostings/search",
+      "query": [
+        "keywords",
+        "location",
+        "f_TPR",
+        "start"
+      ],
+      "purpose": "search",
+      "requiresAuth": false
+    },
+    {
+      "method": "GET",
+      "host": "www.linkedin.com",
+      "pathPattern": "/jobs-guest/jobs/api/jobPosting/:jobId",
+      "query": [],
+      "purpose": "detail",
+      "requiresAuth": false
+    }
+  ],
+  "applyEndpoints": "none found",
+  "auth": {
+    "kind": "cookie+header",
+    "names": [
+      "li_at",
+      "JSESSIONID",
+      "header:csrf-token"
+    ],
+    "howToCopy": "In Chrome, logged in to linkedin.com: DevTools > Application > Cookies > https://www.linkedin.com. Copy the value of 'li_at' and of 'JSESSIONID'. The 'csrf-token' request header is the JSESSIONID value without its surrounding quotes (check in DevTools > Network: any /voyager/api/ request > Request Headers > csrf-token). The jobs-guest endpoints need none of these. In the secrets file the header is keyed by its bare name, csrf-token."
+  },
+  "termsOfUse": {
+    "url": "https://www.linkedin.com/legal/user-agreement",
+    "clauses": [
+      "Develop, support or use software, devices, scripts, robots or any other means or processes (such as crawlers, browser plugins and add-ons or any other technology) to scrape or copy the Services, including profiles and other data from the Services;",
+      "Use bots or other unauthorized automated methods to access the Services",
+      "Override any security feature or bypass or circumvent any access controls or use limits of the Services"
+    ]
+  },
+  "accountRisk": "High. The User Agreement (section 8.2) forbids scraping and bots. LinkedIn is widely reported to restrict accounts (temporary or permanent) when it detects automated access with a member's session, including tools that copy data at low volume (e.g. Bardeen community report of a warning for 'automated tools'; datablist.com and evaboot.com guides). Using Ba's li_at cookie from a server process puts Ba's main professional account at risk of a restriction or identity-verification hold. The logged-out jobs-guest endpoints do not touch the account but are still covered by the anti-scraping clause and are IP rate-limited (429 after roughly ten pages reported).",
+  "riskLevel": "high",
+  "chosenPath": "account_api",
+  "notes": "PARTLY VERIFIED 2026-10-20 in Ba's logged-in Chrome by observing the requests LinkedIn's own job search page makes (no extra calls, no token values read). Search confirmed: GET www.linkedin.com/voyager/api/voyagerJobsDashJobCards with count=25, decorationId=com.linkedin.voyager.dash.deco.jobs.search.JobSearchCardsCollection-221, q=jobSearch, query=(origin:JOB_SEARCH_PAGE_OTHER_ENTRY,keywords:<keywords>,locationUnion:(seoLocation:(location:<location>)),spellCorrectionEnabled:true), start=0,25,50...; all answered 200 with Ba's session. Detail is NOT /voyager/api/jobs/jobPostings/:id as third-party write-ups said: the page calls GET /voyager/api/graphql?includeWebMetadata=true&variables=(jobPostingUrn:urn:li:fsd_jobPosting:<id>)&queryId=<hash>, and the queryId hash (e.g. voyagerJobsDashJobCards.<32 hex>) changes with LinkedIn deploys, so a reader should not depend on it; prefer the guest detail page (/jobs-guest/jobs/api/jobPosting/:jobId, HTML, full description in div.show-more-less-html__markup) or description text inside the search response if present. The search page also POSTs /voyager/api/voyagerJobsDashJobSearchHistories?action=addFromQuery (adds to Ba's search history); a reader must not. Still missing: a scrubbed sample response (fixture) for search, to be captured by Ba from DevTools (see runbook) since reading the session cookie from a script was refused. Voyager responses are Rest.li normalized JSON (Accept: application/vnd.linkedin.normalized+json+2.1, x-restli-protocol-version: 2.0.0). Job URL: https://www.linkedin.com/jobs/view/<id>/. Skill limits: <= 6 page loads per scan."
+}

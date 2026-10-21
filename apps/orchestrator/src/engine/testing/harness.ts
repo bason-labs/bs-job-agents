@@ -21,7 +21,7 @@ import { Engine } from "../engine.js";
 import type { ConversationSink } from "../conversations.js";
 import type { FactDraftSink } from "../fact-drafts.js";
 import type { ScanOutputChecker } from "../scan-check.js";
-import type { FeedScanPort, MemoryWriter, OrphanKiller, RolePromptSource } from "../ports.js";
+import type { BoardScanPort, FeedScanPort, MemoryWriter, OrphanKiller, RolePromptSource } from "../ports.js";
 import type { ActionStepOutput, HumanStepOutput } from "../state.js";
 import { FakeClock } from "./fake-clock.js";
 import { FakeRunner } from "./fake-runner.js";
@@ -64,6 +64,8 @@ export interface TestEngineOptions {
   scanChecker?: ScanOutputChecker;
   /** W5: feed sources (default none: a feed source's scan fails as not wired). */
   feeds?: FeedScanPort;
+  /** API research: boards read through an API (default none: every board in the browser). */
+  boards?: BoardScanPort;
 }
 
 export interface TestEngine {
@@ -166,6 +168,7 @@ export async function createTestEngine(opts: TestEngineOptions = {}): Promise<Te
     ...(opts.factDrafts ? { factDrafts: opts.factDrafts } : {}),
     ...(opts.scanChecker ? { scanChecker: opts.scanChecker } : {}),
     ...(opts.feeds ? { feeds: opts.feeds } : {}),
+    ...(opts.boards ? { boards: opts.boards } : {}),
   });
   const delivered: AppEvent[] = [];
   engine.subscribe((event) => delivered.push(event));

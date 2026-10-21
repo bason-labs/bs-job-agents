@@ -88,6 +88,10 @@ export const API_ROUTES = {
   taskDeclineDomain: "/tasks/:id/decline-domain",
   /** Live run 1 (additive): "Resume now" on the paused banner lifts a usage-limit pause early (e.g. after switching accounts). */
   engineResume: "/engines/:engine/resume",
+  /** API research (additive): how each source is read (labels on the Search criteria screen). */
+  sourceAccess: "/sources/access",
+  /** POST approves a high-risk board's account API (body: the researchedAt Ba read); DELETE revokes it. */
+  sourceApproval: "/sources/:source/approval",
   /** Owner request 2026-10-11 (additive): Ba's own words → master facts drafted by CV, added with Undo. */
   masterCvFactDrafts: "/master-cv/facts/draft",
   masterCvFactDraft: "/master-cv/facts/draft/:taskId",

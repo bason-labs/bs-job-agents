@@ -5,7 +5,7 @@
 //   browserReadyFor), FigmaPort (the FigmaBridge class), PdfTextExtractor (extractText),
 //   GuardHooks (buildSiteGuardSettings, prepareFigmaGuard): src/bridges (W2c)
 // - BotRegistry: `loadBots(botsDir)` (W2b); WorkflowSource: workflows/*.yaml (W3a)
-import type { BotDefinition, Engine, FeedSource, ResearchScanInput, ResearchScanOutput, WorkflowDefinition } from "@bs-job-agents/shared";
+import type { BoardSource, BotDefinition, Engine, FeedSource, ResearchScanInput, ResearchScanOutput, SourceAccessRecord, WorkflowDefinition } from "@bs-job-agents/shared";
 import type { ProtectedPagesFingerprint } from "../bridges/figma/fingerprint.js";
 import type { ClaudeHookSettings } from "../bridges/hooks/settings.js";
 
@@ -161,6 +161,46 @@ export interface OrphanKiller {
  */
 export interface FeedScanPort {
   scan(source: FeedSource, input: ResearchScanInput, signal?: AbortSignal): Promise<ResearchScanOutput>;
+}
+
+/** One request a board-API scan sent: method, host and path only (no query, no header). */
+export interface BoardRequestRecord {
+  method: "GET";
+  host: string;
+  path: string;
+}
+
+/**
+ * API research (AD-2, AD-5, design §5.2): boards read through a public or account API, fetched by
+ * the orchestrator (no bot, no LLM). Production: src/adapters/board-api BoardApiScanner.
+ * `scan` throws MissingCredential (no request sent), AuthRejected (401/403), BoardApiError
+ * (`kind` transient | failed) or EndpointNotAllowed; every message is already redacted.
+ */
+export interface BoardScanPort {
+  /** The board's access record (shared source-access by default). */
+  record(source: BoardSource): SourceAccessRecord;
+  /** A mapper reads this board (without one, the board stays on the browser). */
+  canScan(source: BoardSource): boolean;
+  /** Its credentials are configured (never their values). */
+  hasCredentials(source: BoardSource): boolean;
+  scan(
+    source: BoardSource,
+    req: { path: "public_api" | "account_api"; input: ResearchScanInput; signal?: AbortSignal; onRequest?: (r: BoardRequestRecord) => void },
+  ): Promise<{ jobs: unknown[]; note?: string }>;
+  /** Every credential value read so far, replaced (for text built on this path). */
+  redact(text: string): string;
+}
+
+/**
+ * API research (AD-4, design §5.3): a board's account credentials (several named values, e.g.
+ * LinkedIn's li_at cookie and its CSRF header), from a local file outside the repository.
+ * Production: src/adapters/secrets FileSecretStore. Only the board-API path and the wiring read
+ * values; everyone else may ask `has` (the Search criteria screen's "token missing").
+ */
+export interface SecretStore {
+  /** The board's named values, or null when none is configured. */
+  credentials(source: string): Record<string, string> | null;
+  has(source: string): boolean;
 }
 
 export interface Logger {

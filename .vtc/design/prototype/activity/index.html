@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Activity log · bs-job-agents prototype</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/proto.css">
+</head>
+<body data-states="empty loading error success repairing" data-default-state="success">
+<div class="proto" role="navigation" aria-label="Prototype states">
+  <span class="tag strong">Prototype: activity</span>
+  <a data-keeptheme href="?state=success">success</a>
+  <a data-keeptheme href="?state=repairing">repairing</a>
+  <a data-keeptheme href="?state=loading">loading</a>
+  <a data-keeptheme href="?state=empty">empty</a>
+  <a data-keeptheme href="?state=error">error</a>
+</div>
+<div class="shell">
+  <aside class="side">
+    <span class="brand">Job agents</span>
+    <nav aria-label="Main">
+      <a href="../chat/lead/">Chat</a>
+      <a href="../review/">Review</a>
+      <a href="../applications/">Applications</a>
+      <a href="../cv/">Master CV</a>
+      <a href="../criteria/">Search criteria</a>
+      <a href="../schedules/">Schedules</a>
+      <a href="./" aria-current="page">Activity</a>
+    </nav>
+  </aside>
+  <main class="main" id="main">
+    <div class="page">
+      <header class="head">
+        <h1>Activity</h1>
+        <p class="muted">Skill changes the system made on its own, adopted or not. Only files under a bot's skills folder are ever changed. Adopted changes do not put the research bot in the degraded start state.</p>
+      </header>
+
+      <section data-show="error" class="error" role="alert" aria-labelledby="err-h">
+        <i data-icon="tri"></i>
+        <h2 id="err-h">Could not load the activity log</h2>
+        <p>The orchestrator did not answer, so no entries are shown. Check that it is running on port 4100, then retry.</p>
+        <button class="btn primary" type="button" data-goto-state="success">Retry</button>
+      </section>
+
+      <section data-show="empty" class="empty" aria-labelledby="empty-h">
+        <h2 id="empty-h">No skill changes yet</h2>
+        <p>When a scan reports an adapter broken, the automatic repair is recorded here, whether it was adopted or not.</p>
+      </section>
+
+      <div data-show="loading" class="entries" aria-busy="true">
+        <div class="sk tall"></div><div class="sk tall"></div><div class="sk tall"></div>
+        <span class="sr-only">Loading the activity log</span>
+      </div>
+
+      <ul class="entries" data-show="success repairing">
+        <li class="entry" data-show="repairing" data-testid="activity-entry">
+          <button type="button" aria-expanded="false" disabled>
+            <span class="who"><span class="badge warn"><i data-icon="clock"></i>Repairing</span><strong>TopCV</strong>
+              <time class="muted xs" datetime="2026-10-17T09:30:00Z">17 Oct 2026, 16:30</time></span>
+            <span class="why">Adapter broken: no job cards on the results page (layout changed?)</span>
+          </button>
+          <div class="body" aria-busy="true"><p class="muted">Validation scan running. A second failure does not start a second attempt.</p></div>
+        </li>
+
+        <li class="entry" data-show="success" data-testid="activity-entry">
+          <button type="button" data-expands="e1" data-testid="entry-toggle-1" aria-controls="e1">
+            <span class="who"><span class="badge ok"><i data-icon="check"></i>Adopted</span><strong>TopCV</strong>
+              <time class="muted xs" datetime="2026-10-17T09:00:00Z">17 Oct 2026, 16:00</time></span>
+            <i class="chev" data-icon="chev"></i>
+            <span class="why">Adapter broken: no job cards on the results page (layout changed?)</span>
+          </button>
+          <div class="body" id="e1" hidden>
+            <div class="diff" role="region" aria-label="source-topcv skill, previous and new" tabindex="0" data-testid="skill-diff">
+              <div><h4>Previous</h4><pre>1  Open the results page.
+2  Read cards with <span class="del">- the .job-card selector</span>
+3  Take title, company, URL.</pre></div>
+              <div><h4>New</h4><pre>1  Open the results page.
+2  Read cards with <span class="add">+ the .job-item selector</span>
+3  Take title, company, URL.</pre></div>
+            </div>
+            <p class="note">Only files under <span class="mono">bots/research/skills/source-topcv/</span> changed.</p>
+          </div>
+        </li>
+
+        <li class="entry" data-show="success" data-testid="activity-entry">
+          <button type="button" data-expands="e2" aria-controls="e2">
+            <span class="who"><span class="badge danger"><i data-icon="minus"></i>Not adopted</span><strong>ITviec</strong>
+              <time class="muted xs" datetime="2026-10-16T14:10:00Z">16 Oct 2026, 21:10</time></span>
+            <i class="chev" data-icon="chev"></i>
+            <span class="why">Adapter broken: layout check failed on the results list</span>
+          </button>
+          <div class="body" id="e2" hidden>
+            <p><strong>Not adopted.</strong> The validation scan failed the self-check, so the previous skill stays in force. The skill text is unchanged.</p>
+          </div>
+        </li>
+
+        <li class="entry" data-show="success" data-testid="activity-entry">
+          <button type="button" data-expands="e3" aria-controls="e3">
+            <span class="who"><span class="badge ok"><i data-icon="check"></i>Adopted</span><strong>Wellfound</strong>
+              <time class="muted xs" datetime="2026-10-15T08:00:00Z">15 Oct 2026, 15:00</time></span>
+            <i class="chev" data-icon="chev"></i>
+            <span class="why">Adapter broken: results page markup changed</span>
+          </button>
+          <div class="body" id="e3" hidden>
+            <div class="diff" role="region" aria-label="source-wellfound skill, previous and new" tabindex="0">
+              <div><h4>Previous</h4><pre><span class="del">- Read the listing table rows.</span></pre></div>
+              <div><h4>New</h4><pre><span class="add">+ Read the listing cards.</span></pre></div>
+            </div>
+            <div class="note"><p class="strong">Not applied</p>
+              <p><span class="mono">bots/research/bot.json</span>: new allowed site proposed. Changes outside skills are never applied automatically.</p></div>
+            <p class="note">Only files under <span class="mono">bots/research/skills/source-wellfound/</span> changed.</p>
+          </div>
+        </li>
+      </ul>
+      <p class="illus" data-show="success repairing">Illustrative entries. Times show in your local zone and format.</p>
+    </div>
+  </main>
+</div>
+<script src="../assets/proto.js"></script>
+</body>
+</html>

@@ -34,6 +34,8 @@ import { defaultFakeResult } from "./testing/fake-runner.js";
 import { FakeBrowserProbe, staticWorkflowSource } from "./testing/fakes.js";
 import { createProductionEngine } from "./wiring.js";
 import { createScanOutputChecker } from "../adapters/index.js";
+import { BoardApiScanner } from "../adapters/board-api/index.js";
+import { HostGate } from "../adapters/http/index.js";
 
 const CLAUDE = "/fake/bin/claude";
 const CODEX = "/fake/bin/codex";
@@ -145,6 +147,9 @@ beforeAll(async () => {
     workflows: staticWorkflowSource(),
     figma: new FigmaBridge({ connect: async () => mcp }),
     browser: new FakeBrowserProbe(),
+    // This run exercises the CLI (browser) path: no board-API readers, so ITviec is scanned by the
+    // research bot as before, and nothing reaches the network.
+    boards: new BoardApiScanner({ fetch: () => Promise.reject(new Error("no network in this test")), gate: new HostGate({ sleep: async () => undefined }), secrets: null, mappers: {} }),
     // §12's dry-run gate is on in production (asserted below); this run approves live directly.
     config: { bridgePollMs: 60_000, schedulerPollMs: 60_000, requireDryRunFirst: false },
   });

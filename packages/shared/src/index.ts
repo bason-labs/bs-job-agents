@@ -16,6 +16,9 @@ export * from "./common/host.js";
 export * from "./common/sources.js";
 export * from "./common/timezone.js";
 
+// API research: access records per board (design 2026-10-19 §5.1)
+export * from "./source-access/index.js";
+
 // strict JSON Schema (§5.5, spike S4)
 export * from "./json-schema/strict.js";
 export * from "./json-schema/check.js";
@@ -71,4 +74,5 @@ export * from "./api/uploads.js";
 export * from "./api/runs.js";
 export * from "./api/bots.js";
 export * from "./api/fact-drafts.js";
+export * from "./api/source-access.js";
 export * from "./api/contract.js";

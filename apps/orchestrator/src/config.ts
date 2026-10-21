@@ -1,5 +1,6 @@
 // Orchestrator settings: port, folders and the web app's origins (spec §4, §4.3; PM S12, S18, S19).
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,6 +49,14 @@ export interface OrchestratorConfig {
   workflowsDir: string;
   /** Origins the API accepts requests from (the web app). `ORCH_WEB_ORIGINS`, comma-separated. */
   webOrigins: readonly string[];
+  /** API research (AD-4): board credentials, outside the repository. `ORCH_SECRETS_FILE`. */
+  secretsFile: string;
+}
+
+/** ~/.config/bs-job-agents/secrets.json ($XDG_CONFIG_HOME when set): outside the repository. */
+export function defaultSecretsFile(env: NodeJS.ProcessEnv = process.env): string {
+  const config = env.XDG_CONFIG_HOME?.trim() || join(env.HOME?.trim() || homedir(), ".config");
+  return join(config, "bs-job-agents", "secrets.json");
 }
 
 function folder(env: NodeJS.ProcessEnv, key: string, repoRoot: string, fallback: string): string {
@@ -84,6 +93,8 @@ export function resolveConfig(env: NodeJS.ProcessEnv = process.env, repoRoot: st
     botsDir: folder(env, "ORCH_BOTS_DIR", repoRoot, "bots"),
     workflowsDir: folder(env, "ORCH_WORKFLOWS_DIR", repoRoot, "workflows"),
     webOrigins: origins ? origins.split(",").map((o) => parseOrigin(o.trim())) : DEFAULT_WEB_ORIGINS,
+    // A relative path resolves against the repo root, where FileSecretStore then refuses it.
+    secretsFile: env.ORCH_SECRETS_FILE?.trim() ? folder(env, "ORCH_SECRETS_FILE", repoRoot, "") : defaultSecretsFile(env),
   };
 }
 

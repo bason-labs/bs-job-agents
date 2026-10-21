@@ -1,0 +1,25 @@
+{
+  "source": "itviec",
+  "researchedAt": "2026-10-19",
+  "publicApi": "none found",
+  "internalApiGetEndpoints": [
+    { "method": "GET", "host": "itviec.com", "pathPattern": "/it-jobs/:roleSlug/:citySlug", "query": ["page"], "purpose": "search", "requiresAuth": false, "fixture": "search.json" },
+    { "method": "GET", "host": "itviec.com", "pathPattern": "/it-jobs/:roleSlug", "query": ["page"], "purpose": "search", "requiresAuth": false },
+    { "method": "GET", "host": "itviec.com", "pathPattern": "/it-jobs/:jobSlug", "query": [], "purpose": "detail", "requiresAuth": false, "fixture": "detail.json" },
+    { "method": "GET", "host": "itviec.com", "pathPattern": "/it-jobs/:jobSlug/content", "query": ["job_index", "locale"], "purpose": "other", "requiresAuth": false }
+  ],
+  "applyEndpoints": [
+    { "method": "GET", "host": "itviec.com", "pathPattern": "/job/:jobSlug/job_applications/new", "query": [], "purpose": "other", "requiresAuth": true, "documentedOnly": true }
+  ],
+  "auth": { "kind": "none", "names": [], "howToCopy": "No token needed: search and job pages are public and were read as a guest (no cookies). Salary appears in the job page JSON-LD even as a guest." },
+  "termsOfUse": {
+    "url": "https://itviec.com/blog/terms-conditions-vn/",
+    "clauses": [
+      "không được lấy, hiển thị, sửa đổi, sao chép, in, bán, tải về, cho thuê, thiết kế ngược lại hoặc truyền đi"
+    ]
+  },
+  "accountRisk": "Low. Reads are guest page GETs, so Ba's ITviec account is not involved. The terms (effective 1 July 2023, updated 08/12/2025) have no clause on bots or automated access; section 2.2 forbids taking/copying/downloading site content without written consent. robots.txt (2026-10-19) says 'Allow all bots to crawl the entire site except one page' (/subscriptions/new). No reports found of accounts restricted for automated reading.",
+  "riskLevel": "low",
+  "chosenPath": "account_api",
+  "notes": "No JSON API: server-rendered Rails/Turbo HTML; read JSON-LD. Search page JSON-LD @type ItemList: itemListElement[].url = canonical job URLs (20 per page, fixture trimmed to 5); pagination ?page=N. Search HTML cards (div.job-card) carry data-search--job-selection-job-slug-value, title (h3 a), 'Posted N hours ago', and data-search--job-selection-job-url-value = '/it-jobs/<slug>/content?job_index=0&locale=en' (an HTML fragment with the full JD; the 'other' endpoint). Detail page /it-jobs/<slug>-<number>: JSON-LD @type JobPosting with title, description (full JD HTML incl. 'Top 3 reasons', 'The Job', skills, 'Why you'll love working here'), datePosted, validThrough, skills, hiringOrganization, jobLocation (PostalAddress list), baseSalary (min/max, currency, value text e.g. '1,500 - 3,000 USD'), employmentType, potentialAction ApplyAction (apply URL: recorded under applyEndpoints, documentedOnly, never call). Strip ?lab_feature=... from URLs. Detail page ~330 KB. Observed with guest curl (Chrome extension was not connected); no XHR JSON endpoints observed. /api/v1/tags/populars exists (search autocomplete), not useful for jobs."
+}

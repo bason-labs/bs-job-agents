@@ -53,7 +53,7 @@ function roleTerms(role: string): RoleTerms {
   return { core, stack };
 }
 
-function roleMatches(p: FeedPosting, roles: readonly string[]): boolean {
+function roleMatches(p: FilterablePosting, roles: readonly string[]): boolean {
   if (roles.length === 0) return true;
   const title = normaliseTerms(p.title);
   const titleAndTags = `${title}${normaliseTerms(p.tags.join(" , "))}`;
@@ -96,22 +96,25 @@ export function monthlyUsdTop(salaryText: string | null): number | null {
 
 export type DropReason = "role" | "include" | "exclude" | "company" | "seniority" | "region" | "salary" | "snippet";
 
-export interface FilterResult {
-  kept: FeedPosting[];
-  dropped: { posting: FeedPosting; reason: DropReason }[];
+/** What the filters read of a posting (feeds, and the board-API mappers in ../board-api). */
+export type FilterablePosting = Pick<FeedPosting, "title" | "company" | "regionText" | "salaryText" | "tags" | "jdText">;
+
+export interface FilterResult<P extends FilterablePosting = FeedPosting> {
+  kept: P[];
+  dropped: { posting: P; reason: DropReason }[];
 }
 
 /** A JD shorter than this is a teaser, not the full text (same bar as Research's self-check). */
 export const FEED_MIN_JD_CHARS = 150;
 
-export function filterPostings(postings: readonly FeedPosting[], criteria: SearchProfileFieldsBase): FilterResult {
+export function filterPostings<P extends FilterablePosting>(postings: readonly P[], criteria: SearchProfileFieldsBase): FilterResult<P> {
   const overlap = parseTimezoneOverlap(criteria.timezoneOverlap ?? null);
   const include = criteria.includeKeywords.map((k) => normaliseTerms(k).trim()).filter(Boolean);
   const exclude = criteria.excludeKeywords.map((k) => normaliseTerms(k).trim()).filter(Boolean);
   const companies = criteria.excludeCompanies.map((c) => foldText(c)).filter(Boolean);
   const wantedLevels = new Set(criteria.seniority);
   const floor = criteria.minSalary !== null && criteria.currency === "USD" ? criteria.minSalary : null;
-  const result: FilterResult = { kept: [], dropped: [] };
+  const result: FilterResult<P> = { kept: [], dropped: [] };
   for (const p of postings) {
     const titleAndTags = `${normaliseTerms(p.title)}${normaliseTerms(p.tags.join(" , "))}`;
     const reason = ((): DropReason | null => {

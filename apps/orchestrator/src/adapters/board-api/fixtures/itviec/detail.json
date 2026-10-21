@@ -1,0 +1,62 @@
+{
+  "_capture": {
+    "method": "GET",
+    "url": "https://itviec.com/it-jobs/fintech-frontend-dev-javascript-react-new-wealth-2706",
+    "responseContentType": "text/html; charset=utf-8",
+    "extract": "script[type='application/ld+json'] with @type 'JobPosting'; full JD HTML in description",
+    "capturedAt": "2026-10-19",
+    "auth": "none (guest request, no cookies)",
+    "note": ""
+  },
+  "data": {
+    "@context": "http://schema.org",
+    "@type": "JobPosting",
+    "industry": "Information Technology",
+    "title": "FinTech Frontend Dev JavaScript, React",
+    "datePosted": "2026-10-19",
+    "validThrough": "2026-11-23",
+    "skills": "JavaScript, ReactJS, CSS",
+    "description": "Top 3 Reasons To Join Us\r\nIndependant FinTech startup, latest technologies\r\nPossible business trips to Singapore or Dubai\r\nGet the opportunity to become a shareholder (>6m) \r\nThe Job\r\n<p>We are looking for one great JavaScript developers (Experienced or Sennior) who is proficient with React.js. You will be one of the key contributors in our development organization and develop high quality financial software solutions following well-known React.js workflows and best practices.&nbsp;<br>You will ensure components and the overall application are robust and easy to maintain. And you will coordinate with the rest of the team across ASEAN. Therefore, a commitment to collaborative problem solving, sophisticated design and quality product is important.<br><br>By working with us, you will:<br>- gain knowledge and experience in the FinTech industry<br>- use and learn new front-end technologies<br>- work with Backend developers (using NodeJs and Java) and potentially learn to become a FullStack Developer<br>- travel occasionally across ASEAN for business trips and FinTech conferences<br>- work with cultural diverse team</p>\r\nYour Skills and Experience\r\n<p>Qualifications:<br>- At least 2-3 years working experience in front-end development<br>- Highly skilled and confident in SPA web frameworks specifically React (plus Vue &amp; Angular)<br>- Comfortable with React Hooks, Redux and SSR (Server-side rendering)<br>- Basic understanding of CSS pre-processing platforms like SASS and LESS<br>- Knowledge of Micro-frontend<br>- Comfortable using common tools in web development (Git, ESlint, Babel, Webpack)<br>-&nbsp;Preferably with some knowledge about NodeJS or backend<br>- Write clean and maintainable code<br>- Familiarity with RESTful APIs<br>- Familiarity using Scrum/Agile development methodologies<br>- Good communication skills, independent, good team worker, and able to work without micro-management</p>\r\nWhy You'll Love Working Here\r\n<p><i>Best of both worlds:</i></p><p>- Tech start-up that focuses on innovation in financial services;</p><p>- Successful operations with live B2B clients in both APAC &amp; EMEA regions, which provide stability and security.</p><p>&nbsp;</p><p>Regional: Work with talented and passionate colleagues from all over South-East Asia!</p><p>Incredible culture, amazing team!</p>",
+    "potentialAction": {
+      "@type": "ApplyAction",
+      "target": "https://itviec.com/job/fintech-frontend-dev-javascript-react-new-wealth-2706/job_applications/new"
+    },
+    "hiringOrganization": {
+      "@type": "Organization",
+      "logo": "https://itviec.com/rails/active_storage/representations/proxy/eyJfcmFpbHMiOnsiZGF0YSI6MTEwMjMyMSwicHVyIjoiYmxvYl9pZCJ9fQ==--7a8369cee46ade9ad4433a618cf0ddbd68a0b842/eyJfcmFpbHMiOnsiZGF0YSI6eyJmb3JtYXQiOiJwbmciLCJyZXNpemVfdG9fZml0IjpbMTcwLG51bGxdfSwicHVyIjoidmFyaWF0aW9uIn19--f02e0eabf9f34431b8e6312d2e4f969eef4fa3a8/New_wealth_plain_squared.png",
+      "name": "New Wealth",
+      "description": "New Wealth, first-class WealthTech"
+    },
+    "employmentType": "FULL_TIME",
+    "jobLocation": [
+      {
+        "@type": "Place",
+        "address": {
+          "@type": "PostalAddress",
+          "streetAddress": "HaiAu Building, Level 12, 39B Truong Son Street, Ward Tan Son, Ho Chi Minh City",
+          "addressLocality": "Quận Phú Nhuận",
+          "addressRegion": "Hồ Chí Minh",
+          "postalCode": "700000",
+          "addressCountry": "VN"
+        }
+      }
+    ],
+    "baseSalary": {
+      "@type": "MonetaryAmount",
+      "currency": "USD",
+      "value": {
+        "@type": "QuantitativeValue",
+        "minValue": 1500,
+        "maxValue": 3000,
+        "unitText": "MONTH",
+        "value": "1,500 - 3,000 USD"
+      }
+    },
+    "directApply": "TRUE",
+    "jobBenefits": "<p><i>Best of both worlds:</i></p><p>- Tech start-up that focuses on innovation in financial services;</p><p>- Successful operations with live B2B clients in both APAC &amp; EMEA regions, which provide stability and security.</p><p>&nbsp;</p><p>Regional: Work with talented and passionate colleagues from all over South-East Asia!</p><p>Incredible culture, amazing team!</p>",
+    "experienceRequirements": {
+      "@type": "OccupationalExperienceRequirements",
+      "monthsOfExperience": 10
+    }
+  }
+}

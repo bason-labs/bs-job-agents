@@ -110,7 +110,8 @@ export class SourceScanChecker implements ScanOutputChecker {
 
     // 3. Each job: required fields, the source's site, a posting URL, full JD, believable values.
     const jobs = output.jobs;
-    if (jobs.length > 0 && output.pageViews === 0) return implausible(`${jobs.length} jobs with full JDs but no page views`);
+    // An API scan opens no page (AD-6): its postings come from the board's own endpoints.
+    if (jobs.length > 0 && output.pageViews === 0 && req.via !== "api") return implausible(`${jobs.length} jobs with full JDs but no page views`);
     if (criteria) {
       const limit = scanJobLimit(criteria.maxJobs);
       if (jobs.length > limit) return implausible(`${jobs.length} jobs, over this scan's limit of ${limit} (3 × maxJobs, at most 30)`);
