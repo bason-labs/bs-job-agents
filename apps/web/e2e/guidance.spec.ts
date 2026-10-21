@@ -41,7 +41,8 @@ test("the sidebar has CV guidance after Master CV, and Activity after Schedules"
 
 test("REQ-36: the activity log shows each rule added, with previous and new text and sources", async ({ page }) => {
   await open(page, "/activity");
-  const entries = page.getByTestId("activity-entry");
+  // The rule entries only: the log also lists skill repairs and API health (skill self-repair).
+  const entries = page.locator('[data-testid="activity-entry"][data-kind^="rule_"]');
   await expect(entries).toHaveCount(12);
   await entries.first().getByRole("button").click();
   await expect(entries.first().getByTestId("activity-previous")).toHaveText("(empty: this rule is new)");

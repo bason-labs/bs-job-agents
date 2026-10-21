@@ -177,3 +177,41 @@ describe("tab attribution is tolerant of the reply format (QA M-b follow-up)", (
     return c;
   }
 });
+
+describe("live 2026-10-20: several Chrome browsers connected", () => {
+  const use = (id: string, tool: string, input: unknown = {}) => JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id, name: `mcp__claude-in-chrome__${tool}`, input }] } });
+  const result = (id: string, text: string, isError = false) => JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, is_error: isError, content: [{ type: "text", text }] }] } });
+
+  it("the several-browsers reply (even as a tool error) is noted, with the browsers it names", () => {
+    const c = new PageUrlCollector();
+    c.push(use("t1", "tabs_create_mcp"));
+    c.push(
+      result(
+        "t1",
+        "Multiple Chrome browsers are connected to this account and none has been selected for this session. Before any browser action, you MUST call the AskUserQuestion tool.\n- Ba's MacBook (deviceId: 3e83d913-aaaa-4bbb-8ccc-1234567890ab, os: macOS, isLocal: true)\n- Office PC (deviceId: 9f00aa11-bbbb-4ccc-8ddd-0987654321ff, os: Windows, isLocal: false)",
+        true,
+      ),
+    );
+    expect(c.severalBrowsers).toBe(true);
+    expect(c.browsers).toEqual([
+      { deviceId: "3e83d913-aaaa-4bbb-8ccc-1234567890ab", name: "Ba's MacBook", os: "macOS", isLocal: true },
+      { deviceId: "9f00aa11-bbbb-4ccc-8ddd-0987654321ff", name: "Office PC", os: "Windows", isLocal: false },
+    ]);
+  });
+
+  it("list_connected_browsers JSON names the browsers without the several-browsers flag", () => {
+    const c = new PageUrlCollector();
+    c.push(use("t2", "list_connected_browsers"));
+    c.push(result("t2", JSON.stringify([{ deviceId: "3e83d913-aaaa-4bbb-8ccc-1234567890ab", name: "MacBook", os: "macOS", isLocal: true }])));
+    expect(c.severalBrowsers).toBe(false);
+    expect(c.browsers.map((b) => [b.deviceId, b.name, b.os, b.isLocal])).toEqual([["3e83d913-aaaa-4bbb-8ccc-1234567890ab", "MacBook", "macOS", true]]);
+  });
+
+  it("an ordinary reply is neither", () => {
+    const c = new PageUrlCollector();
+    c.push(use("t3", "tabs_context_mcp"));
+    c.push(result("t3", "Tabs: [{\"tabId\": 7, \"url\": \"https://example.com\"}]"));
+    expect(c.severalBrowsers).toBe(false);
+    expect(c.browsers).toEqual([]);
+  });
+});

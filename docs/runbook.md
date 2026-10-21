@@ -69,26 +69,26 @@ Some job boards can be read by the orchestrator itself, through an API, instead 
 | Board | Path | Token |
 |---|---|---|
 | TopCV, ITviec | Read directly as a guest: the orchestrator fetches the public search and job pages and reads the job data they embed. Label **Direct (no login)**. About 1 search page per role and city, then 1 page per posting (at most the scan's job limit), 1.5 s apart. | None. Your account is not involved. |
-| LinkedIn | Browser. Its record lists an account API, but no API reader is built for it yet (the endpoints are unverified), so it stays in your Chrome even if you approve it. | Not used yet. When it is: `li_at`, `JSESSIONID` and `csrf-token` (below). |
-| VietnamWorks, Wellfound, Upwork | Browser. No usable read-only endpoint was found. | None. |
+| VietnamWorks | Read directly as a guest. Label **Direct (no login)**. The orchestrator sends the site's own read-only job search (a JSON `POST` to `ms.vietnamworks.com`, the only POST it ever sends: every body field is checked against the record, and a redirect is never followed), then reads each job page's embedded data for the full JD. About 1 search page per role (up to 3), then 1 page per posting, 1.5 s apart. | None. Your account is not involved. |
+| LinkedIn | **Direct read (needs approval)**: read in your Chrome until you approve its direct reads, because its terms forbid bots and its `robots.txt` disallows these pages. Once approved: **Direct (no login)**, the logged-out "jobs-guest" pages only. Fixed limits: 1 search page per scan (the first role and location), at most 10 job pages, at least 3 s between requests. A rate limit (HTTP 429 or 999), a challenge page, any redirect (for example to the sign-in wall; none is ever followed) or any other failure such as a 5xx or a timeout stops the read at once, with no retry and no further request: that run reads LinkedIn in your Chrome and Lead posts "*LinkedIn* blocked the direct read — scanned through the browser this time." | None. No cookie is ever sent, even if your secrets file still has `li_at`; you can delete LinkedIn's entry. |
+| Wellfound, Upwork | Browser. No usable read-only endpoint was found. | None. |
 | Remote OK, We Work Remotely, Remotive, Jobspresso | Public feeds, read by the orchestrator. | None. |
 
-**The secrets file.** Tokens live in one JSON file outside the repo, never in the repo, a prompt or a log:
+**The secrets file.** No board needs a token today (every API reader reads as a guest), so you need no secrets file. If a board's record ever names a token again, it lives in one JSON file outside the repo, never in the repo, a prompt or a log:
 
 - Location: `ORCH_SECRETS_FILE`, default `~/.config/bs-job-agents/secrets.json`. The orchestrator refuses to start with a path inside the repository, and warns if anyone but you can read the file.
 - Format: one object per board, one value per name in that board's record (`auth.names`):
 
   ```json
   {
-    "linkedin": {
-      "li_at": "<cookie value>",
-      "JSESSIONID": "<cookie value>",
-      "csrf-token": "<header value>"
+    "<board>": {
+      "<cookie name>": "<cookie value>",
+      "<header name>": "<header value>"
     }
   }
   ```
 
-  Key each value by its **bare name**. A record writes a header as `header:<name>` (LinkedIn: `header:csrf-token`) and a cookie as `<name>` (or `cookie:<name>`); the file uses `csrf-token`, not `header:csrf-token`. Cookies are sent in one `Cookie` header, headers by their name.
+  Key each value by its **bare name**. A record writes a header as `header:<name>` and a cookie as `<name>` (or `cookie:<name>`); the file uses `<name>`, not `header:<name>`. Cookies are sent in one `Cookie` header, headers by their name.
 - Create it with your own rights only:
 
   ```bash
@@ -100,14 +100,19 @@ Some job boards can be read by the orchestrator itself, through an API, instead 
 
 **Where to copy each value** (from the board's record, `auth.howToCopy`):
 
-- **LinkedIn** (only once it gets an API reader and you approve it): in Chrome, signed in to linkedin.com, open DevTools → Application → Cookies → `https://www.linkedin.com`. Copy the value of `li_at` and of `JSESSIONID`. The `csrf-token` value is the `JSESSIONID` value without its surrounding quotes (check it in DevTools → Network: any `/voyager/api/` request → Request Headers → `csrf-token`).
-- **TopCV, ITviec, VietnamWorks, Wellfound, Upwork**: nothing to copy.
+- **Every board today** (TopCV, ITviec, VietnamWorks, LinkedIn, Wellfound, Upwork): nothing to copy. LinkedIn no longer needs a token: since its research of 2026-10-20 it is read through the logged-out guest pages, and its voyager API (which needed `li_at`, `JSESSIONID` and `csrf-token`) is no longer in its record.
 
-**Approval (Search criteria screen).** Each source toggle shows how it is read: **Public API**, **Direct (no login)**, **Account API**, **Account API (needs approval)**, **Account API (token missing)** or **Browser**. A board marked `high` risk in its record (its terms forbid bots, or accounts are restricted for automation) says **Account API (needs approval)** and is read in the browser until you click **Approve**. Approve first shows the record's terms quote and risk statement; you can **Revoke** later. An approval is tied to the record's `researchedAt`: when the board is researched again, it lapses and the board goes back to the browser until you approve it again. A low-risk board needs no approval. A board the orchestrator has no API reader for (LinkedIn today) shows **Browser** and has no Approve: approving it would change nothing, so the orchestrator refuses it (409).
+**Approval (Search criteria screen).** Each source toggle shows how it is read: **Public API**, **Direct (no login)**, **Account API**, **Account API (needs approval)**, **Direct read (needs approval)** (a high-risk board read without logging in), **Account API (token missing)** or **Browser**. A board marked `high` risk in its record (its terms forbid bots, or accounts are restricted for automation) says **Account API (needs approval)** and is read in the browser until you click **Approve**. Approve first shows the record's terms quote and risk statement; you can **Revoke** later. An approval is tied to the record's `researchedAt`: when the board is researched again, it lapses and the board goes back to the browser until you approve it again. A low-risk board needs no approval. LinkedIn is the one board that needs it today: it says **Direct read (needs approval)**, the button is **Approve…** ("Approve direct reads for LinkedIn"), and once approved it reads **Direct (no login)**, since no account or token is involved. A board the orchestrator has no API reader for (Wellfound, Upwork) shows **Browser** and has no Approve: approving it would change nothing, so the orchestrator refuses it (409). LinkedIn's research was redone on 2026-10-20, so an approval given before that has lapsed.
 
-**The fallback notice.** If an account-API board has no token in the file, or the board answers 401/403 (the token expired), that run reads the board in the browser instead, and Lead posts: "*<Source>* token missing — scanned through the browser this time. Renew the *<Source>* token in your secrets file." (or "token rejected"). Nothing is lost: the browser scan covers the board for that run. Copy a fresh value into the secrets file; the next scan uses it. A board read without a token (TopCV, ITviec) that answers 401/403, usually a bot check, also falls back to the browser for that run, with "*<Source>* refused the direct read (HTTP 403) — scanned through the browser this time." There is no token to renew; if it keeps happening, the board is blocking automated reads. Other failures (the board is down, rate limits) are retried, then that source fails with "*<Source>* scan failed: …" and the other sources go on, without a browser fallback.
+**The fallback notice.** If an account-API board has no token in the file, or the board answers 401/403 (the token expired), that run reads the board in the browser instead, and Lead posts: "*<Source>* token missing — scanned through the browser this time. Renew the *<Source>* token in your secrets file." (or "token rejected"). Nothing is lost: the browser scan covers the board for that run. Copy a fresh value into the secrets file; the next scan uses it. A board read without a token (TopCV, ITviec) that answers 401/403, usually a bot check, also falls back to the browser for that run, with "*<Source>* refused the direct read (HTTP 403) — scanned through the browser this time." There is no token to renew; if it keeps happening, the board is blocking automated reads. A board read without a token that rate-limits (HTTP 429, or 503 with a Retry-After header) is not retried either: that run reads it in the browser, with "*<Source>* blocked the direct read — scanned through the browser this time." Other failures (the board is down, a plain 5xx, a timeout) are retried, then that source fails with "*<Source>* scan failed: …" and the other sources go on, without a browser fallback.
 
-**What is never sent.** Only the GET endpoints listed in a board's record, with only the query parameters listed for each, are allowed; anything else, and every apply endpoint, is refused before a request leaves the Mac. Requests to one host are at least 1.5 s apart. Each request shows on the task as method, host and path only (no query, no header, no token).
+**Chrome not connected.** A browser scan that opened no page (or whose bot reports that Chrome or its extension could not be reached) counts as a failed source, never as 0 results: "*<Source>* was not scanned: Chrome isn't connected. Open Chrome with the Claude extension and scan again." It is not retried.
+
+**Several Chrome browsers connected.** When more than one Chrome browser with the Claude extension is connected (for example a second computer), a bot cannot act until one is selected, and bots never choose one themselves. Pick the browser bots use on the **Bots** screen under **Chrome browser for bots** (it lists the browsers the bots have seen, by name and OS). Bots then select that browser only; the site guard refuses any other. Without a choice, the task pauses and Lead posts "Two Chrome browsers are connected. Pick the one bots should use on the Bots screen (Chrome browser for bots), or close the other, then press Resume." Nothing was opened or sent while it waited. An Apply that stops for any reason before it opened a page of the job site is marked failed ("Not sent"), with Apply again, never Needs check.
+
+**Apply interrupted by a restart.** If the orchestrator restarts while Apply runs, its recorded tool calls decide: once any page of the job site was opened (a navigate, a form, a click…), the application goes to **Needs check** ("it may already have been submitted"). If Apply had only listed or created Chrome tabs (for example, Chrome never answered), nothing was sent: the application is marked failed and Lead posts "… was not submitted: a restart stopped Apply before it opened any page of the job site. Open Applications and use Apply again."
+
+**What is never sent.** Only the GET endpoints listed in a board's record, with only the query parameters listed for each, are allowed, plus a board's read-only search POST when its record lists one (VietnamWorks: only the listed body keys, filters, sort fields and returned fields, a guest `userId` of 0, no salary ranges, at most 50 results a page, only the listed headers); anything else, and every apply endpoint, is refused before a request leaves the Mac. Requests to one host are at least 1.5 s apart. Each request shows on the task as method, host and path only (no query, no header, no token).
 
 ### Start
 
@@ -181,9 +186,9 @@ Then `launchctl load ~/Library/LaunchAgents/com.bason.job-agents.plist`, and run
 - **Schedules.** Create them on **Schedules**, or ask Lead ("scan every weekday at 9") and click **Create schedule** on its card. Lead never creates one by itself.
 - **Criteria from chat.** When Lead suggests a change ("also look in Đà Nẵng"), **Save to my criteria** saves a new version; **Just this run** doesn't.
 - **Sources** (Search criteria; TopCV, ITviec and LinkedIn are on by default, the rest off):
-  - *Vietnam boards*: TopCV and ITviec — the orchestrator reads their public pages itself (no bot, no Chrome, see [Board tokens](#board-tokens)); VietnamWorks — Research reads it in your Chrome.
+  - *Vietnam boards*: TopCV, ITviec and VietnamWorks — the orchestrator reads them itself as a guest (no bot, no Chrome, see [Board tokens](#board-tokens)).
   - *Remote boards*: Remote OK, We Work Remotely, Remotive, Jobspresso — the orchestrator reads their public feeds itself (no bot, no Claude/Codex quota; responses are cached, Remotive's for 6 h as it asks). Each posting links back to the board.
-  - *Global*: LinkedIn, plus Wellfound and Upwork, which Research reads with **your own login** (at most 30 pages per scan, 3–8 s apart). Signed out → a login card, as in UC-17.
+  - *Global*: LinkedIn — Research reads it in your Chrome until you approve its direct read on Search criteria, then the orchestrator reads its logged-out guest pages (1 search page, at most 10 job pages, 3 s apart; see [Board tokens](#board-tokens)); Wellfound and Upwork, which Research reads with **your own login** (at most 30 pages per scan, 3–8 s apart). Signed out → a login card, as in UC-17.
   - **Upwork is find only**: its jobs come as review cards with **Open on Upwork**; Approve is refused and nothing is ever bid, proposed or spent (no Connects). Apply there yourself, then Skip the card.
   - Remote boards (and Wellfound/Upwork) ignore the city. With **Time-zone overlap** set ("Asia", "UTC+7 ±3h"), they keep jobs whose stated region overlaps it; worldwide, Vietnam and unstated regions stay. Salaries: a USD minimum is compared per month (yearly ÷ 12, hourly × 160, top of the range); a VND minimum is not compared with USD postings.
 

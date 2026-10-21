@@ -259,7 +259,7 @@ export const AppEventSchema = z.discriminatedUnion("type", [
    * response the mapper rejects, or items with no valid posting) and the run fell back to the browser;
    * or it works again. Method, host and path only, never a query or a header.
    */
-  ev("source_api.changed", { source: z.string().min(1), method: z.literal("GET").nullable(), host: z.string().nullable(), path: z.string().nullable(), reason: z.string() }),
+  ev("source_api.changed", { source: z.string().min(1), method: z.enum(["GET", "POST"]).nullable(), host: z.string().nullable(), path: z.string().nullable(), reason: z.string() }),
   ev("source_api.recovered", { source: z.string().min(1) }),
   ev("master_cv.updated", {
     version: z.number().int().positive(),

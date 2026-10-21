@@ -46,7 +46,9 @@ import {
   findCvVersionByPdfPath,
   getRun,
   getStep,
+  getPreferredBrowser,
   getTask,
+  recordSeenBrowsers,
   holdEngineTasks,
   latestApprovalForApplication,
   listEvents,
@@ -87,10 +89,14 @@ import { onFactDraftDone } from "./fact-drafts.js";
 import { writeTaskMasterCv } from "./master-cv-copy.js";
 import { injectionDetail, reportedInjection } from "./injection.js";
 import { DEMOTING_SAFETY_REASONS, demoteBot, postProtectedChangeAlert } from "./demotion.js";
-import { noticePause, noticeTaskFailed } from "./notices.js";
+import { CHROME_NOT_CONNECTED_ERROR, noticePause, noticeTaskFailed } from "./notices.js";
+import { pronounsAboutBa } from "./fit-pronouns.js";
 import { emitSafetyDenied, emitTaskFinished, emitTaskPaused, failTaskNow, stillRunning } from "./task-events.js";
 import { hostOfUrl, pauseSite, siteBlocksOf, siteKey, type SiteBlock } from "./sites.js";
 import { adapterBrokenError, scanRejectedError, type ScanCheckResult } from "./scan-check.js";
+
+/** A bot's note that Chrome or its extension could not be reached (e.g. tabs_context_mcp failed). */
+const CHROME_UNREACHABLE = /(chrome|extension|tabs_context_mcp|browser)[^.]*\b(not connected|disconnected|unreachable|unavailable|could not (?:be )?reach|couldn'?t reach|failed|not running|closed)\b|tabs_context_mcp/i;
 import { checkTaskTrust } from "./trust-guard.js";
 import { ApiTaskRunner } from "./api-tasks.js";
 import { canonicalJobUrl } from "../adapters/canonical-url.js";
@@ -391,10 +397,13 @@ export class TaskQueue {
     const blocks = await this.readGuardLog(prepared);
     outcome = this.withGuardLog(outcome, blocks);
     outcome = this.checkSiteGuard(task, outcome, siteBlocksOf(blocks, result));
+    outcome = this.checkBrowserChoice(task, outcome, result);
     outcome = this.checkInjectionReport(task, outcome);
     outcome = this.checkValidationEvidence(task, outcome, result);
+    outcome = this.checkBrowserReached(task, outcome);
     outcome = await this.checkScanOutput(task, prepared, outcome, result);
     outcome = this.checkReviewOutput(task, outcome);
+    outcome = this.checkFitPronouns(task, outcome);
     if (prepared.apply) outcome = this.checkApplyPages(task, outcome, result);
     if (outcome.kind === "ok" && prepared.apply) {
       const appId = Number((task.input as { applicationId?: unknown } | null)?.applicationId);
@@ -506,8 +515,10 @@ export class TaskQueue {
     }
     // §4.4: on Claude the allowlist is enforced by the site guard hook (Apply: the token's domains;
     // a domain Ba adds mid-apply means a respawn with new settings, UC-11 e).
+    // Live 2026-10-20: the browser Ba chose for bots, the only one select_browser may name.
+    const chromeBrowserId = task.usesBrowser && bot.def.browser ? (getPreferredBrowser(core.db)?.deviceId ?? null) : null;
     if (claude && bot.def.browser && allowedSites && allowedSites.length > 0) {
-      hooks.push(core.deps.guards.siteGuard({ allowedSites, logFile: guardLog! }));
+      hooks.push(core.deps.guards.siteGuard({ allowedSites, logFile: guardLog!, browserId: chromeBrowserId }));
     }
 
     // §6.2 CV flow, all under the Figma lock: Drafts page → "before" fingerprint → the templates
@@ -578,6 +589,7 @@ export class TaskQueue {
         ...(attachments ? { attachments } : {}),
         ...(allowedSites ? { allowedSites } : {}),
         usesBrowser: task.usesBrowser,
+        ...(chromeBrowserId ? { chromeBrowserId } : {}),
         ...(screenshotDir ? { screenshotDir } : {}),
         ...(skillOverride ? { skillOverride } : {}),
         ...(hooks.length > 0 ? { hookSettings: mergeHookSettings(...hooks) } : {}),
@@ -724,6 +736,22 @@ export class TaskQueue {
    * needs_check (writeSubmissionRecord); Research's jobs are flagged when they are stored.
    */
   /**
+   * Live 2026-10-20: a browser research.scan that never reached Chrome is a source that was not
+   * scanned, never "0 results": no job and no page viewed, or the bot's own notes say Chrome or its
+   * extension could not be reached. Decided here from the output, not by the model; not retried
+   * (Chrome stays unreachable until Ba opens it), and Ba is told to open Chrome and scan again.
+   */
+  private checkBrowserReached(task: Task, outcome: Outcome): Outcome {
+    // A skill-repair validation scan has its own verdict on 0 jobs (SEC-11.AC-2).
+    if (outcome.kind !== "ok" || taskKey(task.botName, task.kind) !== "research.scan" || !task.usesBrowser || validationRepairId(task) !== null) return outcome;
+    const output = outcome.output as ResearchScanOutput;
+    if (output.jobs.length > 0 || output.blocked) return outcome;
+    const said = [output.injectionNote, ...output.selfCheck.flatMap((c) => [c.item, c.note])].filter((t): t is string => typeof t === "string");
+    if (output.pageViews > 0 && !said.some((t) => CHROME_UNREACHABLE.test(t))) return outcome;
+    return { kind: "failed", error: CHROME_NOT_CONNECTED_ERROR, output: outcome.output, retryable: false, ...(outcome.safety ? { safety: outcome.safety } : {}) };
+  }
+
+  /**
    * PM3 S8: a research.scan output that passed its schema and self-check goes to the
    * ScanOutputChecker (W4a's adapters). A broken adapter fails the branch for good (UC-03 b); an
    * implausible output fails the attempt (retried). A checker error is logged and accepted.
@@ -805,6 +833,39 @@ export class TaskQueue {
     const missing = asked.filter((id) => !given.has(id));
     if (missing.length === 0) return outcome;
     return { kind: "failed", error: `invalid output: the review has no item for ${missing.join(", ")}`, output: outcome.output, retryable: true };
+  }
+
+  /**
+   * Live 2026-10-20: a Chrome tool said several browsers are connected and none is selected, and
+   * the bot opened no page: it could not act. The browsers it named are kept for Ba's choice (Bots
+   * screen); the task pauses (never fails, never needs_check: no page was opened) until Ba picks the
+   * browser bots use, or closes the other, and presses Resume. Decided in code from the replies.
+   */
+  private checkBrowserChoice(task: Task, outcome: Outcome, result: RunnerResult): Outcome {
+    const seen = result.chromeBrowsers;
+    if (!seen) return outcome;
+    try {
+      recordSeenBrowsers(this.core.db, seen.devices, { now: this.core.now(), taskId: task.id });
+    } catch (err) {
+      this.core.log.warn(`could not record the browsers task ${task.id} saw: ${errorMessage(err)}`);
+    }
+    if (!seen.several || (result.pageVisits?.length ?? 0) > 0) return outcome;
+    if (outcome.kind === "cancelled" || outcome.kind === "needs_figma" || outcome.kind === "paused") return outcome;
+    const names = seen.devices.map((d) => [d.name, d.os].filter(Boolean).join(", ") || d.deviceId);
+    const detail = `${seen.devices.length > 1 ? `${seen.devices.length} Chrome browsers are connected` : "Several Chrome browsers are connected"}${names.length > 0 ? ` (${names.join("; ")})` : ""}`;
+    const raw = "output" in outcome ? outcome.output : null;
+    // Apply's resume keeps its approval token only for a paused output (isApplyPause): mark it so.
+    const output = taskKey(task.botName, task.kind) === "apply.submit" ? { ...(typeof raw === "object" && raw !== null ? raw : {}), status: "paused" } : raw;
+    return { kind: "paused", reason: { code: "browser_choice", site: null, detail }, output, ...("safety" in outcome && outcome.safety ? { safety: outcome.safety } : {}) };
+  }
+
+  /** Live 2026-10-20: fit text refers to Ba by name or they/them (pronouns not recorded); else retried. */
+  private checkFitPronouns(task: Task, outcome: Outcome): Outcome {
+    if (outcome.kind !== "ok" || taskKey(task.botName, task.kind) !== "research.fit") return outcome;
+    const fit = (outcome.output as ResearchFitOutput).fit;
+    const found = pronounsAboutBa([...fit.reasons, ...fit.gaps]);
+    if (found.length === 0) return outcome;
+    return { kind: "failed", error: `invalid output: the fit text calls Ba he or she (use Ba or they): "${found[0]}"`, output: outcome.output, retryable: true };
   }
 
   private checkInjectionReport(task: Task, outcome: Outcome): Outcome {
@@ -1087,7 +1148,7 @@ export class TaskQueue {
           emitTaskPaused(core, tx, paused, outcome.reason);
           // S1: the UC-17 card (login, CAPTCHA, a domain to confirm); questions get their own cards.
           noticePause(core, tx, paused, outcome.reason);
-          if (key === "apply.submit") onApplyPaused(core, tx, paused, outcome.output as ApplyOutput);
+          if (key === "apply.submit") onApplyPaused(core, tx, paused, outcome.output as ApplyOutput, outcome.reason);
           return;
         }
         case "needs_figma":

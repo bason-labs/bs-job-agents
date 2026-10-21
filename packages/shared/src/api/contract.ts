@@ -6,6 +6,7 @@
 // The type makes TypeScript refuse an API_ROUTES entry that has no row here.
 import type { z } from "zod";
 import { MasterCvSchema } from "../domain/master-cv.js";
+import { ChromeBrowserUpdateSchema, ChromeBrowserViewSchema } from "./chrome-browser.js";
 import { RoomSchema } from "../domain/chat.js";
 import {
   ApplicationDetailSchema,
@@ -149,6 +150,7 @@ export const API_CONTRACT = {
   masterCvFactsUndo: { POST: ep(MasterCvSchema, FactUndoRequestSchema) },
   sourceAccess: { GET: ep(SourceAccessResponseSchema) },
   sourceApproval: { POST: ep(SourceAccessViewSchema, SourceApprovalRequestSchema), DELETE: ep(SourceAccessViewSchema) },
+  chromeBrowser: { GET: ep(ChromeBrowserViewSchema), PUT: ep(ChromeBrowserViewSchema, ChromeBrowserUpdateSchema) },
   masterCvDerived: { GET: ep(DerivedFactsViewSchema) },
   masterCvDerivedUndo: { POST: ep(DerivedUndoResultSchema, DerivedUndoRequestSchema) },
   masterCvDerivedKeep: { POST: ep(MasterCvSchema, DerivedKeepRequestSchema) },

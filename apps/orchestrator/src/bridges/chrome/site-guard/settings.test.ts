@@ -44,3 +44,11 @@ describe("buildSiteGuardSettings", () => {
     expect(settings.hooks.PreToolUse[0]?.matcher).toBe("mcp__chrome__navigate");
   });
 });
+
+describe("live 2026-10-20: the chosen Chrome browser", () => {
+  it("is passed to the hook as --browser; an id that is not a plain device id is refused", () => {
+    expect(siteGuardHookCommand({ allowedSites: ["itviec.com"], browserId: "3e83d913-aaaa-4bbb-8ccc-1234567890ab" })).toMatch(/--browser'? '?3e83d913-aaaa-4bbb-8ccc-1234567890ab/);
+    expect(siteGuardHookCommand({ allowedSites: ["itviec.com"] })).not.toContain("--browser");
+    expect(() => siteGuardHookCommand({ allowedSites: ["itviec.com"], browserId: "x; rm -rf /" })).toThrow(InvalidAllowlistError);
+  });
+});

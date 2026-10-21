@@ -6,14 +6,32 @@ import { useApi } from "@/lib/api/react";
 import { useFileViewer } from "@/components/ui/FileViewer";
 import { cvName, type CvOption } from "./model";
 
+/**
+ * The preview's header, as the PDF prints it: the full name, the headline, then one contact line.
+ * The name comes from the master CV (the card's candidateName): the tailored CV has none, and its
+ * contactLine is the contact details (live 2026-10-20: the contact line was shown as the name). A
+ * contact line that starts with the name (older fixtures) is not repeated.
+ */
+export function previewHeader(cv: Pick<TailoredCv, "headline" | "contactLine">, candidateName: string | null | undefined): { name: string | null; headline: string; contact: string } {
+  const name = candidateName?.trim() || null;
+  const parts = cv.contactLine.split(/\s*[·|]\s*/);
+  const startsWithName = name !== null && parts[0]?.toLowerCase() === name.toLowerCase();
+  const contact = startsWithName ? cv.contactLine.slice(cv.contactLine.indexOf(parts[1] ?? "")).trim() : cv.contactLine;
+  return { name, headline: cv.headline, contact };
+}
+
 /** The tailored CV as a page thumbnail, with each bullet's [fact ids] for the truth check (prototype). */
-function Page({ cv }: { cv: TailoredCv }) {
-  const name = cv.contactLine.split("·")[0]?.trim() ?? "";
+function Page({ cv, candidateName }: { cv: TailoredCv; candidateName: string | null | undefined }) {
+  const head = previewHeader(cv, candidateName);
   return (
     <div className="space-y-1 text-[7px] leading-tight text-slate-800">
-      <p className="text-[13px] font-bold">{name.toUpperCase()}</p>
-      <p className="text-[7px] font-bold text-teal-700">{cv.headline.toUpperCase()}</p>
-      <p className="text-slate-500">{cv.contactLine}</p>
+      {head.name ? (
+        <p className="text-[13px] font-bold" data-testid="cv-preview-name">
+          {head.name.toUpperCase()}
+        </p>
+      ) : null}
+      <p className="text-[7px] font-bold text-teal-700">{head.headline.toUpperCase()}</p>
+      <p className="text-slate-500">{head.contact}</p>
       <hr className="my-1.5 border-slate-300" />
       {cv.summary ? (
         <p>
@@ -41,7 +59,7 @@ function Page({ cv }: { cv: TailoredCv }) {
 }
 
 /** CV thumbnail + file name; both open the PDF in the in-app viewer (Download is inside, §11). */
-export function CvPreview({ option, company }: { option: CvOption; company: string }) {
+export function CvPreview({ option, company, candidateName }: { option: CvOption; company: string; candidateName?: string | null }) {
   const api = useApi();
   const { openFile } = useFileViewer();
   const name = cvName(option);
@@ -66,7 +84,7 @@ export function CvPreview({ option, company }: { option: CvOption; company: stri
         data-testid="cv-preview"
         className="block h-[300px] w-full overflow-hidden rounded-xl border border-border bg-white p-3 text-left transition hover:ring-2 hover:ring-accent disabled:hover:ring-0"
       >
-        <Page cv={option.cvVersion.tailored} />
+        <Page cv={option.cvVersion.tailored} candidateName={candidateName} />
       </button>
       <button
         type="button"

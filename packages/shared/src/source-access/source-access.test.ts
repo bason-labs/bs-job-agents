@@ -11,9 +11,11 @@ import {
   accessPathOf,
   accessPathOfSource,
   accessStateOf,
+  internalPostSearchEndpoints,
   sourceAccessRecord,
   sourceAccessRecords,
   unresearchedRecord,
+  type PostSearchEndpoint,
   type SourceAccessRecord,
 } from "./index.js";
 
@@ -51,6 +53,52 @@ describe("SourceAccessRecordSchema", () => {
   it("a GET endpoint list holds GET only", () => {
     const bad = { ...record(), internalApiGetEndpoints: [{ ...GET, method: "POST" }] };
     expect(SourceAccessRecordSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe("PostSearchEndpointSchema (2026-10-20 addendum)", () => {
+  const POST: PostSearchEndpoint = {
+    method: "POST",
+    host: "ms.itviec.com",
+    pathPattern: "/search",
+    purpose: "search",
+    requiresAuth: false,
+    readOnly: true,
+    contentType: "application/json",
+    headers: { "X-Source": "Page-Container" },
+    bodyKeys: ["query", "page"],
+    filterFields: [],
+    orderFields: [],
+    retrieveFields: ["jobId"],
+    maxPageSize: 50,
+  };
+
+  it("a read-only POST search beside a GET detail parses; the access path still comes from the GET list", () => {
+    const r = record({ internalApiPostSearchEndpoints: [POST] });
+    expect(internalPostSearchEndpoints(r)).toHaveLength(1);
+    expect(accessPathOf(r, { approved: false })).toBe("account_api");
+    expect(internalPostSearchEndpoints(record())).toEqual([]);
+  });
+
+  it("a POST search alone (no GET detail endpoint) is refused", () => {
+    const searchOnly = { ...record(), internalApiGetEndpoints: [GET], internalApiPostSearchEndpoints: [POST] };
+    expect(SourceAccessRecordSchema.safeParse(searchOnly).success).toBe(false);
+    expect(SourceAccessRecordSchema.safeParse({ ...record(), internalApiGetEndpoints: "none found", internalApiPostSearchEndpoints: [POST] }).success).toBe(false);
+  });
+
+  it("only a read-only, no-auth, JSON search: any other purpose, auth, content type or an unknown key is refused", () => {
+    const bad = [
+      { ...POST, purpose: "detail" },
+      { ...POST, purpose: "other" },
+      { ...POST, requiresAuth: true },
+      { ...POST, readOnly: false },
+      { ...POST, contentType: "application/x-www-form-urlencoded" },
+      { ...POST, method: "PUT" },
+      { ...POST, maxPageSize: 0 },
+      { ...POST, bodyKeys: [] },
+      { ...POST, documentedOnly: true },
+    ];
+    for (const p of bad) expect(SourceAccessRecordSchema.safeParse({ ...record(), internalApiPostSearchEndpoints: [p] }).success, JSON.stringify(p)).toBe(false);
   });
 });
 
@@ -108,14 +156,14 @@ describe("accessStateOf (what the Search criteria screen shows)", () => {
     expect(accessStateOf(noLogin, { approved: false, tokenPresent: true }).labelKey).toBe("account_api_direct");
   });
 
-  it("a high-risk no-login board still needs approval first", () => {
+  it("a high-risk no-login board still needs approval first, worded as a direct read (no account involved)", () => {
     const s = accessStateOf(record({ riskLevel: "high", auth: { kind: "none", names: [], howToCopy: "" } }), { approved: false, tokenPresent: false });
-    expect(s).toEqual({ path: "browser", needsApproval: true, tokenMissing: false, labelKey: "account_api_needs_approval" });
+    expect(s).toEqual({ path: "browser", needsApproval: true, tokenMissing: false, labelKey: "direct_needs_approval" });
   });
 
   it("the label set, with a browser hint where the label alone would mislead", () => {
-    expect(Object.values(ACCESS_LABELS)).toEqual(["Public API", "Direct (no login)", "Account API", "Account API (needs approval)", "Account API (token missing)", "Browser"]);
-    expect(ACCESS_LABEL_HINTS).toEqual({ account_api_needs_approval: "Browser until approved", account_api_token_missing: "Browser until a token is set" });
+    expect(Object.values(ACCESS_LABELS)).toEqual(["Public API", "Direct (no login)", "Account API", "Account API (needs approval)", "Direct read (needs approval)", "Account API (token missing)", "Browser"]);
+    expect(ACCESS_LABEL_HINTS).toEqual({ account_api_needs_approval: "Browser until approved", direct_needs_approval: "Browser until approved", account_api_token_missing: "Browser until a token is set" });
   });
 
   it("the researched TopCV and ITviec records read as Direct (no login)", () => {
@@ -152,8 +200,34 @@ describe("the six board records", () => {
     for (const r of sourceAccessRecords()) expect(r.researchedAt, r.source).not.toBe("unresearched");
   });
 
-  it("LinkedIn's csrf-token is sent as a header, its cookies as cookies", () => {
-    expect(sourceAccessRecord("linkedin").auth).toMatchObject({ kind: "cookie+header", names: ["li_at", "JSESSIONID", "header:csrf-token"] });
+  it("LinkedIn (2026-10-20): the two jobs-guest GETs only, no voyager endpoint, no login; high risk, so it needs Ba's approval", () => {
+    const r = sourceAccessRecord("linkedin");
+    expect(r.researchedAt).toBe("2026-10-20");
+    expect(r.auth).toEqual({ kind: "none", names: [], howToCopy: expect.any(String) });
+    const gets = Array.isArray(r.internalApiGetEndpoints) ? r.internalApiGetEndpoints : [];
+    expect(gets.map((e) => [e.method, e.host, e.pathPattern, e.purpose, e.requiresAuth])).toEqual([
+      ["GET", "www.linkedin.com", "/jobs-guest/jobs/api/seeMoreJobPostings/search", "search", false],
+      ["GET", "www.linkedin.com", "/jobs-guest/jobs/api/jobPosting/:jobId(digits)", "detail", false],
+    ]);
+    expect(gets[0]!.query).toEqual(["keywords", "location", "f_TPR", "start"]);
+    expect(JSON.stringify(r)).not.toMatch(/voyager\/api/);
+    expect(r.termsOfUse.clauses.some((c) => /scrape/.test(c))).toBe(true);
+    expect(r.accountRisk).toMatch(/robots\.txt/);
+    expect(r.riskLevel).toBe("high");
+    expect(accessStateOf(r, { approved: false, tokenPresent: false })).toEqual({ path: "browser", needsApproval: true, tokenMissing: false, labelKey: "direct_needs_approval" });
+    expect(accessStateOf(r, { approved: true, tokenPresent: false })).toEqual({ path: "account_api", needsApproval: false, tokenMissing: false, labelKey: "account_api_direct" });
+  });
+
+  it("VietnamWorks (2026-10-20): a read-only POST search and a GET job page, no login, low risk: Direct (no login) without approval", () => {
+    const r = sourceAccessRecord("vietnamworks");
+    expect(r.researchedAt).toBe("2026-10-20");
+    expect(r.auth.kind).toBe("none");
+    const [post] = internalPostSearchEndpoints(r);
+    expect(post).toMatchObject({ method: "POST", host: "ms.vietnamworks.com", pathPattern: "/job-search/v1.0/search", readOnly: true, requiresAuth: false, maxPageSize: 50 });
+    expect(post!.filterFields).toContain("workingLocations.cityId");
+    expect(r.termsOfUse.clauses).toEqual(["No clause on bots or automated access found (checked 2026-10-20)"]);
+    expect(r).toMatchObject({ riskLevel: "low", chosenPath: "account_api" });
+    expect(accessStateOf(r, { approved: false, tokenPresent: false }).labelKey).toBe("account_api_direct");
   });
 
   it("an unresearched board is read in the browser", () => {

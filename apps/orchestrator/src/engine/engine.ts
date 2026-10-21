@@ -47,7 +47,7 @@ import { createFactDraftTask } from "./fact-drafts.js";
 import { announceDryRunCardForApplication, approve, confirmInjection, requestChanges, skip, type ApproveInput, type ApproveResult } from "./review.js";
 import { Scheduler } from "./scheduler.js";
 import { systemClock } from "./system.js";
-import { noticeNeedsCheck, noticeTaskFailed } from "./notices.js";
+import { noticeApplyNotSubmitted, noticeNeedsCheck, noticeTaskFailed } from "./notices.js";
 import { emitSafetyDenied, failTaskNow, postLeadMessage } from "./task-events.js";
 import { UsageWatcher } from "./usage.js";
 import { advanceRun } from "./workflow.js";
@@ -173,13 +173,17 @@ export class Engine implements EngineCore {
         const task = recovered.needsCheck.find((t) => applicationIdOfTask(t) === appId);
         noticeNeedsCheck(this, tx, appId, INTERRUPTED_APPLY_NOTE, { runId: task?.runId ?? null });
       }
+      for (const appId of recovered.notSubmittedApplicationIds) {
+        const task = recovered.notSubmitted.find((t) => applicationIdOfTask(t) === appId);
+        noticeApplyNotSubmitted(this, tx, appId, { runId: task?.runId ?? null });
+      }
       for (const t of recovered.exhausted) {
         noticeTaskFailed(this, tx, t, t.error ?? "interrupted by restart; no attempts left");
         sinkFailed(this, tx, t, t.error ?? "interrupted by restart; no attempts left");
       }
       return recovered;
     }, { behavior: "immediate" });
-    const interrupted = [...r.requeued, ...r.exhausted, ...r.needsCheck];
+    const interrupted = [...r.requeued, ...r.exhausted, ...r.needsCheck, ...r.notSubmitted];
     const orphanPids = this.killOrphans(interrupted);
     const orphanSessions = await this.removeOrphanSessions(interrupted);
     await this.checkFigmaAfterCrash([...r.requeued, ...r.exhausted]);

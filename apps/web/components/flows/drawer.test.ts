@@ -25,6 +25,15 @@ describe("step drawer model (UC-22)", () => {
     expect(labels).toEqual(["VI · Round 1 · CV", "VI · Round 1 · QA", "VI · Round 2 · CV", "VI · Round 2 · QA", "EN · Round 1 · CV", "EN · Round 1 · QA"]);
   });
 
+  it("live 2026-10-20: a second pass (after Ba's changes) restarts at round 1 and is labelled, not counted on as rounds 4-6", async () => {
+    const { view, node } = await run12();
+    const row = view.steps.find((s) => s.id === node("lane:102:tailor").stepIds[0])!;
+    const out = row.output as { rounds: { producerTaskId: string; checkerTaskId: string | null }[] };
+    const second = { ...view, steps: view.steps.map((s) => (s.id === row.id ? { ...s, output: { ...out, rounds: out.rounds.map((r, i) => ({ ...r, pass: i === 0 ? 1 : 2, round: 1 })) } } : s)) };
+    const labels = nodeTasks(second, buildFlowGraph(second).nodes.find((n) => n.id === "lane:102:tailor")!.data).map((t) => t.label);
+    expect(labels.slice(0, 4)).toEqual(["VI · Round 1 · CV", "VI · Round 1 · QA", "VI · After your changes · Round 1 · CV", "VI · After your changes · Round 1 · QA"]);
+  });
+
   it("the default task is the running one, else the newest", async () => {
     const { view, node } = await run12();
     const tasks = nodeTasks(view, node("step:scan"));

@@ -1,5 +1,5 @@
 // API research (design 2026-10-19 §5.6): each source toggle's access label, Approve and Revoke.
-import { API_READER_BOARDS, sourceAccessRecord } from "@bs-job-agents/shared";
+import { API_READER_BOARDS, ACCESS_LABELS, sourceAccessRecord, type SourceAccessView } from "@bs-job-agents/shared";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
@@ -12,16 +12,11 @@ import { createCriteriaData, readCriteria, type CriteriaData } from "./data";
 import { TOKEN_HINT } from "./SourceToggles";
 
 const linkedin = sourceAccessRecord("linkedin");
-/** LinkedIn has no API reader in production; these tests simulate one to show the approve flow. */
-const LINKEDIN_READER = [...API_READER_BOARDS, "linkedin" as const];
+/** The production readers without LinkedIn's: a board with no API reader. */
+const NO_LINKEDIN_READER = API_READER_BOARDS.filter((s) => s !== "linkedin");
 
-async function setup(o: { state?: (s: MockState) => void; data?: (d: CriteriaData) => CriteriaData; productionReaders?: boolean } = {}) {
-  const mock = testMock({
-    state: (s) => {
-      if (!o.productionReaders) s.sourceAccess = { approvals: {}, tokens: [], readers: LINKEDIN_READER };
-      o.state?.(s);
-    },
-  });
+async function setup(o: { state?: (s: MockState) => void; data?: (d: CriteriaData) => CriteriaData } = {}) {
+  const mock = testMock({ state: (s) => o.state?.(s) });
   const base = createCriteriaData(mock);
   const data = o.data ? o.data(base) : base;
   const r = await readCriteria(base);
@@ -61,54 +56,80 @@ describe("source access labels (§5.6)", () => {
       const r = sourceAccessRecord(s);
       if (r.chosenPath === "account_api" && r.auth.kind === "none" && r.riskLevel === "low") expect(labelOf(s)).toHaveTextContent("Direct (no login)");
     }
-    expect(labelOf("linkedin")).toHaveTextContent("Account API (needs approval) · Browser until approved");
-    expect(within(cell("linkedin")).getByRole("button", { name: "Approve the account API for LinkedIn" })).toBeInTheDocument();
+    expect(labelOf("linkedin")).toHaveTextContent("Direct read (needs approval) · Browser until approved");
+    expect(within(cell("linkedin")).getByRole("button", { name: "Approve direct reads for LinkedIn" })).toBeInTheDocument();
     expect(within(cell("remotive")).queryByRole("button", { name: /Approve|Revoke/ })).toBeNull();
   });
 
-  it("with the production readers LinkedIn has no API reader: it shows Browser and has no Approve", async () => {
-    await setup({ productionReaders: true });
+  it("VietnamWorks (low risk, no login) reads Direct (no login) with nothing to approve", async () => {
+    await setup();
+    await waitFor(() => expect(labelOf("vietnamworks")).toHaveTextContent(/^Direct \(no login\)$/));
+    expect(within(cell("vietnamworks")).queryByRole("button", { name: /Approve|Revoke/ })).toBeNull();
+    expect(within(cell("vietnamworks")).queryByTestId("source-token-hint")).toBeNull();
+  });
+
+  it("a board without an API reader shows Browser and has no Approve", async () => {
+    await setup({ state: (s) => (s.sourceAccess = { approvals: {}, tokens: [], readers: NO_LINKEDIN_READER }) });
     await waitFor(() => expect(labelOf("linkedin")).toHaveTextContent(/^Browser$/));
     expect(within(cell("linkedin")).queryByRole("button", { name: /Approve|Revoke/ })).toBeNull();
   });
 
   it("Approve shows the terms URL, quoted clauses and account risk; confirming approves, then Revoke undoes it", async () => {
     const { user, mock } = await setup();
-    const approve = await within(cell("linkedin")).findByRole("button", { name: "Approve the account API for LinkedIn" });
+    const approve = await within(cell("linkedin")).findByRole("button", { name: "Approve direct reads for LinkedIn" });
     await user.click(approve);
 
-    const dialog = screen.getByRole("dialog", { name: "Approve the account API for LinkedIn?" });
+    const dialog = screen.getByRole("dialog", { name: "Approve direct reads for LinkedIn?" });
     expect(within(dialog).getByRole("link", { name: new RegExp(linkedin.termsOfUse.url.replace(/[.?/]/g, "\\$&")) })).toHaveAttribute("href", linkedin.termsOfUse.url);
     for (const c of linkedin.termsOfUse.clauses) expect(dialog).toHaveTextContent(`“${c}”`);
     expect(dialog).toHaveTextContent(linkedin.accountRisk);
     expect(dialog).toContainElement(document.activeElement as HTMLElement);
 
     await user.click(within(dialog).getByRole("button", { name: "Approve" }));
-    expect(await screen.findByText("Approved the account API for LinkedIn")).toBeInTheDocument();
+    expect(await screen.findByText("Approved direct reads for LinkedIn")).toBeInTheDocument();
     expect(mock.state.sourceAccess?.approvals.linkedin?.researchedAt).toBe(linkedin.researchedAt);
     expect(screen.queryByRole("dialog")).toBeNull();
-    // No token in the secrets file yet: token missing, with where to put it.
-    expect(labelOf("linkedin")).toHaveTextContent("Account API (token missing) · Browser until a token is set");
-    expect(within(cell("linkedin")).getByTestId("source-token-hint")).toHaveTextContent(TOKEN_HINT);
-    const revoke = within(cell("linkedin")).getByRole("button", { name: "Revoke the account API for LinkedIn" });
+    // LinkedIn is read without logging in: approved, it reads Direct (no login), and no token is asked for.
+    expect(labelOf("linkedin")).toHaveTextContent(/^Direct \(no login\)$/);
+    expect(within(cell("linkedin")).queryByTestId("source-token-hint")).toBeNull();
+    const revoke = within(cell("linkedin")).getByRole("button", { name: "Revoke direct reads for LinkedIn" });
     await waitFor(() => expect(revoke).toHaveFocus());
 
     await user.click(revoke);
     expect(await screen.findByText("Revoked: LinkedIn is read in the browser again")).toBeInTheDocument();
-    expect(labelOf("linkedin")).toHaveTextContent("Account API (needs approval)");
+    expect(labelOf("linkedin")).toHaveTextContent("Direct read (needs approval)");
     expect(mock.state.sourceAccess?.approvals.linkedin).toBeUndefined();
   });
 
+  it("the approve dialog says a no-login board is read without a token or cookie", async () => {
+    const { user } = await setup();
+    await user.click(await within(cell("linkedin")).findByRole("button", { name: "Approve direct reads for LinkedIn" }));
+    expect(screen.getByRole("dialog")).toHaveAccessibleDescription(/without logging in: no token or cookie is sent/);
+  });
+
+  /** The mock's views with LinkedIn's replaced: a board read with an account token (none in production today). */
+  const withLinkedin = (patch: Partial<SourceAccessView>) => (d: CriteriaData): CriteriaData => ({
+    ...d,
+    sourceAccess: async () => (await d.sourceAccess()).map((v) => (v.source === "linkedin" ? { ...v, noLogin: false, ...patch } : v)),
+  });
+
+  it("an approved account-API board without its token: token missing, with where to put it", async () => {
+    await setup({ data: withLinkedin({ path: "account_api", labelKey: "account_api_token_missing", needsApproval: false, tokenMissing: true, approvedAt: "2026-10-11T02:00:00.000Z" }) });
+    await waitFor(() => expect(labelOf("linkedin")).toHaveTextContent("Account API (token missing) · Browser until a token is set"));
+    expect(within(cell("linkedin")).getByTestId("source-token-hint")).toHaveTextContent(TOKEN_HINT);
+    expect(within(cell("linkedin")).getByRole("button", { name: "Revoke the account API for LinkedIn" })).toBeInTheDocument();
+  });
+
   it("an approved board with its token configured reads Account API", async () => {
-    await setup({ state: (s) => (s.sourceAccess = { approvals: { linkedin: { approvedAt: "2026-10-11T02:00:00.000Z", researchedAt: linkedin.researchedAt } }, tokens: ["linkedin"], readers: LINKEDIN_READER }) });
-    await waitFor(() => expect(labelOf("linkedin")).toHaveTextContent(/^Account API$/));
+    await setup({ data: withLinkedin({ path: "account_api", labelKey: "account_api", needsApproval: false, tokenMissing: false, approvedAt: "2026-10-11T02:00:00.000Z" }) });
+    await waitFor(() => expect(labelOf("linkedin")).toHaveTextContent(new RegExp(`^${ACCESS_LABELS.account_api}$`)));
     expect(within(cell("linkedin")).queryByTestId("source-token-hint")).toBeNull();
     expect(within(cell("linkedin")).getByRole("button", { name: "Revoke the account API for LinkedIn" })).toBeInTheDocument();
   });
 
   it("Cancel and Escape close the dialog without approving, and focus returns to Approve", async () => {
     const { user, mock } = await setup();
-    const approve = await within(cell("linkedin")).findByRole("button", { name: "Approve the account API for LinkedIn" });
+    const approve = await within(cell("linkedin")).findByRole("button", { name: "Approve direct reads for LinkedIn" });
     await user.click(approve);
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -123,10 +144,10 @@ describe("source access labels (§5.6)", () => {
 
   it("a stale research (409) shows the error and re-reads the labels", async () => {
     const { user } = await setup({ data: (d) => ({ ...d, approveSource: (s) => d.approveSource(s, "an older research") }) });
-    await user.click(await within(cell("linkedin")).findByRole("button", { name: "Approve the account API for LinkedIn" }));
+    await user.click(await within(cell("linkedin")).findByRole("button", { name: "Approve direct reads for LinkedIn" }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Approve" }));
     expect(await screen.findByText(/Couldn't approve LinkedIn: .*research changed/)).toBeInTheDocument();
-    await waitFor(() => expect(labelOf("linkedin")).toHaveTextContent("Account API (needs approval)"));
+    await waitFor(() => expect(labelOf("linkedin")).toHaveTextContent("Direct read (needs approval)"));
   });
 
   it("if the labels fail to load, the error shows with Retry, and the toggles still work", async () => {

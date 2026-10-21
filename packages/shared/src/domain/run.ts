@@ -58,7 +58,8 @@ export type TaskStatus = z.infer<typeof TaskStatusSchema>;
  * Why a task waits (§10.3, UC-11, UC-16, UC-17):
  * needs_browser (Chrome/extension not connected), needs_figma (bridge not connected),
  * needs_login(site), captcha(site), usage_limit (engine paused), needs_answer (UC-12),
- * domain_confirm(site) (Apply left the approved domain, UC-11 e).
+ * domain_confirm(site) (Apply left the approved domain, UC-11 e), browser_choice (several Chrome
+ * browsers are connected and none the bots may use is chosen or connected; live 2026-10-20).
  */
 export const PAUSE_REASON_CODES = [
   "needs_browser",
@@ -68,6 +69,7 @@ export const PAUSE_REASON_CODES = [
   "usage_limit",
   "needs_answer",
   "domain_confirm",
+  "browser_choice",
 ] as const;
 export const PauseReasonCodeSchema = z.enum(PAUSE_REASON_CODES);
 export type PauseReasonCode = z.infer<typeof PauseReasonCodeSchema>;

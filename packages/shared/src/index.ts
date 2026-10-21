@@ -90,6 +90,7 @@ export * from "./api/runs.js";
 export * from "./api/bots.js";
 export * from "./api/fact-drafts.js";
 export * from "./api/source-access.js";
+export * from "./api/chrome-browser.js";
 export * from "./api/derived-facts.js";
 export * from "./api/guidance.js";
 export * from "./api/contract.js";

@@ -100,15 +100,12 @@ function isEarlierPage(url: URL, path: string, page: number): boolean {
   return Number.isInteger(n) && n < page;
 }
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-
 export async function scanJsonLdBoard(board: JsonLdBoard, client: BoardApiClient, input: ResearchScanInput, signal?: AbortSignal): Promise<BoardScanResult> {
   const limit = input.candidateLimit ?? scanJobLimit(input.criteria.maxJobs);
   let budget = input.maxPageViews ?? Number.POSITIVE_INFINITY;
   // The board searched by role and city; the role filter is left out (Vietnamese titles rarely
-  // repeat the English role), and the time zone does not apply to these boards.
-  const criteria = { ...input.criteria, roles: [], timezoneOverlap: null };
-  const excluded = input.criteria.excludeKeywords.map((k) => normaliseTerms(k).trim()).filter(Boolean);
+  // repeat the English role), and the time zone does not apply to these boards (finishBoardScan).
+  const excluded = excludedTerms(input);
 
   const queue: Listed[] = [];
   const seen = new Set<string>();
@@ -145,7 +142,7 @@ export async function scanJsonLdBoard(board: JsonLdBoard, client: BoardApiClient
         if (!url || seen.has(url) || !board.isJobPath(new URL(url).pathname)) continue;
         seen.add(url);
         added++;
-        if (item.title && excluded.some((k) => normaliseTerms(item.title).includes(` ${k} `))) {
+        if (excludedTitle(item.title, excluded)) {
           excludedByTitle++;
           continue;
         }
@@ -156,7 +153,7 @@ export async function scanJsonLdBoard(board: JsonLdBoard, client: BoardApiClient
     }
   }
 
-  const read: (JobCandidate & { regionText: string; tags: string[] })[] = [];
+  const read: JobCandidate[] = [];
   let jobPages = 0;
   let unreadable = 0;
   for (const item of queue) {
@@ -180,20 +177,50 @@ export async function scanJsonLdBoard(board: JsonLdBoard, client: BoardApiClient
     jobPages++;
     const job = jobFromPage(board.source, item.url, html, item.title);
     if (typeof job === "string") unreadable++;
-    else read.push({ ...job, regionText: "", tags: [] });
+    else read.push(job);
   }
 
   // Skill self-repair §5.8: job pages answered, but none held a posting the reader could use.
   if (jobPages > 0 && read.length === 0) {
     throw new ApiChanged(board.host, null, `${board.label}: ${plural(jobPages, "job page")} on ${board.host} gave no complete posting`);
   }
-  const { kept, dropped } = filterPostings(read, criteria);
-  const jobs = kept.slice(0, limit).map(({ regionText: _r, tags: _t, ...job }): JobCandidate => job);
-  const counts = new Map<DropReason, number>();
-  for (const d of dropped) counts.set(d.reason, (counts.get(d.reason) ?? 0) + 1);
-  if (excludedByTitle > 0) counts.set("exclude", (counts.get("exclude") ?? 0) + excludedByTitle);
-  const why = [...counts].map(([r, n]) => `${n} ${DROP_NOTES[r]}`);
-  if (unreadable > 0) why.push(`${unreadable} job page${unreadable === 1 ? "" : "s"} without a complete posting`);
-  const note = `${plural(searchPages, "search page")}, ${plural(seen.size, "job link")}, ${plural(jobPages, "job page")} read${why.length > 0 ? ` (left out: ${why.join(", ")})` : ""}`;
-  return { jobs, note };
+  return finishBoardScan(read, input, { excludedByTitle, unreadable, head: `${plural(searchPages, "search page")}, ${plural(seen.size, "job link")}, ${plural(jobPages, "job page")} read` });
 }
+
+/**
+ * The end of every board-API scan: the search profile's filters in code (roles and the time zone
+ * left out: the board searched by role and city), the job limit, and the self-check note
+ * ("<head> (left out: …)").
+ */
+export function finishBoardScan(
+  read: readonly JobCandidate[],
+  input: ResearchScanInput,
+  counts: { excludedByTitle: number; unreadable: number; head: string; skipped?: string[] },
+): BoardScanResult {
+  const limit = input.candidateLimit ?? scanJobLimit(input.criteria.maxJobs);
+  const criteria = { ...input.criteria, roles: [], timezoneOverlap: null };
+  const { kept, dropped } = filterPostings(
+    read.map((j) => ({ ...j, regionText: "", tags: [] })),
+    criteria,
+  );
+  const jobs = kept.slice(0, limit).map(({ regionText: _r, tags: _t, ...job }): JobCandidate => job);
+  const tally = new Map<DropReason, number>();
+  for (const d of dropped) tally.set(d.reason, (tally.get(d.reason) ?? 0) + 1);
+  if (counts.excludedByTitle > 0) tally.set("exclude", (tally.get("exclude") ?? 0) + counts.excludedByTitle);
+  const why = [...tally].map(([r, n]) => `${n} ${DROP_NOTES[r]}`);
+  if (counts.unreadable > 0) why.push(`${counts.unreadable} job page${counts.unreadable === 1 ? "" : "s"} without a complete posting`);
+  why.push(...(counts.skipped ?? []));
+  return { jobs, note: `${counts.head}${why.length > 0 ? ` (left out: ${why.join(", ")})` : ""}` };
+}
+
+/** Is a title excluded by the search profile's excluded keywords (checked before its job page is read)? */
+export function excludedTitle(title: string | null, excluded: readonly string[]): boolean {
+  return title !== null && excluded.some((k) => normaliseTerms(title).includes(` ${k} `));
+}
+
+/** The search profile's excluded keywords, normalised for excludedTitle. */
+export function excludedTerms(input: ResearchScanInput): string[] {
+  return input.criteria.excludeKeywords.map((k) => normaliseTerms(k).trim()).filter(Boolean);
+}
+
+export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

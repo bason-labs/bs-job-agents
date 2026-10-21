@@ -21,7 +21,8 @@ test("edits lists, toggles and sliders, then saves a new version (UC-21b)", asyn
   await page.getByRole("button", { name: "Remove PHP" }).click();
   await expect(page.getByTestId("criteria-excludeKeywords")).not.toContainText("PHP");
 
-  const linkedin = page.getByTestId("criteria-sources").getByRole("button", { name: "LinkedIn" });
+  // Exact: LinkedIn's cell also has "Approve direct reads for LinkedIn".
+  const linkedin = page.getByTestId("criteria-sources").getByRole("button", { name: "LinkedIn", exact: true });
   await expect(linkedin).toHaveAttribute("aria-pressed", "true");
   await linkedin.click();
   await expect(linkedin).toHaveAttribute("aria-pressed", "false");
@@ -171,27 +172,18 @@ test("a criteria save in chat ('Save to my criteria') shows here as the next ver
   await expect(page.getByTestId("criteria-locations")).toContainText("Đà Nẵng");
 });
 
-test("API research §5.6: each toggle shows how the board is read; with a (simulated) LinkedIn API reader, its account API is approved, then revoked", async ({ page }) => {
+test("API research §5.6: each toggle shows how the board is read; LinkedIn's guest reader is approved, then revoked", async ({ page }) => {
   const linkedin = page.getByTestId("source-linkedin");
   await expect(page.getByTestId("source-remotive").getByTestId("source-access-label")).toHaveText("Public API");
   await expect(page.getByTestId("source-upwork").getByTestId("source-access-label")).toHaveText("Browser");
-  // As in production: LinkedIn has no API reader, so it reads in the browser and has nothing to approve.
-  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Browser");
-  await expect(linkedin.getByRole("button", { name: /Approve|Revoke/ })).toHaveCount(0);
+  await expect(page.getByTestId("source-vietnamworks").getByTestId("source-access-label")).toHaveText("Direct (no login)");
+  // LinkedIn is high risk: read in the browser until Ba approves it.
+  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Direct read (needs approval) · Browser until approved");
 
-  // Simulate an API reader for LinkedIn in the mock, then come back to the screen.
-  await withMock(page, (mock: MockHandle) => {
-    (mock.state as unknown as { sourceAccess?: unknown }).sourceAccess = { approvals: {}, tokens: [], readers: ["topcv", "itviec", "linkedin"] };
-  });
-  await page.getByTestId("sidebar").getByRole("link", { name: "Schedules" }).click();
-  await expect(page.getByTestId("page-title")).toHaveText("Schedules");
-  await page.getByTestId("sidebar").getByRole("link", { name: "Search criteria" }).click();
-  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Account API (needs approval) · Browser until approved");
-
-  const approve = linkedin.getByRole("button", { name: "Approve the account API for LinkedIn" });
+  const approve = linkedin.getByRole("button", { name: "Approve direct reads for LinkedIn" });
   await approve.focus();
   await page.keyboard.press("Enter");
-  const dialog = page.getByRole("dialog", { name: "Approve the account API for LinkedIn?" });
+  const dialog = page.getByRole("dialog", { name: "Approve direct reads for LinkedIn?" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Terms of use", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Account risk", { exact: true })).toBeVisible();
@@ -201,10 +193,10 @@ test("API research §5.6: each toggle shows how the board is read; with a (simul
 
   await approve.click();
   await dialog.getByRole("button", { name: "Approve", exact: true }).click();
-  await expect(page.getByTestId("toast").filter({ hasText: "Approved the account API for LinkedIn" })).toBeVisible();
-  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Account API (token missing) · Browser until a token is set");
-  await expect(linkedin.getByTestId("source-token-hint")).toContainText("Board tokens");
+  await expect(page.getByTestId("toast").filter({ hasText: "Approved direct reads for LinkedIn" })).toBeVisible();
+  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Direct (no login)");
+  await expect(linkedin.getByTestId("source-token-hint")).toHaveCount(0);
 
-  await linkedin.getByRole("button", { name: "Revoke the account API for LinkedIn" }).click();
-  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Account API (needs approval) · Browser until approved");
+  await linkedin.getByRole("button", { name: "Revoke direct reads for LinkedIn" }).click();
+  await expect(linkedin.getByTestId("source-access-label")).toHaveText("Direct read (needs approval) · Browser until approved");
 });

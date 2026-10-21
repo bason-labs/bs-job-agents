@@ -9,8 +9,9 @@
 // QA the deterministic checkers' items (computed at export) are free; cv.review (the `reviewer`)
 // runs only when QA passed this round, or on the round handed to Ba. The gate passes when QA passed
 // and no fixable guidance miss remains; otherwise, below round 3, the next round gets QA's fixes
-// plus one fix per fixable miss. Guidance never escalates: after round 3 the latest QA-passed
-// round goes to Ba (else the latest without invented_claim, else the latest, escalated as today).
+// plus one fix per fixable miss. Guidance never escalates: after round 3 the best QA-passed round
+// goes to Ba (fewest unmet guidance rules, then the highest QA total, then the latest; live
+// 2026-10-20), else the latest without invented_claim, else the latest, escalated as today.
 // QA's input, schema and pass rule are untouched (NG8).
 import {
   citedActiveFactIds,
@@ -326,10 +327,12 @@ function completeRound(core: EngineCore, conn: Conn, ctx: RunCtx, step: GateStep
     setStep(core, conn, row, "running", { output: out, round: n + 1, preview: `${why} · revising (round ${n + 1} of ${step.maxRounds})` });
     return;
   }
-  // The last round: the latest QA-passed round, else the latest without invented_claim, else the latest.
+  // The last round: the best QA-passed round, else the latest without invented_claim, else the latest.
   const rounds = out.rounds.filter((r) => r.pass === out.pass && r.cvVersionId !== null);
-  const handed = [...rounds].reverse().find((r) => r.passed === true) ?? [...rounds].reverse().find((r) => !r.guidance?.hasInventedClaim) ?? round;
+  const best = bestPassedRound(conn, rounds);
+  const handed = best?.round ?? [...rounds].reverse().find((r) => !r.guidance?.hasInventedClaim) ?? round;
   out.handing = { round: handed.round, outcome: handed.passed === true ? "passed" : "escalated" };
+  if (best?.why) out.handNote = `Round ${handed.round} shown (${best.why}).`;
   // The handed round is judged by cv.review if it was not (REQ-38.AC-3: Ba sees what is not met).
   if (handed.guidance && !handed.guidance.reviewerTaskId) {
     handed.guidance.completed = false;
@@ -337,6 +340,30 @@ function completeRound(core: EngineCore, conn: Conn, ctx: RunCtx, step: GateStep
     handed.guidance.completed = true;
   }
   finishGate(core, conn, ctx, step, row, out);
+}
+
+/**
+ * Live 2026-10-20 (QA 80 → 86 → 84 handed round 3): among the QA-passed rounds (the truth check
+ * already passed every stored round), the one with the fewest CV guidance rules needing Ba, then the
+ * highest QA total, then the latest. `why` says what decided it when another round was in the running.
+ */
+function bestPassedRound(conn: Conn, rounds: readonly GateRound[]): { round: GateRound; why: string | null } | null {
+  const passed = rounds.filter((r) => r.passed === true && !r.guidance?.hasInventedClaim);
+  if (passed.length === 0) return null;
+  const unmet = (r: GateRound): number => {
+    const stored = r.cvVersionId === null ? undefined : getGuidanceReview(conn, r.cvVersionId);
+    return stored ? guidanceAttention(stored.result).length : Number.MAX_SAFE_INTEGER;
+  };
+  const total = (r: GateRound) => r.total ?? -1;
+  const ranked = [...passed].sort((a, b) => unmet(a) - unmet(b) || total(b) - total(a) || b.round - a.round);
+  const top = ranked[0]!;
+  const others = ranked.slice(1);
+  let why: string | null = null;
+  if (others.length > 0) {
+    if (others.every((o) => unmet(o) > unmet(top))) why = `fewest CV guidance rules not met: ${unmet(top)}`;
+    else if (others.every((o) => unmet(o) > unmet(top) || total(o) < total(top))) why = `highest QA, ${total(top)}`;
+  }
+  return { round: top, why };
 }
 
 /** The pass is over: the handed round goes to Ba's review with its guidance result and fact requests. */
@@ -353,7 +380,8 @@ function finishGate(core: EngineCore, conn: Conn, ctx: RunCtx, step: GateStep, r
     demoteBot(core, conn, { botName: step.producer.bot, reason: "qa_hard_fail", detail: qa.hardFails.map((h) => h.code).join(", "), taskId: handed.producerTaskId, runId: ctx.run.id });
   }
   const last = Math.max(...out.rounds.filter((r) => r.pass === out.pass).map((r) => r.round));
-  const preview = out.outcome === "passed" ? `QA ${handed.total} · passed${guidanceNote(conn, handed.cvVersionId)}` : `QA not passed after ${step.maxRounds} rounds`;
+  const shown = out.handNote && /^Round \d+ shown /.test(out.handNote) ? ` · ${out.handNote.replace(/\.$/, "")}` : "";
+  const preview = out.outcome === "passed" ? `QA ${handed.total} · passed${guidanceNote(conn, handed.cvVersionId)}${shown}` : `QA not passed after ${step.maxRounds} rounds`;
   setStep(core, conn, row, "done", { output: out, round: last, preview });
 }
 

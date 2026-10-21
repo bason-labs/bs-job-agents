@@ -7,10 +7,12 @@ import { AccessLabelKeySchema, AccessPathSchema, RiskLevelSchema } from "../sour
 export const SourceAccessViewSchema = z.object({
   source: SearchSourceSchema,
   path: AccessPathSchema,
-  /** "Public API" | "Direct (no login)" | "Account API" | "Account API (needs approval)" | "Account API (token missing)" | "Browser" (ACCESS_LABELS, ACCESS_LABEL_HINTS). */
+  /** "Public API" | "Direct (no login)" | "Account API" | "Account API (needs approval)" | "Direct read (needs approval)" | "Account API (token missing)" | "Browser" (ACCESS_LABELS, ACCESS_LABEL_HINTS). */
   labelKey: AccessLabelKeySchema,
   needsApproval: z.boolean(),
   tokenMissing: z.boolean(),
+  /** The board's record reads it without logging in (auth "none"): no token or cookie is ever sent. */
+  noLogin: z.boolean(),
   /** Ba's approval of this record's research; null when none (or it lapsed with a new researchedAt). */
   approvedAt: IsoDateTimeSchema.nullable(),
   /** The record's research, for the approve dialog; null for the feed boards (no record). */

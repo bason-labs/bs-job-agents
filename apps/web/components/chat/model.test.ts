@@ -125,6 +125,10 @@ describe("pauseCopy (UC-17, UC-11 e; PM S24 wording)", () => {
     expect(login.body).toMatch(/Research's tab group/);
     expect(login.action).toEqual({ label: "Done — I'm logged in", confirmDomain: null });
     expect(pauseCopy("captcha(topcv.vn)", null).action?.label).toBe("Done — solved");
+    // Live 2026-10-20: several Chrome browsers connected, none chosen: Ba picks one, then Resume.
+    const choice = pauseCopy("browser_choice", "Apply");
+    expect(choice).toMatchObject({ title: "Several Chrome browsers are connected", action: { label: "Resume", confirmDomain: null } });
+    expect(choice.body).toContain("Bots screen (Chrome browser for bots)");
   });
   it("Figma, Chrome and usage pauses continue by themselves (no Done)", () => {
     expect(pauseCopy("needs_figma", "CV")).toMatchObject({ action: null });

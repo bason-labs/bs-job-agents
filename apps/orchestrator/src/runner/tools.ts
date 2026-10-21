@@ -34,6 +34,8 @@ export interface ToolPlan {
   skills: string[];
   chrome: "read" | "write" | null;
   mcp: McpToolPlan[];
+  /** Live 2026-10-20: the browser Ba chose for bots; select_browser is granted (the site guard checks the id). */
+  chromeBrowserId?: string | null;
 }
 
 /** The Claude in Chrome tools, as listed by `claude -p --chrome` 2.1.296 (fixture claude/chrome-init.jsonl). */
@@ -193,8 +195,9 @@ export function claudeToolFlags(plan: ToolPlan, ctx: ClaudeToolContext): ClaudeT
   if (plan.read || ctx.attachmentDir) tools.add("Read");
   for (const dir of addDirs) allowed.push(`Read(/${dir}/**)`);
   if (plan.chrome) {
-    const ok = new Set<string>(plan.chrome === "write" ? CHROME_WRITE_TOOLS : CHROME_READ_TOOLS);
-    for (const t of plan.chrome === "write" ? CHROME_WRITE_TOOLS : CHROME_READ_TOOLS) allowed.push(chromeToolName(t));
+    const granted: ChromeTool[] = [...(plan.chrome === "write" ? CHROME_WRITE_TOOLS : CHROME_READ_TOOLS), ...(plan.chromeBrowserId ? (["select_browser"] as const) : [])];
+    const ok = new Set<string>(granted);
+    for (const t of granted) allowed.push(chromeToolName(t));
     for (const t of CLAUDE_CHROME_TOOLS) if (!ok.has(t)) disallowed.push(chromeToolName(t));
   }
   for (const { server, tools: list } of plan.mcp) {

@@ -335,7 +335,7 @@ export function ReviewCardItem({ card, acted, onApproved, onChangesRequested, on
             })}
           </div>
         ) : null}
-        <CvPreview option={option} company={job.company} />
+        <CvPreview option={option} company={job.company} candidateName={card.candidateName} />
       </aside>
 
       {dialog === "approve" ? (

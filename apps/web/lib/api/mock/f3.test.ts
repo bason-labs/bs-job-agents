@@ -95,7 +95,7 @@ describe("PM3 S2: an “apply again” card says Ba applied before", () => {
     await mock.idle();
     const cards = await mock.getReviewQueue();
     const again = cards.find((c) => c.flags.appliedBefore);
-    expect(again?.flags.appliedBefore).toEqual({ applicationId: failed.id, at: failed.statusHistory[0]!.at, status: "failed", origin: "app" });
+    expect(again?.flags.appliedBefore).toEqual({ applicationId: failed.id, at: failed.statusHistory[0]!.at, status: "failed", origin: "app", submittedAt: null });
     expect(cards.filter((c) => c.flags.appliedBefore)).toHaveLength(1);
   });
 });

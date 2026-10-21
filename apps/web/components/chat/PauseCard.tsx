@@ -18,6 +18,7 @@ const ICONS: Record<string, ReactNode> = {
   domain_confirm: <ExternalLink aria-hidden className="size-3.5" />,
   needs_figma: <Frame aria-hidden className="size-3.5" />,
   needs_browser: <Globe aria-hidden className="size-3.5" />,
+  browser_choice: <Globe aria-hidden className="size-3.5" />,
 };
 
 /** Whose task paused, when no event named it yet. */

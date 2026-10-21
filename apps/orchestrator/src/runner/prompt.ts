@@ -35,6 +35,8 @@ export interface PromptParts {
   selfCheckItems: readonly string[];
   /** Browser bots: the sites this task may open. */
   allowedSites?: readonly string[];
+  /** Live 2026-10-20: the browser Ba chose for bots, selected when several are connected. */
+  chromeBrowserId?: string | null;
   /** Extra folders the bot may read (e.g. the approved PDF's folder for Apply). */
   readDirs?: readonly string[];
   /** F8: the files Ba attached to the message (the task's own copies); listed as untrusted content. */
@@ -205,6 +207,9 @@ function boundaryLines(p: PromptParts): string[] {
   if (p.allowedSites && p.allowedSites.length > 0) {
     const guard = p.engine === "claude" ? " A guard blocks every other site and stops the task." : " Never open any other site.";
     lines.push(`- Browser: open only these sites: ${p.allowedSites.join(", ")}.${guard} Work in your own tab and close it when you are done.`);
+  }
+  if (p.allowedSites && p.allowedSites.length > 0 && p.chromeBrowserId) {
+    lines.push(`- Browser choice: if a Chrome tool says several browsers are connected, call select_browser with deviceId "${p.chromeBrowserId}" (the one Ba chose) and go on. Never select any other browser and never ask which one.`);
   }
   if (p.readDirs && p.readDirs.length > 0) {
     lines.push(`- Files: besides your bot folder you may read only: ${p.readDirs.join(", ")}.`);

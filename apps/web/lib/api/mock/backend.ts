@@ -594,7 +594,9 @@ export class MockBackend implements WebApi, EventFeed {
   acted: ReviewCard[] = [];
 
   async getReviewQueue() {
-    return structuredClone(this.state.queue);
+    // Like the orchestrator: Ba's name from the master CV, for the CV preview's title.
+    const candidateName = this.state.masterCv.kind === "ok" ? this.state.masterCv.cv.contact.name : null;
+    return structuredClone(this.state.queue).map((card) => ({ ...card, candidateName }));
   }
 
   async approve(jobId: string, input: ApproveInput): Promise<ApproveResult> {

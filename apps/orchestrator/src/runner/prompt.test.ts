@@ -179,6 +179,14 @@ describe("buildPrompt (§5.5 step 1)", () => {
     expect(p).toContain("/data/applications/7");
   });
 
+  it("live 2026-10-20: names the Chrome browser Ba chose, to select when several are connected; nothing without one", () => {
+    const id = "3e83d913-aaaa-4bbb-8ccc-1234567890ab";
+    const p = buildPrompt(parts("apply", "submit", applyPrompt, "ApplyOutput", { allowedSites: ["itviec.com"], chromeBrowserId: id }));
+    expect(p).toContain(`call select_browser with deviceId "${id}"`);
+    expect(p).toContain("Never select any other browser");
+    expect(buildPrompt(parts("apply", "submit", applyPrompt, "ApplyOutput", { allowedSites: ["itviec.com"] }))).not.toContain("select_browser");
+  });
+
   it.each(["claude", "codex"] as const)("points a skill bot at its source's skill file on %s (W4a handoff)", (engine) => {
     const scan = { source: "career_site", criteria: {}, maxPageViews: null, candidateLimit: 15 };
     const p = buildPrompt(parts("research", "scan", scan, "ResearchScanOutput", { engine }));

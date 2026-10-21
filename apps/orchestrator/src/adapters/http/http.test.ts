@@ -29,6 +29,22 @@ describe("HostGate", () => {
     expect(at["api.example.com"]).toHaveLength(1);
   });
 
+  it("linkedin.com (and its subdomains) keeps at least 3000 ms between requests (2026-10-20 addendum); other hosts keep 1500 ms", async () => {
+    const clock = fakeClock();
+    const gate = new HostGate(clock);
+    const at: Record<string, number[]> = {};
+    const hit = (host: string) => gate.run(host, async () => void (at[host] ??= []).push(clock.now()));
+    await Promise.all([hit("www.linkedin.com"), hit("www.linkedin.com"), hit("www.linkedin.com"), hit("itviec.com"), hit("itviec.com")]);
+    const li = at["www.linkedin.com"]!;
+    expect(li[1]! - li[0]!).toBeGreaterThanOrEqual(3_000);
+    expect(li[2]! - li[1]!).toBeGreaterThanOrEqual(3_000);
+    expect(gate.gapFor("WWW.LinkedIn.com")).toBe(3_000);
+    expect(gate.gapFor("linkedin.com")).toBe(3_000);
+    expect(gate.gapFor("notlinkedin.com")).toBe(1_500);
+    // A shorter override never lowers the default gap.
+    expect(new HostGate({ ...clock, hostGapsMs: { "itviec.com": 10 } }).gapFor("itviec.com")).toBe(1_500);
+  });
+
   it("a failed request still keeps the gap for the next one", async () => {
     const clock = fakeClock();
     const gate = new HostGate(clock);

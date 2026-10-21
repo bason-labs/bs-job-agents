@@ -68,6 +68,17 @@ describe("conversationPlan (UC-25 consult, UC-15 discussion)", () => {
 });
 
 describe("claudeToolFlags", () => {
+  it("live 2026-10-20: a chosen Chrome browser grants select_browser (the guard checks the id); switch_browser stays hidden", () => {
+    const plan = planTools(bot({ allowedTools: ["chrome:write"], browser: { mode: "write" as const, allowedSites: [], sitesFromApproval: true } }));
+    const without = claudeToolFlags(plan, { readDirs: [], mcpKnownTools: {} });
+    expect(without.allowed).not.toContain("mcp__claude-in-chrome__select_browser");
+    expect(without.disallowed).toContain("mcp__claude-in-chrome__select_browser");
+    const chosen = claudeToolFlags({ ...plan, chromeBrowserId: "3e83d913-aaaa-4bbb-8ccc-1234567890ab" }, { readDirs: [], mcpKnownTools: {} });
+    expect(chosen.allowed).toContain("mcp__claude-in-chrome__select_browser");
+    expect(chosen.disallowed).not.toContain("mcp__claude-in-chrome__select_browser");
+    expect(chosen.disallowed).toContain("mcp__claude-in-chrome__switch_browser");
+  });
+
   it("Lead: no built-ins, only orchestrator tools", () => {
     const plan = planTools(
       bot({ name: "lead", allowedTools: ["mcp:orchestrator:start_workflow", "mcp:orchestrator:get_status"], mcpServers: ["orchestrator"] }),

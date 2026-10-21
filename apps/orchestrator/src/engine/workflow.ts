@@ -24,6 +24,7 @@ import {
 } from "@bs-job-agents/shared";
 import type { z } from "zod";
 import {
+  INTERRUPTED_BEFORE_PAGE_NOTE,
   getApplication,
   getFreshCompanyProfile,
   getJob,
@@ -356,6 +357,13 @@ function advanceActionStep(core: EngineCore, ctx: RunCtx, step: ActionStep, scop
       }
       case "failed":
       case "interrupted": {
+        // Live 2026-10-20: a restart stopped Apply before it opened any page of the job site;
+        // recovery failed the application ("nothing was submitted", Apply again): not a check.
+        const app = task.status === "interrupted" && !out.outcome && out.applicationId !== null ? getApplication(tx, out.applicationId) : undefined;
+        if (app?.status === "failed" && app.statusHistory.at(-1)?.note === INTERRUPTED_BEFORE_PAGE_NOTE) {
+          setStep(core, tx, row, "failed", { output: { ...out, outcome: "not_started", error: INTERRUPTED_BEFORE_PAGE_NOTE }, error: INTERRUPTED_BEFORE_PAGE_NOTE });
+          return "failed";
+        }
         const outcome = out.outcome ?? "needs_check";
         // Denied before anything ran (e.g. the token expired while Apply waited for Ba): the
         // card waits for Ba to approve again, which issues a new token (PM M2).

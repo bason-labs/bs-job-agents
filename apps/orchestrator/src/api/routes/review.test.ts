@@ -1,5 +1,8 @@
 import { ApiErrorSchema, ApproveResponseSchema, OkResponseSchema, ReviewQueueResponseSchema, type PendingQuestion } from "@bs-job-agents/shared";
-import { qaFailFixture, qaPassFixture } from "@bs-job-agents/shared/fixtures";
+import { masterCvFixture, qaFailFixture, qaPassFixture } from "@bs-job-agents/shared/fixtures";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { stringify } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
 import { getApplication, getCvVersion, getJob, getOrCreateLeadRoom, getSavedAnswer, getTask, listEvents, listMessages } from "../../db/index.js";
 import { fake } from "../../engine/testing/index.js";
@@ -57,6 +60,13 @@ describe("GET /review (§11 Review queue)", () => {
     });
     const ready = listEvents(x.t.db, { types: ["review.ready"] }).at(-1)!;
     expect(card!.readyAt).toBe(ready.createdAt);
+  });
+
+  it("live 2026-10-20: the card carries Ba's name from the master CV for the preview's title (the tailored CV has none)", async () => {
+    const x = await toReview();
+    expect((await queue(x))[0]!.candidateName).toBeNull();
+    writeFileSync(join(x.dataDir, "master-cv.yaml"), stringify(masterCvFixture));
+    expect((await queue(x))[0]!.candidateName).toBe(masterCvFixture.contact.name);
   });
 
   it("offers the CV PDF to the viewer only when the file exists in data/", async () => {

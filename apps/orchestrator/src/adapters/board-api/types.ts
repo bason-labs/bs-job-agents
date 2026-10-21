@@ -16,6 +16,8 @@ export interface BoardScanResult {
 
 export interface BoardMapper {
   source: BoardSource;
+  /** Redirect hops the board's client may follow (default MAX_REDIRECTS; LinkedIn 0: any 3xx is refused). */
+  maxRedirects?: number;
   /**
    * One scan: `input.criteria` is the Search Profile and `input.candidateLimit` the most postings to
    * return. Throws what the client throws (EndpointNotAllowed, MissingCredential, AuthRejected,

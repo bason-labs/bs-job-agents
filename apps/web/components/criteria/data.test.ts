@@ -67,20 +67,20 @@ describe("source access adapter (GET /sources/access, POST/DELETE /sources/:sour
     expect(views.find((v) => v.source === "remotive")).toMatchObject({ path: "public_api", labelKey: "public_api", termsOfUse: null, researchedAt: null });
   });
 
-  it("a board without an API reader (LinkedIn, as in production) shows Browser and approving it is refused (409)", async () => {
-    const data = createCriteriaData(testMock());
+  it("a board without an API reader shows Browser and approving it is refused (409)", async () => {
+    const data = createCriteriaData(testMock({ state: (s) => (s.sourceAccess = { approvals: {}, tokens: [], readers: API_READER_BOARDS.filter((b) => b !== "linkedin") }) }));
     const view = (await data.sourceAccess()).find((v) => v.source === "linkedin")!;
     expect(view).toMatchObject({ path: "browser", labelKey: "browser", needsApproval: false });
     expect(apiErrorInfo(await data.approveSource("linkedin", view.researchedAt!).catch((e: unknown) => e))).toMatchObject({ status: 409, code: "conflict" });
   });
 
   it("approves for the research read (409 when stale, 404 for a feed), and revokes", async () => {
-    // A simulated LinkedIn API reader, so there is something to approve.
-    const data = createCriteriaData(testMock({ state: (s) => (s.sourceAccess = { approvals: {}, tokens: [], readers: [...API_READER_BOARDS, "linkedin"] }) }));
+    // LinkedIn has an API reader and a high-risk record: there is something to approve.
+    const data = createCriteriaData(testMock());
     const { researchedAt } = (await data.sourceAccess()).find((v) => v.source === "linkedin")!;
     expect(apiErrorInfo(await data.approveSource("linkedin", "older").catch((e: unknown) => e))).toMatchObject({ status: 409, code: "conflict" });
     expect(apiErrorInfo(await data.approveSource("remotive", "x").catch((e: unknown) => e))).toMatchObject({ status: 404, code: "not_found" });
-    expect(await data.approveSource("linkedin", researchedAt!)).toMatchObject({ needsApproval: false, approvedAt: expect.any(String) });
-    expect(await data.revokeSource("linkedin")).toMatchObject({ needsApproval: true, approvedAt: null, labelKey: "account_api_needs_approval" });
+    expect(await data.approveSource("linkedin", researchedAt!)).toMatchObject({ needsApproval: false, approvedAt: expect.any(String), labelKey: "account_api_direct", noLogin: true });
+    expect(await data.revokeSource("linkedin")).toMatchObject({ needsApproval: true, approvedAt: null, labelKey: "direct_needs_approval" });
   });
 });

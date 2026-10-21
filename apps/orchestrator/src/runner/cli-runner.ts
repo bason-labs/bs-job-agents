@@ -180,6 +180,7 @@ export abstract class CliRunner implements Runner {
     if (prepared.pages.visits.length > 0) result = { ...result, pageVisits: [...prepared.pages.visits] };
     if (prepared.pages.opened.length > 0) result = { ...result, openedUrls: [...prepared.pages.opened] };
     if (prepared.pages.unattributed > 0) result = { ...result, unattributedOpens: prepared.pages.unattributed };
+    if (prepared.pages.severalBrowsers || prepared.pages.browsers.length > 0) result = { ...result, chromeBrowsers: { several: prepared.pages.severalBrowsers, devices: [...prepared.pages.browsers] } };
     transcript.note({ type: "runner.result", status: result.status });
     await transcript.close();
     await rm(prepared.workDir, { recursive: true, force: true }).catch(() => undefined);
@@ -234,6 +235,7 @@ export abstract class CliRunner implements Runner {
     if (task.usesBrowser === false && plan.chrome) plan = { ...plan, chrome: null };
     // Skill self-repair §5.4: a validation scan follows the draft in its prompt and reads no skill file.
     if (task.skillOverride) plan = { ...plan, skills: [] };
+    if (plan.chrome && task.chromeBrowserId) plan = { ...plan, chromeBrowserId: task.chromeBrowserId };
     const readDirs = checkReadDirs(task.readDirs ?? []);
     const { attachments, dir: attachmentDir } = checkAttachments(task, conversation || (bot.name === "lead" && task.kind === "chat"));
     const allowedSites = plan.chrome ? checkSites(task) : [];
@@ -249,6 +251,7 @@ export abstract class CliRunner implements Runner {
       schemaName,
       selfCheckItems,
       allowedSites,
+      ...(plan.chromeBrowserId ? { chromeBrowserId: plan.chromeBrowserId } : {}),
       readDirs: plan.read ? readDirs : [],
       attachments,
       ...(task.skillOverride ? { skillOverride: task.skillOverride } : {}),

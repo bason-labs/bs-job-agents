@@ -59,7 +59,8 @@ export function StepNodeCard({ data, selected = false }: { data: FlowNodeData; s
               )}
             >
               <span>
-                {new Set(data.rounds.map((x) => x.language)).size > 1 ? `${LANG(r.language)} · ` : ""}Round {r.round}
+                {new Set(data.rounds.map((x) => x.language)).size > 1 ? `${LANG(r.language)} · ` : ""}
+                {passLabel(r.pass)}Round {r.round}
               </span>
               <b className="tabular">{r.total === null ? "…" : `${r.total} ${r.passed ? "✓" : "✗"}`}</b>
             </div>
@@ -68,6 +69,11 @@ export function StepNodeCard({ data, selected = false }: { data: FlowNodeData; s
       ) : null}
     </div>
   );
+}
+
+/** A later pass of the gate (after Ba asked for changes, UC-09) restarts at round 1: say so. */
+export function passLabel(pass: number): string {
+  return pass > 1 ? `After your changes${pass > 2 ? ` (${pass - 1})` : ""} · ` : "";
 }
 
 export type StepFlowNode = Node<FlowNodeData, "step">;

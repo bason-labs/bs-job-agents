@@ -249,18 +249,80 @@ describe("API scans (no bot, no Chrome)", () => {
     expect(runnerSources(t)).toEqual(["linkedin", "linkedin"]);
   });
 
-  it("LinkedIn's real record says account API, but it has no mapper: approved and with a token, it is still read in the browser", async () => {
-    const http = fakeFetch(() => ({ status: 200, body: "{}" }));
-    // The production records and mappers (BOARD_MAPPERS has no linkedin entry).
-    const port = new BoardApiScanner({ fetch: http.fn, gate: new HostGate({ sleep: async () => undefined }), secrets: secrets({ linkedin: { li_at: LI_AT, JSESSIONID: "x", "csrf-token": "y" } }) });
-    expect(port.record("linkedin").chosenPath).toBe("account_api");
-    expect(port.canScan("linkedin")).toBe(false);
-    const t = await createTestEngine({ sources: ["linkedin"], boards: port });
-    approveSource(t.db, { source: "linkedin", researchedAt: port.record("linkedin").researchedAt }, { now: t.clock.now() });
-    t.engine.startWorkflow(START, { trigger: "chat" });
-    await t.idle();
-    expect(http.calls).toHaveLength(0);
-    expect(runnerSources(t)).toEqual(["linkedin"]);
+  describe("the production LinkedIn and VietnamWorks readers (2026-10-20 addendum, fixtures only)", () => {
+    const fixture = (path: string) => readFileSync(new URL(`../adapters/board-api/fixtures/${path}`, import.meta.url), "utf8");
+    const liPlan = (url: string) => (url.includes("/jobPosting/") ? { status: 200, body: fixture("linkedin/job-4415809801.html").replaceAll("4415809801", /jobPosting\/(\d+)/.exec(url)![1]!) } : { status: 200, body: fixture("linkedin/search.html") });
+    const production = (fetch: HttpFetch) => new BoardApiScanner({ fetch, gate: new HostGate({ sleep: async () => undefined }), secrets: secrets({ linkedin: { li_at: LI_AT, JSESSIONID: '"ajax:1"', "csrf-token": "ajax:1" } }) });
+
+    it("LinkedIn waits for Ba's approval (browser until then); approved, it reads the guest pages with no cookie and no runner", async () => {
+      const http = fakeFetch(liPlan);
+      const port = production(http.fn);
+      expect(port.canScan("linkedin")).toBe(true);
+      const t = await createTestEngine({ sources: ["linkedin"], boards: port });
+      t.engine.startWorkflow(START, { trigger: "chat" });
+      await t.idle();
+      expect(http.calls).toHaveLength(0);
+      expect(runnerSources(t)).toEqual(["linkedin"]);
+
+      approveSource(t.db, { source: "linkedin", researchedAt: port.record("linkedin").researchedAt }, { now: t.clock.now() });
+      t.engine.startWorkflow(START, { trigger: "chat" });
+      await t.idle();
+      expect(runnerSources(t)).toEqual(["linkedin"]);
+      expect(http.calls.map((c) => new URL(c.url).pathname)[0]).toBe("/jobs-guest/jobs/api/seeMoreJobPostings/search");
+      expect(http.calls.length).toBeGreaterThan(1);
+      for (const c of http.calls) {
+        expect(new URL(c.url).host).toBe("www.linkedin.com");
+        expect(c.headers.Cookie).toBeUndefined();
+        expect(JSON.stringify(c.headers)).not.toContain(LI_AT);
+      }
+      const scans = t.tasks("research.scan");
+      expect(scans.at(-1)).toMatchObject({ status: "done", usesBrowser: false });
+    });
+
+    it("an approved LinkedIn read that answers 429 stops at once (no retry) and is read in the browser with the 'blocked' notice", async () => {
+      const http = fakeFetch(() => ({ status: 429, body: "<html><script>document.cookie='x'</script></html>" }));
+      const port = production(http.fn);
+      const t = await createTestEngine({ sources: ["linkedin"], boards: port });
+      approveSource(t.db, { source: "linkedin", researchedAt: port.record("linkedin").researchedAt }, { now: t.clock.now() });
+      t.engine.startWorkflow(START, { trigger: "chat" });
+      await t.idle();
+      expect(http.calls).toHaveLength(1);
+      expect(runnerSources(t)).toEqual(["linkedin"]);
+      expect(leadTexts(t)).toContain("LinkedIn blocked the direct read — scanned through the browser this time.");
+    });
+
+    it("QA r1 #2/#4: an approved LinkedIn search that redirects, or answers 503, goes to the browser with the 'blocked' notice after one request (never a failed source, never retried)", async () => {
+      for (const answer of [{ status: 302 }, { status: 503 }]) {
+        const http = fakeFetch(() => answer);
+        const port = production(http.fn);
+        const t = await createTestEngine({ sources: ["linkedin"], boards: port });
+        approveSource(t.db, { source: "linkedin", researchedAt: port.record("linkedin").researchedAt }, { now: t.clock.now() });
+        t.engine.startWorkflow(START, { trigger: "chat" });
+        await t.idle();
+        expect(http.calls, String(answer.status)).toHaveLength(1);
+        expect(runnerSources(t), String(answer.status)).toEqual(["linkedin"]);
+        expect(leadTexts(t), String(answer.status)).toContain("LinkedIn blocked the direct read — scanned through the browser this time.");
+      }
+    });
+
+    it("VietnamWorks (low risk) is read directly without any approval: the search POST, then its job pages", async () => {
+      // The capture's deadlines moved ahead, so the test does not expire with the real clock.
+      const search = fixture("vietnamworks/search.json").replace(/"expiredOn": "[^"]*"/g, '"expiredOn": "2099-12-31T23:59:59+07:00"');
+      const detail = fixture("vietnamworks/job-2110333.html");
+      const http = fakeFetch((url) => (url.startsWith("https://ms.vietnamworks.com/") ? { status: 200, body: search } : url.includes("-2110333-jv") ? { status: 200, body: detail } : { status: 404 }));
+      const t = await createTestEngine({ sources: ["vietnamworks"], boards: production(http.fn) });
+      t.engine.startWorkflow(START, { trigger: "chat" });
+      await t.idle();
+      expect(runnerSources(t)).toEqual([]);
+      expect(http.calls[0]!.url).toBe("https://ms.vietnamworks.com/job-search/v1.0/search");
+      const scan = scanOf(t, "vietnamworks");
+      expect(scan).toMatchObject({ status: "done", usesBrowser: false });
+      expect((scan.output as { jobs: { url: string }[] }).jobs.map((j) => j.url)).toEqual([expect.stringMatching(/-2110333-jv$/)]);
+      expect(t.events("task.progress").map((e) => e.text)).toContain("POST ms.vietnamworks.com/job-search/v1.0/search");
+      // QA r1 #6: a no-login read is never worded as an account API.
+      expect(t.events("task.progress").map((e) => e.text)).toContain("Reading VietnamWorks directly, without logging in (fetched by the orchestrator: no bot, no LLM)");
+      expect((scan.output as { selfCheck: { item: string }[] }).selfCheck.map((c) => c.item)).toContain("Read VietnamWorks directly, without logging in (no bot, no LLM)");
+    });
   });
 
   it("two API tasks running at once against one host share the process's 1500 ms gate (NFR-1)", async () => {
@@ -388,6 +450,41 @@ describe("skill self-repair §5.8: the API changed", () => {
     expect(scanOf(t, "itviec")).toMatchObject({ status: "done", usesBrowser: true });
     expect(leadTexts(t)).toContain("ITviec blocked the direct read — scanned through the browser this time.");
     expect(t.events("source_api.changed")).toEqual([]);
+  });
+
+  describe("live 2026-10-20: a direct (no-login) board that rate-limits is a blocked read, not a failed source", () => {
+    /** The production TopCV record and reader; every request answers `status` (with Retry-After when given). */
+    function direct(status: number, retryAfter: string | null) {
+      const calls: string[] = [];
+      const fetch: HttpFetch = async (url) => {
+        calls.push(url);
+        return { ok: false, status, text: async () => "", headers: { get: (n: string) => (n.toLowerCase() === "retry-after" ? retryAfter : null) } };
+      };
+      return { calls, port: new BoardApiScanner({ fetch, gate: new HostGate({ sleep: async () => undefined }), secrets: null }) };
+    }
+
+    for (const [status, retryAfter] of [[429, null], [429, "120"], [503, "60"]] as const) {
+      it(`HTTP ${status}${retryAfter ? " with Retry-After" : ""}: no retry, the browser this run, the 'blocked' notice`, async () => {
+        const { calls, port } = direct(status, retryAfter);
+        const t = await createTestEngine({ sources: ["topcv"], boards: port });
+        t.engine.startWorkflow(START, { trigger: "chat" });
+        await t.idle();
+        expect(calls).toHaveLength(1);
+        expect(scanOf(t, "topcv")).toMatchObject({ status: "done", usesBrowser: true });
+        expect(runnerSources(t)).toEqual(["topcv"]);
+        expect(leadTexts(t)).toContain("TopCV blocked the direct read — scanned through the browser this time.");
+        expect(t.events("source_api.changed")).toEqual([]);
+      });
+    }
+
+    it("a 503 without Retry-After stays transient: retried, then the source fails", async () => {
+      const { calls, port } = direct(503, null);
+      const t = await createTestEngine({ sources: ["topcv"], boards: port });
+      t.engine.startWorkflow(START, { trigger: "chat" });
+      await t.idle();
+      expect(calls.length).toBeGreaterThan(1);
+      expect(scanOf(t, "topcv")).toMatchObject({ status: "failed", usesBrowser: false });
+    });
   });
 
   it("a transient error is not a changed API: retried, then the source fails (no fallback, no notice)", async () => {

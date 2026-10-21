@@ -13,7 +13,7 @@ export type BoardSource = (typeof BOARD_SOURCES)[number];
  * test there keeps the two equal). Any other board is read in the browser whatever its record says,
  * so it has nothing to approve. The web's mock orchestrator follows the same rule.
  */
-export const API_READER_BOARDS = ["topcv", "itviec"] as const satisfies readonly BoardSource[];
+export const API_READER_BOARDS = ["topcv", "itviec", "vietnamworks", "linkedin"] as const satisfies readonly BoardSource[];
 
 export function isBoardSource(source: unknown): source is BoardSource {
   return typeof source === "string" && (BOARD_SOURCES as readonly string[]).includes(source);

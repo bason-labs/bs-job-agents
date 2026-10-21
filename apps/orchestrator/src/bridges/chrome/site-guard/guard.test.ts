@@ -68,6 +68,16 @@ describe("evaluateChromeToolCall", () => {
     });
   });
 
+  it("live 2026-10-20: select_browser only for the deviceId Ba chose; never another id, never inside a batch; switch_browser never", () => {
+    const chosen = { ...policy, browserId: "3e83d913-aaaa-4bbb-8ccc-1234567890ab" };
+    expect(evaluateChromeToolCall(call("select_browser", { deviceId: "3e83d913-aaaa-4bbb-8ccc-1234567890ab" }), chosen)).toEqual({ allow: true });
+    expect(evaluateChromeToolCall(call("select_browser", { deviceId: "9f00aa11-bbbb-4ccc-8ddd-0987654321ff" }), chosen)).toMatchObject({ allow: false, rule: "chrome_switch_browser", reason: expect.stringContaining("3e83d913") });
+    expect(evaluateChromeToolCall(call("select_browser", {}), chosen)).toMatchObject({ allow: false });
+    expect(evaluateChromeToolCall(call("switch_browser", { deviceId: "3e83d913-aaaa-4bbb-8ccc-1234567890ab" }), chosen)).toMatchObject({ allow: false, rule: "chrome_switch_browser" });
+    const batch = { actions: [{ name: "select_browser", input: { deviceId: "3e83d913-aaaa-4bbb-8ccc-1234567890ab" } }] };
+    expect(evaluateChromeToolCall(call("browser_batch", batch), chosen)).toMatchObject({ allow: false });
+  });
+
   it("lets other Chrome tools and other servers through", () => {
     expect(evaluateChromeToolCall(call("tabs_create_mcp", {}), policy)).toEqual({ allow: true });
     expect(evaluateChromeToolCall(call("computer", { action: "left_click", coordinate: [1, 2], tabId: 1 }), policy)).toEqual({ allow: true });

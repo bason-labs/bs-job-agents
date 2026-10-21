@@ -257,7 +257,7 @@ function appliedBefore(core: Core, r: RunState, job: Job): ReviewCard["flags"]["
     .filter((a) => !a.dryRun && (a.jobId === job.id || (job.url !== null && urlOf(a) === job.url)))
     .sort((a, b) => Number(b.id) - Number(a.id))[0];
   if (!earlier) return null;
-  return { applicationId: earlier.id, at: earlier.submittedAt ?? earlier.statusHistory[0]?.at ?? core.nowIso(), status: earlier.status, origin: earlier.origin };
+  return { applicationId: earlier.id, at: earlier.submittedAt ?? earlier.statusHistory[0]?.at ?? core.nowIso(), status: earlier.status, origin: earlier.origin, submittedAt: earlier.submittedAt ?? null };
 }
 
 async function runLane(core: Core, r: RunState, lane: LaneInfo, opts:{ from?: "company" | "tailor"; comment?: string | null } = {}): Promise<void> {

@@ -115,3 +115,17 @@ export function searchUrls(source: AdapterSource, criteria: Criteria): string[] 
   }
   return [...new Set(urls)].slice(0, MAX_SEARCHES_PER_SCAN);
 }
+
+/**
+ * VietnamWorks' read-only search POST (2026-10-20 addendum): one search per role (its bare text, at
+ * most MAX_SEARCHES_PER_SCAN), with the cities of the search profile as one comma list of city ids
+ * (Ho Chi Minh 29, Ha Noi 24, Da Nang 17). A location with no such city (remote, another place)
+ * means no city filter, so the search covers it too.
+ */
+export function vietnamworksSearches(criteria: Pick<SearchProfileFieldsBase, "roles" | "locations">): { query: string; cityIds: string | null }[] {
+  const perLocation = criteria.locations.map((where) => normaliseLocation(where).cities);
+  const anywhere = perLocation.length === 0 || perLocation.some((c) => c.length === 0);
+  const ids = anywhere ? null : [...new Set(perLocation.flat().map((c) => VIETNAMWORKS_CITY[c]))].join(",");
+  const queries = [...new Set(criteria.roles.map((r) => bareRole(r) || r.trim()).filter(Boolean))];
+  return queries.slice(0, MAX_SEARCHES_PER_SCAN).map((query) => ({ query, cityIds: ids }));
+}

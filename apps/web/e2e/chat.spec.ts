@@ -168,7 +168,8 @@ test("UC-16: a usage limit shows the clock time and a human countdown (PM S8), a
   await open(page, "/chat");
   await simulate(page, /Claude usage limit hit/);
   const banner = page.getByTestId("paused-banner");
-  await expect(banner).toHaveText(/Claude paused until \d\d:\d\d · resumes in 2h 1\dm/);
+  // A reset after midnight also names the day ("until Wed 21 Oct, 01:41"): the test runs at any hour.
+  await expect(banner).toHaveText(/Claude paused until (?:\w{3} \d{1,2} \w{3}, )?\d\d:\d\d · resumes in 2h 1\dm/);
   await expect(banner).not.toContainText(/\d{4,}s/);
   await expect(page.getByTestId("usage-claude")).toContainText(/paused · resumes in 2h 1\dm/);
   await expect(lead(page).filter({ hasText: "Claude usage limit reached" })).toBeVisible();

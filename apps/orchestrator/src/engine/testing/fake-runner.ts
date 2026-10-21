@@ -392,7 +392,10 @@ export class FakeRunner implements Runner {
     try {
       if (task.signal?.aborted) return fake.cancelled();
       onEvent({ type: "started", engine: task.bot.engine, sessionId: `fake-${task.taskId}-${task.attempt}`, pid: 40_000 + call });
-      const events = typeof entry?.events === "function" ? entry.events(task) : (entry?.events ?? []);
+      // Apply opens the job's page first, as the real bot does (live 2026-10-20: an attempt with no
+      // job-site page opened is "not sent", not needs_check). A script sets events to change that.
+      const opened: RunnerEvent[] = key === "apply.submit" ? [{ type: "tool", name: "mcp__claude-in-chrome__navigate", status: "started", summary: null }] : [];
+      const events = typeof entry?.events === "function" ? entry.events(task) : (entry?.events ?? opened);
       for (const e of events) onEvent(e);
       if (entry?.delayMs) {
         if (!this.clock) throw new Error(`FakeRunner: script "${entry.scenario ?? key}" has a delay but no clock`);
